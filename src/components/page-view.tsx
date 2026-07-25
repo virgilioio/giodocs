@@ -46,9 +46,6 @@ function propsOf(p: PageFull | PageListItem): Record<string, unknown> {
     : {};
 }
 
-function relTime(iso: string): string {
-  const now = Date.now();
-  const t = new Date(iso).getTime();
 let _dateMode: "relative" | "absolute" = "relative";
 export function setDateModeForPageView(m: "relative" | "absolute") {
   _dateMode = m;
