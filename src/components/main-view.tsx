@@ -529,7 +529,7 @@ function PageTitleCell({
       ) : (
         <button
           type="button"
-          className="min-w-0 flex-1 truncate text-left text-row"
+          className="min-w-0 flex-1 truncate text-left text-row font-bold"
           onClick={() => {
             setValue(page.title ?? "");
             setEditing(true);
