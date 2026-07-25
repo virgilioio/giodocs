@@ -807,21 +807,25 @@ function TagsCell({
   page,
   onSet,
   pages,
+  allOverride,
 }: {
   page: PageListItem;
   onSet: (tags: string[]) => void;
   pages: PageListItem[];
+  allOverride?: string[];
 }) {
   const raw = propsOf(page)["tags"];
   const tags = Array.isArray(raw) ? raw.map(String) : [];
-  const all = useMemo(() => {
+  const derived = useMemo(() => {
+    if (allOverride) return allOverride;
     const s = new Set<string>();
     for (const p of pages) {
       const t = propsOf(p)["tags"];
       if (Array.isArray(t)) t.forEach((x) => s.add(String(x)));
     }
     return [...s].sort();
-  }, [pages]);
+  }, [pages, allOverride]);
+  const all = derived;
   const [neu, setNeu] = useState("");
   const shown = tags.slice(0, 3);
   const extra = tags.length - shown.length;
