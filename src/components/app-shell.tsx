@@ -74,11 +74,16 @@ export function AppShell() {
   }, [collapsed]);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
         e.preventDefault();
         setPaletteOpen((v) => !v);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        setSettingsOpen((v) => !v);
       }
     };
     window.addEventListener("keydown", onKey);
