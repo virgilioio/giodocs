@@ -64,11 +64,14 @@ function relTime(iso: string): string {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d ago`;
+  if (d < 7) return `${d}d ago`;
+  const w = Math.floor(d / 7);
+  if (w < 5) return `${w}w ago`;
   const mo = Math.floor(d / 30);
   if (mo < 12) return `${mo}mo ago`;
   return `${Math.floor(mo / 12)}y ago`;
 }
+
 
 function LayoutGlyph({ layout }: { layout: string }) {
   const path =
@@ -103,7 +106,7 @@ function describeFilter(f: Filter, propDefs: PropDef[], staleDays: number): stri
     case "includes":
       return `tagged "${f.value}"`;
     case "is_me":
-      return `${label} is you`;
+      return f.prop === "owner" ? "owner is you" : `${label} is you`;
     case "not_empty":
       return `${label} is set`;
     case "stale":
@@ -113,17 +116,18 @@ function describeFilter(f: Filter, propDefs: PropDef[], staleDays: number): stri
   }
 }
 
+
 /* ─────────────────────────── View header ─────────────────────────── */
 
 function ViewHeader({
   selection,
   view,
-  areaCount,
+  rowCount,
   onNewPage,
 }: {
   selection: Selection;
   view: ViewRow | null;
-  areaCount?: number;
+  rowCount: number;
   onNewPage: () => void;
 }) {
   let scopeLabel: ReactNode = "AREA";
@@ -134,11 +138,12 @@ function ViewHeader({
         <Glyph path="M8 12a3 3 0 100-6 3 3 0 000 6zm8 0a3 3 0 100-6 3 3 0 000 6zM2 20c0-3 3-5 6-5s6 2 6 5m2 0c0-2 2-4 4-4s4 2 4 4" className="h-3 w-3" />
         TEAM VIEW
       </span>
-    ) : "MY VIEW";
+    ) : "PERSONAL VIEW";
     name = view.name;
   } else if (selection.kind === "area") {
     name = selection.area;
   }
+  const countLabel = `${rowCount} ${rowCount === 1 ? "page" : "pages"}`;
 
   return (
     <div className="mb-4 flex items-start justify-between gap-4">
@@ -146,9 +151,9 @@ function ViewHeader({
         <div className="text-label uppercase text-faint">{scopeLabel}</div>
         <h1 className="mt-1 font-display text-title text-noir truncate">
           {name}
-          {typeof areaCount === "number" && (
-            <span className="ml-2 text-title text-faint">{areaCount}</span>
-          )}
+          <span className="ml-3 align-baseline text-ui text-faint font-normal tracking-normal">
+            {countLabel}
+          </span>
         </h1>
       </div>
       <div className="flex shrink-0 items-center gap-2">
@@ -177,15 +182,17 @@ function ViewHeader({
         <button
           type="button"
           onClick={onNewPage}
-          className="rounded-lg bg-noir px-3 text-ui font-bold text-canvas"
+          className="inline-flex items-center gap-1 rounded-lg bg-noir px-3 text-ui font-bold text-canvas"
           style={{ height: 36 }}
         >
+          <Glyph path="M12 5v14M5 12h14" className="h-3.5 w-3.5" />
           New page
         </button>
       </div>
     </div>
   );
 }
+
 
 /* ─────────────────────────── Query toolbar ─────────────────────────── */
 
@@ -247,24 +254,49 @@ function QueryToolbar({
           onAdd={(f) => onChangeFilters([...filters, f])}
         />
       )}
-      <div className="ml-auto">
-        <select
-          className="rounded-sm border border-line bg-surface px-2 py-1 text-meta text-secondary"
-          value={`${sort.prop}:${sort.dir}`}
-          disabled={!editable}
-          onChange={(e) => {
-            const [prop, dir] = e.target.value.split(":") as [SortSpec["prop"], SortSpec["dir"]];
-            onChangeSort({ prop, dir });
-          }}
+      <div className="ml-auto flex items-center gap-2">
+        <span
+          aria-hidden
+          className="inline-block h-4 w-px bg-line"
+        />
+        <div className="inline-flex items-center gap-1 rounded-sm border border-line bg-surface px-2 py-1 text-meta text-secondary">
+          <Glyph
+            path="M7 4v12m0 0l-3-3m3 3l3-3M17 20V8m0 0l-3 3m3-3l3 3"
+            className="h-3.5 w-3.5 text-muted"
+          />
+          <select
+            className="bg-transparent focus:outline-none"
+            value={`${sort.prop}:${sort.dir}`}
+            disabled={!editable}
+            onChange={(e) => {
+              const [prop, dir] = e.target.value.split(":") as [
+                SortSpec["prop"],
+                SortSpec["dir"],
+              ];
+              onChangeSort({ prop, dir });
+            }}
+          >
+            <option value="edited:desc">Newest edits</option>
+            <option value="edited:asc">Oldest edits</option>
+            <option value="verified:desc">Recently verified</option>
+            <option value="verified:asc">Least recently verified</option>
+            <option value="title:asc">Title A–Z</option>
+            <option value="title:desc">Title Z–A</option>
+          </select>
+        </div>
+        <button
+          type="button"
+          title="View options — coming soon"
+          aria-label="View options"
+          className="grid h-7 w-7 place-items-center rounded-sm text-muted hover:bg-sunken"
         >
-          <option value="edited:desc">Newest edits</option>
-          <option value="edited:asc">Oldest edits</option>
-          <option value="verified:desc">Recently verified</option>
-          <option value="verified:asc">Least recently verified</option>
-          <option value="title:asc">Title A–Z</option>
-          <option value="title:desc">Title Z–A</option>
-        </select>
+          <Glyph
+            path="M6 12a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"
+            className="h-4 w-4"
+          />
+        </button>
       </div>
+
     </div>
   );
 }
@@ -492,12 +524,12 @@ function PageTitleCell({
               setEditing(false);
             }
           }}
-          className="min-w-0 flex-1 bg-transparent text-row focus:outline-none"
+          className="min-w-0 flex-1 bg-transparent text-row font-bold focus:outline-none"
         />
       ) : (
         <button
           type="button"
-          className="min-w-0 flex-1 truncate text-left text-row"
+          className="min-w-0 flex-1 truncate text-left text-row font-bold"
           onClick={() => {
             setValue(page.title ?? "");
             setEditing(true);
@@ -933,9 +965,10 @@ export function MainView({ selection }: { selection: Selection }) {
       <ViewHeader
         selection={selection}
         view={view}
-        areaCount={selection.kind === "area" ? rows.length : undefined}
+        rowCount={rows.length}
         onNewPage={onNewPage}
       />
+
       <QueryToolbar
         filters={filters}
         sort={sort}
@@ -1066,7 +1099,7 @@ function Cell({ children, className }: { children: ReactNode; className?: string
   return (
     <div
       className={
-        "min-w-0 border-b border-lineSoft px-[11px] py-[5px] " + (className ?? "")
+        "min-w-0 border-b border-lineSoft px-[11px] py-[10px] " + (className ?? "")
       }
     >
       {children}
