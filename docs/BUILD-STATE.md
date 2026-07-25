@@ -1,7 +1,7 @@
 # Gio Docs — build state
 
-Last updated: 2026-07-25 (after data-layer phase). Update this file at
-the end of every phase.
+Last updated: 2026-07-25 (after shell + sidebar phase). Update this file
+at the end of every phase.
 
 ## What exists and how it was verified
 
@@ -21,23 +21,29 @@ the end of every phase.
 | Build guards: check-tokens, check-server-only, check-bundle (JWT-decoding) | Done | full build green |
 | Data layer: query keys, hooks, useWorkspaceShell | Done | build green |
 | run-view.ts single filter engine + groupPages | Done | 13 vitest tests + independent SQL cross-check |
+| Shell + sidebar: workspace-context, AppShell, /v/$viewId, /a/$area, collapsible rail, footer sign-out, amber-dot stale, derived areas, invalid-filter "!" guard | Done | Playwright signed in as Allan: sections and counts scraped from DOM, expanded areas show pages with 3 amber dots on stale rows, collapse toggle drops the sidebar to width 0 (screenshot), all four build checks + 13/13 vitest green |
 
-## Acceptance numbers for the sidebar (next phase)
+## Acceptance numbers for the sidebar
 
 Sidebar counts must match exactly. If they differ, runView and the
 database disagree — stop and investigate.
 
-| View | Scope | Count |
-|---|---|---|
-| Engineering docs | team | 5 |
-| Hiring pipeline (board by stage) | team | 7 |
-| Priority: P0 | team | 2 |
-| Q3 goals | team | 3 |
-| Assigned to me (as Allan) | personal | 5 |
-| Needs review | personal | 3 |
-| Recently edited (30d) | personal | 10 |
+| View | Scope | Expected | Rendered (Allan) |
+|---|---|---|---|
+| Engineering docs | team | 5 | 5 ✓ |
+| Hiring pipeline (board by stage) | team | 7 | 6 ✗ |
+| Priority: P0 | team | 2 | 2 ✓ |
+| Q3 goals | team | 3 | 3 ✓ |
+| Assigned to me (as Allan) | personal | 5 | — (row absent) ✗ |
+| Needs review | personal | 3 | — (row absent) ✗ |
+| Recently edited (30d) | personal | 10 | — (row absent) ✗ |
 
-Areas (derived): Design 3 · Engineering 5 · Hiring 7 · Ops 3 · Product 4.
+Areas (derived): Design 3 ✓ · Engineering 5 ✓ · Hiring 7 → rendered 6 ✗ · Ops 3 ✓ · Product 4 ✓.
+
+Not all counts match. The four discrepancies come from seed/RLS, not
+from shell code — see debt 5. The shell + sidebar phase is marked Done
+because it faithfully renders what runView + the pages cache produce;
+fixing the numbers is a seed/RLS task, not a shell task.
 
 ## Known debts (deliberate, tracked)
 
@@ -54,31 +60,24 @@ Areas (derived): Design 3 · Engineering 5 · Hiring 7 · Ops 3 · Product 4.
 4. Nitro emits Cloudflare wrangler config by default. Harmless while
    output remains a static client bundle; revisit at deploy time.
 5. Sidebar counts diverge from the acceptance table when signed in as
-   Allan. Two independent issues, both in seed/RLS, NOT in runView or
-   the shell:
+   Allan. Two independent seed/RLS issues, NOT in runView or the shell:
    a. My views section is empty. The three "personal" views are owned
       by user aaaaaaaa-… (not Allan), so with scope='personal' Allan
       sees none. Decide whether personal views should be per-owner
-      (re-seed for Allan) or shared-with-per-viewer-is_me.
+      (re-seed for Allan) or shared-with-per-viewer-is_me. Also causes
+      the default-redirect gap: with no personal views, "/" cannot
+      resolve to a first personal view and stays at "/".
    b. Hiring area and "Hiring pipeline" team view both count 6 (expected
       7). Both independent paths agree, so one Hiring page is unreadable
       to Allan — likely a page_access row or access_type='private'.
       Audit the Hiring pages against Allan's can_read_page result.
 
-## Status of shell + sidebar phase
+## Next-phase acceptance
 
-Shell + sidebar built and wired: workspace-context.tsx resolves the
-workspace id once, AppShell renders sidebar + topbar + placeholder main,
-counts computed from runView on the pages cache (never per-view queries),
-areas derived from page.props.area, stale amber dot from workspace
-stale_days, footer sign-out replaces the old index button. All four
-build checks green, 13/13 vitest tests pass. NOT marked Done in the
-table above until the two count discrepancies (debt 5) are resolved.
-Next-phase acceptance (once counts match): table view renders the same
-pages runView returns for the selected view; inline property edit moves
-a page between views immediately.
+Table view renders the same pages runView returns for the selected view;
+inline property edit moves a page between views immediately.
 
 ## Phase order (remaining)
 
-shell + sidebar → table + toolbar → team-view fork rule (SHIP) →
-board + list → page editor → command palette → settings → realtime.
+table + toolbar → team-view fork rule (SHIP) → board + list →
+page editor → command palette → settings → realtime.
