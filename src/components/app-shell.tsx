@@ -6,6 +6,7 @@ import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
 import type { PageListItem } from "@/lib/types";
+import { MainView } from "./main-view";
 
 type Selection =
   | { kind: "view"; id: string }
@@ -139,18 +140,14 @@ export function AppShell() {
           <span className="text-ui text-body">{breadcrumb}</span>
         </header>
 
-        <main className="min-w-0 flex-1 bg-canvas">
-          <div className="mx-auto max-w-view px-6 py-10">
-            <p className="text-label uppercase text-faint">
-              {selection?.kind === "area" ? "Area" : "View"}
-            </p>
-            <h1 className="mt-2 font-display text-title text-noir">
-              {breadcrumb || "—"}
-            </h1>
-            <p className="mt-3 text-meta text-muted">
-              Table, board and list rendering land in the next phase.
-            </p>
-          </div>
+        <main className="min-w-0 flex-1 bg-canvas overflow-y-auto">
+          {selection ? (
+            <MainView selection={selection} />
+          ) : (
+            <div className="mx-auto max-w-view px-6 py-10">
+              <p className="text-meta text-muted">Loading…</p>
+            </div>
+          )}
         </main>
       </div>
     </div>
