@@ -221,7 +221,7 @@ function QueryToolbar({
     <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-lineSoft pb-3">
       <span className="text-meta text-muted">Pages where</span>
       {filters.length === 0 && (
-        <span className="italic text-meta text-whisper">anything — every page</span>
+        <span className="italic text-meta text-secondary">anything — every page</span>
       )}
       {filters.map((f, i) => {
         const fixed = i === fixedFilterIndex;
