@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as VViewIdRouteImport } from './routes/v.$viewId'
+import { Route as AAreaRouteImport } from './routes/a.$area'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -22,31 +24,49 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VViewIdRoute = VViewIdRouteImport.update({
+  id: '/v/$viewId',
+  path: '/v/$viewId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AAreaRoute = AAreaRouteImport.update({
+  id: '/a/$area',
+  path: '/a/$area',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/a/$area': typeof AAreaRoute
+  '/v/$viewId': typeof VViewIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/a/$area': typeof AAreaRoute
+  '/v/$viewId': typeof VViewIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/a/$area': typeof AAreaRoute
+  '/v/$viewId': typeof VViewIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login'
+  fullPaths: '/' | '/login' | '/a/$area' | '/v/$viewId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login'
-  id: '__root__' | '/' | '/login'
+  to: '/' | '/login' | '/a/$area' | '/v/$viewId'
+  id: '__root__' | '/' | '/login' | '/a/$area' | '/v/$viewId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
+  AAreaRoute: typeof AAreaRoute
+  VViewIdRoute: typeof VViewIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,13 +85,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/v/$viewId': {
+      id: '/v/$viewId'
+      path: '/v/$viewId'
+      fullPath: '/v/$viewId'
+      preLoaderRoute: typeof VViewIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/a/$area': {
+      id: '/a/$area'
+      path: '/a/$area'
+      fullPath: '/a/$area'
+      preLoaderRoute: typeof AAreaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
+  AAreaRoute: AAreaRoute,
+  VViewIdRoute: VViewIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
