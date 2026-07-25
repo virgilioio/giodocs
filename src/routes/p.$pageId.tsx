@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { RequireAuth } from "@/lib/require-auth";
 import { WorkspaceProvider } from "@/lib/workspace-context";
 import { AppShell } from "@/components/app-shell";
+import { RouteErrorFallback, RouteNotFound } from "@/components/route-boundaries";
 
 export const Route = createFileRoute("/p/$pageId")({
   head: () => ({
@@ -11,6 +12,10 @@ export const Route = createFileRoute("/p/$pageId")({
     ],
   }),
   component: PageRoute,
+  errorComponent: ({ error, reset }) => (
+    <RouteErrorFallback error={error} reset={reset} scope="page" />
+  ),
+  notFoundComponent: () => <RouteNotFound what="This page" />,
 });
 
 function PageRoute() {
