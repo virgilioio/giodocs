@@ -3,19 +3,17 @@ import { RequireAuth } from "@/lib/require-auth";
 import { WorkspaceProvider } from "@/lib/workspace-context";
 import { AppShell } from "@/components/app-shell";
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/v/$viewId")({
   head: () => ({
     meta: [
-      { title: "Gio Docs" },
-      { name: "description", content: "Gio Docs" },
-      { property: "og:title", content: "Gio Docs" },
-      { property: "og:description", content: "Gio Docs" },
+      { title: "View — Gio Docs" },
+      { name: "robots", content: "noindex" },
     ],
   }),
-  component: Index,
+  component: ViewRoute,
 });
 
-function Index() {
+function ViewRoute() {
   return (
     <RequireAuth>
       <WorkspaceProvider>
