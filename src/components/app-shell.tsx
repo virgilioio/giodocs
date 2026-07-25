@@ -321,7 +321,7 @@ function SidebarBody({
                   >
                     <LayoutGlyph layout={v.layout} />
                     <span className="min-w-0 flex-1 truncate text-row">{v.name}</span>
-                    {renderCount(countFor(v))}
+                    {renderCount(countFor(v), "text-row")}
                   </Link>
                 </li>
               ))}
