@@ -289,6 +289,7 @@ function SidebarBody({
   memberCount,
   areaIcons,
   onSignOut,
+  onOpenSettings,
   onOpenPalette,
 }: {
   loading: boolean;
@@ -303,6 +304,7 @@ function SidebarBody({
   memberCount: number;
   areaIcons: Map<string, string>;
   onSignOut: () => void;
+  onOpenSettings: () => void;
   onOpenPalette: () => void;
 }) {
   const [sections, toggleSection] = useSectionState();
