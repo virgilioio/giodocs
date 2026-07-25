@@ -49,6 +49,14 @@ function propsOf(p: PageFull | PageListItem): Record<string, unknown> {
 function relTime(iso: string): string {
   const now = Date.now();
   const t = new Date(iso).getTime();
+let _dateMode: "relative" | "absolute" = "relative";
+export function setDateModeForPageView(m: "relative" | "absolute") {
+  _dateMode = m;
+}
+function relTime(iso: string): string {
+  if (_dateMode === "absolute") return formatTimestamp(iso, "absolute");
+  const now = Date.now();
+  const t = new Date(iso).getTime();
   const s = Math.max(1, Math.floor((now - t) / 1000));
   if (s < 60) return "just now";
   const m = Math.floor(s / 60);
