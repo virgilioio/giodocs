@@ -208,7 +208,9 @@ type ViewFull = {
   filter: unknown;
   sort: unknown;
   icon: string | null;
+  group_by: string | null;
 };
+
 
 export function useCreateView() {
   const qc = useQueryClient();
@@ -258,7 +260,9 @@ export function useUpdateView() {
   return useMutation({
     mutationFn: async (v: {
       id: string;
-      patch: Partial<Pick<ViewFull, "name" | "icon" | "filter" | "sort" | "layout">>;
+      patch: Partial<
+        Pick<ViewFull, "name" | "icon" | "filter" | "sort" | "layout" | "group_by">
+      >;
     }) => {
       const { error } = await supabase
         .from("views")
@@ -282,6 +286,7 @@ export function useUpdateView() {
     onSettled: () => qc.invalidateQueries({ queryKey: qk.views(ws) }),
   });
 }
+
 
 export function useDeleteView() {
   const qc = useQueryClient();
@@ -321,6 +326,7 @@ export function useForkView() {
       filter: Filter[];
       sort: SortSpec;
       layout: "table" | "board" | "list";
+      groupBy?: string | null;
     }) => {
       const { data, error } = await supabase.rpc("fork_view", {
         p_view: v.viewId,
@@ -330,14 +336,24 @@ export function useForkView() {
         p_layout: v.layout,
       });
       if (error) throw error;
-      return data as unknown as ViewFull;
+      const row = data as unknown as ViewFull;
+      if (v.groupBy !== undefined) {
+        const { error: e2 } = await supabase
+          .from("views")
+          .update({ group_by: v.groupBy } as never)
+          .eq("id", row.id);
+        if (e2) throw e2;
+        row.group_by = v.groupBy;
+      }
+      return row;
     },
     onSuccess: (row) => {
       qc.setQueryData<ViewFull[]>(qk.views(ws), (prev) =>
         prev ? [...prev, row] : [row],
       );
-      toast.push(`Forked to "${row.name}"`);
+      toast.push(`Saved to My views — "${row.name}" is unchanged for the team.`);
     },
+
     onError: (err) => toast.push(`Couldn't fork: ${(err as Error).message}`),
     onSettled: () => qc.invalidateQueries({ queryKey: qk.views(ws) }),
   });
@@ -378,5 +394,28 @@ export function useCreatePage() {
     },
     onError: (err) => toast.push(`Couldn't create page: ${(err as Error).message}`),
     onSettled: () => qc.invalidateQueries({ queryKey: qk.pages(ws) }),
+  });
+}
+
+export function usePublishView() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (viewId: string) => {
+      const { data, error } = await supabase.rpc("publish_view", {
+        p_view: viewId,
+      });
+      if (error) throw error;
+      return data as unknown as ViewFull;
+    },
+    onSuccess: (row) => {
+      qc.setQueryData<ViewFull[]>(qk.views(ws), (prev) =>
+        prev ? prev.map((x) => (x.id === row.id ? row : x)) : [row],
+      );
+      toast.push(`Published "${row.name}" to Team views`);
+    },
+    onError: (err) => toast.push(`Couldn't publish: ${(err as Error).message}`),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.views(ws) }),
   });
 }

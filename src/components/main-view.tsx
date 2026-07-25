@@ -11,9 +11,15 @@ import {
   useRenamePage,
   useCreatePage,
   useUpdateView,
+  useForkView,
+  usePublishView,
+  useDeleteView,
 } from "@/hooks/use-page-mutations";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
+
+type Layout = "table" | "board" | "list";
+
 
 
 type PropDef = Database["public"]["Tables"]["property_defs"]["Row"];
@@ -125,11 +131,17 @@ function ViewHeader({
   view,
   rowCount,
   onNewPage,
+  layout,
+  onChangeLayout,
+  onOpenMenu,
 }: {
   selection: Selection;
   view: ViewRow | null;
   rowCount: number;
   onNewPage: () => void;
+  layout: Layout;
+  onChangeLayout: (l: Layout) => void;
+  onOpenMenu: (btn: HTMLElement) => void;
 }) {
   let scopeLabel: ReactNode = "AREA";
   let name = "";
@@ -160,19 +172,17 @@ function ViewHeader({
       <div className="flex shrink-0 items-center gap-2">
         <div className="flex items-center rounded-md border border-line bg-surface">
           {(["table", "board", "list"] as const).map((l) => {
-            const active = l === (view?.layout ?? "table");
-            const disabled = l !== "table";
+            const active = l === layout;
             return (
               <button
                 key={l}
                 type="button"
-                disabled={disabled}
-                title={disabled ? "Coming in a later phase" : l}
+                title={l}
                 aria-label={l}
+                onClick={() => onChangeLayout(l)}
                 className={
                   "grid h-8 w-8 place-items-center " +
-                  (active ? "bg-selected text-noir" : "text-muted") +
-                  (disabled ? " opacity-40 cursor-not-allowed" : " hover:bg-rail")
+                  (active ? "bg-selected text-noir" : "text-muted hover:bg-rail")
                 }
               >
                 <LayoutGlyph layout={l} />
@@ -189,10 +199,22 @@ function ViewHeader({
           <Glyph path="M12 5v14M5 12h14" className="h-3.5 w-3.5" />
           New page
         </button>
+        <button
+          type="button"
+          aria-label="View options"
+          onClick={(e) => onOpenMenu(e.currentTarget)}
+          className="grid h-8 w-8 place-items-center rounded-md border border-line bg-surface text-muted hover:bg-rail"
+        >
+          <Glyph
+            path="M6 12a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"
+            className="h-4 w-4"
+          />
+        </button>
       </div>
     </div>
   );
 }
+
 
 
 /* ─────────────────────────── Query toolbar ─────────────────────────── */
@@ -885,11 +907,15 @@ export function MainView({ selection }: { selection: Selection }) {
   const ws = useWorkspaceId();
   const { user } = useAuth();
   const shell = useWorkspaceShell(ws);
-  
+  const navigate = useNavigate();
+
   const setProp = useSetPageProperty();
   const rename = useRenamePage();
   const create = useCreatePage();
   const updateView = useUpdateView();
+  const forkView = useForkView();
+  const publishView = usePublishView();
+  const deleteView = useDeleteView();
 
   const pages = (shell.pages.data ?? []) as PageListItem[];
   const views = (shell.views.data ?? []) as ViewRow[];
@@ -897,14 +923,18 @@ export function MainView({ selection }: { selection: Selection }) {
   const propDefs = (shell.propDefs.data ?? []) as PropDef[];
   const workspace = shell.workspace.data;
   const staleDays = workspace?.stale_days ?? 30;
+  const memberCount = members.length;
 
   const view = selection.kind === "view" ? views.find((v) => v.id === selection.id) ?? null : null;
   const isOwnerOfView = !!view && view.owner_id === user?.id && view.scope === "personal";
   const isTeamView = !!view && view.scope === "team";
 
-  // Local session-only filter/sort layered on top of the view/area base.
+  // Local session-only overrides layered on top of the view/area base.
   const [localFilters, setLocalFilters] = useState<Filter[] | null>(null);
   const [localSort, setLocalSort] = useState<SortSpec | null>(null);
+  const [localLayout, setLocalLayout] = useState<Layout | null>(null);
+  const [localGroupBy, setLocalGroupBy] = useState<string | null | undefined>(undefined);
+  const [headerMenuAnchor, setHeaderMenuAnchor] = useState<HTMLElement | null>(null);
 
   const baseFilters: Filter[] = useMemo(() => {
     if (selection.kind === "area") return [{ op: "eq", prop: "area", value: selection.area }];
@@ -914,9 +944,13 @@ export function MainView({ selection }: { selection: Selection }) {
     () => ((view?.sort as SortSpec | null) ?? { prop: "edited", dir: "desc" }),
     [view],
   );
+  const baseLayout: Layout = (view?.layout as Layout | undefined) ?? "table";
+  const baseGroupBy: string | null = view?.group_by ?? null;
 
   const filters = localFilters ?? baseFilters;
   const sort = localSort ?? baseSort;
+  const layout: Layout = localLayout ?? baseLayout;
+  const groupBy: string = (localGroupBy !== undefined ? localGroupBy : baseGroupBy) ?? "status";
   const fixedFilterIndex = selection.kind === "area" ? 0 : undefined;
 
   const rows = useMemo(
@@ -936,31 +970,45 @@ export function MainView({ selection }: { selection: Selection }) {
   const staleThreshold = Date.now() - staleDays * 24 * 60 * 60 * 1000;
 
   const onChangeFilters = (next: Filter[]) => {
-    if (selection.kind === "area") {
-      setLocalFilters(next);
-      return;
-    }
+    if (selection.kind === "area") { setLocalFilters(next); return; }
     if (isOwnerOfView && view) {
       setLocalFilters(null);
       updateView.mutate({ id: view.id, patch: { filter: next } });
-    } else {
-      setLocalFilters(next);
-    }
+    } else setLocalFilters(next);
   };
   const onChangeSort = (s: SortSpec) => {
-    if (selection.kind === "area") {
-      setLocalSort(s);
-      return;
-    }
+    if (selection.kind === "area") { setLocalSort(s); return; }
     if (isOwnerOfView && view) {
       setLocalSort(null);
       updateView.mutate({ id: view.id, patch: { sort: s } });
-    } else {
-      setLocalSort(s);
-    }
+    } else setLocalSort(s);
+  };
+  const onChangeLayout = (l: Layout) => {
+    if (selection.kind === "area") { setLocalLayout(l); return; }
+    if (isOwnerOfView && view) {
+      setLocalLayout(null);
+      updateView.mutate({ id: view.id, patch: { layout: l } });
+    } else setLocalLayout(l);
+  };
+  const onChangeGroupBy = (g: string) => {
+    if (selection.kind === "area") { setLocalGroupBy(g); return; }
+    if (isOwnerOfView && view) {
+      setLocalGroupBy(undefined);
+      updateView.mutate({ id: view.id, patch: { group_by: g } });
+    } else setLocalGroupBy(g);
   };
 
+  const filterEq = JSON.stringify(filters) !== JSON.stringify(baseFilters);
+  const sortEq = JSON.stringify(sort) !== JSON.stringify(baseSort);
+  const layoutEq = layout !== baseLayout;
+  const groupEq = groupBy !== (baseGroupBy ?? "status");
+  const isModified = isTeamView && (filterEq || sortEq || layoutEq || groupEq);
+
   const statusDef = propDefs.find((d) => d.key === "status");
+
+  const groupableDefs = propDefs.filter(
+    (d) => d.type === "select" || d.type === "status",
+  );
 
   const onNewPage = () => {
     const seed: Record<string, unknown> = {};
@@ -974,6 +1022,99 @@ export function MainView({ selection }: { selection: Selection }) {
 
   const editable = selection.kind === "area" || isOwnerOfView;
 
+  const doSaveAsMyView = () => {
+    if (!view) return;
+    forkView.mutate(
+      {
+        viewId: view.id,
+        name: `${view.name} (my copy)`,
+        filter: filters,
+        sort,
+        layout,
+        groupBy: layout === "board" ? groupBy : null,
+      },
+      {
+        onSuccess: (row) => {
+          setLocalFilters(null);
+          setLocalSort(null);
+          setLocalLayout(null);
+          setLocalGroupBy(undefined);
+          navigate({ to: "/v/$viewId", params: { viewId: row.id } });
+        },
+      },
+    );
+  };
+  const doDiscard = () => {
+    setLocalFilters(null);
+    setLocalSort(null);
+    setLocalLayout(null);
+    setLocalGroupBy(undefined);
+  };
+  const doPublish = () => {
+    if (!view) return;
+    if (
+      !window.confirm(
+        `Publish "${view.name}" to Team views? It moves out of My views into Team views for all ${memberCount} people at ${workspace?.name ?? "the workspace"}. Publishing is the only way a view becomes shared.`,
+      )
+    )
+      return;
+    publishView.mutate(view.id);
+  };
+  const doDelete = () => {
+    if (!view) return;
+    if (window.confirm(`Delete view "${view.name}"?`)) deleteView.mutate(view.id);
+  };
+
+
+  const emptyBody = (
+    <div className="grid place-items-center py-20 text-center">
+      <div className="font-display text-subhead text-noir">
+        Nothing matches this view yet.
+      </div>
+      <p className="mt-2 text-meta text-secondary">
+        A view is just a query — pages appear here the moment their properties match.
+      </p>
+    </div>
+  );
+
+  let body: ReactNode;
+  if (rows.length === 0) body = emptyBody;
+  else if (layout === "board")
+    body = (
+      <BoardBody
+        rows={rows}
+        groupBy={groupBy}
+        propDefs={propDefs}
+        members={members}
+        staleThreshold={staleThreshold}
+        onMove={(pageId, value) =>
+          setProp.mutate({ pageId, key: groupBy, value })
+        }
+      />
+    );
+  else if (layout === "list")
+    body = (
+      <ListBody
+        rows={rows}
+        members={members}
+        propDefs={propDefs}
+        staleThreshold={staleThreshold}
+      />
+    );
+  else
+    body = (
+      <TableBody
+        rows={rows}
+        pages={pages}
+        members={members}
+        areas={areas}
+        statusDef={statusDef}
+        staleThreshold={staleThreshold}
+        rename={rename}
+        setProp={setProp}
+      />
+    );
+
   return (
     <div className="mx-auto max-w-view px-6 py-6">
       <ViewHeader
@@ -981,7 +1122,23 @@ export function MainView({ selection }: { selection: Selection }) {
         view={view}
         rowCount={rows.length}
         onNewPage={onNewPage}
+        layout={layout}
+        onChangeLayout={onChangeLayout}
+        onOpenMenu={(btn) => setHeaderMenuAnchor(btn)}
       />
+
+      {headerMenuAnchor && (
+        <HeaderMenu
+          anchor={headerMenuAnchor}
+          onClose={() => setHeaderMenuAnchor(null)}
+          canPublish={isOwnerOfView}
+          canDelete={isOwnerOfView}
+          canSaveAs={isTeamView}
+          onPublish={doPublish}
+          onSaveAs={doSaveAsMyView}
+          onDelete={doDelete}
+        />
+      )}
 
       <QueryToolbar
         filters={filters}
@@ -994,107 +1151,435 @@ export function MainView({ selection }: { selection: Selection }) {
         fixedFilterIndex={fixedFilterIndex}
         pages={pages}
       />
-      {isTeamView && (
-        <p className="mb-3 text-caption text-muted">
-          Team view — filtering forks to a personal copy (next phase)
-        </p>
+
+      {layout === "board" && (
+        <div className="-mt-1 mb-4 flex items-center gap-2 text-meta text-muted">
+          <span>Grouped by</span>
+          <select
+            className="rounded-sm border border-line bg-surface px-2 py-1 text-meta text-body focus:outline-none"
+            value={groupBy}
+            onChange={(e) => onChangeGroupBy(e.target.value)}
+          >
+            {groupableDefs.map((d) => (
+              <option key={d.id} value={d.key}>
+                {d.label}
+              </option>
+            ))}
+            {groupableDefs.length === 0 && <option value="status">Status</option>}
+          </select>
+        </div>
       )}
 
-      {rows.length === 0 ? (
-        <div className="grid place-items-center py-20 text-center">
-          <div className="font-display text-subhead text-noir">
-            Nothing matches this view yet.
-          </div>
-          <p className="mt-2 text-meta text-secondary">
-            A view is just a query — pages appear here the moment their properties match.
-          </p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <div
-            role="table"
-            className="min-w-full text-row"
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr) minmax(0,0.9fr) minmax(0,0.9fr)",
-            }}
-          >
-            <HeaderCell>Page</HeaderCell>
-            <HeaderCell className="hidden xs:block">Area</HeaderCell>
-            <HeaderCell>Owner</HeaderCell>
-            <HeaderCell>Status</HeaderCell>
-            <HeaderCell className="hidden sm:block">Tags</HeaderCell>
-            <HeaderCell className="hidden md:block">Verified</HeaderCell>
-            <HeaderCell>Edited</HeaderCell>
+      {isModified && (
+        <ModifiedBanner
+          viewName={view!.name}
+          workspaceName={workspace?.name ?? "the workspace"}
+          onSave={doSaveAsMyView}
+          onDiscard={doDiscard}
+        />
+      )}
 
-            {rows.map((p) => {
+      {body}
+    </div>
+  );
+}
+
+/* ─────────────────────────── Modified banner ─────────────────────────── */
+
+function ModifiedBanner({
+  viewName,
+  workspaceName,
+  onSave,
+  onDiscard,
+}: {
+  viewName: string;
+  workspaceName: string;
+  onSave: () => void;
+  onDiscard: () => void;
+}) {
+  return (
+    <div className="mb-4">
+      <div className="flex flex-wrap items-center gap-2 rounded-md border border-amberRing bg-amberTint px-3 py-2">
+        <span className="inline-flex h-2 w-2 rounded-full bg-amberDot" aria-hidden />
+        <span className="font-display text-label uppercase text-amberInk">MODIFIED</span>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onSave}
+            className="rounded-md bg-noir px-3 py-1 text-meta font-bold text-canvas"
+          >
+            Save as my view
+          </button>
+          <button
+            type="button"
+            aria-label="Discard changes"
+            onClick={onDiscard}
+            className="grid h-7 w-7 place-items-center rounded-md text-amberInk hover:bg-amberRing"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+      <p className="mt-1 px-1 text-caption text-amberInk">
+        You&apos;re looking at unsaved changes. <b>{viewName}</b> is untouched for everyone
+        else at {workspaceName} — saving makes a copy in <b>My views</b>.
+      </p>
+    </div>
+  );
+}
+
+/* ─────────────────────────── Header options menu ─────────────────────────── */
+
+function HeaderMenu({
+  anchor,
+  onClose,
+  canPublish,
+  canDelete,
+  canSaveAs,
+  onPublish,
+  onSaveAs,
+  onDelete,
+}: {
+  anchor: HTMLElement;
+  onClose: () => void;
+  canPublish: boolean;
+  canDelete: boolean;
+  canSaveAs: boolean;
+  onPublish: () => void;
+  onSaveAs: () => void;
+  onDelete: () => void;
+}) {
+  const rect = anchor.getBoundingClientRect();
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div
+        className="fixed z-50 min-w-[180px] rounded-md border border-line bg-surface shadow-popover"
+        style={{ top: rect.bottom + 6, left: rect.right - 180 }}
+      >
+        {canSaveAs && (
+          <button
+            type="button"
+            className="block w-full px-3 py-2 text-left text-meta hover:bg-rail"
+            onClick={() => { onClose(); onSaveAs(); }}
+          >
+            Save as my view
+          </button>
+        )}
+        {canPublish && (
+          <button
+            type="button"
+            className="block w-full px-3 py-2 text-left text-meta hover:bg-rail"
+            onClick={() => { onClose(); onPublish(); }}
+          >
+            Publish to team
+          </button>
+        )}
+        {canDelete && (
+          <>
+            <div className="my-1 border-t border-lineSoft" />
+            <button
+              type="button"
+              className="block w-full px-3 py-2 text-left text-meta text-danger hover:bg-dangerTint"
+              onClick={() => { onClose(); onDelete(); }}
+            >
+              Delete view
+            </button>
+          </>
+        )}
+        {!canSaveAs && !canPublish && !canDelete && (
+          <div className="px-3 py-2 text-meta text-muted">No actions available</div>
+        )}
+      </div>
+    </>
+  );
+}
+
+/* ─────────────────────────── Table body ─────────────────────────── */
+
+function TableBody({
+  rows,
+  pages,
+  members,
+  areas,
+  statusDef,
+  staleThreshold,
+  rename,
+  setProp,
+}: {
+  rows: PageListItem[];
+  pages: PageListItem[];
+  members: MemberRow[];
+  areas: string[];
+  statusDef: PropDef | undefined;
+  staleThreshold: number;
+  rename: ReturnType<typeof useRenamePage>;
+  setProp: ReturnType<typeof useSetPageProperty>;
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <div
+        role="table"
+        className="min-w-full text-row"
+        style={{
+          display: "grid",
+          gridTemplateColumns:
+            "minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr) minmax(0,0.9fr) minmax(0,0.9fr)",
+        }}
+      >
+        <HeaderCell>Page</HeaderCell>
+        <HeaderCell className="hidden xs:block">Area</HeaderCell>
+        <HeaderCell>Owner</HeaderCell>
+        <HeaderCell>Status</HeaderCell>
+        <HeaderCell className="hidden sm:block">Tags</HeaderCell>
+        <HeaderCell className="hidden md:block">Verified</HeaderCell>
+        <HeaderCell>Edited</HeaderCell>
+
+        {rows.map((p) => {
+          const isStale = new Date(p.verified_at).getTime() < staleThreshold;
+          return (
+            <RowGroup key={p.id}>
+              <Cell>
+                <PageTitleCell
+                  page={p}
+                  onSave={(t) => rename.mutate({ pageId: p.id, title: t })}
+                />
+              </Cell>
+              <Cell className="hidden xs:block">
+                <AreaCell
+                  page={p}
+                  areas={areas}
+                  onPick={(v) => setProp.mutate({ pageId: p.id, key: "area", value: v })}
+                />
+              </Cell>
+              <Cell>
+                <OwnerCell
+                  page={p}
+                  members={members}
+                  onPick={(uid) => setProp.mutate({ pageId: p.id, key: "owner", value: uid })}
+                />
+              </Cell>
+              <Cell>
+                <StatusCell
+                  page={p}
+                  def={statusDef}
+                  onPick={(v) => setProp.mutate({ pageId: p.id, key: "status", value: v })}
+                />
+              </Cell>
+              <Cell className="hidden sm:block">
+                <TagsCell
+                  page={p}
+                  pages={pages}
+                  onSet={(tags) => setProp.mutate({ pageId: p.id, key: "tags", value: tags })}
+                />
+              </Cell>
+              <Cell className="hidden md:block">
+                {isStale ? (
+                  <span className="inline-flex items-center gap-1 font-bold text-amberInk">
+                    ⚠ {relTime(p.verified_at)}
+                  </span>
+                ) : (
+                  <span className="text-meta text-muted">{relTime(p.verified_at)}</span>
+                )}
+              </Cell>
+              <Cell>
+                <span className="text-meta text-muted">{relTime(p.edited_at)}</span>
+              </Cell>
+            </RowGroup>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────── Board body ─────────────────────────── */
+
+function BoardBody({
+  rows,
+  groupBy,
+  propDefs,
+  members,
+  staleThreshold,
+  onMove,
+}: {
+  rows: PageListItem[];
+  groupBy: string;
+  propDefs: PropDef[];
+  members: MemberRow[];
+  staleThreshold: number;
+  onMove: (pageId: string, value: string) => void;
+}) {
+  const navigate = useNavigate();
+  const def = propDefs.find((d) => d.key === groupBy);
+  const opts =
+    (def?.options as unknown as Array<{
+      value: string;
+      label: string;
+      tint: string;
+      ink: string;
+    }>) ?? [];
+
+  const columns = useMemo(() => {
+    const groups = new Map<string, PageListItem[]>();
+    for (const p of rows) {
+      const v = propsOf(p)[groupBy];
+      const key = typeof v === "string" && v ? v : "__none";
+      const arr = groups.get(key);
+      if (arr) arr.push(p);
+      else groups.set(key, [p]);
+    }
+    const ordered: Array<{ value: string; opt?: (typeof opts)[number]; pages: PageListItem[] }> = [];
+    for (const o of opts) ordered.push({ value: o.value, opt: o, pages: groups.get(o.value) ?? [] });
+    // Extra values not in options
+    for (const [k, pgs] of groups)
+      if (k !== "__none" && !opts.some((o) => o.value === k))
+        ordered.push({ value: k, pages: pgs });
+    return ordered;
+  }, [rows, opts, groupBy]);
+
+  return (
+    <div className="flex gap-3 overflow-x-auto pb-2">
+      {columns.map((col) => (
+        <div
+          key={col.value}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            const id = e.dataTransfer.getData("text/pageId");
+            if (id) onMove(id, col.value);
+          }}
+          className="shrink-0 rounded-xl bg-rail p-[10px]"
+          style={{ width: "var(--container-boardCol)" }}
+        >
+          <div className="mb-2 flex items-center gap-2 px-1 text-meta">
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ background: `var(--color-${col.opt?.ink ?? "muted"})` }}
+              aria-hidden
+            />
+            <span className="font-bold text-body">{col.opt?.label ?? col.value}</span>
+            <span className="ml-auto text-faint">{col.pages.length}</span>
+          </div>
+          <div className="flex flex-col gap-2">
+            {col.pages.map((p) => {
               const isStale = new Date(p.verified_at).getTime() < staleThreshold;
+              const ownerId = propsOf(p)["owner"];
+              const owner =
+                typeof ownerId === "string"
+                  ? members.find((m) => m.user_id === ownerId)?.profiles
+                  : null;
               return (
-                <RowGroup key={p.id}>
-                  <Cell>
-                    <PageTitleCell
-                      page={p}
-                      onSave={(t) => rename.mutate({ pageId: p.id, title: t })}
-                    />
-                  </Cell>
-                  <Cell className="hidden xs:block">
-                    <AreaCell
-                      page={p}
-                      areas={areas}
-                      onPick={(v) =>
-                        setProp.mutate({ pageId: p.id, key: "area", value: v })
-                      }
-                    />
-                  </Cell>
-                  <Cell>
-                    <OwnerCell
-                      page={p}
-                      members={members}
-                      onPick={(uid) =>
-                        setProp.mutate({ pageId: p.id, key: "owner", value: uid })
-                      }
-                    />
-                  </Cell>
-                  <Cell>
-                    <StatusCell
-                      page={p}
-                      def={statusDef}
-                      onPick={(v) =>
-                        setProp.mutate({ pageId: p.id, key: "status", value: v })
-                      }
-                    />
-                  </Cell>
-                  <Cell className="hidden sm:block">
-                    <TagsCell
-                      page={p}
-                      pages={pages}
-                      onSet={(tags) =>
-                        setProp.mutate({ pageId: p.id, key: "tags", value: tags })
-                      }
-                    />
-                  </Cell>
-                  <Cell className="hidden md:block">
+                <button
+                  key={p.id}
+                  type="button"
+                  draggable
+                  onDragStart={(e) => e.dataTransfer.setData("text/pageId", p.id)}
+                  onClick={() => navigate({ to: "/p/$pageId", params: { pageId: p.id } })}
+                  className="rounded-lg border border-line bg-surface p-2 text-left shadow-card transition hover:shadow-cardHover"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-row leading-none">{p.icon ?? "📄"}</span>
+                    <span className="min-w-0 flex-1 truncate text-row font-bold text-noir">
+                      {p.title || "Untitled"}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2 text-caption">
+                    {owner && (
+                      <span
+                        className="grid h-5 w-5 place-items-center rounded-full text-caption font-bold"
+                        style={{
+                          background: `var(--color-${owner.avatar_tint ?? "sunken"})`,
+                          color: `var(--color-${owner.avatar_ink ?? "body"})`,
+                        }}
+                      >
+                        {(owner.full_name ?? owner.email ?? "?").slice(0, 1).toUpperCase()}
+                      </span>
+                    )}
                     {isStale ? (
-                      <span className="inline-flex items-center gap-1 font-bold text-amberInk">
-                        ⚠ {relTime(p.verified_at)}
+                      <span className="ml-auto font-display text-label uppercase text-amberInk">
+                        STALE
                       </span>
                     ) : (
-                      <span className="text-meta text-muted">{relTime(p.verified_at)}</span>
+                      <span className="ml-auto text-muted">{relTime(p.edited_at)}</span>
                     )}
-                  </Cell>
-                  <Cell>
-                    <span className="text-meta text-muted">{relTime(p.edited_at)}</span>
-                  </Cell>
-                </RowGroup>
+                  </div>
+                </button>
               );
             })}
           </div>
         </div>
+      ))}
+      {columns.length === 0 && (
+        <div className="text-meta text-muted">Pick a property with options to group by.</div>
       )}
     </div>
   );
 }
+
+/* ─────────────────────────── List body ─────────────────────────── */
+
+function ListBody({
+  rows,
+  members,
+  propDefs,
+  staleThreshold,
+}: {
+  rows: PageListItem[];
+  members: MemberRow[];
+  propDefs: PropDef[];
+  staleThreshold: number;
+}) {
+  const navigate = useNavigate();
+  const statusDef = propDefs.find((d) => d.key === "status");
+  const statusOpts =
+    (statusDef?.options as unknown as Array<{ value: string; label: string }>) ?? [];
+
+  return (
+    <div className="mx-auto max-w-[800px]">
+      {rows.map((p) => {
+        const props = propsOf(p);
+        const isStale = new Date(p.verified_at).getTime() < staleThreshold;
+        const ownerId = props["owner"];
+        const owner =
+          typeof ownerId === "string"
+            ? members.find((m) => m.user_id === ownerId)?.profiles
+            : null;
+        const status = statusOpts.find((o) => o.value === props["status"])?.label;
+        const area = typeof props["area"] === "string" ? props["area"] : null;
+        const subline = [area, owner?.full_name ?? owner?.email, status]
+          .filter(Boolean)
+          .join(" · ");
+        return (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => navigate({ to: "/p/$pageId", params: { pageId: p.id } })}
+            className="flex w-full items-start gap-3 border-b border-lineSoft px-2 py-3 text-left hover:bg-sunken"
+          >
+            <span className="text-row leading-none">{p.icon ?? "📄"}</span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-row font-bold text-noir">
+                {p.title || "Untitled"}
+              </div>
+              {subline && (
+                <div className="mt-0.5 truncate text-meta text-muted">{subline}</div>
+              )}
+            </div>
+            {isStale ? (
+              <span className="shrink-0 font-display text-label uppercase text-amberInk">
+                STALE
+              </span>
+            ) : (
+              <span className="shrink-0 text-meta text-muted">{relTime(p.edited_at)}</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+
 
 function HeaderCell({ children, className }: { children: ReactNode; className?: string }) {
   return (

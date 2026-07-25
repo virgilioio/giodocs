@@ -17,7 +17,9 @@ import {
   useDeleteView,
   useForkView,
   useUpdateView,
+  usePublishView,
 } from "@/hooks/use-page-mutations";
+
 import { useToast } from "@/lib/toast";
 import type { PageListItem } from "@/lib/types";
 import { MainView } from "./main-view";
@@ -521,7 +523,13 @@ function MyViewRow({
   const updateView = useUpdateView();
   const createView = useCreateView();
   const deleteView = useDeleteView();
+  const publishView = usePublishView();
+  const ws = useWorkspaceId();
+  const shell = useWorkspaceShell(ws);
+  const wsName = shell.workspace.data?.name ?? "the workspace";
+  const wsMembers = shell.members.data?.length ?? 0;
   const navigate = useNavigate();
+
 
   const showMenu = hover || menu;
 
@@ -606,9 +614,21 @@ function MyViewRow({
                   >
                     Duplicate
                   </MenuItem>
-                  <MenuItem disabled title="Next phase">
+                  <MenuItem
+                    onClick={() => {
+                      setMenu(false);
+                      if (
+                        window.confirm(
+                          `Publish "${v.name}" to Team views? It moves out of My views into Team views for all ${wsMembers} people at ${wsName}. Publishing is the only way a view becomes shared.`,
+                        )
+                      ) {
+                        publishView.mutate(v.id);
+                      }
+                    }}
+                  >
                     Publish to team
                   </MenuItem>
+
                   <MenuDivider />
                   <MenuItem
                     danger
