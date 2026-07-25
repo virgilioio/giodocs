@@ -10,7 +10,10 @@ export const getRouter = () => {
     context: { queryClient },
     scrollRestoration: true,
     defaultPreloadStaleTime: 0,
-    defaultSsr: false,
+    // SPA mode: no SSR. Combined with `spa: { enabled: true }` in vite.config.ts.
+    // `defaultSsr` is stripped from RouterConstructorOptions at the type level
+    // but honoured at runtime, hence the cast.
+    ...({ defaultSsr: false } as Record<string, unknown>),
   });
 
   return router;
