@@ -71,6 +71,18 @@ export function AppShell() {
     }
   }, [collapsed]);
 
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const pages = (shell.pages.data ?? []) as PageListItem[];
   const views = shell.views.data ?? [];
   const workspace = shell.workspace.data;
