@@ -940,9 +940,10 @@ export function MainView({ selection }: { selection: Selection }) {
       <ViewHeader
         selection={selection}
         view={view}
-        areaCount={selection.kind === "area" ? rows.length : undefined}
+        rowCount={rows.length}
         onNewPage={onNewPage}
       />
+
       <QueryToolbar
         filters={filters}
         sort={sort}
