@@ -25,6 +25,8 @@ import type { PageListItem } from "@/lib/types";
 import { MainView } from "./main-view";
 import { PageEditor } from "./page-view";
 import { CommandPalette } from "./command-palette";
+import { SettingsModal } from "./settings-modal";
+import { usePrefs } from "@/lib/preferences";
 
 type Selection =
   | { kind: "view"; id: string }
