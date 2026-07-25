@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "node scripts/check-tokens.mjs && vite build",
-    "build:dev": "node scripts/check-tokens.mjs && vite build --mode development",
+    "build": "node scripts/check-tokens.mjs && node scripts/check-server-only.mjs && vite build && node scripts/check-bundle.mjs",
+    "build:dev": "node scripts/check-tokens.mjs && node scripts/check-server-only.mjs && vite build --mode development && node scripts/check-bundle.mjs",
     "preview": "vite preview",
     "lint": "eslint .",
     "lint:tokens": "node scripts/check-tokens.mjs",
+    "check:server": "node scripts/check-server-only.mjs",
+    "check:bundle": "node scripts/check-bundle.mjs",
     "format": "prettier --write ."
   },
   "dependencies": {
