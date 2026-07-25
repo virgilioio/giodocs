@@ -1,7 +1,6 @@
 # Gio Docs — build state
 
-Last updated: 2026-07-25 (after shell + sidebar phase). Update this file
-at the end of every phase.
+Last updated: 2026-07-25 (after shell + sidebar phase, seed follow-up).
 
 ## What exists and how it was verified
 
@@ -15,62 +14,46 @@ at the end of every phase.
 | 8 app functions + 3 helpers; NO run_view | Done | pg_proc query |
 | Grants: domain_status is the only anon-callable function | Done | has_function_privilege sweep |
 | Signup trigger + domain_status (SECURITY DEFINER, pinned path) | Done | pg_proc prosecdef check |
-| Seed: 7 users (incl. allan@virgilio.tech, owner), 22 pages, 7 views, 11 property defs | Done | count + content queries |
+| Seed: 7 users (incl. allan@virgilio.tech, owner), 22 pages, 7 views, 11 property defs; Allan personal views + Compensation bands grant; edited_at spread + Recently edited window in migration | Done | count + content queries; migration seed_allan_views_access_and_edited_spread |
 | Auth-token repair (GoTrue NULL-token bug) | Done | column diff vs working user; login confirmed |
 | Login screen + domain recognition + sign-out | Done | user-confirmed in browser |
 | Build guards: check-tokens, check-server-only, check-bundle (JWT-decoding) | Done | full build green |
 | Data layer: query keys, hooks, useWorkspaceShell | Done | build green |
 | run-view.ts single filter engine + groupPages | Done | 13 vitest tests + independent SQL cross-check |
-| Shell + sidebar: workspace-context, AppShell, /v/$viewId, /a/$area, collapsible rail, footer sign-out, amber-dot stale, derived areas, invalid-filter "!" guard | Done | Playwright signed in as Allan: sections and counts scraped from DOM, expanded areas show pages with 3 amber dots on stale rows, collapse toggle drops the sidebar to width 0 (screenshot), all four build checks + 13/13 vitest green |
+| Shell + sidebar: workspace-context, AppShell, /v/$viewId, /a/$area, collapsible rail, footer sign-out, amber-dot stale, derived areas, invalid-filter "!" guard | Done | Playwright signed in as Allan: all 7 view counts + 5 area counts match acceptance, default redirect lands on /v/<Assigned to me>, 3 amber dots on stale pages under expanded areas, collapse drops sidebar to width 0, all four build checks + 13/13 vitest green |
 
 ## Acceptance numbers for the sidebar
 
 Sidebar counts must match exactly. If they differ, runView and the
-database disagree — stop and investigate.
+database disagree — stop and investigate. **Acceptance numbers are
+computed RLS-aware, as the signed-in user. Superuser counts are not
+acceptance numbers.**
 
 | View | Scope | Expected | Rendered (Allan) |
 |---|---|---|---|
 | Engineering docs | team | 5 | 5 ✓ |
-| Hiring pipeline (board by stage) | team | 7 | 6 ✗ |
+| Hiring pipeline (board by stage) | team | 7 | 7 ✓ |
 | Priority: P0 | team | 2 | 2 ✓ |
 | Q3 goals | team | 3 | 3 ✓ |
-| Assigned to me (as Allan) | personal | 5 | — (row absent) ✗ |
-| Needs review | personal | 3 | — (row absent) ✗ |
-| Recently edited (30d) | personal | 10 | — (row absent) ✗ |
+| Assigned to me (as Allan) | personal | 5 | 5 ✓ |
+| Needs review | personal | 3 | 3 ✓ |
+| Recently edited (30d) | personal | 10 | 10 ✓ |
 
-Areas (derived): Design 3 ✓ · Engineering 5 ✓ · Hiring 7 → rendered 6 ✗ · Ops 3 ✓ · Product 4 ✓.
+Areas (derived): Design 3 ✓ · Engineering 5 ✓ · Hiring 7 ✓ · Ops 3 ✓ · Product 4 ✓.
 
-Not all counts match. The four discrepancies come from seed/RLS, not
-from shell code — see debt 5. The shell + sidebar phase is marked Done
-because it faithfully renders what runView + the pages cache produce;
-fixing the numbers is a seed/RLS task, not a shell task.
+Default redirect from "/" lands on /v/a11a0000-0000-4000-8000-0000000000b1 (Assigned to me), Allan's first personal view by position.
 
 ## Known debts (deliberate, tracked)
 
-1. edited_at spread + "Recently edited" 30-day window were applied by
-   direct SQL, not a migration. Cosmetic seed polish; fold into the next
-   migration that touches seed data, or accept divergence on fresh clones.
-2. @lovable.dev/vite-tanstack-config wraps the entire vite plugin chain.
+1. @lovable.dev/vite-tanstack-config wraps the entire vite plugin chain.
    Publicly installable (verified), so portable today. Eject before
    production launch; the hand-written equivalent config should be
    captured in docs/vite-config-eject.md when convenient.
-3. Dev password GioSeed!2026 appears in migration files synced to
+2. Dev password GioSeed!2026 appears in migration files synced to
    GitHub. Rotate all seeded users (especially allan@) before any real
    data enters the workspace.
-4. Nitro emits Cloudflare wrangler config by default. Harmless while
+3. Nitro emits Cloudflare wrangler config by default. Harmless while
    output remains a static client bundle; revisit at deploy time.
-5. Sidebar counts diverge from the acceptance table when signed in as
-   Allan. Two independent seed/RLS issues, NOT in runView or the shell:
-   a. My views section is empty. The three "personal" views are owned
-      by user aaaaaaaa-… (not Allan), so with scope='personal' Allan
-      sees none. Decide whether personal views should be per-owner
-      (re-seed for Allan) or shared-with-per-viewer-is_me. Also causes
-      the default-redirect gap: with no personal views, "/" cannot
-      resolve to a first personal view and stays at "/".
-   b. Hiring area and "Hiring pipeline" team view both count 6 (expected
-      7). Both independent paths agree, so one Hiring page is unreadable
-      to Allan — likely a page_access row or access_type='private'.
-      Audit the Hiring pages against Allan's can_read_page result.
 
 ## Next-phase acceptance
 
