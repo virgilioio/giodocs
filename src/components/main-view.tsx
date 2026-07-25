@@ -505,8 +505,10 @@ function PageTitleCell({
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(page.title ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
+  const qc = useQueryClient();
   return (
-    <div className="flex min-w-0 items-center gap-2">
+    <div className="flex min-w-0 items-center gap-1">
       <span className="text-row">{page.icon || "📄"}</span>
       {editing ? (
         <input
@@ -528,20 +530,42 @@ function PageTitleCell({
           className="min-w-0 flex-1 bg-transparent text-row font-bold focus:outline-none"
         />
       ) : (
-        <button
-          type="button"
-          className="min-w-0 flex-1 truncate text-left text-row font-bold"
-          onClick={() => {
-            setValue(page.title ?? "");
-            setEditing(true);
-          }}
-        >
-          {page.title || <span className="text-faint italic">Untitled</span>}
-        </button>
+        <>
+          <button
+            type="button"
+            className="min-w-0 flex-1 truncate text-left text-row font-bold hover:underline"
+            onClick={() =>
+              navigate({ to: "/p/$pageId", params: { pageId: page.id } })
+            }
+            onMouseEnter={() => {
+              qc.prefetchQuery(pageQuery(page.id));
+            }}
+            onDoubleClick={(e) => {
+              e.preventDefault();
+              setValue(page.title ?? "");
+              setEditing(true);
+            }}
+            title="Click to open · double-click to rename"
+          >
+            {page.title || <span className="text-faint italic">Untitled</span>}
+          </button>
+          <button
+            type="button"
+            aria-label="Rename"
+            onClick={() => {
+              setValue(page.title ?? "");
+              setEditing(true);
+            }}
+            className="shrink-0 rounded-sm px-1 text-caption text-faint opacity-0 hover:bg-rail hover:text-muted group-hover:opacity-100"
+          >
+            ✎
+          </button>
+        </>
       )}
     </div>
   );
 }
+
 
 function StatusCell({
   page,
