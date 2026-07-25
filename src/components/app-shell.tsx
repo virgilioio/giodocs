@@ -25,6 +25,8 @@ import type { PageListItem } from "@/lib/types";
 import { MainView } from "./main-view";
 import { PageEditor } from "./page-view";
 import { CommandPalette } from "./command-palette";
+import { SettingsModal } from "./settings-modal";
+import { usePrefs } from "@/lib/preferences";
 
 type Selection =
   | { kind: "view"; id: string }
@@ -72,11 +74,16 @@ export function AppShell() {
   }, [collapsed]);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
         e.preventDefault();
         setPaletteOpen((v) => !v);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        setSettingsOpen((v) => !v);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -177,6 +184,7 @@ export function AppShell() {
             memberCount={memberCount}
             areaIcons={areaIcons}
             onSignOut={handleSignOut}
+            onOpenSettings={() => setSettingsOpen(true)}
             onOpenPalette={() => setPaletteOpen(true)}
           />
         </div>
@@ -219,6 +227,7 @@ export function AppShell() {
         </main>
       </div>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }
@@ -280,6 +289,7 @@ function SidebarBody({
   memberCount,
   areaIcons,
   onSignOut,
+  onOpenSettings,
   onOpenPalette,
 }: {
   loading: boolean;
@@ -294,9 +304,12 @@ function SidebarBody({
   memberCount: number;
   areaIcons: Map<string, string>;
   onSignOut: () => void;
+  onOpenSettings: () => void;
   onOpenPalette: () => void;
 }) {
   const [sections, toggleSection] = useSectionState();
+  const { prefs } = usePrefs();
+  const showSidebarCounts = prefs.showSidebarCounts;
   const { user } = useAuth();
 
   const personal = views
@@ -361,17 +374,20 @@ function SidebarBody({
     }
   };
 
-  const renderCount = (c: number | "!", sizeClass: string) =>
-    c === "!" ? (
-      <span
-        className={`tnum ${sizeClass} text-amberInk`}
-        title="This view's filter is invalid"
-      >
-        !
-      </span>
-    ) : (
-      <span className={`tnum ${sizeClass} text-whisper`}>{c}</span>
-    );
+  const renderCount = (c: number | "!", sizeClass: string) => {
+    if (c === "!") {
+      return (
+        <span
+          className={`tnum ${sizeClass} text-amberInk`}
+          title="This view's filter is invalid"
+        >
+          !
+        </span>
+      );
+    }
+    if (!showSidebarCounts) return null;
+    return <span className={`tnum ${sizeClass} text-whisper`}>{c}</span>;
+  };
 
   const [openAreas, setOpenAreas] = useState<Set<string>>(new Set());
   const toggleArea = (a: string) =>
@@ -515,6 +531,7 @@ function SidebarBody({
           workspaceName={workspaceName}
           memberCount={memberCount}
           onSignOut={onSignOut}
+          onOpenSettings={onOpenSettings}
         />
       </div>
     </>
@@ -923,6 +940,7 @@ function FooterAccount({
   workspaceName,
   memberCount,
   onSignOut,
+  onOpenSettings,
 }: {
   profile: { full_name: string; avatar_tint: string; avatar_ink: string } | null;
   userEmail: string;
@@ -930,6 +948,7 @@ function FooterAccount({
   workspaceName: string;
   memberCount: number;
   onSignOut: () => void;
+  onOpenSettings: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -1011,8 +1030,10 @@ function FooterAccount({
           </div>
           <MenuDivider />
           <MenuItem
-            disabled
-            title="Coming soon"
+            onClick={() => {
+              setOpen(false);
+              onOpenSettings();
+            }}
             right={<span className="font-mono text-caption text-faint">⌘,</span>}
           >
             Settings

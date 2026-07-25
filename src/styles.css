@@ -100,4 +100,21 @@
   body { @apply bg-canvas text-body font-sans text-prose; }
   :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
   .tnum { font-variant-numeric: tabular-nums; }
+
+  /* Density preference — overrides row-height tokens and cell padding. */
+  html[data-density="compact"] {
+    --spacing-rowMy: 25px;
+    --spacing-rowArea: 24px;
+    --spacing-rowTeam: 23px;
+    --spacing-rowPage: 22px;
+    --gio-cell-py: 4px;
+    --gio-list-py: 6px;
+  }
+  html { --gio-cell-py: 10px; --gio-list-py: 10px; }
+  .gio-cell-pad { padding-top: var(--gio-cell-py); padding-bottom: var(--gio-cell-py); }
+  .gio-list-pad { padding-top: var(--gio-list-py); padding-bottom: var(--gio-list-py); }
+
+  /* Page font preference — applied to page body content only. */
+  .gio-page-body[data-font="serif"] { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; }
+  .gio-page-body[data-font="mono"]  { font-family: var(--font-mono); }
 }

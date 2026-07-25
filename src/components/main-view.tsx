@@ -1,4 +1,6 @@
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { usePrefs } from "@/lib/preferences";
+import { formatTimestamp } from "@/lib/format";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
@@ -61,22 +63,12 @@ function propsOf(p: PageListItem): Record<string, unknown> {
     : {};
 }
 
+let _dateMode: "relative" | "absolute" = "relative";
+export function setDateModeForMainView(m: "relative" | "absolute") {
+  _dateMode = m;
+}
 function relTime(iso: string): string {
-  const now = Date.now();
-  const t = new Date(iso).getTime();
-  const s = Math.max(1, Math.floor((now - t) / 1000));
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d ago`;
-  const w = Math.floor(d / 7);
-  if (w < 5) return `${w}w ago`;
-  const mo = Math.floor(d / 30);
-  if (mo < 12) return `${mo}mo ago`;
-  return `${Math.floor(mo / 12)}y ago`;
+  return formatTimestamp(iso, _dateMode);
 }
 
 
@@ -1115,8 +1107,26 @@ export function MainView({ selection }: { selection: Selection }) {
       />
     );
 
+  const { prefs } = usePrefs();
+  useEffect(() => {
+    setDateModeForMainView(prefs.dateFormat);
+  }, [prefs.dateFormat]);
+
+  const explainer = useMemo(() => {
+    if (filters.length === 0) return "Every page in this workspace, no filters.";
+    const parts = filters.map((f) => describeFilter(f, propDefs, staleDays));
+    const sortLabel = `sorted by ${sort.prop} ${sort.dir === "asc" ? "ascending" : "descending"}`;
+    return `Pages where ${parts.join(" and ")} — ${sortLabel}.`;
+  }, [filters, propDefs, staleDays, sort]);
+
   return (
     <div className="mx-auto max-w-view px-6 py-6">
+      {prefs.explainQuery && (
+        <p className="mb-3 rounded-md border border-lineSoft bg-track px-3 py-2 text-caption text-secondary">
+          <span className="mr-1 uppercase text-label text-faint">What you're looking at</span>
+          {explainer}
+        </p>
+      )}
       <ViewHeader
         selection={selection}
         view={view}
@@ -1598,7 +1608,7 @@ function Cell({ children, className }: { children: ReactNode; className?: string
   return (
     <div
       className={
-        "min-w-0 border-b border-lineSoft px-[11px] py-[10px] " + (className ?? "")
+        "min-w-0 border-b border-lineSoft px-[11px] gio-cell-pad " + (className ?? "")
       }
     >
       {children}

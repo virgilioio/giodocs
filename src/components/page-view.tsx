@@ -20,6 +20,9 @@ import {
 } from "@/hooks/use-page-mutations";
 import { qk } from "@/lib/query-keys";
 import { Popover } from "./popover";
+import { usePrefs } from "@/lib/preferences";
+import { formatTimestamp } from "@/lib/format";
+import { useEmojiFavorites } from "@/lib/emoji-favorites";
 import type { Block, PageAccessRow, PageFull, PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -43,7 +46,12 @@ function propsOf(p: PageFull | PageListItem): Record<string, unknown> {
     : {};
 }
 
+let _dateMode: "relative" | "absolute" = "relative";
+export function setDateModeForPageView(m: "relative" | "absolute") {
+  _dateMode = m;
+}
 function relTime(iso: string): string {
+  if (_dateMode === "absolute") return formatTimestamp(iso, "absolute");
   const now = Date.now();
   const t = new Date(iso).getTime();
   const s = Math.max(1, Math.floor((now - t) / 1000));
@@ -904,6 +912,7 @@ function MiniAvatar({ profile }: { profile: MemberRow["profiles"] }) {
 
 function ReadOnlyBody({ blocks }: { blocks: Block[] }) {
   useFlashOnHash(blocks);
+  const { prefs } = usePrefs();
   if (!blocks.length) {
     return (
       <p className="mt-6 text-meta italic text-faint">
@@ -912,7 +921,12 @@ function ReadOnlyBody({ blocks }: { blocks: Block[] }) {
     );
   }
   return (
-    <div id="page-body" tabIndex={-1} className="mt-6 space-y-4 focus:outline-none">
+    <div
+      id="page-body"
+      tabIndex={-1}
+      data-font={prefs.fontFamily}
+      className="gio-page-body mt-6 space-y-4 focus:outline-none"
+    >
       {blocks.map((b, i) => {
         const text = (b.text ?? b.body ?? "").trim();
         if (!text) return null;
@@ -1017,6 +1031,11 @@ export function PageEditor({ pageId }: { pageId: string }) {
   const setProp = useSetPageProperty();
   const verify = useVerifyPage();
   const qc = useQueryClient();
+  const { prefs } = usePrefs();
+  useEffect(() => {
+    setDateModeForPageView(prefs.dateFormat);
+  }, [prefs.dateFormat]);
+
 
   const [justVerified, setJustVerified] = useState(false);
   const justVerifiedTimerRef = useRef<number | null>(null);
@@ -1215,23 +1234,32 @@ function IconPicker({
         </button>
       )}
     >
-      {(close) => (
-        <div className="grid grid-cols-8 gap-1 p-1">
-          {EMOJI_ROSTER.map((e) => (
-            <button
-              key={e}
-              type="button"
-              onClick={() => {
-                onPick(e);
-                close();
-              }}
-              className="grid h-8 w-8 place-items-center rounded-sm text-row hover:bg-rail"
-            >
-              {e}
-            </button>
-          ))}
-        </div>
-      )}
+      {(close) => {
+        const favorites = useEmojiFavorites();
+        const seen = new Set<string>();
+        const list = [...favorites, ...EMOJI_ROSTER].filter((e) => {
+          if (seen.has(e)) return false;
+          seen.add(e);
+          return true;
+        });
+        return (
+          <div className="grid grid-cols-8 gap-1 p-1">
+            {list.map((e) => (
+              <button
+                key={e}
+                type="button"
+                onClick={() => {
+                  onPick(e);
+                  close();
+                }}
+                className="grid h-8 w-8 place-items-center rounded-sm text-row hover:bg-rail"
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        );
+      }}
     </Popover>
   );
 }
