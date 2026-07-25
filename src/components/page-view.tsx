@@ -1234,23 +1234,32 @@ function IconPicker({
         </button>
       )}
     >
-      {(close) => (
-        <div className="grid grid-cols-8 gap-1 p-1">
-          {EMOJI_ROSTER.map((e) => (
-            <button
-              key={e}
-              type="button"
-              onClick={() => {
-                onPick(e);
-                close();
-              }}
-              className="grid h-8 w-8 place-items-center rounded-sm text-row hover:bg-rail"
-            >
-              {e}
-            </button>
-          ))}
-        </div>
-      )}
+      {(close) => {
+        const favorites = useEmojiFavorites();
+        const seen = new Set<string>();
+        const list = [...favorites, ...EMOJI_ROSTER].filter((e) => {
+          if (seen.has(e)) return false;
+          seen.add(e);
+          return true;
+        });
+        return (
+          <div className="grid grid-cols-8 gap-1 p-1">
+            {list.map((e) => (
+              <button
+                key={e}
+                type="button"
+                onClick={() => {
+                  onPick(e);
+                  close();
+                }}
+                className="grid h-8 w-8 place-items-center rounded-sm text-row hover:bg-rail"
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        );
+      }}
     </Popover>
   );
 }
