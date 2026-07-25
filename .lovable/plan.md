@@ -1,42 +1,43 @@
-## Diagnosis
+## Read-only audit of Gio Docs
 
-The dev server on localhost returns 200 — the 500 is only on the deployed preview worker (`id-preview--*.lovable.app`). Preview worker logs show the real cause:
+Deliverable: a single written report following your Sections 1–10 exactly, with evidence (table/column names, file paths, line numbers, hex values, pixel values) and the verdict vocabulary you specified (MISSING / DIFFERS / UNVERIFIED / PRESENT / EXISTS / PARTIAL / PASS / FAIL). No code will be written, no migrations run, no fixes suggested inline.
 
-```
-Error: No such module "assets/react".
-  imported from "assets/server-BYr2oNt3.js"
-```
+### How I will gather evidence
 
-The deployed worker was built with React (and likely other deps) **externalized** instead of bundled. Cloudflare Workers have no runtime module resolution, so any externalized import crashes on first request. This is exactly the failure mode the `server-runtime` knowledge card warns about.
+1. **Database (Sections 1–4)** — via `supabase--read_query` against `information_schema` and `pg_catalog`:
+   - tables, columns, PKs, FKs, check constraints, enums, indexes (incl. partial), triggers, functions (language / volatility / security / `search_path`)
+   - every RLS policy verbatim (`pg_policies.qual` and `with_check`)
+   - grants to `anon` / `authenticated` (`information_schema.role_routine_grants`, `role_table_grants`)
+   - explicit name-search for the rejected shapes (`page_type`, `kind`, `is_database`, `parent_id`, `docs`, `tasks`, `areas`, `folders`, `page_tags`, list-of-ids columns on `views`)
 
-Root cause: `nitro: false` in `vite.config.ts`. The Lovable Vite preset uses the `nitro` plugin (with Cloudflare target) to bundle the SSR/Worker entry. Disabling it leaves an unbundled server chunk with bare `assets/react` imports — fine locally (Vite dev resolves everything), fatal in the deployed Worker.
+2. **Client code (Sections 2, 4, 5, 6, 7, 8)** — via file reads and `rg`:
+   - every file under `src/`, plus `scripts/`, `vite.config.ts`, `package.json`, `.env.example`, `src/styles.css`
+   - grep for `service_role`, `SUPABASE_SERVICE`, `auth.admin`, `select('*')`, `useEffect`, `console.log`, `TODO`, `FIXME`, `#` hex literals, Tailwind default palette classes (`gray-`, `slate-`, `blue-6`, etc.), Lato weight utilities, raw px font sizes
+   - map every RPC call site, every `.from(...).select(...)` projection and `.limit(...)`
+   - enumerate query keys, mutation optimism, realtime subscriptions
 
-`nitro: false` was added earlier to work around a prerender failure, but the real fix for that was SPA mode (`tanstackStart.spa.enabled = true`), which is already in place. The nitro override is now both unnecessary and actively breaking the preview.
+3. **Screen-by-screen (Section 6) & success criteria (Section 9)** — Playwright headless as `allan@virgilio.tech` against `http://localhost:8080`:
+   - screenshots of login, shell, sidebar (expanded/collapsed), each view route, each area route, hover ⋯ menus, account dropdown, query toolbar, table rows
+   - attempt each of the five success flows and record PASS/FAIL with what was observed
+   - network panel: request counts on initial load, view switch, page open
+   - features that don't exist yet in the codebase (board view, list view, page editor, blocks, ⌘K, settings panes, freshness row, permissions chip) will be reported MISSING with the evidence that no route/component implements them
 
-## Fix
+4. **Design fidelity (Section 7)** — extracted, not estimated:
+   - dump every unique hex from `src/styles.css` and `src/**/*.{ts,tsx,css}`, cross-check against your allow-list, count usages
+   - list every font-family / weight loaded (root route `<link>`, styles.css) and every Lato weight utility used
+   - read the `@theme` block and list actual values for each of the 11 type roles, sidebar/topbar/row/table metrics, radii, transitions
+   - icons: identify library or inline SVGs, note stroke vs fill
+   - contrast: compute ratios for `#8B8F9E`, `#A8ACB8`, `#C9CBD4` runs against their actual backgrounds using the token map
 
-Edit `vite.config.ts` — remove the `nitro: false` line so the preset's default (nitro on, Cloudflare target) bundles the Worker properly:
+5. **Gap list (Section 10)** — assembled last from the findings, ordered by blocking impact, with S1/S2/S3/S4 severity, and the three closing counts.
 
-```ts
-import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+### Ground rules I will hold to
 
-export default defineConfig({
-  tanstackStart: {
-    spa: { enabled: true },
-  },
-});
-```
+- No file edits, no migrations, no `supabase--insert`, no fixes proposed inline.
+- Anything I cannot verify from code or a DB query is written **UNVERIFIED** with what would be needed.
+- No "should be", "appears", "mostly" — only PRESENT / DIFFERS / MISSING / PASS / FAIL / UNVERIFIED.
+- Completeness estimates are justified by the evidence in that section.
 
-That is the only code change. Then let the preview rebuild and confirm `/` returns 200 with the app HTML (no `assets/react` error in worker logs).
+### What I need from you
 
-## If the prerender error returns
-
-If removing `nitro: false` brings back the original prerender failure that motivated it, the correct fix is not to re-disable nitro. Options in order of preference:
-1. Confirm SPA mode is actually taking effect (it should skip prerendering all routes).
-2. Add `tanstackStart.prerender = { enabled: false }` explicitly.
-3. Investigate the specific route that fails prerender.
-
-I'll only pursue these if step 1 (removing `nitro: false`) reintroduces the earlier error.
-
-## Files changed
-- `vite.config.ts`
+Approve this plan and I'll execute the audit and return the full report in one message. If you'd rather I split the report (e.g. Sections 1–5 first, then 6–10) because of length, say so and I'll deliver it in two passes.
