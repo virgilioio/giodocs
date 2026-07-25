@@ -279,6 +279,7 @@ function SidebarBody({
   memberCount,
   areaIcons,
   onSignOut,
+  onOpenPalette,
 }: {
   loading: boolean;
   pages: PageListItem[];
@@ -292,6 +293,7 @@ function SidebarBody({
   memberCount: number;
   areaIcons: Map<string, string>;
   onSignOut: () => void;
+  onOpenPalette: () => void;
 }) {
   const [sections, toggleSection] = useSectionState();
   const { user } = useAuth();
