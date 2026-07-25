@@ -523,7 +523,13 @@ function MyViewRow({
   const updateView = useUpdateView();
   const createView = useCreateView();
   const deleteView = useDeleteView();
+  const publishView = usePublishView();
+  const ws = useWorkspaceId();
+  const shell = useWorkspaceShell(ws);
+  const wsName = shell.workspace.data?.name ?? "the workspace";
+  const wsMembers = shell.members.data?.length ?? 0;
   const navigate = useNavigate();
+
 
   const showMenu = hover || menu;
 
