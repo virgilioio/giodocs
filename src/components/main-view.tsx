@@ -1,7 +1,9 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
-import { useWorkspaceShell } from "@/hooks/use-workspace-data";
+import { useWorkspaceShell, pageQuery } from "@/hooks/use-workspace-data";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
 import { Popover } from "./popover";
 import {
@@ -12,6 +14,7 @@ import {
 } from "@/hooks/use-page-mutations";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
+
 
 type PropDef = Database["public"]["Tables"]["property_defs"]["Row"];
 type ViewRow = Database["public"]["Tables"]["views"]["Row"];
@@ -502,8 +505,10 @@ function PageTitleCell({
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(page.title ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
+  const qc = useQueryClient();
   return (
-    <div className="flex min-w-0 items-center gap-2">
+    <div className="flex min-w-0 items-center gap-1">
       <span className="text-row">{page.icon || "📄"}</span>
       {editing ? (
         <input
@@ -525,20 +530,42 @@ function PageTitleCell({
           className="min-w-0 flex-1 bg-transparent text-row font-bold focus:outline-none"
         />
       ) : (
-        <button
-          type="button"
-          className="min-w-0 flex-1 truncate text-left text-row font-bold"
-          onClick={() => {
-            setValue(page.title ?? "");
-            setEditing(true);
-          }}
-        >
-          {page.title || <span className="text-faint italic">Untitled</span>}
-        </button>
+        <>
+          <button
+            type="button"
+            className="min-w-0 flex-1 truncate text-left text-row font-bold hover:underline"
+            onClick={() =>
+              navigate({ to: "/p/$pageId", params: { pageId: page.id } })
+            }
+            onMouseEnter={() => {
+              qc.prefetchQuery(pageQuery(page.id));
+            }}
+            onDoubleClick={(e) => {
+              e.preventDefault();
+              setValue(page.title ?? "");
+              setEditing(true);
+            }}
+            title="Click to open · double-click to rename"
+          >
+            {page.title || <span className="text-faint italic">Untitled</span>}
+          </button>
+          <button
+            type="button"
+            aria-label="Rename"
+            onClick={() => {
+              setValue(page.title ?? "");
+              setEditing(true);
+            }}
+            className="shrink-0 rounded-sm px-1 text-caption text-faint opacity-0 hover:bg-rail hover:text-muted group-hover:opacity-100"
+          >
+            ✎
+          </button>
+        </>
       )}
     </div>
   );
 }
+
 
 function StatusCell({
   page,

@@ -21,10 +21,12 @@ import {
 import { useToast } from "@/lib/toast";
 import type { PageListItem } from "@/lib/types";
 import { MainView } from "./main-view";
+import { PageEditor } from "./page-view";
 
 type Selection =
   | { kind: "view"; id: string }
   | { kind: "area"; area: string }
+  | { kind: "page"; id: string }
   | null;
 
 const COLLAPSE_KEY = "gio.sidebar.collapsed";
@@ -35,6 +37,7 @@ function useSelection(): Selection {
   const viewParams = useParams({ strict: false }) as {
     viewId?: string;
     area?: string;
+    pageId?: string;
   };
   if (pathname.startsWith("/v/") && viewParams.viewId) {
     return { kind: "view", id: viewParams.viewId };
@@ -42,8 +45,12 @@ function useSelection(): Selection {
   if (pathname.startsWith("/a/") && viewParams.area) {
     return { kind: "area", area: decodeURIComponent(viewParams.area) };
   }
+  if (pathname.startsWith("/p/") && viewParams.pageId) {
+    return { kind: "page", id: viewParams.pageId };
+  }
   return null;
 }
+
 
 export function AppShell() {
   const workspaceId = useWorkspaceId();
@@ -105,8 +112,13 @@ export function AppShell() {
         v.scope === "team" ? "Team views" : "My views";
       return { section, name: v.name };
     }
-    return { section: "Areas", name: selection.area };
-  }, [selection, views]);
+    if (selection.kind === "area") {
+      return { section: "Areas", name: selection.area };
+    }
+    const p = pages.find((x) => x.id === selection.id);
+    return { section: "Page", name: p?.title || "Untitled" };
+  }, [selection, views, pages]);
+
 
   async function handleSignOut() {
     await supabase.auth.signOut();
@@ -179,7 +191,9 @@ export function AppShell() {
         </header>
 
         <main className="min-w-0 flex-1 bg-canvas overflow-y-auto">
-          {selection ? (
+          {selection && selection.kind === "page" ? (
+            <PageEditor pageId={selection.id} />
+          ) : selection ? (
             <MainView selection={selection} />
           ) : (
             <div className="mx-auto max-w-view px-6 py-10">
@@ -191,6 +205,7 @@ export function AppShell() {
     </div>
   );
 }
+
 
 type ViewRow = {
   id: string;
