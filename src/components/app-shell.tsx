@@ -24,6 +24,7 @@ import { useToast } from "@/lib/toast";
 import type { PageListItem } from "@/lib/types";
 import { MainView } from "./main-view";
 import { PageEditor } from "./page-view";
+import { CommandPalette } from "./command-palette";
 
 type Selection =
   | { kind: "view"; id: string }
