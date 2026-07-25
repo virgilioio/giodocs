@@ -364,7 +364,7 @@ export function useCreatePage() {
   const toast = useToast();
 
   return useMutation({
-    mutationFn: async (v: { seedProps: Record<string, unknown> }) => {
+    mutationFn: async (v: { seedProps: Record<string, unknown>; _tempId?: string }) => {
       const { data, error } = await supabase
         .from("pages")
         .insert({
@@ -384,14 +384,46 @@ export function useCreatePage() {
       if (error) throw error;
       return data as PageListItem;
     },
-    onSuccess: (row) => {
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: qk.pages(ws) });
+      const tempId =
+        v._tempId ??
+        (globalThis.crypto?.randomUUID?.() ?? `tmp-${Date.now()}-${Math.random()}`);
+      v._tempId = tempId;
+      const nowIso = new Date().toISOString();
+      const optimistic: PageListItem = {
+        id: tempId,
+        title: "",
+        icon: "📄",
+        props: v.seedProps as PageListItem["props"],
+        verified_at: nowIso,
+        verified_by: user?.id ?? null,
+        edited_at: nowIso,
+        edited_by: user?.id ?? null,
+        access_type: "workspace" as PageListItem["access_type"],
+      };
       qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) =>
-        prev ? [row, ...prev] : [row],
+        prev ? [optimistic, ...prev] : [optimistic],
       );
+      return { tempId };
+    },
+    onSuccess: (row, v, ctx) => {
+      const tempId = ctx?.tempId ?? v._tempId;
+      qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) => {
+        if (!prev) return [row];
+        const filtered = prev.filter((p) => p.id !== tempId && p.id !== row.id);
+        return [row, ...filtered];
+      });
       toast.push(`New page created`);
     },
-    onError: (err) => toast.push(`Couldn't create page: ${(err as Error).message}`),
-    onSettled: () => qc.invalidateQueries({ queryKey: qk.pages(ws) }),
+    onError: (err, _v, ctx) => {
+      if (ctx?.tempId) {
+        qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) =>
+          prev ? prev.filter((p) => p.id !== ctx.tempId) : prev,
+        );
+      }
+      toast.push(`Couldn't create page: ${(err as Error).message}`);
+    },
   });
 }
 
