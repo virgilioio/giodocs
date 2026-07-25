@@ -35,9 +35,10 @@ function walk(dir) {
 }
 
 function check(file) {
-  const rel = relative(ROOT, file);
+  const rel = relative(ROOT, file).split(/[\\/]/).join("/");
   const isServer = /\.server\.(ts|tsx|js|jsx|mjs|cjs)$/.test(file);
   if (isServer) return;
+  if (ENTRYPOINT_ALLOWLIST.has(rel)) return;
 
   const text = readFileSync(file, "utf8");
   const lines = text.split("\n");
