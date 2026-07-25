@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as VViewIdRouteImport } from './routes/v.$viewId'
+import { Route as PPageIdRouteImport } from './routes/p.$pageId'
 import { Route as AAreaRouteImport } from './routes/a.$area'
 
 const LoginRoute = LoginRouteImport.update({
@@ -29,6 +30,11 @@ const VViewIdRoute = VViewIdRouteImport.update({
   path: '/v/$viewId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PPageIdRoute = PPageIdRouteImport.update({
+  id: '/p/$pageId',
+  path: '/p/$pageId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AAreaRoute = AAreaRouteImport.update({
   id: '/a/$area',
   path: '/a/$area',
@@ -39,12 +45,14 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/a/$area': typeof AAreaRoute
+  '/p/$pageId': typeof PPageIdRoute
   '/v/$viewId': typeof VViewIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/a/$area': typeof AAreaRoute
+  '/p/$pageId': typeof PPageIdRoute
   '/v/$viewId': typeof VViewIdRoute
 }
 export interface FileRoutesById {
@@ -52,20 +60,22 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/a/$area': typeof AAreaRoute
+  '/p/$pageId': typeof PPageIdRoute
   '/v/$viewId': typeof VViewIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/a/$area' | '/v/$viewId'
+  fullPaths: '/' | '/login' | '/a/$area' | '/p/$pageId' | '/v/$viewId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/a/$area' | '/v/$viewId'
-  id: '__root__' | '/' | '/login' | '/a/$area' | '/v/$viewId'
+  to: '/' | '/login' | '/a/$area' | '/p/$pageId' | '/v/$viewId'
+  id: '__root__' | '/' | '/login' | '/a/$area' | '/p/$pageId' | '/v/$viewId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
   AAreaRoute: typeof AAreaRoute
+  PPageIdRoute: typeof PPageIdRoute
   VViewIdRoute: typeof VViewIdRoute
 }
 
@@ -92,6 +102,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VViewIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/p/$pageId': {
+      id: '/p/$pageId'
+      path: '/p/$pageId'
+      fullPath: '/p/$pageId'
+      preLoaderRoute: typeof PPageIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/a/$area': {
       id: '/a/$area'
       path: '/a/$area'
@@ -106,6 +123,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
   AAreaRoute: AAreaRoute,
+  PPageIdRoute: PPageIdRoute,
   VViewIdRoute: VViewIdRoute,
 }
 export const routeTree = rootRouteImport
