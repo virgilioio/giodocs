@@ -48,12 +48,43 @@ function createSupabaseClient() {
       fetch: createSupabaseFetch(SUPABASE_PUBLISHABLE_KEY),
     },
     auth: {
-      storage: typeof window !== 'undefined' ? localStorage : undefined,
+      storage: typeof window !== 'undefined' ? gioAuthStorage : undefined,
       persistSession: true,
       autoRefreshToken: true,
     }
   });
 }
+
+// "Keep me signed in": when the user unchecks it on the login screen,
+// login.tsx sets `gio:auth-persist` to "session" BEFORE calling signIn.
+// This adapter routes the session token to sessionStorage in that case
+// (cleared on tab/browser close) and to localStorage otherwise.
+const GIO_PERSIST_KEY = 'gio:auth-persist';
+const gioAuthStorage: Storage = {
+  getItem(key) {
+    if (typeof window === 'undefined') return null;
+    return window.localStorage.getItem(key) ?? window.sessionStorage.getItem(key);
+  },
+  setItem(key, value) {
+    if (typeof window === 'undefined') return;
+    const mode = window.localStorage.getItem(GIO_PERSIST_KEY);
+    if (mode === 'session') {
+      window.sessionStorage.setItem(key, value);
+      window.localStorage.removeItem(key);
+    } else {
+      window.localStorage.setItem(key, value);
+      window.sessionStorage.removeItem(key);
+    }
+  },
+  removeItem(key) {
+    if (typeof window === 'undefined') return;
+    window.localStorage.removeItem(key);
+    window.sessionStorage.removeItem(key);
+  },
+  clear() {},
+  key() { return null; },
+  length: 0,
+};
 
 let _supabase: ReturnType<typeof createSupabaseClient> | undefined;
 

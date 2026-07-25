@@ -1,16 +1,14 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
-import { qk } from "@/lib/query-keys";
 import { Popover } from "./popover";
 import {
   useSetPageProperty,
   useRenamePage,
   useCreatePage,
+  useUpdateView,
 } from "@/hooks/use-page-mutations";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
@@ -221,7 +219,7 @@ function QueryToolbar({
     <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-lineSoft pb-3">
       <span className="text-meta text-muted">Pages where</span>
       {filters.length === 0 && (
-        <span className="italic text-meta text-whisper">anything — every page</span>
+        <span className="italic text-meta text-secondary">anything — every page</span>
       )}
       {filters.map((f, i) => {
         const fixed = i === fixedFilterIndex;
@@ -860,10 +858,11 @@ export function MainView({ selection }: { selection: Selection }) {
   const ws = useWorkspaceId();
   const { user } = useAuth();
   const shell = useWorkspaceShell(ws);
-  const qc = useQueryClient();
+  
   const setProp = useSetPageProperty();
   const rename = useRenamePage();
   const create = useCreatePage();
+  const updateView = useUpdateView();
 
   const pages = (shell.pages.data ?? []) as PageListItem[];
   const views = (shell.views.data ?? []) as ViewRow[];
@@ -909,26 +908,14 @@ export function MainView({ selection }: { selection: Selection }) {
 
   const staleThreshold = Date.now() - staleDays * 24 * 60 * 60 * 1000;
 
-  async function persistViewChange(next: { filter?: Filter[]; sort?: SortSpec }) {
-    if (!view || !isOwnerOfView) return;
-    const patch: Partial<ViewRow> = {};
-    if (next.filter) patch.filter = next.filter as never;
-    if (next.sort) patch.sort = next.sort as never;
-    qc.setQueryData<ViewRow[]>(qk.views(ws), (prev) =>
-      prev ? prev.map((v) => (v.id === view.id ? { ...v, ...patch } : v)) : prev,
-    );
-    const { error } = await supabase.from("views").update(patch).eq("id", view.id);
-    if (error) qc.invalidateQueries({ queryKey: qk.views(ws) });
-  }
-
   const onChangeFilters = (next: Filter[]) => {
     if (selection.kind === "area") {
       setLocalFilters(next);
       return;
     }
-    if (isOwnerOfView) {
+    if (isOwnerOfView && view) {
       setLocalFilters(null);
-      void persistViewChange({ filter: next });
+      updateView.mutate({ id: view.id, patch: { filter: next } });
     } else {
       setLocalFilters(next);
     }
@@ -938,9 +925,9 @@ export function MainView({ selection }: { selection: Selection }) {
       setLocalSort(s);
       return;
     }
-    if (isOwnerOfView) {
+    if (isOwnerOfView && view) {
       setLocalSort(null);
-      void persistViewChange({ sort: s });
+      updateView.mutate({ id: view.id, patch: { sort: s } });
     } else {
       setLocalSort(s);
     }
@@ -991,7 +978,7 @@ export function MainView({ selection }: { selection: Selection }) {
           <div className="font-display text-subhead text-noir">
             Nothing matches this view yet.
           </div>
-          <p className="mt-2 text-meta text-faint">
+          <p className="mt-2 text-meta text-secondary">
             A view is just a query — pages appear here the moment their properties match.
           </p>
         </div>

@@ -23,7 +23,7 @@
   --color-blue:#2563EB; --color-blueInk:#1D4ED8;
   --color-blueTint:#DBEAFE; --color-blueWash:#DCEAFE;
   --color-purple:#5B21B6; --color-purpleTint:#EDE4FF;
-  --color-pink:#BE185D; --color-pinkInk:#9D174D; --color-pinkTint:#FBE0EE;
+  --color-pink:#BE185D; --color-pinkInk:#BE185D; --color-pinkTint:#FBE0EE;
   --color-yellowInk:#7A6A10; --color-yellowTint:#FAF4C4;
   --color-highlight:#FFF4B8;
 
@@ -35,7 +35,7 @@
   --text-display--line-height: 1.10;
   --text-display--letter-spacing: -0.06em;
   --text-display--font-weight: 700;
-  --text-title: 28.5px;
+  --text-title: 28px;
   --text-title--line-height: 1.15;
   --text-title--letter-spacing: -0.05em;
   --text-title--font-weight: 700;
@@ -43,11 +43,14 @@
   --text-heading--line-height: 1.25;
   --text-heading--letter-spacing: -0.04em;
   --text-heading--font-weight: 700;
+  /* text-subhead is Poppins-only (weight 600); always pair with font-display. */
   --text-subhead: 17px;
   --text-subhead--line-height: 1.30;
   --text-subhead--letter-spacing: -0.02em;
   --text-subhead--font-weight: 600;
-  --text-quote: 20px;      --text-quote--line-height: 1.50;
+  --text-quote: 20px;
+  --text-quote--line-height: 1.50;
+  --text-quote--font-style: italic;
   --text-prose: 17px;       --text-prose--line-height: 1.60;
   --text-ui: 15px;         --text-ui--line-height: 1.45;
   --text-row: 14.5px;      --text-row--line-height: 1.30;
@@ -74,6 +77,8 @@
   --container-page:780px; --container-pageWide:1040px; --container-view:1080px;
   --container-boardCol:264px; --container-settings:1000px;
   --container-palette:580px; --container-login:396px;
+
+  --breakpoint-xs: 30rem;
 
   --animate-popIn: popIn 120ms ease-out;
   --animate-palIn: palIn 140ms ease-out;
