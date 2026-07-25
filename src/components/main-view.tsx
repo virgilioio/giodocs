@@ -131,11 +131,17 @@ function ViewHeader({
   view,
   rowCount,
   onNewPage,
+  layout,
+  onChangeLayout,
+  onOpenMenu,
 }: {
   selection: Selection;
   view: ViewRow | null;
   rowCount: number;
   onNewPage: () => void;
+  layout: Layout;
+  onChangeLayout: (l: Layout) => void;
+  onOpenMenu: (btn: HTMLElement) => void;
 }) {
   let scopeLabel: ReactNode = "AREA";
   let name = "";
@@ -166,19 +172,17 @@ function ViewHeader({
       <div className="flex shrink-0 items-center gap-2">
         <div className="flex items-center rounded-md border border-line bg-surface">
           {(["table", "board", "list"] as const).map((l) => {
-            const active = l === (view?.layout ?? "table");
-            const disabled = l !== "table";
+            const active = l === layout;
             return (
               <button
                 key={l}
                 type="button"
-                disabled={disabled}
-                title={disabled ? "Coming in a later phase" : l}
+                title={l}
                 aria-label={l}
+                onClick={() => onChangeLayout(l)}
                 className={
                   "grid h-8 w-8 place-items-center " +
-                  (active ? "bg-selected text-noir" : "text-muted") +
-                  (disabled ? " opacity-40 cursor-not-allowed" : " hover:bg-rail")
+                  (active ? "bg-selected text-noir" : "text-muted hover:bg-rail")
                 }
               >
                 <LayoutGlyph layout={l} />
@@ -195,10 +199,22 @@ function ViewHeader({
           <Glyph path="M12 5v14M5 12h14" className="h-3.5 w-3.5" />
           New page
         </button>
+        <button
+          type="button"
+          aria-label="View options"
+          onClick={(e) => onOpenMenu(e.currentTarget)}
+          className="grid h-8 w-8 place-items-center rounded-md border border-line bg-surface text-muted hover:bg-rail"
+        >
+          <Glyph
+            path="M6 12a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"
+            className="h-4 w-4"
+          />
+        </button>
       </div>
     </div>
   );
 }
+
 
 
 /* ─────────────────────────── Query toolbar ─────────────────────────── */
