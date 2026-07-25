@@ -361,17 +361,20 @@ function SidebarBody({
     }
   };
 
-  const renderCount = (c: number | "!", sizeClass: string) =>
-    c === "!" ? (
-      <span
-        className={`tnum ${sizeClass} text-amberInk`}
-        title="This view's filter is invalid"
-      >
-        !
-      </span>
-    ) : (
-      <span className={`tnum ${sizeClass} text-whisper`}>{c}</span>
-    );
+  const renderCount = (c: number | "!", sizeClass: string) => {
+    if (c === "!") {
+      return (
+        <span
+          className={`tnum ${sizeClass} text-amberInk`}
+          title="This view's filter is invalid"
+        >
+          !
+        </span>
+      );
+    }
+    if (!showSidebarCounts) return null;
+    return <span className={`tnum ${sizeClass} text-whisper`}>{c}</span>;
+  };
 
   const [openAreas, setOpenAreas] = useState<Set<string>>(new Set());
   const toggleArea = (a: string) =>
