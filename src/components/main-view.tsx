@@ -1,7 +1,9 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
-import { useWorkspaceShell } from "@/hooks/use-workspace-data";
+import { useWorkspaceShell, pageQuery } from "@/hooks/use-workspace-data";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
 import { Popover } from "./popover";
 import {
@@ -12,6 +14,7 @@ import {
 } from "@/hooks/use-page-mutations";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
+
 
 type PropDef = Database["public"]["Tables"]["property_defs"]["Row"];
 type ViewRow = Database["public"]["Tables"]["views"]["Row"];
