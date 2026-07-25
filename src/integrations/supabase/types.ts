@@ -463,11 +463,11 @@ export type Database = {
       search_pages: {
         Args: { p_limit?: number; p_q: string; p_workspace: string }
         Returns: {
-          blocks: Json
           icon: string
           id: string
           props: Json
           rank: number
+          snippets: Json
           title: string
         }[]
       }
