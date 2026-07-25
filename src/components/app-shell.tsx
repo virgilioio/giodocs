@@ -255,16 +255,16 @@ function SidebarBody({
     }
   };
 
-  const renderCount = (c: number | "!") =>
+  const renderCount = (c: number | "!", sizeClass: string) =>
     c === "!" ? (
       <span
-        className="tnum text-whisper text-amberInk"
+        className={`tnum ${sizeClass} text-amberInk`}
         title="This view's filter is invalid"
       >
         !
       </span>
     ) : (
-      <span className="tnum text-whisper">{c}</span>
+      <span className={`tnum ${sizeClass} text-whisper`}>{c}</span>
     );
 
   const [openAreas, setOpenAreas] = useState<Set<string>>(new Set());
