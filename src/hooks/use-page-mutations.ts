@@ -349,6 +349,7 @@ export function useDeleteView() {
 export function useForkView() {
   const qc = useQueryClient();
   const ws = useWorkspaceId();
+  const { user } = useAuth();
   const toast = useToast();
   return useMutation({
     mutationFn: async (v: {
@@ -358,6 +359,7 @@ export function useForkView() {
       sort: SortSpec;
       layout: "table" | "board" | "list";
       groupBy?: string | null;
+      _tempId?: string;
     }) => {
       const { data, error } = await supabase.rpc("fork_view", {
         p_view: v.viewId,
@@ -378,15 +380,46 @@ export function useForkView() {
       }
       return row;
     },
-    onSuccess: (row) => {
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: qk.views(ws) });
+      const tempId =
+        v._tempId ??
+        (globalThis.crypto?.randomUUID?.() ?? `tmp-${Date.now()}-${Math.random()}`);
+      v._tempId = tempId;
+      const optimistic: ViewFull = {
+        id: tempId,
+        workspace_id: ws,
+        owner_id: user!.id,
+        name: v.name,
+        scope: "personal",
+        layout: v.layout,
+        position: 0,
+        filter: v.filter as unknown,
+        sort: v.sort as unknown,
+        icon: null,
+        group_by: v.groupBy ?? null,
+      };
       qc.setQueryData<ViewFull[]>(qk.views(ws), (prev) =>
-        prev ? [...prev, row] : [row],
+        prev ? [...prev, optimistic] : [optimistic],
       );
+      return { tempId };
+    },
+    onSuccess: (row, _v, ctx) => {
+      qc.setQueryData<ViewFull[]>(qk.views(ws), (prev) => {
+        if (!prev) return [row];
+        const filtered = prev.filter((x) => x.id !== ctx?.tempId && x.id !== row.id);
+        return [...filtered, row];
+      });
       toast.push(`Saved to My views — "${row.name}" is unchanged for the team.`);
     },
-
-    onError: (err) => toast.push(`Couldn't fork: ${(err as Error).message}`),
-    onSettled: () => qc.invalidateQueries({ queryKey: qk.views(ws) }),
+    onError: (err, _v, ctx) => {
+      if (ctx?.tempId) {
+        qc.setQueryData<ViewFull[]>(qk.views(ws), (prev) =>
+          prev ? prev.filter((x) => x.id !== ctx.tempId) : prev,
+        );
+      }
+      toast.push(`Couldn't fork: ${(err as Error).message}`);
+    },
   });
 }
 
