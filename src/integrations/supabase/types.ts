@@ -388,6 +388,9 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_read_page: { Args: { p_page: string }; Returns: boolean }
+      is_member: { Args: { p_ws: string }; Returns: boolean }
+      is_owner: { Args: { p_ws: string }; Returns: boolean }
       page_search_text: {
         Args: { p_blocks: Json; p_title: string }
         Returns: string
