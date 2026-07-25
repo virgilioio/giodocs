@@ -208,7 +208,9 @@ type ViewFull = {
   filter: unknown;
   sort: unknown;
   icon: string | null;
+  group_by: string | null;
 };
+
 
 export function useCreateView() {
   const qc = useQueryClient();
