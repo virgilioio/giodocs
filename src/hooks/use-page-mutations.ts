@@ -141,7 +141,7 @@ export function useRenamePage() {
       if (ctx?.snapshot) qc.setQueryData(qk.pages(ws), ctx.snapshot);
       toast.push(`Couldn't rename: ${(err as Error).message}`);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: qk.pages(ws) }),
+    // Optimistic patch is authoritative; realtime handles teammates.
   });
 }
 
