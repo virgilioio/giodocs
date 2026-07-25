@@ -388,7 +388,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      page_search_text: {
+        Args: { p_blocks: Json; p_title: string }
+        Returns: string
+      }
     }
     Enums: {
       member_role: "owner" | "member"
