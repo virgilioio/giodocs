@@ -390,6 +390,7 @@ export type Database = {
     Functions: {
       can_read_page: { Args: { p_page: string }; Returns: boolean }
       delete_page: { Args: { p_page: string }; Returns: undefined }
+      domain_status: { Args: { p_email: string }; Returns: string }
       fork_view: {
         Args: {
           p_filter: Json
