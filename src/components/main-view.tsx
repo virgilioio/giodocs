@@ -524,7 +524,7 @@ function PageTitleCell({
               setEditing(false);
             }
           }}
-          className="min-w-0 flex-1 bg-transparent text-row focus:outline-none"
+          className="min-w-0 flex-1 bg-transparent text-row font-bold focus:outline-none"
         />
       ) : (
         <button
