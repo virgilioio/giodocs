@@ -187,10 +187,7 @@ function LoginPage() {
         <p className="mt-5 text-center text-caption text-secondary">
           By continuing you accept the Virgilio workspace terms.
         </p>
-        <p
-          className="mt-1 text-center text-secondary"
-          style={{ fontSize: "11.5px", letterSpacing: "0.085em", textTransform: "uppercase", fontWeight: 700 }}
-        >
+        <p className="mt-1 text-center text-label uppercase text-secondary">
           One object · many views
         </p>
       </div>
