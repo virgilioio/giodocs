@@ -989,7 +989,7 @@ function useFlashOnHash(blocks: Block[]) {
       }
       const prev = el.style.transition;
       el.style.transition = "background-color 500ms ease";
-      el.style.backgroundColor = "#FFF4B8";
+      el.style.backgroundColor = "var(--color-highlight)";
       window.setTimeout(() => {
         el.style.backgroundColor = "transparent";
         window.setTimeout(() => {
