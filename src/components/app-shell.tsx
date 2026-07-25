@@ -112,8 +112,13 @@ export function AppShell() {
         v.scope === "team" ? "Team views" : "My views";
       return { section, name: v.name };
     }
-    return { section: "Areas", name: selection.area };
-  }, [selection, views]);
+    if (selection.kind === "area") {
+      return { section: "Areas", name: selection.area };
+    }
+    const p = pages.find((x) => x.id === selection.id);
+    return { section: "Page", name: p?.title || "Untitled" };
+  }, [selection, views, pages]);
+
 
   async function handleSignOut() {
     await supabase.auth.signOut();
