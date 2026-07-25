@@ -391,7 +391,7 @@ function SidebarBody({
                         <span className="min-w-0 flex-1 truncate text-row">
                           {area}
                         </span>
-                        <span className="tnum text-whisper">{count}</span>
+                        <span className="tnum text-row text-whisper">{count}</span>
                       </Link>
                     </div>
                     {open && (
