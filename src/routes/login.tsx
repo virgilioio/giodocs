@@ -67,6 +67,14 @@ function LoginPage() {
     if (submitting) return;
     setSubmitting(true);
     setError(null);
+    // Route the auth token to sessionStorage when "Keep me signed in"
+    // is unchecked. Must be set BEFORE signInWithPassword persists.
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(
+        "gio:auth-persist",
+        keepSignedIn ? "local" : "session",
+      );
+    }
     const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
     setSubmitting(false);
     if (signInError) {
