@@ -239,7 +239,7 @@ function SidebarBody({
   const isStale = (p: PageListItem) =>
     new Date(p.verified_at).getTime() < staleThreshold;
 
-  const countFor = (v: ViewRow): number => {
+  const countFor = (v: ViewRow): number | "!" => {
     try {
       return runView(
         pages,
@@ -249,10 +249,23 @@ function SidebarBody({
         },
         ctx,
       ).length;
-    } catch {
-      return 0;
+    } catch (err) {
+      console.error(`[view ${v.id} "${v.name}"] invalid filter:`, err);
+      return "!";
     }
   };
+
+  const renderCount = (c: number | "!") =>
+    c === "!" ? (
+      <span
+        className="tnum text-whisper text-amberInk"
+        title="This view's filter is invalid"
+      >
+        !
+      </span>
+    ) : (
+      <span className="tnum text-whisper">{c}</span>
+    );
 
   const [openAreas, setOpenAreas] = useState<Set<string>>(new Set());
   const toggleArea = (a: string) =>
