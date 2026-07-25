@@ -193,6 +193,9 @@ export function useVerifyPage() {
       qc.invalidateQueries({ queryKey: qk.pages(ws) });
     },
   });
+}
+
+
 
 type ViewFull = {
   id: string;
