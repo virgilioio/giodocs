@@ -903,6 +903,7 @@ function MiniAvatar({ profile }: { profile: MemberRow["profiles"] }) {
 /* ────────────── Body ────────────── */
 
 function ReadOnlyBody({ blocks }: { blocks: Block[] }) {
+  useFlashOnHash(blocks);
   if (!blocks.length) {
     return (
       <p className="mt-6 text-meta italic text-faint">
@@ -916,15 +917,21 @@ function ReadOnlyBody({ blocks }: { blocks: Block[] }) {
         const text = (b.text ?? b.body ?? "").trim();
         if (!text) return null;
         const t = b.type ?? "p";
+        const blockId = typeof b.id === "string" ? b.id : undefined;
+        const anchor = blockId ? `block-${blockId}` : undefined;
+        const commonProps = {
+          id: anchor,
+          "data-block-id": blockId,
+        } as const;
         if (t === "h1")
           return (
-            <h2 key={i} className="font-display text-heading text-noir">
+            <h2 key={i} {...commonProps} className="font-display text-heading text-noir">
               {text}
             </h2>
           );
         if (t === "h2" || t === "h3")
           return (
-            <h3 key={i} className="font-display text-subhead text-noir">
+            <h3 key={i} {...commonProps} className="font-display text-subhead text-noir">
               {text}
             </h3>
           );
@@ -932,19 +939,70 @@ function ReadOnlyBody({ blocks }: { blocks: Block[] }) {
           return (
             <blockquote
               key={i}
+              {...commonProps}
               className="border-l-2 border-line pl-3 text-quote text-secondary"
             >
               {text}
             </blockquote>
           );
         return (
-          <p key={i} className="text-prose text-body">
+          <p key={i} {...commonProps} className="text-prose text-body">
             {text}
           </p>
         );
       })}
     </div>
   );
+}
+
+function findScrollParent(el: HTMLElement | null): HTMLElement | null {
+  let node = el?.parentElement ?? null;
+  while (node) {
+    const s = window.getComputedStyle(node);
+    if (/(auto|scroll|overlay)/.test(s.overflowY) && node.scrollHeight > node.clientHeight) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return null;
+}
+
+function useFlashOnHash(blocks: Block[]) {
+  useEffect(() => {
+    const hash = typeof window !== "undefined" ? window.location.hash : "";
+    if (!hash.startsWith("#block-")) return;
+    const id = hash.slice(1);
+    let cancelled = false;
+    const attempt = (tries: number) => {
+      if (cancelled) return;
+      const el = document.getElementById(id) as HTMLElement | null;
+      if (!el) {
+        if (tries > 0) window.setTimeout(() => attempt(tries - 1), 60);
+        return;
+      }
+      const scroller = findScrollParent(el);
+      if (scroller) {
+        const rect = el.getBoundingClientRect();
+        const sRect = scroller.getBoundingClientRect();
+        const target = scroller.scrollTop + (rect.top - sRect.top) - 120;
+        scroller.scrollTop = Math.max(0, target);
+      }
+      const prev = el.style.transition;
+      el.style.transition = "background-color 500ms ease";
+      el.style.backgroundColor = "var(--color-highlight)";
+      window.setTimeout(() => {
+        el.style.backgroundColor = "transparent";
+        window.setTimeout(() => {
+          el.style.transition = prev;
+          el.style.backgroundColor = "";
+        }, 550);
+      }, 2400);
+    };
+    attempt(10);
+    return () => {
+      cancelled = true;
+    };
+  }, [blocks]);
 }
 
 /* ────────────── Page editor container ────────────── */

@@ -24,6 +24,7 @@ import { useToast } from "@/lib/toast";
 import type { PageListItem } from "@/lib/types";
 import { MainView } from "./main-view";
 import { PageEditor } from "./page-view";
+import { CommandPalette } from "./command-palette";
 
 type Selection =
   | { kind: "view"; id: string }
@@ -69,6 +70,18 @@ export function AppShell() {
       window.localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
     }
   }, [collapsed]);
+
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const pages = (shell.pages.data ?? []) as PageListItem[];
   const views = shell.views.data ?? [];
@@ -164,6 +177,7 @@ export function AppShell() {
             memberCount={memberCount}
             areaIcons={areaIcons}
             onSignOut={handleSignOut}
+            onOpenPalette={() => setPaletteOpen(true)}
           />
         </div>
       </div>
@@ -204,6 +218,7 @@ export function AppShell() {
           )}
         </main>
       </div>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   );
 }
@@ -265,6 +280,7 @@ function SidebarBody({
   memberCount,
   areaIcons,
   onSignOut,
+  onOpenPalette,
 }: {
   loading: boolean;
   pages: PageListItem[];
@@ -278,6 +294,7 @@ function SidebarBody({
   memberCount: number;
   areaIcons: Map<string, string>;
   onSignOut: () => void;
+  onOpenPalette: () => void;
 }) {
   const [sections, toggleSection] = useSectionState();
   const { user } = useAuth();
@@ -376,6 +393,7 @@ function SidebarBody({
         {/* Search */}
         <button
           type="button"
+          onClick={onOpenPalette}
           className="flex w-full items-center gap-2 rounded-md border border-line bg-surface px-2.5 py-1.5 text-ui text-secondary hover:bg-railHover"
         >
           <Glyph path="M11 4a7 7 0 100 14 7 7 0 000-14zm5.5 12.5l4 4" className="h-4 w-4 text-muted" />
