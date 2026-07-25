@@ -6,8 +6,8 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
-export default defineConfig({
-  tanstackStart: {
-    spa: { enabled: true },
-  },
-});
+// SPA mode forces a shell prerender that the nitro-cloudflare worker output
+// doesn't cooperate with (preview server can't find dist/server/server.js).
+// Instead, keep nitro on (so React is bundled into the deployed worker) and
+// let TanStack handle "/" as a normal SSR-rendered route at request time.
+export default defineConfig({});
