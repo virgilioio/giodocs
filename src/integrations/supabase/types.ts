@@ -14,7 +14,375 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      allowed_domains: {
+        Row: {
+          domain: string
+          workspace_id: string
+        }
+        Insert: {
+          domain: string
+          workspace_id: string
+        }
+        Update: {
+          domain?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "allowed_domains_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      page_access: {
+        Row: {
+          capability: string
+          created_at: string
+          guest_email: string | null
+          page_id: string
+          user_id: string | null
+        }
+        Insert: {
+          capability?: string
+          created_at?: string
+          guest_email?: string | null
+          page_id: string
+          user_id?: string | null
+        }
+        Update: {
+          capability?: string
+          created_at?: string
+          guest_email?: string | null
+          page_id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "page_access_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "page_access_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      page_verifications: {
+        Row: {
+          id: string
+          page_id: string
+          verified_at: string
+          verified_by: string
+        }
+        Insert: {
+          id?: string
+          page_id: string
+          verified_at?: string
+          verified_by: string
+        }
+        Update: {
+          id?: string
+          page_id?: string
+          verified_at?: string
+          verified_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "page_verifications_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "page_verifications_verified_by_fkey"
+            columns: ["verified_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pages: {
+        Row: {
+          access_type: string
+          blocks: Json
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          edited_at: string
+          edited_by: string | null
+          icon: string
+          id: string
+          props: Json
+          search_tsv: unknown
+          title: string
+          verified_at: string
+          verified_by: string | null
+          workspace_id: string
+        }
+        Insert: {
+          access_type?: string
+          blocks?: Json
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          edited_at?: string
+          edited_by?: string | null
+          icon?: string
+          id?: string
+          props?: Json
+          search_tsv?: unknown
+          title?: string
+          verified_at?: string
+          verified_by?: string | null
+          workspace_id: string
+        }
+        Update: {
+          access_type?: string
+          blocks?: Json
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          edited_at?: string
+          edited_by?: string | null
+          icon?: string
+          id?: string
+          props?: Json
+          search_tsv?: unknown
+          title?: string
+          verified_at?: string
+          verified_by?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pages_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pages_edited_by_fkey"
+            columns: ["edited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pages_verified_by_fkey"
+            columns: ["verified_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pages_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_ink: string
+          avatar_tint: string
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+        }
+        Insert: {
+          avatar_ink?: string
+          avatar_tint?: string
+          created_at?: string
+          email: string
+          full_name?: string
+          id: string
+        }
+        Update: {
+          avatar_ink?: string
+          avatar_tint?: string
+          created_at?: string
+          email?: string
+          full_name?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      property_defs: {
+        Row: {
+          id: string
+          is_system: boolean
+          key: string
+          label: string
+          options: Json
+          position: number
+          type: Database["public"]["Enums"]["property_type"]
+          workspace_id: string
+        }
+        Insert: {
+          id?: string
+          is_system?: boolean
+          key: string
+          label: string
+          options?: Json
+          position?: number
+          type: Database["public"]["Enums"]["property_type"]
+          workspace_id: string
+        }
+        Update: {
+          id?: string
+          is_system?: boolean
+          key?: string
+          label?: string
+          options?: Json
+          position?: number
+          type?: Database["public"]["Enums"]["property_type"]
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_defs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      views: {
+        Row: {
+          created_at: string
+          filter: Json
+          group_by: string | null
+          id: string
+          layout: Database["public"]["Enums"]["view_layout"]
+          name: string
+          owner_id: string
+          position: number
+          scope: Database["public"]["Enums"]["view_scope"]
+          sort: Json
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          filter?: Json
+          group_by?: string | null
+          id?: string
+          layout?: Database["public"]["Enums"]["view_layout"]
+          name: string
+          owner_id: string
+          position?: number
+          scope?: Database["public"]["Enums"]["view_scope"]
+          sort?: Json
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          filter?: Json
+          group_by?: string | null
+          id?: string
+          layout?: Database["public"]["Enums"]["view_layout"]
+          name?: string
+          owner_id?: string
+          position?: number
+          scope?: Database["public"]["Enums"]["view_scope"]
+          sort?: Json
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "views_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "views_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workspace_members: {
+        Row: {
+          created_at: string
+          role: Database["public"]["Enums"]["member_role"]
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          role?: Database["public"]["Enums"]["member_role"]
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          role?: Database["public"]["Enums"]["member_role"]
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workspace_members_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workspaces: {
+        Row: {
+          created_at: string
+          icon: string
+          id: string
+          name: string
+          slug: string
+          stale_days: number
+        }
+        Insert: {
+          created_at?: string
+          icon?: string
+          id?: string
+          name: string
+          slug: string
+          stale_days?: number
+        }
+        Update: {
+          created_at?: string
+          icon?: string
+          id?: string
+          name?: string
+          slug?: string
+          stale_days?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +391,18 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      member_role: "owner" | "member"
+      property_type:
+        | "text"
+        | "select"
+        | "multi_select"
+        | "person"
+        | "date"
+        | "number"
+        | "checkbox"
+        | "status"
+      view_layout: "table" | "board" | "list"
+      view_scope: "personal" | "team"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +529,20 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      member_role: ["owner", "member"],
+      property_type: [
+        "text",
+        "select",
+        "multi_select",
+        "person",
+        "date",
+        "number",
+        "checkbox",
+        "status",
+      ],
+      view_layout: ["table", "board", "list"],
+      view_scope: ["personal", "team"],
+    },
   },
 } as const
