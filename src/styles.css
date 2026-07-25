@@ -78,6 +78,8 @@
   --container-boardCol:264px; --container-settings:1000px;
   --container-palette:580px; --container-login:396px;
 
+  --breakpoint-xs: 30rem;
+
   --animate-popIn: popIn 120ms ease-out;
   --animate-palIn: palIn 140ms ease-out;
   --animate-cardIn: cardIn 220ms ease-out;
