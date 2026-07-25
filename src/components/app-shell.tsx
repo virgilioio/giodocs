@@ -392,6 +392,7 @@ function SidebarBody({
         {/* Search */}
         <button
           type="button"
+          onClick={onOpenPalette}
           className="flex w-full items-center gap-2 rounded-md border border-line bg-surface px-2.5 py-1.5 text-ui text-secondary hover:bg-railHover"
         >
           <Glyph path="M11 4a7 7 0 100 14 7 7 0 000-14zm5.5 12.5l4 4" className="h-4 w-4 text-muted" />
