@@ -11,6 +11,7 @@ import {
   useSetPageProperty,
   useRenamePage,
   useCreatePage,
+  useUpdateView,
 } from "@/hooks/use-page-mutations";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
