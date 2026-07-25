@@ -93,6 +93,20 @@ export function usePage(id: string | undefined) {
   });
 }
 
+export const pageQuery = (id: string) => ({
+  queryKey: qk.page(id),
+  queryFn: () => fetchPage(id),
+});
+
+export function usePageAccess(id: string | undefined) {
+  return useQuery({
+    queryKey: id ? ["pageAccess", id] : ["pageAccess", "none"],
+    queryFn: () => fetchPageAccess(id!),
+    enabled: !!id,
+    staleTime: 60_000,
+  });
+}
+
 export function useViews(ws: string | undefined) {
   return useQuery({
     queryKey: ws ? qk.views(ws) : ["views", "none"],
