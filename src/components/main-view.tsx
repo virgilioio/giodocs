@@ -865,6 +865,7 @@ export function MainView({ selection }: { selection: Selection }) {
   const setProp = useSetPageProperty();
   const rename = useRenamePage();
   const create = useCreatePage();
+  const updateView = useUpdateView();
 
   const pages = (shell.pages.data ?? []) as PageListItem[];
   const views = (shell.views.data ?? []) as ViewRow[];
