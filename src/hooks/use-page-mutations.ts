@@ -106,9 +106,8 @@ export function useSetPageProperty() {
         for (const id of left) toast.push(`Left "${nameOf(id)}"`);
       }
     },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: qk.pages(ws) });
-    },
+    // No onSettled invalidation: optimistic patch is authoritative and
+    // realtime will surface any teammate edits without a list refetch.
   });
 }
 
