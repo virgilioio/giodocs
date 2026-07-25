@@ -61,6 +61,7 @@ function useSelection(): Selection {
 export function AppShell() {
   const workspaceId = useWorkspaceId();
   const shell = useWorkspaceShell(workspaceId);
+  useRealtimeWorkspace(workspaceId);
   const selection = useSelection();
   const navigate = useNavigate();
 
