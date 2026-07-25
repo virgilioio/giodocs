@@ -1,6 +1,6 @@
 # Gio Docs — build state
 
-Last updated: 2026-07-25 (after shell + sidebar phase, seed follow-up).
+Last updated: 2026-07-25 (after table + toolbar phase).
 
 ## What exists and how it was verified
 
@@ -21,6 +21,8 @@ Last updated: 2026-07-25 (after shell + sidebar phase, seed follow-up).
 | Data layer: query keys, hooks, useWorkspaceShell | Done | build green |
 | run-view.ts single filter engine + groupPages | Done | 13 vitest tests + independent SQL cross-check |
 | Shell + sidebar: workspace-context, AppShell, /v/$viewId, /a/$area, collapsible rail, footer sign-out, amber-dot stale, derived areas, invalid-filter "!" guard | Done | Playwright signed in as Allan: all 7 view counts + 5 area counts match acceptance, default redirect lands on /v/<Assigned to me>, 3 amber dots on stale pages under expanded areas, collapse drops sidebar to width 0, all four build checks + 13/13 vitest green |
+| Table view: view header (scope label, name, layout switcher, New page), query toolbar ("Pages where" chips + × remove, + Filter popover for props/Stale/Edited within, sort), responsive 7-column table (Page inline rename, Area/Owner/Status/Tags popover pickers, Verified w/ amber-stale, Edited) | Done | Playwright as Allan: Priority: P0 shows 2 rows, Assigned to me shows 5 rows matching sidebar count; changing owner to "No owner" drops row and updates sidebar count 5→4 in one tick |
+| Mutations: use-page-mutations.ts with useSetPageProperty (set_page_property RPC), useRenamePage, useCreatePage; optimistic cache patch on shell/pages/views; membership-diff toasts ("Added to…" / "Left…") stacked via ToastProvider | Done | Playwright reassignment triggers row remove and sidebar count decrement optimistically before server ack |
 
 ## Acceptance numbers for the sidebar
 
@@ -57,10 +59,11 @@ Default redirect from "/" lands on /v/a11a0000-0000-4000-8000-0000000000b1 (Assi
 
 ## Next-phase acceptance
 
-Table view renders the same pages runView returns for the selected view;
-inline property edit moves a page between views immediately.
+Team view fork: opening a team view as a non-owner exposes a "Fork to My
+views" action that calls fork_view() and navigates to the new personal
+view; owners still see Publish/Edit affordances on their own team views.
 
 ## Phase order (remaining)
 
-table + toolbar → team-view fork rule (SHIP) → board + list →
-page editor → command palette → settings → realtime.
+team-view fork rule (SHIP) → board + list layouts → page editor →
+command palette → settings → realtime.
