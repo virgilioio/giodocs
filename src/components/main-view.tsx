@@ -858,7 +858,7 @@ export function MainView({ selection }: { selection: Selection }) {
   const ws = useWorkspaceId();
   const { user } = useAuth();
   const shell = useWorkspaceShell(ws);
-  const qc = useQueryClient();
+  
   const setProp = useSetPageProperty();
   const rename = useRenamePage();
   const create = useCreatePage();
