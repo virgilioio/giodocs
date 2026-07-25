@@ -191,7 +191,9 @@ export function AppShell() {
         </header>
 
         <main className="min-w-0 flex-1 bg-canvas overflow-y-auto">
-          {selection ? (
+          {selection && selection.kind === "page" ? (
+            <PageEditor pageId={selection.id} />
+          ) : selection ? (
             <MainView selection={selection} />
           ) : (
             <div className="mx-auto max-w-view px-6 py-10">
@@ -203,6 +205,7 @@ export function AppShell() {
     </div>
   );
 }
+
 
 type ViewRow = {
   id: string;
