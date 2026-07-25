@@ -614,9 +614,21 @@ function MyViewRow({
                   >
                     Duplicate
                   </MenuItem>
-                  <MenuItem disabled title="Next phase">
+                  <MenuItem
+                    onClick={() => {
+                      setMenu(false);
+                      if (
+                        window.confirm(
+                          `Publish "${v.name}" to Team views? It moves out of My views into Team views for all ${wsMembers} people at ${wsName}. Publishing is the only way a view becomes shared.`,
+                        )
+                      ) {
+                        publishView.mutate(v.id);
+                      }
+                    }}
+                  >
                     Publish to team
                   </MenuItem>
+
                   <MenuDivider />
                   <MenuItem
                     danger
