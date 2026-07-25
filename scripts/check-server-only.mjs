@@ -13,6 +13,13 @@ const FORBIDDEN_IMPORT_PATTERNS = [
 ];
 const SECRET_PATTERNS = [/SUPABASE_SERVICE_ROLE_KEY/, /SERVICE_ROLE/];
 
+// These are TanStack Start server entrypoints. They are not named *.server.ts,
+// so the naming heuristic cannot classify them; exempt them explicitly. The
+// real guarantee that the service-role key never ships lives in
+// scripts/check-bundle.mjs, which inspects dist/client. Do NOT extend this
+// allowlist — every other file under src/ keeps the rule.
+const ENTRYPOINT_ALLOWLIST = new Set(["src/start.ts", "src/server.ts"]);
+
 const IMPORT_RE =
   /(?:^|\s)(?:import\s[^'"`]*from\s*|import\s*|require\s*\(\s*|import\s*\(\s*)['"`]([^'"`]+)['"`]/g;
 
@@ -28,9 +35,10 @@ function walk(dir) {
 }
 
 function check(file) {
-  const rel = relative(ROOT, file);
+  const rel = relative(ROOT, file).split(/[\\/]/).join("/");
   const isServer = /\.server\.(ts|tsx|js|jsx|mjs|cjs)$/.test(file);
   if (isServer) return;
+  if (ENTRYPOINT_ALLOWLIST.has(rel)) return;
 
   const text = readFileSync(file, "utf8");
   const lines = text.split("\n");
