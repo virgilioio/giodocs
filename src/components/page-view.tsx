@@ -912,6 +912,7 @@ function MiniAvatar({ profile }: { profile: MemberRow["profiles"] }) {
 
 function ReadOnlyBody({ blocks }: { blocks: Block[] }) {
   useFlashOnHash(blocks);
+  const { prefs } = usePrefs();
   if (!blocks.length) {
     return (
       <p className="mt-6 text-meta italic text-faint">
@@ -920,7 +921,12 @@ function ReadOnlyBody({ blocks }: { blocks: Block[] }) {
     );
   }
   return (
-    <div id="page-body" tabIndex={-1} className="mt-6 space-y-4 focus:outline-none">
+    <div
+      id="page-body"
+      tabIndex={-1}
+      data-font={prefs.fontFamily}
+      className="gio-page-body mt-6 space-y-4 focus:outline-none"
+    >
       {blocks.map((b, i) => {
         const text = (b.text ?? b.body ?? "").trim();
         if (!text) return null;
