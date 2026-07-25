@@ -389,11 +389,133 @@ export type Database = {
     }
     Functions: {
       can_read_page: { Args: { p_page: string }; Returns: boolean }
+      delete_page: { Args: { p_page: string }; Returns: undefined }
+      fork_view: {
+        Args: {
+          p_filter: Json
+          p_layout: Database["public"]["Enums"]["view_layout"]
+          p_name: string
+          p_sort: Json
+          p_view: string
+        }
+        Returns: {
+          created_at: string
+          filter: Json
+          group_by: string | null
+          id: string
+          layout: Database["public"]["Enums"]["view_layout"]
+          name: string
+          owner_id: string
+          position: number
+          scope: Database["public"]["Enums"]["view_scope"]
+          sort: Json
+          workspace_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "views"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       is_member: { Args: { p_ws: string }; Returns: boolean }
       is_owner: { Args: { p_ws: string }; Returns: boolean }
+      list_areas: {
+        Args: { p_workspace: string }
+        Returns: {
+          area: string
+          page_count: number
+        }[]
+      }
       page_search_text: {
         Args: { p_blocks: Json; p_title: string }
         Returns: string
+      }
+      publish_view: {
+        Args: { p_view: string }
+        Returns: {
+          created_at: string
+          filter: Json
+          group_by: string | null
+          id: string
+          layout: Database["public"]["Enums"]["view_layout"]
+          name: string
+          owner_id: string
+          position: number
+          scope: Database["public"]["Enums"]["view_scope"]
+          sort: Json
+          workspace_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "views"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      restore_page: { Args: { p_page: string }; Returns: undefined }
+      search_pages: {
+        Args: { p_limit?: number; p_q: string; p_workspace: string }
+        Returns: {
+          blocks: Json
+          icon: string
+          id: string
+          props: Json
+          rank: number
+          title: string
+        }[]
+      }
+      set_page_property: {
+        Args: { p_key: string; p_page: string; p_value: Json }
+        Returns: {
+          access_type: string
+          blocks: Json
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          edited_at: string
+          edited_by: string | null
+          icon: string
+          id: string
+          props: Json
+          search_tsv: unknown
+          title: string
+          verified_at: string
+          verified_by: string | null
+          workspace_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "pages"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      verify_page: {
+        Args: { p_page: string }
+        Returns: {
+          access_type: string
+          blocks: Json
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          edited_at: string
+          edited_by: string | null
+          icon: string
+          id: string
+          props: Json
+          search_tsv: unknown
+          title: string
+          verified_at: string
+          verified_by: string | null
+          workspace_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "pages"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
     }
     Enums: {
