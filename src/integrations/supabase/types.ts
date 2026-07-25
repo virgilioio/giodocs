@@ -268,6 +268,7 @@ export type Database = {
           created_at: string
           filter: Json
           group_by: string | null
+          icon: string | null
           id: string
           layout: Database["public"]["Enums"]["view_layout"]
           name: string
@@ -281,6 +282,7 @@ export type Database = {
           created_at?: string
           filter?: Json
           group_by?: string | null
+          icon?: string | null
           id?: string
           layout?: Database["public"]["Enums"]["view_layout"]
           name: string
@@ -294,6 +296,7 @@ export type Database = {
           created_at?: string
           filter?: Json
           group_by?: string | null
+          icon?: string | null
           id?: string
           layout?: Database["public"]["Enums"]["view_layout"]
           name?: string
@@ -403,6 +406,7 @@ export type Database = {
           created_at: string
           filter: Json
           group_by: string | null
+          icon: string | null
           id: string
           layout: Database["public"]["Enums"]["view_layout"]
           name: string
@@ -438,6 +442,7 @@ export type Database = {
           created_at: string
           filter: Json
           group_by: string | null
+          icon: string | null
           id: string
           layout: Database["public"]["Enums"]["view_layout"]
           name: string
