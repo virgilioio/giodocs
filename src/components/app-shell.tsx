@@ -345,7 +345,7 @@ function SidebarBody({
                     <span className="min-w-0 flex-1 truncate text-meta text-secondary">
                       {v.name}
                     </span>
-                    {renderCount(countFor(v))}
+                    {renderCount(countFor(v), "text-meta")}
                   </Link>
                 </li>
               ))}
