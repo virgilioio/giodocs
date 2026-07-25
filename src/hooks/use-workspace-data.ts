@@ -1,10 +1,13 @@
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { qk } from "@/lib/query-keys";
-import type { PageListItem, PageFull } from "@/lib/types";
+import type { PageListItem, PageFull, PageAccessRow } from "@/lib/types";
 
 const PAGE_LIST_COLUMNS =
   "id, title, icon, props, verified_at, verified_by, edited_at, edited_by, access_type";
+
+const PAGE_FULL_COLUMNS =
+  "id, workspace_id, title, icon, props, blocks, access_type, verified_at, verified_by, edited_at, edited_by, created_by, created_at, deleted_at";
 
 async function fetchPages(ws: string): Promise<PageListItem[]> {
   const { data, error } = await supabase
@@ -21,11 +24,20 @@ async function fetchPages(ws: string): Promise<PageListItem[]> {
 async function fetchPage(id: string): Promise<PageFull | null> {
   const { data, error } = await supabase
     .from("pages")
-    .select("*")
+    .select(PAGE_FULL_COLUMNS)
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
   return (data ?? null) as PageFull | null;
+}
+
+async function fetchPageAccess(id: string): Promise<PageAccessRow[]> {
+  const { data, error } = await supabase
+    .from("page_access")
+    .select("page_id, user_id, guest_email, capability")
+    .eq("page_id", id);
+  if (error) throw error;
+  return (data ?? []) as PageAccessRow[];
 }
 
 async function fetchViews(ws: string) {
