@@ -1,11 +1,8 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
-import { qk } from "@/lib/query-keys";
 import { Popover } from "./popover";
 import {
   useSetPageProperty,
