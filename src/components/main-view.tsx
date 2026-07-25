@@ -1066,6 +1066,55 @@ export function MainView({ selection }: { selection: Selection }) {
   };
 
 
+  const emptyBody = (
+    <div className="grid place-items-center py-20 text-center">
+      <div className="font-display text-subhead text-noir">
+        Nothing matches this view yet.
+      </div>
+      <p className="mt-2 text-meta text-secondary">
+        A view is just a query — pages appear here the moment their properties match.
+      </p>
+    </div>
+  );
+
+  let body: ReactNode;
+  if (rows.length === 0) body = emptyBody;
+  else if (layout === "board")
+    body = (
+      <BoardBody
+        rows={rows}
+        groupBy={groupBy}
+        propDefs={propDefs}
+        members={members}
+        staleThreshold={staleThreshold}
+        onMove={(pageId, value) =>
+          setProp.mutate({ pageId, key: groupBy, value })
+        }
+      />
+    );
+  else if (layout === "list")
+    body = (
+      <ListBody
+        rows={rows}
+        members={members}
+        propDefs={propDefs}
+        staleThreshold={staleThreshold}
+      />
+    );
+  else
+    body = (
+      <TableBody
+        rows={rows}
+        pages={pages}
+        members={members}
+        areas={areas}
+        statusDef={statusDef}
+        staleThreshold={staleThreshold}
+        rename={rename}
+        setProp={setProp}
+      />
+    );
+
   return (
     <div className="mx-auto max-w-view px-6 py-6">
       <ViewHeader
@@ -1073,7 +1122,23 @@ export function MainView({ selection }: { selection: Selection }) {
         view={view}
         rowCount={rows.length}
         onNewPage={onNewPage}
+        layout={layout}
+        onChangeLayout={onChangeLayout}
+        onOpenMenu={(btn) => setHeaderMenuAnchor(btn)}
       />
+
+      {headerMenuAnchor && (
+        <HeaderMenu
+          anchor={headerMenuAnchor}
+          onClose={() => setHeaderMenuAnchor(null)}
+          canPublish={isOwnerOfView}
+          canDelete={isOwnerOfView}
+          canSaveAs={isTeamView}
+          onPublish={doPublish}
+          onSaveAs={doSaveAsMyView}
+          onDelete={doDelete}
+        />
+      )}
 
       <QueryToolbar
         filters={filters}
@@ -1086,11 +1151,173 @@ export function MainView({ selection }: { selection: Selection }) {
         fixedFilterIndex={fixedFilterIndex}
         pages={pages}
       />
-      {isTeamView && (
-        <p className="mb-3 text-caption text-muted">
-          Team view — filtering forks to a personal copy (next phase)
-        </p>
+
+      {layout === "board" && (
+        <div className="-mt-1 mb-4 flex items-center gap-2 text-meta text-muted">
+          <span>Grouped by</span>
+          <select
+            className="rounded-sm border border-line bg-surface px-2 py-1 text-meta text-body focus:outline-none"
+            value={groupBy}
+            onChange={(e) => onChangeGroupBy(e.target.value)}
+          >
+            {groupableDefs.map((d) => (
+              <option key={d.id} value={d.key}>
+                {d.label}
+              </option>
+            ))}
+            {groupableDefs.length === 0 && <option value="status">Status</option>}
+          </select>
+        </div>
       )}
+
+      {isModified && (
+        <ModifiedBanner
+          viewName={view!.name}
+          workspaceName={workspace?.name ?? "the workspace"}
+          onSave={doSaveAsMyView}
+          onDiscard={doDiscard}
+        />
+      )}
+
+      {body}
+    </div>
+  );
+}
+
+/* ─────────────────────────── Modified banner ─────────────────────────── */
+
+function ModifiedBanner({
+  viewName,
+  workspaceName,
+  onSave,
+  onDiscard,
+}: {
+  viewName: string;
+  workspaceName: string;
+  onSave: () => void;
+  onDiscard: () => void;
+}) {
+  return (
+    <div className="mb-4">
+      <div className="flex flex-wrap items-center gap-2 rounded-md border border-amberRing bg-amberTint px-3 py-2">
+        <span className="inline-flex h-2 w-2 rounded-full bg-amberDot" aria-hidden />
+        <span className="font-display text-label uppercase text-amberInk">MODIFIED</span>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onSave}
+            className="rounded-md bg-noir px-3 py-1 text-meta font-bold text-canvas"
+          >
+            Save as my view
+          </button>
+          <button
+            type="button"
+            aria-label="Discard changes"
+            onClick={onDiscard}
+            className="grid h-7 w-7 place-items-center rounded-md text-amberInk hover:bg-amberRing"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+      <p className="mt-1 px-1 text-caption text-amberInk">
+        You&apos;re looking at unsaved changes. <b>{viewName}</b> is untouched for everyone
+        else at {workspaceName} — saving makes a copy in <b>My views</b>.
+      </p>
+    </div>
+  );
+}
+
+/* ─────────────────────────── Header options menu ─────────────────────────── */
+
+function HeaderMenu({
+  anchor,
+  onClose,
+  canPublish,
+  canDelete,
+  canSaveAs,
+  onPublish,
+  onSaveAs,
+  onDelete,
+}: {
+  anchor: HTMLElement;
+  onClose: () => void;
+  canPublish: boolean;
+  canDelete: boolean;
+  canSaveAs: boolean;
+  onPublish: () => void;
+  onSaveAs: () => void;
+  onDelete: () => void;
+}) {
+  const rect = anchor.getBoundingClientRect();
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div
+        className="fixed z-50 min-w-[180px] rounded-md border border-line bg-surface shadow-popover"
+        style={{ top: rect.bottom + 6, left: rect.right - 180 }}
+      >
+        {canSaveAs && (
+          <button
+            type="button"
+            className="block w-full px-3 py-2 text-left text-meta hover:bg-rail"
+            onClick={() => { onClose(); onSaveAs(); }}
+          >
+            Save as my view
+          </button>
+        )}
+        {canPublish && (
+          <button
+            type="button"
+            className="block w-full px-3 py-2 text-left text-meta hover:bg-rail"
+            onClick={() => { onClose(); onPublish(); }}
+          >
+            Publish to team
+          </button>
+        )}
+        {canDelete && (
+          <>
+            <div className="my-1 border-t border-lineSoft" />
+            <button
+              type="button"
+              className="block w-full px-3 py-2 text-left text-meta text-danger hover:bg-dangerTint"
+              onClick={() => { onClose(); onDelete(); }}
+            >
+              Delete view
+            </button>
+          </>
+        )}
+        {!canSaveAs && !canPublish && !canDelete && (
+          <div className="px-3 py-2 text-meta text-muted">No actions available</div>
+        )}
+      </div>
+    </>
+  );
+}
+
+/* ─────────────────────────── Table body ─────────────────────────── */
+
+function TableBody({
+  rows,
+  pages,
+  members,
+  areas,
+  statusDef,
+  staleThreshold,
+  rename,
+  setProp,
+}: {
+  rows: PageListItem[];
+  pages: PageListItem[];
+  members: MemberRow[];
+  areas: string[];
+  statusDef: PropDef | undefined;
+  staleThreshold: number;
+  rename: ReturnType<typeof useRenamePage>;
+  setProp: ReturnType<typeof useSetPageProperty>;
+}) {
+  return (
+
 
       {rows.length === 0 ? (
         <div className="grid place-items-center py-20 text-center">
