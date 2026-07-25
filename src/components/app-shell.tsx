@@ -1,10 +1,24 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Link, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
+import {
+  useCreatePage,
+  useCreateView,
+  useDeleteView,
+  useForkView,
+  useUpdateView,
+} from "@/hooks/use-page-mutations";
+import { useToast } from "@/lib/toast";
 import type { PageListItem } from "@/lib/types";
 import { MainView } from "./main-view";
 
@@ -14,6 +28,7 @@ type Selection =
   | null;
 
 const COLLAPSE_KEY = "gio.sidebar.collapsed";
+const SECTION_KEY = "gio.sidebar.sections"; // JSON { my:boolean, team:boolean, areas:boolean }
 
 function useSelection(): Selection {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -49,12 +64,12 @@ export function AppShell() {
   const pages = (shell.pages.data ?? []) as PageListItem[];
   const views = shell.views.data ?? [];
   const workspace = shell.workspace.data;
+  const propDefs = shell.propDefs.data ?? [];
   const { user, profile } = useAuth();
   const staleDays = workspace?.stale_days ?? 30;
   const memberCount = shell.members.data?.length ?? 0;
   const workspaceName = workspace?.name ?? "";
 
-  // Default redirect on "/" — pick first personal view (by position, then name).
   useEffect(() => {
     if (selection !== null) return;
     if (shell.views.isLoading) return;
@@ -71,12 +86,26 @@ export function AppShell() {
     [user?.id, staleDays],
   );
 
+  const areaIcons = useMemo(() => {
+    const m = new Map<string, string>();
+    const def = propDefs.find((d) => d.key === "area");
+    const opts = (def?.options as unknown as
+      | Array<{ value: string; icon?: string }>
+      | undefined) ?? [];
+    for (const o of opts) if (o.icon) m.set(o.value, o.icon);
+    return m;
+  }, [propDefs]);
+
   const breadcrumb = useMemo(() => {
-    if (!selection) return "";
+    if (!selection) return null;
     if (selection.kind === "view") {
-      return views.find((v) => v.id === selection.id)?.name ?? "";
+      const v = views.find((x) => x.id === selection.id);
+      if (!v) return null;
+      const section =
+        v.scope === "team" ? "Team views" : "My views";
+      return { section, name: v.name };
     }
-    return selection.area;
+    return { section: "Areas", name: selection.area };
   }, [selection, views]);
 
   async function handleSignOut() {
@@ -119,6 +148,7 @@ export function AppShell() {
             initials={initials}
             workspaceName={workspaceName}
             memberCount={memberCount}
+            areaIcons={areaIcons}
             onSignOut={handleSignOut}
           />
         </div>
@@ -137,7 +167,15 @@ export function AppShell() {
           >
             <Glyph path="M4 6h16M4 12h16M4 18h16" />
           </button>
-          <span className="text-ui text-body">{breadcrumb}</span>
+          {breadcrumb && (
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="text-ui text-secondary">{breadcrumb.section}</span>
+              <span className="text-ui text-rule">/</span>
+              <span className="min-w-0 truncate text-ui text-body">
+                {breadcrumb.name}
+              </span>
+            </div>
+          )}
         </header>
 
         <main className="min-w-0 flex-1 bg-canvas overflow-y-auto">
@@ -162,7 +200,40 @@ type ViewRow = {
   position: number;
   filter: unknown;
   sort: unknown;
+  icon: string | null;
+  owner_id: string;
 };
+
+type SectionKey = "my" | "team" | "areas";
+type SectionState = Record<SectionKey, boolean>;
+
+function useSectionState(): [SectionState, (k: SectionKey) => void] {
+  const [state, setState] = useState<SectionState>(() => {
+    if (typeof window === "undefined") return { my: true, team: true, areas: true };
+    try {
+      const raw = window.localStorage.getItem(SECTION_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<SectionState>;
+        return {
+          my: parsed.my !== false,
+          team: parsed.team !== false,
+          areas: parsed.areas !== false,
+        };
+      }
+    } catch {
+      /* ignore */
+    }
+    return { my: true, team: true, areas: true };
+  });
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(SECTION_KEY, JSON.stringify(state));
+    }
+  }, [state]);
+  const toggle = (k: SectionKey) =>
+    setState((prev) => ({ ...prev, [k]: !prev[k] }));
+  return [state, toggle];
+}
 
 function SidebarBody({
   loading,
@@ -175,6 +246,7 @@ function SidebarBody({
   initials,
   workspaceName,
   memberCount,
+  areaIcons,
   onSignOut,
 }: {
   loading: boolean;
@@ -187,8 +259,12 @@ function SidebarBody({
   initials: string;
   workspaceName: string;
   memberCount: number;
+  areaIcons: Map<string, string>;
   onSignOut: () => void;
 }) {
+  const [sections, toggleSection] = useSectionState();
+  const { user } = useAuth();
+
   const personal = views
     .filter((v) => v.scope === "personal")
     .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
@@ -196,7 +272,6 @@ function SidebarBody({
     .filter((v) => v.scope === "team")
     .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
 
-  // Derived areas + stale-page lookup, all from the pages cache.
   const areas = useMemo(() => {
     const counts = new Map<string, number>();
     for (const p of pages) {
@@ -298,179 +373,734 @@ function SidebarBody({
         ) : (
           <>
             {/* My views */}
-            <SectionHeader label="My views">
-              <button
-                type="button"
-                title="New view — coming soon"
-                className="grid h-5 w-5 place-items-center rounded-sm text-faint hover:bg-railHover hover:text-secondary"
-              >
-                <Glyph path="M12 5v14M5 12h14" className="h-3.5 w-3.5" />
-              </button>
-            </SectionHeader>
-            <ul>
-              {personal.map((v) => (
-                <li key={v.id}>
-                  <Link
-                    to="/v/$viewId"
-                    params={{ viewId: v.id }}
-                    style={{ height: "var(--spacing-rowMy)" }}
-                    className={rowClass(viewActive(v.id))}
-                  >
-                    <LayoutGlyph layout={v.layout} />
-                    <span className="min-w-0 flex-1 truncate text-row">{v.name}</span>
-                    {renderCount(countFor(v), "text-row")}
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            <SectionHeader
+              label="My views"
+              open={sections.my}
+              onToggle={() => toggleSection("my")}
+              trailing={
+                <button
+                  type="button"
+                  title="New view — coming soon"
+                  className="grid h-5 w-5 place-items-center rounded-sm text-faint hover:bg-railHover hover:text-secondary"
+                >
+                  <Glyph path="M12 5v14M5 12h14" className="h-3.5 w-3.5" />
+                </button>
+              }
+            />
+            {sections.my && (
+              <ul>
+                {personal.map((v) => (
+                  <MyViewRow
+                    key={v.id}
+                    v={v}
+                    active={viewActive(v.id)}
+                    count={countFor(v)}
+                    renderCount={renderCount}
+                  />
+                ))}
+              </ul>
+            )}
 
             {/* Team views */}
-            <SectionHeader label="Team views" />
-            <ul>
-              {team.map((v) => (
-                <li key={v.id}>
-                  <Link
-                    to="/v/$viewId"
-                    params={{ viewId: v.id }}
-                    style={{ height: "var(--spacing-rowTeam)" }}
-                    className={rowClass(viewActive(v.id))}
-                  >
-                    <Glyph
-                      path="M8 12a3 3 0 100-6 3 3 0 000 6zm8 0a3 3 0 100-6 3 3 0 000 6zM2 20c0-3 3-5 6-5s6 2 6 5m2 0c0-2 2-4 4-4s4 2 4 4"
-                      className="h-3.5 w-3.5 shrink-0 text-muted"
+            <SectionHeader
+              label="Team views"
+              open={sections.team}
+              onToggle={() => toggleSection("team")}
+            />
+            {sections.team && (
+              <>
+                <ul>
+                  {team.map((v) => (
+                    <TeamViewRow
+                      key={v.id}
+                      v={v}
+                      active={viewActive(v.id)}
+                      count={countFor(v)}
+                      renderCount={renderCount}
                     />
-                    <span className="min-w-0 flex-1 truncate text-meta text-secondary">
-                      {v.name}
-                    </span>
-                    {renderCount(countFor(v), "text-meta")}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-            <p className="px-2 pt-1 text-caption italic text-faint">
-              Published from My views
-            </p>
+                  ))}
+                </ul>
+                <p className="px-2 pt-1 text-caption italic text-faint">
+                  Published from My views — open a view's ⋯ menu.
+                </p>
+              </>
+            )}
 
             {/* Areas */}
-            <SectionHeader label="Areas" />
-            <ul>
-              {areas.map(({ area, count }) => {
-                const open = openAreas.has(area);
-                const items = areaPages.get(area) ?? [];
-                return (
-                  <li key={area}>
-                    <div className="flex items-center">
-                      <button
-                        type="button"
-                        onClick={() => toggleArea(area)}
-                        aria-label={open ? `Collapse ${area}` : `Expand ${area}`}
-                        className="grid h-6 w-6 place-items-center rounded-sm text-muted hover:bg-railHover"
-                      >
-                        <Glyph
-                          path="M9 6l6 6-6 6"
-                          className="h-3.5 w-3.5"
-                          style={{
-                            transform: open ? "rotate(90deg)" : "rotate(0deg)",
-                          }}
-                        />
-                      </button>
-                      <Link
-                        to="/a/$area"
-                        params={{ area }}
-                        style={{ height: "var(--spacing-rowArea)" }}
-                        className={
-                          "flex flex-1 items-center gap-2 rounded-md px-1 " +
-                          (areaActive(area)
-                            ? "bg-selected font-bold text-noir"
-                            : "text-body hover:bg-railHover")
-                        }
-                      >
-                        <span className="min-w-0 flex-1 truncate text-row">
-                          {area}
-                        </span>
-                        <span className="tnum text-row text-whisper">{count}</span>
-                      </Link>
-                    </div>
-                    {open && (
-                      <ul className="ml-6">
-                        {items.map((p) => (
-                          <li key={p.id}>
-                            <div
-                              style={{ height: "var(--spacing-rowPage)" }}
-                              className="flex cursor-default items-center gap-2 rounded-md px-2 text-meta text-secondary hover:bg-railHover"
-                            >
-                              {isStale(p) && (
-                                <span
-                                  aria-label="Stale"
-                                  className="h-1.5 w-1.5 shrink-0 rounded-full bg-amberDot"
-                                />
-                              )}
-                              <span className="min-w-0 flex-1 truncate">
-                                {p.title || "Untitled"}
-                              </span>
-                            </div>
-                          </li>
-                        ))}
-                        <li>
-                          <button
-                            type="button"
-                            title="Coming soon"
-                            style={{ height: "var(--spacing-rowPage)" }}
-                            className="flex w-full items-center gap-2 rounded-md px-2 text-meta text-faint hover:bg-railHover"
-                          >
-                            <Glyph path="M12 5v14M5 12h14" className="h-3 w-3" />
-                            <span>New page</span>
-                          </button>
-                        </li>
-                      </ul>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+            <SectionHeader
+              label="Areas"
+              open={sections.areas}
+              onToggle={() => toggleSection("areas")}
+              trailing={
+                <button
+                  type="button"
+                  title="New page in an area — use an area's ⋯ menu"
+                  className="grid h-5 w-5 place-items-center rounded-sm text-faint hover:bg-railHover hover:text-secondary"
+                >
+                  <Glyph path="M12 5v14M5 12h14" className="h-3.5 w-3.5" />
+                </button>
+              }
+            />
+            {sections.areas && (
+              <ul>
+                {areas.map(({ area, count }) => {
+                  const open = openAreas.has(area);
+                  const items = areaPages.get(area) ?? [];
+                  return (
+                    <AreaLi
+                      key={area}
+                      area={area}
+                      count={count}
+                      icon={areaIcons.get(area)}
+                      open={open}
+                      onToggle={() => toggleArea(area)}
+                      active={areaActive(area)}
+                      items={items}
+                      isStale={isStale}
+                      me={user?.id ?? ""}
+                    />
+                  );
+                })}
+              </ul>
+            )}
           </>
         )}
       </div>
 
-      {/* Footer */}
-      <div className="border-t border-line px-2.5 py-2">
-        <div className="flex items-center gap-2">
-          <span
-            className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-label"
-            style={{
-              background: profile?.avatar_tint ?? "var(--color-sunken)",
-              color: profile?.avatar_ink ?? "var(--color-noir)",
-            }}
-          >
-            {initials}
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-row text-body">
-              {profile?.full_name || userEmail}
-            </div>
-            <div className="truncate text-caption text-muted">
-              {workspaceName}
-              {memberCount ? ` · ${memberCount} members` : ""}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onSignOut}
-            aria-label="Sign out"
-            className="grid h-7 w-7 place-items-center rounded-md text-secondary hover:bg-railHover hover:text-strong"
-          >
-            <Glyph
-              path="M15 4v-1a2 2 0 00-2-2H5a2 2 0 00-2 2v16a2 2 0 002 2h8a2 2 0 002-2v-1M10 12h11m0 0l-4-4m4 4l-4 4"
-              className="h-4 w-4"
-            />
-          </button>
-        </div>
-      </div>
+      {/* Divider + aside + footer, in that order */}
       <p className="border-t border-line px-3 py-2 text-caption italic text-secondary">
         No folders. A page lives wherever its properties say it does.
       </p>
+
+      <div className="border-t border-line px-2.5 py-2">
+        <FooterAccount
+          profile={profile}
+          userEmail={userEmail}
+          initials={initials}
+          workspaceName={workspaceName}
+          memberCount={memberCount}
+          onSignOut={onSignOut}
+        />
+      </div>
     </>
   );
+}
+
+/* ─────────────────── View rows w/ hover ⋯ menus ─────────────────── */
+
+function MyViewRow({
+  v,
+  active,
+  count,
+  renderCount,
+}: {
+  v: ViewRow;
+  active: boolean;
+  count: number | "!";
+  renderCount: (c: number | "!", size: string) => ReactNode;
+}) {
+  const [hover, setHover] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(v.name);
+  const updateView = useUpdateView();
+  const createView = useCreateView();
+  const deleteView = useDeleteView();
+  const navigate = useNavigate();
+
+  const showMenu = hover || menu;
+
+  return (
+    <li
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      className="relative"
+    >
+      <Link
+        to="/v/$viewId"
+        params={{ viewId: v.id }}
+        style={{ height: "var(--spacing-rowMy)" }}
+        className={rowClass(active)}
+        onClick={(e) => {
+          if (renaming) e.preventDefault();
+        }}
+      >
+        {v.icon ? (
+          <span className="text-row leading-none">{v.icon}</span>
+        ) : (
+          <LayoutGlyph layout={v.layout} />
+        )}
+        {renaming ? (
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => {
+              setRenaming(false);
+              if (name.trim() && name !== v.name)
+                updateView.mutate({ id: v.id, patch: { name: name.trim() } });
+              else setName(v.name);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              if (e.key === "Escape") {
+                setName(v.name);
+                setRenaming(false);
+              }
+            }}
+            className="min-w-0 flex-1 bg-transparent text-row focus:outline-none"
+          />
+        ) : (
+          <span className="min-w-0 flex-1 truncate text-row">{v.name}</span>
+        )}
+        <span className="relative flex h-5 min-w-[20px] items-center justify-end">
+          {showMenu ? (
+            <MoreButton
+              open={menu}
+              onOpen={() => setMenu(true)}
+              onClose={() => setMenu(false)}
+              menu={
+                <>
+                  <MenuItem
+                    onClick={() => {
+                      setMenu(false);
+                      navigate({ to: "/v/$viewId", params: { viewId: v.id } });
+                    }}
+                  >
+                    Open
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      setMenu(false);
+                      setRenaming(true);
+                    }}
+                  >
+                    Rename
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      setMenu(false);
+                      createView.mutate({
+                        name: `${v.name} copy`,
+                        icon: v.icon,
+                        filter: (v.filter ?? []) as Filter[],
+                        sort: (v.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
+                        layout: v.layout,
+                      });
+                    }}
+                  >
+                    Duplicate
+                  </MenuItem>
+                  <MenuItem disabled title="Next phase">
+                    Publish to team
+                  </MenuItem>
+                  <MenuDivider />
+                  <MenuItem
+                    danger
+                    onClick={() => {
+                      setMenu(false);
+                      if (window.confirm(`Delete view "${v.name}"?`)) {
+                        deleteView.mutate(v.id);
+                      }
+                    }}
+                  >
+                    Delete
+                  </MenuItem>
+                </>
+              }
+            />
+          ) : (
+            renderCount(count, "text-row")
+          )}
+        </span>
+      </Link>
+    </li>
+  );
+}
+
+function TeamViewRow({
+  v,
+  active,
+  count,
+  renderCount,
+}: {
+  v: ViewRow;
+  active: boolean;
+  count: number | "!";
+  renderCount: (c: number | "!", size: string) => ReactNode;
+}) {
+  const [hover, setHover] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const fork = useForkView();
+  const navigate = useNavigate();
+  const showMenu = hover || menu;
+  return (
+    <li
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      className="relative"
+    >
+      <Link
+        to="/v/$viewId"
+        params={{ viewId: v.id }}
+        style={{ height: "var(--spacing-rowTeam)" }}
+        className={rowClass(active)}
+      >
+        <Glyph
+          path="M8 12a3 3 0 100-6 3 3 0 000 6zm8 0a3 3 0 100-6 3 3 0 000 6zM2 20c0-3 3-5 6-5s6 2 6 5m2 0c0-2 2-4 4-4s4 2 4 4"
+          className="h-3.5 w-3.5 shrink-0 text-muted"
+        />
+        <span className="min-w-0 flex-1 truncate text-meta text-secondary">
+          {v.name}
+        </span>
+        <span className="relative flex h-5 min-w-[20px] items-center justify-end">
+          {showMenu ? (
+            <MoreButton
+              open={menu}
+              onOpen={() => setMenu(true)}
+              onClose={() => setMenu(false)}
+              menu={
+                <>
+                  <MenuItem
+                    onClick={() => {
+                      setMenu(false);
+                      navigate({ to: "/v/$viewId", params: { viewId: v.id } });
+                    }}
+                  >
+                    Open
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      setMenu(false);
+                      fork.mutate({
+                        viewId: v.id,
+                        name: `${v.name} copy`,
+                        filter: (v.filter ?? []) as Filter[],
+                        sort: (v.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
+                        layout: v.layout,
+                      });
+                    }}
+                  >
+                    Duplicate into My views
+                  </MenuItem>
+                </>
+              }
+            />
+          ) : (
+            renderCount(count, "text-meta")
+          )}
+        </span>
+      </Link>
+    </li>
+  );
+}
+
+function AreaLi({
+  area,
+  count,
+  icon,
+  open,
+  onToggle,
+  active,
+  items,
+  isStale,
+  me: _me,
+}: {
+  area: string;
+  count: number;
+  icon: string | undefined;
+  open: boolean;
+  onToggle: () => void;
+  active: boolean;
+  items: PageListItem[];
+  isStale: (p: PageListItem) => boolean;
+  me: string;
+}) {
+  const [hover, setHover] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const createPage = useCreatePage();
+  const createView = useCreateView();
+  const navigate = useNavigate();
+  const showMenu = hover || menu;
+
+  return (
+    <li
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <div className="relative flex items-center">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label={open ? `Collapse ${area}` : `Expand ${area}`}
+          className="grid h-6 w-6 place-items-center rounded-sm text-muted hover:bg-railHover"
+        >
+          <Glyph
+            path="M9 6l6 6-6 6"
+            className="h-3.5 w-3.5"
+            style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)" }}
+          />
+        </button>
+        <Link
+          to="/a/$area"
+          params={{ area }}
+          style={{ height: "var(--spacing-rowArea)" }}
+          className={
+            "flex flex-1 items-center gap-2 rounded-md px-1 " +
+            (active
+              ? "bg-selected font-bold text-noir"
+              : "text-body hover:bg-railHover")
+          }
+        >
+          {icon && <span className="text-row leading-none">{icon}</span>}
+          <span className="min-w-0 flex-1 truncate text-row">{area}</span>
+          <span className="relative flex h-5 min-w-[20px] items-center justify-end">
+            {showMenu ? (
+              <MoreButton
+                open={menu}
+                onOpen={() => setMenu(true)}
+                onClose={() => setMenu(false)}
+                width={240}
+                menu={
+                  <>
+                    <div className="px-2 py-1 text-label uppercase text-faint">
+                      {area} · {count} {count === 1 ? "PAGE" : "PAGES"}
+                    </div>
+                    <MenuDivider />
+                    <MenuItem
+                      right={<span className="text-caption text-faint">↵</span>}
+                      onClick={() => {
+                        setMenu(false);
+                        navigate({ to: "/a/$area", params: { area } });
+                      }}
+                    >
+                      Open area
+                    </MenuItem>
+                    <MenuItem
+                      onClick={() => {
+                        setMenu(false);
+                        if (!open) onToggle();
+                      }}
+                    >
+                      Show pages
+                    </MenuItem>
+                    <MenuItem
+                      onClick={() => {
+                        setMenu(false);
+                        createPage.mutate({ seedProps: { area } });
+                      }}
+                    >
+                      New page here
+                    </MenuItem>
+                    <MenuItem
+                      disabled
+                      title="Coming soon — rewrites the property on every page"
+                    >
+                      Rename area
+                    </MenuItem>
+                    <MenuDivider />
+                    <MenuItem
+                      right={
+                        <span className="text-caption text-faint">personal</span>
+                      }
+                      onClick={() => {
+                        setMenu(false);
+                        createView.mutate({
+                          name: area,
+                          filter: [{ op: "eq", prop: "area", value: area }],
+                          sort: { prop: "edited", dir: "desc" },
+                          layout: "table",
+                        });
+                      }}
+                    >
+                      Save as my view
+                    </MenuItem>
+                  </>
+                }
+              />
+            ) : (
+              <span className="tnum text-row text-whisper">{count}</span>
+            )}
+          </span>
+        </Link>
+      </div>
+      {open && (
+        <ul className="ml-6">
+          {items.map((p) => (
+            <li key={p.id}>
+              <div
+                style={{ height: "var(--spacing-rowPage)" }}
+                className="flex cursor-default items-center gap-2 rounded-md px-2 text-meta text-secondary hover:bg-railHover"
+              >
+                {isStale(p) && (
+                  <span
+                    aria-label="Stale"
+                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-amberDot"
+                  />
+                )}
+                <span className="min-w-0 flex-1 truncate">
+                  {p.title || "Untitled"}
+                </span>
+              </div>
+            </li>
+          ))}
+          <li>
+            <button
+              type="button"
+              onClick={() => createPage.mutate({ seedProps: { area } })}
+              style={{ height: "var(--spacing-rowPage)" }}
+              className="flex w-full items-center gap-2 rounded-md px-2 text-meta text-faint hover:bg-railHover"
+            >
+              <Glyph path="M12 5v14M5 12h14" className="h-3 w-3" />
+              <span>New page</span>
+            </button>
+          </li>
+        </ul>
+      )}
+    </li>
+  );
+}
+
+/* ─────────────────── Footer + account dropdown ─────────────────── */
+
+function FooterAccount({
+  profile,
+  userEmail,
+  initials,
+  workspaceName,
+  memberCount,
+  onSignOut,
+}: {
+  profile: { full_name: string; avatar_tint: string; avatar_ink: string } | null;
+  userEmail: string;
+  initials: string;
+  workspaceName: string;
+  memberCount: number;
+  onSignOut: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!wrapRef.current) return;
+      if (!wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const wsInitial = workspaceName ? workspaceName[0].toUpperCase() : "?";
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <div className="flex items-center gap-2">
+        <span
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-label"
+          style={{
+            background: profile?.avatar_tint ?? "var(--color-sunken)",
+            color: profile?.avatar_ink ?? "var(--color-noir)",
+          }}
+        >
+          {initials}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-row text-body">
+            {profile?.full_name || userEmail}
+          </div>
+          <div className="truncate text-caption text-muted">
+            {workspaceName}
+            {memberCount ? ` · ${memberCount} people` : ""}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-label="Account menu"
+          aria-expanded={open}
+          className="grid h-7 w-7 place-items-center rounded-md text-secondary hover:bg-railHover hover:text-strong"
+        >
+          <Glyph
+            path="M7 15l5-5 5 5M7 9l5 5 5-5"
+            className="h-4 w-4"
+          />
+        </button>
+      </div>
+
+      {open && (
+        <div
+          className="absolute bottom-full left-0 right-0 mb-2 rounded-xl border border-line bg-surface p-1 shadow-popover animate-popIn"
+        >
+          {/* Workspace card */}
+          <div className="flex items-center gap-2 rounded-lg px-2 py-2">
+            <span
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-sunken text-row font-bold text-noir"
+              aria-hidden
+            >
+              {wsInitial}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-row font-bold text-noir">
+                {workspaceName}
+              </div>
+              <div className="truncate text-caption text-muted">
+                MVP plan · {memberCount} members
+              </div>
+            </div>
+          </div>
+          <MenuDivider />
+          <MenuItem
+            disabled
+            title="Coming soon"
+            right={<span className="font-mono text-caption text-faint">⌘,</span>}
+          >
+            Settings
+          </MenuItem>
+          <MenuItem disabled title="Coming soon">
+            Invite members
+          </MenuItem>
+          <MenuDivider />
+          <div className="px-2 py-1 text-caption text-muted truncate">
+            {userEmail}
+          </div>
+          <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-row text-body">
+            <span
+              className="grid h-5 w-5 shrink-0 place-items-center rounded-sm bg-sunken text-caption font-bold text-noir"
+              aria-hidden
+            >
+              {wsInitial}
+            </span>
+            <span className="min-w-0 flex-1 truncate">{workspaceName}</span>
+            <Glyph path="M5 12l5 5 9-11" className="h-3.5 w-3.5 text-accent" />
+          </div>
+          <MenuDivider />
+          <MenuItem
+            onClick={() => {
+              setOpen(false);
+              onSignOut();
+            }}
+          >
+            Log out
+          </MenuItem>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────── Menu primitives ─────────────────── */
+
+function MoreButton({
+  open,
+  onOpen,
+  onClose,
+  menu,
+  width = 200,
+}: {
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  menu: ReactNode;
+  width?: number;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!ref.current) return;
+      if (!ref.current.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, onClose]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-label="More"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          open ? onClose() : onOpen();
+        }}
+        className="grid h-5 w-5 place-items-center rounded-sm text-secondary hover:bg-railHover hover:text-strong"
+      >
+        <Glyph
+          path="M6 12a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"
+          className="h-4 w-4"
+        />
+      </button>
+      {open && (
+        <div
+          style={{ width }}
+          className="absolute right-0 top-full z-40 mt-1 rounded-lg border border-line bg-surface p-1 shadow-popover animate-popIn"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {menu}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MenuItem({
+  children,
+  onClick,
+  disabled,
+  danger,
+  right,
+  title,
+}: {
+  children: ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+  right?: ReactNode;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      title={title}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick?.();
+      }}
+      className={
+        "flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-row " +
+        (disabled
+          ? "cursor-not-allowed text-faint"
+          : danger
+            ? "text-danger hover:bg-dangerTint"
+            : "text-body hover:bg-rail")
+      }
+    >
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {right}
+    </button>
+  );
+}
+
+function MenuDivider() {
+  return <div className="my-1 border-t border-lineSoft" />;
 }
 
 function rowClass(active: boolean) {
@@ -482,15 +1112,32 @@ function rowClass(active: boolean) {
 
 function SectionHeader({
   label,
-  children,
+  open,
+  onToggle,
+  trailing,
 }: {
   label: string;
-  children?: ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  trailing?: ReactNode;
 }) {
   return (
     <div className="mt-4 flex items-center justify-between px-2 pb-1">
-      <span className="text-label uppercase text-faint">{label}</span>
-      {children}
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-label={open ? `Collapse ${label}` : `Expand ${label}`}
+        className="flex items-center gap-1 text-label uppercase text-faint hover:text-secondary"
+      >
+        <Glyph
+          path="M6 9l6 6 6-6"
+          className="h-3 w-3"
+          style={{ transform: open ? "rotate(0deg)" : "rotate(-90deg)" }}
+        />
+        {label}
+      </button>
+      {trailing}
     </div>
   );
 }
