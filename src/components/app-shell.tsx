@@ -297,6 +297,8 @@ function SidebarBody({
   onOpenPalette: () => void;
 }) {
   const [sections, toggleSection] = useSectionState();
+  const { prefs } = usePrefs();
+  const showSidebarCounts = prefs.showSidebarCounts;
   const { user } = useAuth();
 
   const personal = views
