@@ -53,9 +53,30 @@ Areas (derived): Design 3 · Engineering 5 · Hiring 7 · Ops 3 · Product 4.
    data enters the workspace.
 4. Nitro emits Cloudflare wrangler config by default. Harmless while
    output remains a static client bundle; revisit at deploy time.
-5. src/routes/index.tsx has a temporary ["membership", userId] query to
-   find the workspace id. Replace when the shell gains a proper
-   workspace context.
+5. Sidebar counts diverge from the acceptance table when signed in as
+   Allan. Two independent issues, both in seed/RLS, NOT in runView or
+   the shell:
+   a. My views section is empty. The three "personal" views are owned
+      by user aaaaaaaa-… (not Allan), so with scope='personal' Allan
+      sees none. Decide whether personal views should be per-owner
+      (re-seed for Allan) or shared-with-per-viewer-is_me.
+   b. Hiring area and "Hiring pipeline" team view both count 6 (expected
+      7). Both independent paths agree, so one Hiring page is unreadable
+      to Allan — likely a page_access row or access_type='private'.
+      Audit the Hiring pages against Allan's can_read_page result.
+
+## Status of shell + sidebar phase
+
+Shell + sidebar built and wired: workspace-context.tsx resolves the
+workspace id once, AppShell renders sidebar + topbar + placeholder main,
+counts computed from runView on the pages cache (never per-view queries),
+areas derived from page.props.area, stale amber dot from workspace
+stale_days, footer sign-out replaces the old index button. All four
+build checks green, 13/13 vitest tests pass. NOT marked Done in the
+table above until the two count discrepancies (debt 5) are resolved.
+Next-phase acceptance (once counts match): table view renders the same
+pages runView returns for the selected view; inline property edit moves
+a page between views immediately.
 
 ## Phase order (remaining)
 
