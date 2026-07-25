@@ -1307,6 +1307,106 @@ function HeaderMenu({
 
 /* ─────────────────────────── Table body ─────────────────────────── */
 
+function useStableStringArray(arr: string[]): string[] {
+  const ref = useRef(arr);
+  const prev = ref.current;
+  if (prev.length !== arr.length || prev.some((x, i) => x !== arr[i])) {
+    ref.current = arr;
+  }
+  return ref.current;
+}
+
+type SetPropFn = ReturnType<typeof useSetPageProperty>["mutate"];
+type RenameFn = ReturnType<typeof useRenamePage>["mutate"];
+
+const TableRow = memo(function TableRow({
+  p,
+  isStale,
+  areas,
+  allTags,
+  members,
+  statusDef,
+  rename,
+  setProp,
+  pagesForTitleCell,
+}: {
+  p: PageListItem;
+  isStale: boolean;
+  areas: string[];
+  allTags: string[];
+  members: MemberRow[];
+  statusDef: PropDef | undefined;
+  rename: RenameFn;
+  setProp: SetPropFn;
+  pagesForTitleCell: PageListItem[];
+}) {
+  return (
+    <RowGroup>
+      <Cell>
+        <PageTitleCell
+          page={p}
+          onSave={(t) => rename({ pageId: p.id, title: t })}
+        />
+      </Cell>
+      <Cell className="hidden xs:block">
+        <AreaCell
+          page={p}
+          areas={areas}
+          onPick={(v) => setProp({ pageId: p.id, key: "area", value: v })}
+        />
+      </Cell>
+      <Cell>
+        <OwnerCell
+          page={p}
+          members={members}
+          onPick={(uid) => setProp({ pageId: p.id, key: "owner", value: uid })}
+        />
+      </Cell>
+      <Cell>
+        <StatusCell
+          page={p}
+          def={statusDef}
+          onPick={(v) => setProp({ pageId: p.id, key: "status", value: v })}
+        />
+      </Cell>
+      <Cell className="hidden sm:block">
+        <TagsCellMemo
+          page={p}
+          allTags={allTags}
+          onSet={(tags) => setProp({ pageId: p.id, key: "tags", value: tags })}
+        />
+      </Cell>
+      <Cell className="hidden md:block">
+        {isStale ? (
+          <span className="inline-flex items-center gap-1 font-bold text-amberInk">
+            ⚠ {relTime(p.verified_at)}
+          </span>
+        ) : (
+          <span className="text-meta text-muted">{relTime(p.verified_at)}</span>
+        )}
+      </Cell>
+      <Cell>
+        <span className="text-meta text-muted">{relTime(p.edited_at)}</span>
+      </Cell>
+      {/* keep prop referenced so lint stays quiet — hover prefetch lives in PageTitleCell */}
+      <span hidden data-count={pagesForTitleCell.length} />
+    </RowGroup>
+  );
+});
+
+/** Tag cell that takes a stable options list instead of the whole pages array. */
+const TagsCellMemo = memo(function TagsCellMemo({
+  page,
+  allTags,
+  onSet,
+}: {
+  page: PageListItem;
+  allTags: string[];
+  onSet: (tags: string[]) => void;
+}) {
+  return <TagsCell page={page} onSet={onSet} pages={[]} allOverride={allTags} />;
+});
+
 function TableBody({
   rows,
   pages,
@@ -1326,6 +1426,23 @@ function TableBody({
   rename: ReturnType<typeof useRenamePage>;
   setProp: ReturnType<typeof useSetPageProperty>;
 }) {
+  // Stable tag options: recompute from pages, but keep the same array ref
+  // when contents are unchanged so memoized rows don't re-render.
+  const tagsRaw = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of pages) {
+      const t = (p.props && typeof p.props === "object" && !Array.isArray(p.props)
+        ? (p.props as Record<string, unknown>)["tags"]
+        : undefined);
+      if (Array.isArray(t)) t.forEach((x) => s.add(String(x)));
+    }
+    return [...s].sort();
+  }, [pages]);
+  const allTags = useStableStringArray(tagsRaw);
+  const stableAreas = useStableStringArray(areas);
+  const renameMutate = rename.mutate;
+  const setPropMutate = setProp.mutate;
+
   return (
     <div className="overflow-x-auto">
       <div
@@ -1345,63 +1462,25 @@ function TableBody({
         <HeaderCell className="hidden md:block">Verified</HeaderCell>
         <HeaderCell>Edited</HeaderCell>
 
-        {rows.map((p) => {
-          const isStale = new Date(p.verified_at).getTime() < staleThreshold;
-          return (
-            <RowGroup key={p.id}>
-              <Cell>
-                <PageTitleCell
-                  page={p}
-                  onSave={(t) => rename.mutate({ pageId: p.id, title: t })}
-                />
-              </Cell>
-              <Cell className="hidden xs:block">
-                <AreaCell
-                  page={p}
-                  areas={areas}
-                  onPick={(v) => setProp.mutate({ pageId: p.id, key: "area", value: v })}
-                />
-              </Cell>
-              <Cell>
-                <OwnerCell
-                  page={p}
-                  members={members}
-                  onPick={(uid) => setProp.mutate({ pageId: p.id, key: "owner", value: uid })}
-                />
-              </Cell>
-              <Cell>
-                <StatusCell
-                  page={p}
-                  def={statusDef}
-                  onPick={(v) => setProp.mutate({ pageId: p.id, key: "status", value: v })}
-                />
-              </Cell>
-              <Cell className="hidden sm:block">
-                <TagsCell
-                  page={p}
-                  pages={pages}
-                  onSet={(tags) => setProp.mutate({ pageId: p.id, key: "tags", value: tags })}
-                />
-              </Cell>
-              <Cell className="hidden md:block">
-                {isStale ? (
-                  <span className="inline-flex items-center gap-1 font-bold text-amberInk">
-                    ⚠ {relTime(p.verified_at)}
-                  </span>
-                ) : (
-                  <span className="text-meta text-muted">{relTime(p.verified_at)}</span>
-                )}
-              </Cell>
-              <Cell>
-                <span className="text-meta text-muted">{relTime(p.edited_at)}</span>
-              </Cell>
-            </RowGroup>
-          );
-        })}
+        {rows.map((p) => (
+          <TableRow
+            key={p.id}
+            p={p}
+            isStale={new Date(p.verified_at).getTime() < staleThreshold}
+            areas={stableAreas}
+            allTags={allTags}
+            members={members}
+            statusDef={statusDef}
+            rename={renameMutate}
+            setProp={setPropMutate}
+            pagesForTitleCell={pages}
+          />
+        ))}
       </div>
     </div>
   );
 }
+
 
 /* ─────────────────────────── Board body ─────────────────────────── */
 
