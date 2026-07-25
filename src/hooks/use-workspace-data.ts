@@ -152,6 +152,9 @@ export function useAllowedDomains(ws: string | undefined) {
     },
     enabled: !!ws,
   });
+}
+
+
 
 export function useAreas(ws: string | undefined) {
   const pagesQ = usePages(ws);
