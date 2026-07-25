@@ -21,10 +21,12 @@ import {
 import { useToast } from "@/lib/toast";
 import type { PageListItem } from "@/lib/types";
 import { MainView } from "./main-view";
+import { PageEditor } from "./page-view";
 
 type Selection =
   | { kind: "view"; id: string }
   | { kind: "area"; area: string }
+  | { kind: "page"; id: string }
   | null;
 
 const COLLAPSE_KEY = "gio.sidebar.collapsed";
@@ -35,6 +37,7 @@ function useSelection(): Selection {
   const viewParams = useParams({ strict: false }) as {
     viewId?: string;
     area?: string;
+    pageId?: string;
   };
   if (pathname.startsWith("/v/") && viewParams.viewId) {
     return { kind: "view", id: viewParams.viewId };
@@ -42,8 +45,12 @@ function useSelection(): Selection {
   if (pathname.startsWith("/a/") && viewParams.area) {
     return { kind: "area", area: decodeURIComponent(viewParams.area) };
   }
+  if (pathname.startsWith("/p/") && viewParams.pageId) {
+    return { kind: "page", id: viewParams.pageId };
+  }
   return null;
 }
+
 
 export function AppShell() {
   const workspaceId = useWorkspaceId();
