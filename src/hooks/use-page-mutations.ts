@@ -260,7 +260,9 @@ export function useUpdateView() {
   return useMutation({
     mutationFn: async (v: {
       id: string;
-      patch: Partial<Pick<ViewFull, "name" | "icon" | "filter" | "sort" | "layout">>;
+      patch: Partial<
+        Pick<ViewFull, "name" | "icon" | "filter" | "sort" | "layout" | "group_by">
+      >;
     }) => {
       const { error } = await supabase
         .from("views")
@@ -284,6 +286,7 @@ export function useUpdateView() {
     onSettled: () => qc.invalidateQueries({ queryKey: qk.views(ws) }),
   });
 }
+
 
 export function useDeleteView() {
   const qc = useQueryClient();
