@@ -122,12 +122,12 @@ function describeFilter(f: Filter, propDefs: PropDef[], staleDays: number): stri
 function ViewHeader({
   selection,
   view,
-  areaCount,
+  rowCount,
   onNewPage,
 }: {
   selection: Selection;
   view: ViewRow | null;
-  areaCount?: number;
+  rowCount: number;
   onNewPage: () => void;
 }) {
   let scopeLabel: ReactNode = "AREA";
@@ -138,11 +138,12 @@ function ViewHeader({
         <Glyph path="M8 12a3 3 0 100-6 3 3 0 000 6zm8 0a3 3 0 100-6 3 3 0 000 6zM2 20c0-3 3-5 6-5s6 2 6 5m2 0c0-2 2-4 4-4s4 2 4 4" className="h-3 w-3" />
         TEAM VIEW
       </span>
-    ) : "MY VIEW";
+    ) : "PERSONAL VIEW";
     name = view.name;
   } else if (selection.kind === "area") {
     name = selection.area;
   }
+  const countLabel = `${rowCount} ${rowCount === 1 ? "page" : "pages"}`;
 
   return (
     <div className="mb-4 flex items-start justify-between gap-4">
@@ -150,9 +151,9 @@ function ViewHeader({
         <div className="text-label uppercase text-faint">{scopeLabel}</div>
         <h1 className="mt-1 font-display text-title text-noir truncate">
           {name}
-          {typeof areaCount === "number" && (
-            <span className="ml-2 text-title text-faint">{areaCount}</span>
-          )}
+          <span className="ml-3 align-baseline text-ui text-faint font-normal tracking-normal">
+            {countLabel}
+          </span>
         </h1>
       </div>
       <div className="flex shrink-0 items-center gap-2">
@@ -181,15 +182,17 @@ function ViewHeader({
         <button
           type="button"
           onClick={onNewPage}
-          className="rounded-lg bg-noir px-3 text-ui font-bold text-canvas"
+          className="inline-flex items-center gap-1 rounded-lg bg-noir px-3 text-ui font-bold text-canvas"
           style={{ height: 36 }}
         >
+          <Glyph path="M12 5v14M5 12h14" className="h-3.5 w-3.5" />
           New page
         </button>
       </div>
     </div>
   );
 }
+
 
 /* ─────────────────────────── Query toolbar ─────────────────────────── */
 
