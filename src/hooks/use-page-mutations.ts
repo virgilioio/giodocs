@@ -396,3 +396,26 @@ export function useCreatePage() {
     onSettled: () => qc.invalidateQueries({ queryKey: qk.pages(ws) }),
   });
 }
+
+export function usePublishView() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (viewId: string) => {
+      const { data, error } = await supabase.rpc("publish_view", {
+        p_view: viewId,
+      });
+      if (error) throw error;
+      return data as unknown as ViewFull;
+    },
+    onSuccess: (row) => {
+      qc.setQueryData<ViewFull[]>(qk.views(ws), (prev) =>
+        prev ? prev.map((x) => (x.id === row.id ? row : x)) : [row],
+      );
+      toast.push(`Published "${row.name}" to Team views`);
+    },
+    onError: (err) => toast.push(`Couldn't publish: ${(err as Error).message}`),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.views(ws) }),
+  });
+}
