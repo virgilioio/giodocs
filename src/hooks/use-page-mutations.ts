@@ -106,9 +106,8 @@ export function useSetPageProperty() {
         for (const id of left) toast.push(`Left "${nameOf(id)}"`);
       }
     },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: qk.pages(ws) });
-    },
+    // No onSettled invalidation: optimistic patch is authoritative and
+    // realtime will surface any teammate edits without a list refetch.
   });
 }
 
@@ -142,7 +141,7 @@ export function useRenamePage() {
       if (ctx?.snapshot) qc.setQueryData(qk.pages(ws), ctx.snapshot);
       toast.push(`Couldn't rename: ${(err as Error).message}`);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: qk.pages(ws) }),
+    // Optimistic patch is authoritative; realtime handles teammates.
   });
 }
 
@@ -190,7 +189,6 @@ export function useVerifyPage() {
     },
     onSettled: (_d, _e, pageId) => {
       qc.invalidateQueries({ queryKey: qk.page(pageId) });
-      qc.invalidateQueries({ queryKey: qk.pages(ws) });
     },
   });
 }
@@ -224,6 +222,7 @@ export function useCreateView() {
       filter?: Filter[];
       sort?: SortSpec;
       layout?: "table" | "board" | "list";
+      _tempId?: string;
     }) => {
       const { data, error } = await supabase
         .from("views")
@@ -242,14 +241,46 @@ export function useCreateView() {
       if (error) throw error;
       return data as unknown as ViewFull;
     },
-    onSuccess: (row) => {
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: qk.views(ws) });
+      const tempId =
+        v._tempId ??
+        (globalThis.crypto?.randomUUID?.() ?? `tmp-${Date.now()}-${Math.random()}`);
+      v._tempId = tempId;
+      const optimistic: ViewFull = {
+        id: tempId,
+        workspace_id: ws,
+        owner_id: user!.id,
+        name: v.name,
+        scope: "personal",
+        layout: v.layout ?? "table",
+        position: 0,
+        filter: (v.filter ?? []) as unknown,
+        sort: (v.sort ?? { prop: "edited", dir: "desc" }) as unknown,
+        icon: v.icon ?? null,
+        group_by: null,
+      };
       qc.setQueryData<ViewFull[]>(qk.views(ws), (prev) =>
-        prev ? [...prev, row] : [row],
+        prev ? [...prev, optimistic] : [optimistic],
       );
+      return { tempId };
+    },
+    onSuccess: (row, _v, ctx) => {
+      qc.setQueryData<ViewFull[]>(qk.views(ws), (prev) => {
+        if (!prev) return [row];
+        const filtered = prev.filter((x) => x.id !== ctx?.tempId && x.id !== row.id);
+        return [...filtered, row];
+      });
       toast.push(`Created "${row.name}"`);
     },
-    onError: (err) => toast.push(`Couldn't create view: ${(err as Error).message}`),
-    onSettled: () => qc.invalidateQueries({ queryKey: qk.views(ws) }),
+    onError: (err, _v, ctx) => {
+      if (ctx?.tempId) {
+        qc.setQueryData<ViewFull[]>(qk.views(ws), (prev) =>
+          prev ? prev.filter((x) => x.id !== ctx.tempId) : prev,
+        );
+      }
+      toast.push(`Couldn't create view: ${(err as Error).message}`);
+    },
   });
 }
 
@@ -318,6 +349,7 @@ export function useDeleteView() {
 export function useForkView() {
   const qc = useQueryClient();
   const ws = useWorkspaceId();
+  const { user } = useAuth();
   const toast = useToast();
   return useMutation({
     mutationFn: async (v: {
@@ -327,6 +359,7 @@ export function useForkView() {
       sort: SortSpec;
       layout: "table" | "board" | "list";
       groupBy?: string | null;
+      _tempId?: string;
     }) => {
       const { data, error } = await supabase.rpc("fork_view", {
         p_view: v.viewId,
@@ -347,15 +380,46 @@ export function useForkView() {
       }
       return row;
     },
-    onSuccess: (row) => {
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: qk.views(ws) });
+      const tempId =
+        v._tempId ??
+        (globalThis.crypto?.randomUUID?.() ?? `tmp-${Date.now()}-${Math.random()}`);
+      v._tempId = tempId;
+      const optimistic: ViewFull = {
+        id: tempId,
+        workspace_id: ws,
+        owner_id: user!.id,
+        name: v.name,
+        scope: "personal",
+        layout: v.layout,
+        position: 0,
+        filter: v.filter as unknown,
+        sort: v.sort as unknown,
+        icon: null,
+        group_by: v.groupBy ?? null,
+      };
       qc.setQueryData<ViewFull[]>(qk.views(ws), (prev) =>
-        prev ? [...prev, row] : [row],
+        prev ? [...prev, optimistic] : [optimistic],
       );
+      return { tempId };
+    },
+    onSuccess: (row, _v, ctx) => {
+      qc.setQueryData<ViewFull[]>(qk.views(ws), (prev) => {
+        if (!prev) return [row];
+        const filtered = prev.filter((x) => x.id !== ctx?.tempId && x.id !== row.id);
+        return [...filtered, row];
+      });
       toast.push(`Saved to My views — "${row.name}" is unchanged for the team.`);
     },
-
-    onError: (err) => toast.push(`Couldn't fork: ${(err as Error).message}`),
-    onSettled: () => qc.invalidateQueries({ queryKey: qk.views(ws) }),
+    onError: (err, _v, ctx) => {
+      if (ctx?.tempId) {
+        qc.setQueryData<ViewFull[]>(qk.views(ws), (prev) =>
+          prev ? prev.filter((x) => x.id !== ctx.tempId) : prev,
+        );
+      }
+      toast.push(`Couldn't fork: ${(err as Error).message}`);
+    },
   });
 }
 
@@ -366,7 +430,7 @@ export function useCreatePage() {
   const toast = useToast();
 
   return useMutation({
-    mutationFn: async (v: { seedProps: Record<string, unknown> }) => {
+    mutationFn: async (v: { seedProps: Record<string, unknown>; _tempId?: string }) => {
       const { data, error } = await supabase
         .from("pages")
         .insert({
@@ -386,14 +450,46 @@ export function useCreatePage() {
       if (error) throw error;
       return data as PageListItem;
     },
-    onSuccess: (row) => {
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: qk.pages(ws) });
+      const tempId =
+        v._tempId ??
+        (globalThis.crypto?.randomUUID?.() ?? `tmp-${Date.now()}-${Math.random()}`);
+      v._tempId = tempId;
+      const nowIso = new Date().toISOString();
+      const optimistic: PageListItem = {
+        id: tempId,
+        title: "",
+        icon: "📄",
+        props: v.seedProps as PageListItem["props"],
+        verified_at: nowIso,
+        verified_by: user?.id ?? null,
+        edited_at: nowIso,
+        edited_by: user?.id ?? null,
+        access_type: "workspace" as PageListItem["access_type"],
+      };
       qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) =>
-        prev ? [row, ...prev] : [row],
+        prev ? [optimistic, ...prev] : [optimistic],
       );
+      return { tempId };
+    },
+    onSuccess: (row, v, ctx) => {
+      const tempId = ctx?.tempId ?? v._tempId;
+      qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) => {
+        if (!prev) return [row];
+        const filtered = prev.filter((p) => p.id !== tempId && p.id !== row.id);
+        return [row, ...filtered];
+      });
       toast.push(`New page created`);
     },
-    onError: (err) => toast.push(`Couldn't create page: ${(err as Error).message}`),
-    onSettled: () => qc.invalidateQueries({ queryKey: qk.pages(ws) }),
+    onError: (err, _v, ctx) => {
+      if (ctx?.tempId) {
+        qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) =>
+          prev ? prev.filter((p) => p.id !== ctx.tempId) : prev,
+        );
+      }
+      toast.push(`Couldn't create page: ${(err as Error).message}`);
+    },
   });
 }
 

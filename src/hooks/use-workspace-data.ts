@@ -44,7 +44,8 @@ async function fetchViews(ws: string) {
   const { data, error } = await supabase
     .from("views")
     .select("*")
-    .eq("workspace_id", ws);
+    .eq("workspace_id", ws)
+    .limit(200);
   if (error) throw error;
   return data ?? [];
 }
@@ -53,7 +54,8 @@ async function fetchMembers(ws: string) {
   const { data, error } = await supabase
     .from("workspace_members")
     .select("workspace_id, user_id, role, profiles(*)")
-    .eq("workspace_id", ws);
+    .eq("workspace_id", ws)
+    .limit(500);
   if (error) throw error;
   return data ?? [];
 }
@@ -62,7 +64,8 @@ async function fetchPropDefs(ws: string) {
   const { data, error } = await supabase
     .from("property_defs")
     .select("*")
-    .eq("workspace_id", ws);
+    .eq("workspace_id", ws)
+    .limit(200);
   if (error) throw error;
   return data ?? [];
 }

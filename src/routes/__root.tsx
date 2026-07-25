@@ -22,8 +22,14 @@ function NotFoundComponent() {
         <h1 className="font-display font-bold text-noir" style={{ fontSize: "72px" }}>404</h1>
         <h2 className="mt-4 font-display font-bold text-noir">Page not found</h2>
         <p className="mt-2 text-meta text-muted">
-
           The page you're looking for doesn't exist or has been moved.
+        </p>
+        <p className="mt-4 text-meta text-muted">
+          Once you're signed in, press{" "}
+          <kbd className="rounded border border-line bg-surface px-1.5 py-0.5 text-caption text-muted">
+            ⌘K
+          </kbd>{" "}
+          to search.
         </p>
         <div className="mt-6">
           <Link

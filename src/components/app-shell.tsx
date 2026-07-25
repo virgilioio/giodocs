@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell } from "@/hooks/use-workspace-data";
+import { useRealtimeWorkspace } from "@/hooks/use-realtime";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
 import {
   useCreatePage,
@@ -60,6 +61,7 @@ function useSelection(): Selection {
 export function AppShell() {
   const workspaceId = useWorkspaceId();
   const shell = useWorkspaceShell(workspaceId);
+  useRealtimeWorkspace(workspaceId);
   const selection = useSelection();
   const navigate = useNavigate();
 
