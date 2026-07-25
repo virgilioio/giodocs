@@ -88,7 +88,7 @@ function LoginPage() {
           style={{ padding: "30px 32px 26px", boxShadow: "var(--shadow-card), var(--shadow-popover)" }}
         >
           <div className="flex items-center" style={{ height: 24 }}>
-            <span className="font-display font-bold text-noir" style={{ fontSize: 20, letterSpacing: "-0.03em" }}>
+            <span className="font-display font-bold text-noir text-heading">
               Gio Docs
             </span>
           </div>

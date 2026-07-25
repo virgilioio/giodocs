@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { RequireAuth } from "@/lib/require-auth";
 import { useAuth } from "@/lib/auth-context";
@@ -26,6 +26,7 @@ function Index() {
 
 function Home() {
   const { profile, user } = useAuth();
+  const navigate = useNavigate();
   const [workspace, setWorkspace] = useState<string | null>(null);
 
   useEffect(() => {
@@ -46,6 +47,11 @@ function Home() {
     };
   }, [user]);
 
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    navigate({ to: "/login", replace: true });
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-canvas">
       <div className="text-center">
@@ -53,6 +59,16 @@ function Home() {
         <h1 className="mt-2 font-display text-title text-noir">
           {profile?.full_name || user?.email || ""}
         </h1>
+        {user?.email && (
+          <p className="mt-1 text-caption text-muted">{user.email}</p>
+        )}
+        <button
+          type="button"
+          onClick={handleSignOut}
+          className="mt-4 text-meta text-secondary hover:text-strong"
+        >
+          Sign out
+        </button>
       </div>
     </div>
   );
