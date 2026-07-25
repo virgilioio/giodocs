@@ -531,6 +531,7 @@ function SidebarBody({
           workspaceName={workspaceName}
           memberCount={memberCount}
           onSignOut={onSignOut}
+          onOpenSettings={onOpenSettings}
         />
       </div>
     </>
