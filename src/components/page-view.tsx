@@ -20,6 +20,9 @@ import {
 } from "@/hooks/use-page-mutations";
 import { qk } from "@/lib/query-keys";
 import { Popover } from "./popover";
+import { usePrefs } from "@/lib/preferences";
+import { formatTimestamp } from "@/lib/format";
+import { useEmojiFavorites } from "@/lib/emoji-favorites";
 import type { Block, PageAccessRow, PageFull, PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
 
