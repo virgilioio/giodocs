@@ -146,6 +146,54 @@ export function useRenamePage() {
   });
 }
 
+export function useVerifyPage() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const { user } = useAuth();
+  const toast = useToast();
+
+  return useMutation({
+    mutationFn: async (pageId: string) => {
+      const { error } = await supabase.rpc("verify_page", { p_page: pageId });
+      if (error) throw error;
+    },
+    onMutate: async (pageId) => {
+      await qc.cancelQueries({ queryKey: qk.page(pageId) });
+      await qc.cancelQueries({ queryKey: qk.pages(ws) });
+      const nowIso = new Date().toISOString();
+      const prevPage = qc.getQueryData<{
+        verified_at: string;
+        verified_by: string | null;
+      } | null>(qk.page(pageId));
+      if (prevPage) {
+        qc.setQueryData(qk.page(pageId), {
+          ...prevPage,
+          verified_at: nowIso,
+          verified_by: user?.id ?? prevPage.verified_by,
+        });
+      }
+      const listSnap = qc.getQueryData<PageListItem[]>(qk.pages(ws)) ?? [];
+      qc.setQueryData<PageListItem[]>(
+        qk.pages(ws),
+        listSnap.map((p) =>
+          p.id === pageId
+            ? { ...p, verified_at: nowIso, verified_by: user?.id ?? p.verified_by }
+            : p,
+        ),
+      );
+      return { prevPage, listSnap };
+    },
+    onError: (err, pageId, ctx) => {
+      if (ctx?.prevPage) qc.setQueryData(qk.page(pageId), ctx.prevPage);
+      if (ctx?.listSnap) qc.setQueryData(qk.pages(ws), ctx.listSnap);
+      toast.push(`Couldn't verify: ${(err as Error).message}`);
+    },
+    onSettled: (_d, _e, pageId) => {
+      qc.invalidateQueries({ queryKey: qk.page(pageId) });
+      qc.invalidateQueries({ queryKey: qk.pages(ws) });
+    },
+  });
+
 type ViewFull = {
   id: string;
   workspace_id: string;
