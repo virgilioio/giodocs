@@ -15,4 +15,19 @@ export type PageListItem = Pick<
   | "access_type"
 >;
 
-export type PageFull = PageRow;
+export type PageFull = Omit<PageRow, "search_tsv">;
+
+export type Block = {
+  id?: string;
+  type?: string;
+  text?: string;
+  body?: string;
+  [k: string]: unknown;
+};
+
+export type PageAccessRow = {
+  page_id: string;
+  user_id: string | null;
+  guest_email: string | null;
+  capability: string;
+};
