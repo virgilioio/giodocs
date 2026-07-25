@@ -177,6 +177,7 @@ export function AppShell() {
             memberCount={memberCount}
             areaIcons={areaIcons}
             onSignOut={handleSignOut}
+            onOpenPalette={() => setPaletteOpen(true)}
           />
         </div>
       </div>
