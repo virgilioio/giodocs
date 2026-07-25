@@ -11,9 +11,15 @@ import {
   useRenamePage,
   useCreatePage,
   useUpdateView,
+  useForkView,
+  usePublishView,
+  useDeleteView,
 } from "@/hooks/use-page-mutations";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
+
+type Layout = "table" | "board" | "list";
+
 
 
 type PropDef = Database["public"]["Tables"]["property_defs"]["Row"];
