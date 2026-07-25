@@ -254,24 +254,49 @@ function QueryToolbar({
           onAdd={(f) => onChangeFilters([...filters, f])}
         />
       )}
-      <div className="ml-auto">
-        <select
-          className="rounded-sm border border-line bg-surface px-2 py-1 text-meta text-secondary"
-          value={`${sort.prop}:${sort.dir}`}
-          disabled={!editable}
-          onChange={(e) => {
-            const [prop, dir] = e.target.value.split(":") as [SortSpec["prop"], SortSpec["dir"]];
-            onChangeSort({ prop, dir });
-          }}
+      <div className="ml-auto flex items-center gap-2">
+        <span
+          aria-hidden
+          className="inline-block h-4 w-px bg-line"
+        />
+        <div className="inline-flex items-center gap-1 rounded-sm border border-line bg-surface px-2 py-1 text-meta text-secondary">
+          <Glyph
+            path="M7 4v12m0 0l-3-3m3 3l3-3M17 20V8m0 0l-3 3m3-3l3 3"
+            className="h-3.5 w-3.5 text-muted"
+          />
+          <select
+            className="bg-transparent focus:outline-none"
+            value={`${sort.prop}:${sort.dir}`}
+            disabled={!editable}
+            onChange={(e) => {
+              const [prop, dir] = e.target.value.split(":") as [
+                SortSpec["prop"],
+                SortSpec["dir"],
+              ];
+              onChangeSort({ prop, dir });
+            }}
+          >
+            <option value="edited:desc">Newest edits</option>
+            <option value="edited:asc">Oldest edits</option>
+            <option value="verified:desc">Recently verified</option>
+            <option value="verified:asc">Least recently verified</option>
+            <option value="title:asc">Title A–Z</option>
+            <option value="title:desc">Title Z–A</option>
+          </select>
+        </div>
+        <button
+          type="button"
+          title="View options — coming soon"
+          aria-label="View options"
+          className="grid h-7 w-7 place-items-center rounded-sm text-muted hover:bg-sunken"
         >
-          <option value="edited:desc">Newest edits</option>
-          <option value="edited:asc">Oldest edits</option>
-          <option value="verified:desc">Recently verified</option>
-          <option value="verified:asc">Least recently verified</option>
-          <option value="title:asc">Title A–Z</option>
-          <option value="title:desc">Title Z–A</option>
-        </select>
+          <Glyph
+            path="M6 12a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"
+            className="h-4 w-4"
+          />
+        </button>
       </div>
+
     </div>
   );
 }
