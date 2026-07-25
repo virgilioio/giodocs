@@ -48,10 +48,10 @@
   --text-subhead--letter-spacing: -0.02em;
   --text-subhead--font-weight: 600;
   --text-quote: 20px;      --text-quote--line-height: 1.50;
-  --text-body: 17px;       --text-body--line-height: 1.60;
+  --text-prose: 17px;       --text-prose--line-height: 1.60;
   --text-ui: 15px;         --text-ui--line-height: 1.45;
   --text-row: 14.5px;      --text-row--line-height: 1.30;
-  --text-secondary: 13.5px;--text-secondary--line-height: 1.40;
+  --text-meta: 13.5px;     --text-meta--line-height: 1.40;
   --text-caption: 12.5px;  --text-caption--line-height: 1.40;
   --text-label: 11.5px;
   --text-label--line-height: 1.20;
@@ -92,7 +92,7 @@
 
 @layer base {
   html { -webkit-font-smoothing: antialiased; }
-  body { @apply bg-canvas text-body font-sans text-ui; }
+  body { @apply bg-canvas text-body font-sans text-prose; }
   :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
   .tnum { font-variant-numeric: tabular-nums; }
 }
