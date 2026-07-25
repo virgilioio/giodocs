@@ -1099,7 +1099,7 @@ function Cell({ children, className }: { children: ReactNode; className?: string
   return (
     <div
       className={
-        "min-w-0 border-b border-lineSoft px-[11px] py-[5px] " + (className ?? "")
+        "min-w-0 border-b border-lineSoft px-[11px] py-[10px] " + (className ?? "")
       }
     >
       {children}
