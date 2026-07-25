@@ -139,6 +139,20 @@ export function useWorkspace(ws: string | undefined) {
   });
 }
 
+export function useAllowedDomains(ws: string | undefined) {
+  return useQuery({
+    queryKey: ws ? ["allowed_domains", ws] : ["allowed_domains", "none"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("allowed_domains")
+        .select("domain")
+        .eq("workspace_id", ws!);
+      if (error) throw error;
+      return (data ?? []).map((r) => r.domain);
+    },
+    enabled: !!ws,
+  });
+
 export function useAreas(ws: string | undefined) {
   const pagesQ = usePages(ws);
   const pages = pagesQ.data ?? [];
