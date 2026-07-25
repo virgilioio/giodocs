@@ -106,7 +106,7 @@ function describeFilter(f: Filter, propDefs: PropDef[], staleDays: number): stri
     case "includes":
       return `tagged "${f.value}"`;
     case "is_me":
-      return `${label} is you`;
+      return f.prop === "owner" ? "owner is you" : `${label} is you`;
     case "not_empty":
       return `${label} is set`;
     case "stale":
@@ -115,6 +115,7 @@ function describeFilter(f: Filter, propDefs: PropDef[], staleDays: number): stri
       return `edited in the last ${f.value} days`;
   }
 }
+
 
 /* ─────────────────────────── View header ─────────────────────────── */
 
