@@ -991,7 +991,7 @@ export function MainView({ selection }: { selection: Selection }) {
           <div className="font-display text-subhead text-noir">
             Nothing matches this view yet.
           </div>
-          <p className="mt-2 text-meta text-faint">
+          <p className="mt-2 text-meta text-secondary">
             A view is just a query — pages appear here the moment their properties match.
           </p>
         </div>
