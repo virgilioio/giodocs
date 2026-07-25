@@ -940,6 +940,7 @@ function FooterAccount({
   workspaceName,
   memberCount,
   onSignOut,
+  onOpenSettings,
 }: {
   profile: { full_name: string; avatar_tint: string; avatar_ink: string } | null;
   userEmail: string;
@@ -947,6 +948,7 @@ function FooterAccount({
   workspaceName: string;
   memberCount: number;
   onSignOut: () => void;
+  onOpenSettings: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
