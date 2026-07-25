@@ -17,7 +17,9 @@ import {
   useDeleteView,
   useForkView,
   useUpdateView,
+  usePublishView,
 } from "@/hooks/use-page-mutations";
+
 import { useToast } from "@/lib/toast";
 import type { PageListItem } from "@/lib/types";
 import { MainView } from "./main-view";
