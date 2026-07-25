@@ -101,8 +101,12 @@ export function AppShell() {
   const memberCount = shell.members.data?.length ?? 0;
   const workspaceName = workspace?.name ?? "";
 
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   useEffect(() => {
-    if (selection !== null) return;
+    // Only auto-pick a default view on the root URL. On /p, /v, /a we must
+    // never redirect: a transient null selection during router transitions
+    // used to silently bounce the user back to the previous view.
+    if (pathname !== "/") return;
     if (shell.views.isLoading) return;
     const first = [...views]
       .filter((v) => v.scope === "personal")
@@ -110,7 +114,7 @@ export function AppShell() {
     if (first) {
       navigate({ to: "/v/$viewId", params: { viewId: first.id }, replace: true });
     }
-  }, [selection, views, shell.views.isLoading, navigate]);
+  }, [pathname, views, shell.views.isLoading, navigate]);
 
   const ctx = useMemo(
     () => ({ me: user?.id ?? "", staleDays }),
