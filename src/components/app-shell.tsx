@@ -1030,8 +1030,10 @@ function FooterAccount({
           </div>
           <MenuDivider />
           <MenuItem
-            disabled
-            title="Coming soon"
+            onClick={() => {
+              setOpen(false);
+              onOpenSettings();
+            }}
             right={<span className="font-mono text-caption text-faint">⌘,</span>}
           >
             Settings
