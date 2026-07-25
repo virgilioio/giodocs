@@ -1,11 +1,20 @@
 #!/usr/bin/env node
-// Post-build guard: fails if any client bundle contains service-role markers.
+// Post-build guard: fails if any client bundle contains value-shaped
+// service-role or JWT secret markers. Bare library prefixes like
+// "sb_secret_" (used by @supabase/supabase-js for format checks) are
+// intentionally NOT flagged; only value-shaped literals are.
 import { readdirSync, readFileSync, statSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const ROOT = process.cwd();
 const DIR = join(ROOT, "dist", "client");
-const NEEDLES = ["SERVICE_ROLE", "service_role", "sb_secret_"];
+
+const NEEDLES = [
+  { name: "SERVICE_ROLE",              re: /SERVICE_ROLE/ },
+  { name: "service_role",              re: /service_role/ },
+  { name: "sb_secret_ value literal",  re: /sb_secret_[A-Za-z0-9_-]{12,}/ },
+  { name: "JWT-shaped literal",        re: /eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\./ },
+];
 
 if (!existsSync(DIR)) {
   console.error(`check-bundle: ${relative(ROOT, DIR)} does not exist — did the build run?`);
@@ -27,7 +36,8 @@ function walk(dir) {
         continue;
       }
       for (const n of NEEDLES) {
-        if (buf.includes(n)) hits.push(`${relative(ROOT, p)}  contains "${n}"`);
+        const m = buf.match(n.re);
+        if (m) hits.push(`${relative(ROOT, p)}  matches ${n.name}: "${m[0].slice(0, 80)}"`);
       }
     }
   }
