@@ -907,11 +907,15 @@ export function MainView({ selection }: { selection: Selection }) {
   const ws = useWorkspaceId();
   const { user } = useAuth();
   const shell = useWorkspaceShell(ws);
-  
+  const navigate = useNavigate();
+
   const setProp = useSetPageProperty();
   const rename = useRenamePage();
   const create = useCreatePage();
   const updateView = useUpdateView();
+  const forkView = useForkView();
+  const publishView = usePublishView();
+  const deleteView = useDeleteView();
 
   const pages = (shell.pages.data ?? []) as PageListItem[];
   const views = (shell.views.data ?? []) as ViewRow[];
@@ -919,14 +923,18 @@ export function MainView({ selection }: { selection: Selection }) {
   const propDefs = (shell.propDefs.data ?? []) as PropDef[];
   const workspace = shell.workspace.data;
   const staleDays = workspace?.stale_days ?? 30;
+  const memberCount = members.length;
 
   const view = selection.kind === "view" ? views.find((v) => v.id === selection.id) ?? null : null;
   const isOwnerOfView = !!view && view.owner_id === user?.id && view.scope === "personal";
   const isTeamView = !!view && view.scope === "team";
 
-  // Local session-only filter/sort layered on top of the view/area base.
+  // Local session-only overrides layered on top of the view/area base.
   const [localFilters, setLocalFilters] = useState<Filter[] | null>(null);
   const [localSort, setLocalSort] = useState<SortSpec | null>(null);
+  const [localLayout, setLocalLayout] = useState<Layout | null>(null);
+  const [localGroupBy, setLocalGroupBy] = useState<string | null | undefined>(undefined);
+  const [headerMenuAnchor, setHeaderMenuAnchor] = useState<HTMLElement | null>(null);
 
   const baseFilters: Filter[] = useMemo(() => {
     if (selection.kind === "area") return [{ op: "eq", prop: "area", value: selection.area }];
@@ -936,9 +944,13 @@ export function MainView({ selection }: { selection: Selection }) {
     () => ((view?.sort as SortSpec | null) ?? { prop: "edited", dir: "desc" }),
     [view],
   );
+  const baseLayout: Layout = (view?.layout as Layout | undefined) ?? "table";
+  const baseGroupBy: string | null = view?.group_by ?? null;
 
   const filters = localFilters ?? baseFilters;
   const sort = localSort ?? baseSort;
+  const layout: Layout = localLayout ?? baseLayout;
+  const groupBy: string = (localGroupBy !== undefined ? localGroupBy : baseGroupBy) ?? "status";
   const fixedFilterIndex = selection.kind === "area" ? 0 : undefined;
 
   const rows = useMemo(
@@ -958,31 +970,45 @@ export function MainView({ selection }: { selection: Selection }) {
   const staleThreshold = Date.now() - staleDays * 24 * 60 * 60 * 1000;
 
   const onChangeFilters = (next: Filter[]) => {
-    if (selection.kind === "area") {
-      setLocalFilters(next);
-      return;
-    }
+    if (selection.kind === "area") { setLocalFilters(next); return; }
     if (isOwnerOfView && view) {
       setLocalFilters(null);
       updateView.mutate({ id: view.id, patch: { filter: next } });
-    } else {
-      setLocalFilters(next);
-    }
+    } else setLocalFilters(next);
   };
   const onChangeSort = (s: SortSpec) => {
-    if (selection.kind === "area") {
-      setLocalSort(s);
-      return;
-    }
+    if (selection.kind === "area") { setLocalSort(s); return; }
     if (isOwnerOfView && view) {
       setLocalSort(null);
       updateView.mutate({ id: view.id, patch: { sort: s } });
-    } else {
-      setLocalSort(s);
-    }
+    } else setLocalSort(s);
+  };
+  const onChangeLayout = (l: Layout) => {
+    if (selection.kind === "area") { setLocalLayout(l); return; }
+    if (isOwnerOfView && view) {
+      setLocalLayout(null);
+      updateView.mutate({ id: view.id, patch: { layout: l } });
+    } else setLocalLayout(l);
+  };
+  const onChangeGroupBy = (g: string) => {
+    if (selection.kind === "area") { setLocalGroupBy(g); return; }
+    if (isOwnerOfView && view) {
+      setLocalGroupBy(undefined);
+      updateView.mutate({ id: view.id, patch: { group_by: g } });
+    } else setLocalGroupBy(g);
   };
 
+  const filterEq = JSON.stringify(filters) !== JSON.stringify(baseFilters);
+  const sortEq = JSON.stringify(sort) !== JSON.stringify(baseSort);
+  const layoutEq = layout !== baseLayout;
+  const groupEq = groupBy !== (baseGroupBy ?? "status");
+  const isModified = isTeamView && (filterEq || sortEq || layoutEq || groupEq);
+
   const statusDef = propDefs.find((d) => d.key === "status");
+
+  const groupableDefs = propDefs.filter(
+    (d) => d.type === "select" || d.type === "status",
+  );
 
   const onNewPage = () => {
     const seed: Record<string, unknown> = {};
@@ -995,6 +1021,50 @@ export function MainView({ selection }: { selection: Selection }) {
   };
 
   const editable = selection.kind === "area" || isOwnerOfView;
+
+  const doSaveAsMyView = () => {
+    if (!view) return;
+    forkView.mutate(
+      {
+        viewId: view.id,
+        name: `${view.name} (my copy)`,
+        filter: filters,
+        sort,
+        layout,
+        groupBy: layout === "board" ? groupBy : null,
+      },
+      {
+        onSuccess: (row) => {
+          setLocalFilters(null);
+          setLocalSort(null);
+          setLocalLayout(null);
+          setLocalGroupBy(undefined);
+          navigate({ to: "/v/$viewId", params: { viewId: row.id } });
+        },
+      },
+    );
+  };
+  const doDiscard = () => {
+    setLocalFilters(null);
+    setLocalSort(null);
+    setLocalLayout(null);
+    setLocalGroupBy(undefined);
+  };
+  const doPublish = () => {
+    if (!view) return;
+    if (
+      !window.confirm(
+        `Publish "${view.name}" to Team views? It moves out of My views into Team views for all ${memberCount} people at ${workspace?.name ?? "the workspace"}. Publishing is the only way a view becomes shared.`,
+      )
+    )
+      return;
+    publishView.mutate(view.id);
+  };
+  const doDelete = () => {
+    if (!view) return;
+    if (window.confirm(`Delete view "${view.name}"?`)) deleteView.mutate(view.id);
+  };
+
 
   return (
     <div className="mx-auto max-w-view px-6 py-6">
