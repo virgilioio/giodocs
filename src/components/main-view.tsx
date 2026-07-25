@@ -911,26 +911,14 @@ export function MainView({ selection }: { selection: Selection }) {
 
   const staleThreshold = Date.now() - staleDays * 24 * 60 * 60 * 1000;
 
-  async function persistViewChange(next: { filter?: Filter[]; sort?: SortSpec }) {
-    if (!view || !isOwnerOfView) return;
-    const patch: Partial<ViewRow> = {};
-    if (next.filter) patch.filter = next.filter as never;
-    if (next.sort) patch.sort = next.sort as never;
-    qc.setQueryData<ViewRow[]>(qk.views(ws), (prev) =>
-      prev ? prev.map((v) => (v.id === view.id ? { ...v, ...patch } : v)) : prev,
-    );
-    const { error } = await supabase.from("views").update(patch).eq("id", view.id);
-    if (error) qc.invalidateQueries({ queryKey: qk.views(ws) });
-  }
-
   const onChangeFilters = (next: Filter[]) => {
     if (selection.kind === "area") {
       setLocalFilters(next);
       return;
     }
-    if (isOwnerOfView) {
+    if (isOwnerOfView && view) {
       setLocalFilters(null);
-      void persistViewChange({ filter: next });
+      updateView.mutate({ id: view.id, patch: { filter: next } });
     } else {
       setLocalFilters(next);
     }
@@ -940,9 +928,9 @@ export function MainView({ selection }: { selection: Selection }) {
       setLocalSort(s);
       return;
     }
-    if (isOwnerOfView) {
+    if (isOwnerOfView && view) {
       setLocalSort(null);
-      void persistViewChange({ sort: s });
+      updateView.mutate({ id: view.id, patch: { sort: s } });
     } else {
       setLocalSort(s);
     }
