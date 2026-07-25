@@ -104,7 +104,7 @@ function Glyph({ path, className }: { path: string; className?: string }) {
 
 /* ─────────────────────────── Filter description ─────────────────────────── */
 
-function describeFilter(f: Filter, propDefs: PropDef[], staleDays: number): string {
+export function describeFilter(f: Filter, propDefs: PropDef[], staleDays: number): string {
   const def = propDefs.find((d) => d.key === f.prop);
   const label = def?.label ?? f.prop ?? "";
   switch (f.op) {
