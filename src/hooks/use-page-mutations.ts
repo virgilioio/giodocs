@@ -189,7 +189,6 @@ export function useVerifyPage() {
     },
     onSettled: (_d, _e, pageId) => {
       qc.invalidateQueries({ queryKey: qk.page(pageId) });
-      qc.invalidateQueries({ queryKey: qk.pages(ws) });
     },
   });
 }
