@@ -1025,6 +1025,11 @@ export function PageEditor({ pageId }: { pageId: string }) {
   const setProp = useSetPageProperty();
   const verify = useVerifyPage();
   const qc = useQueryClient();
+  const { prefs } = usePrefs();
+  useEffect(() => {
+    setDateModeForPageView(prefs.dateFormat);
+  }, [prefs.dateFormat]);
+
 
   const [justVerified, setJustVerified] = useState(false);
   const justVerifiedTimerRef = useRef<number | null>(null);
