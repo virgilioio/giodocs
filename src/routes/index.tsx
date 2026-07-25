@@ -1,8 +1,9 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { RequireAuth } from "@/lib/require-auth";
 import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/integrations/supabase/client";
+import { useWorkspace } from "@/hooks/use-workspace-data";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -27,25 +28,24 @@ function Index() {
 function Home() {
   const { profile, user } = useAuth();
   const navigate = useNavigate();
-  const [workspace, setWorkspace] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!user) return;
-    let active = true;
-    supabase
-      .from("workspace_members")
-      .select("workspaces(name)")
-      .eq("user_id", user.id)
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!active) return;
-        setWorkspace(data?.workspaces?.name ?? null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [user]);
+  const membershipQ = useQuery({
+    queryKey: ["membership", user?.id ?? "none"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("workspace_members")
+        .select("workspace_id")
+        .eq("user_id", user!.id)
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data?.workspace_id ?? null;
+    },
+    enabled: !!user,
+  });
+
+  const workspaceQ = useWorkspace(membershipQ.data ?? undefined);
+  const workspaceName = workspaceQ.data?.name ?? null;
 
   async function handleSignOut() {
     await supabase.auth.signOut();
@@ -55,7 +55,7 @@ function Home() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-canvas">
       <div className="text-center">
-        <p className="text-label text-secondary">{workspace ?? "—"}</p>
+        <p className="text-label text-secondary">{workspaceName ?? "—"}</p>
         <h1 className="mt-2 font-display text-title text-noir">
           {profile?.full_name || user?.email || ""}
         </h1>
