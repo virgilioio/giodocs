@@ -1317,103 +1317,269 @@ function TableBody({
   setProp: ReturnType<typeof useSetPageProperty>;
 }) {
   return (
+    <div className="overflow-x-auto">
+      <div
+        role="table"
+        className="min-w-full text-row"
+        style={{
+          display: "grid",
+          gridTemplateColumns:
+            "minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr) minmax(0,0.9fr) minmax(0,0.9fr)",
+        }}
+      >
+        <HeaderCell>Page</HeaderCell>
+        <HeaderCell className="hidden xs:block">Area</HeaderCell>
+        <HeaderCell>Owner</HeaderCell>
+        <HeaderCell>Status</HeaderCell>
+        <HeaderCell className="hidden sm:block">Tags</HeaderCell>
+        <HeaderCell className="hidden md:block">Verified</HeaderCell>
+        <HeaderCell>Edited</HeaderCell>
 
+        {rows.map((p) => {
+          const isStale = new Date(p.verified_at).getTime() < staleThreshold;
+          return (
+            <RowGroup key={p.id}>
+              <Cell>
+                <PageTitleCell
+                  page={p}
+                  onSave={(t) => rename.mutate({ pageId: p.id, title: t })}
+                />
+              </Cell>
+              <Cell className="hidden xs:block">
+                <AreaCell
+                  page={p}
+                  areas={areas}
+                  onPick={(v) => setProp.mutate({ pageId: p.id, key: "area", value: v })}
+                />
+              </Cell>
+              <Cell>
+                <OwnerCell
+                  page={p}
+                  members={members}
+                  onPick={(uid) => setProp.mutate({ pageId: p.id, key: "owner", value: uid })}
+                />
+              </Cell>
+              <Cell>
+                <StatusCell
+                  page={p}
+                  def={statusDef}
+                  onPick={(v) => setProp.mutate({ pageId: p.id, key: "status", value: v })}
+                />
+              </Cell>
+              <Cell className="hidden sm:block">
+                <TagsCell
+                  page={p}
+                  pages={pages}
+                  onSet={(tags) => setProp.mutate({ pageId: p.id, key: "tags", value: tags })}
+                />
+              </Cell>
+              <Cell className="hidden md:block">
+                {isStale ? (
+                  <span className="inline-flex items-center gap-1 font-bold text-amberInk">
+                    ⚠ {relTime(p.verified_at)}
+                  </span>
+                ) : (
+                  <span className="text-meta text-muted">{relTime(p.verified_at)}</span>
+                )}
+              </Cell>
+              <Cell>
+                <span className="text-meta text-muted">{relTime(p.edited_at)}</span>
+              </Cell>
+            </RowGroup>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
-      {rows.length === 0 ? (
-        <div className="grid place-items-center py-20 text-center">
-          <div className="font-display text-subhead text-noir">
-            Nothing matches this view yet.
+/* ─────────────────────────── Board body ─────────────────────────── */
+
+function BoardBody({
+  rows,
+  groupBy,
+  propDefs,
+  members,
+  staleThreshold,
+  onMove,
+}: {
+  rows: PageListItem[];
+  groupBy: string;
+  propDefs: PropDef[];
+  members: MemberRow[];
+  staleThreshold: number;
+  onMove: (pageId: string, value: string) => void;
+}) {
+  const navigate = useNavigate();
+  const def = propDefs.find((d) => d.key === groupBy);
+  const opts =
+    (def?.options as unknown as Array<{
+      value: string;
+      label: string;
+      tint: string;
+      ink: string;
+    }>) ?? [];
+
+  const columns = useMemo(() => {
+    const groups = new Map<string, PageListItem[]>();
+    for (const p of rows) {
+      const v = propsOf(p)[groupBy];
+      const key = typeof v === "string" && v ? v : "__none";
+      const arr = groups.get(key);
+      if (arr) arr.push(p);
+      else groups.set(key, [p]);
+    }
+    const ordered: Array<{ value: string; opt?: (typeof opts)[number]; pages: PageListItem[] }> = [];
+    for (const o of opts) ordered.push({ value: o.value, opt: o, pages: groups.get(o.value) ?? [] });
+    // Extra values not in options
+    for (const [k, pgs] of groups)
+      if (k !== "__none" && !opts.some((o) => o.value === k))
+        ordered.push({ value: k, pages: pgs });
+    return ordered;
+  }, [rows, opts, groupBy]);
+
+  return (
+    <div className="flex gap-3 overflow-x-auto pb-2">
+      {columns.map((col) => (
+        <div
+          key={col.value}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            const id = e.dataTransfer.getData("text/pageId");
+            if (id) onMove(id, col.value);
+          }}
+          className="shrink-0 rounded-xl bg-rail p-[10px]"
+          style={{ width: "var(--container-boardCol)" }}
+        >
+          <div className="mb-2 flex items-center gap-2 px-1 text-meta">
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ background: `var(--color-${col.opt?.ink ?? "muted"})` }}
+              aria-hidden
+            />
+            <span className="font-bold text-body">{col.opt?.label ?? col.value}</span>
+            <span className="ml-auto text-faint">{col.pages.length}</span>
           </div>
-          <p className="mt-2 text-meta text-secondary">
-            A view is just a query — pages appear here the moment their properties match.
-          </p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <div
-            role="table"
-            className="min-w-full text-row"
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr) minmax(0,0.9fr) minmax(0,0.9fr)",
-            }}
-          >
-            <HeaderCell>Page</HeaderCell>
-            <HeaderCell className="hidden xs:block">Area</HeaderCell>
-            <HeaderCell>Owner</HeaderCell>
-            <HeaderCell>Status</HeaderCell>
-            <HeaderCell className="hidden sm:block">Tags</HeaderCell>
-            <HeaderCell className="hidden md:block">Verified</HeaderCell>
-            <HeaderCell>Edited</HeaderCell>
-
-            {rows.map((p) => {
+          <div className="flex flex-col gap-2">
+            {col.pages.map((p) => {
               const isStale = new Date(p.verified_at).getTime() < staleThreshold;
+              const ownerId = propsOf(p)["owner"];
+              const owner =
+                typeof ownerId === "string"
+                  ? members.find((m) => m.user_id === ownerId)?.profiles
+                  : null;
               return (
-                <RowGroup key={p.id}>
-                  <Cell>
-                    <PageTitleCell
-                      page={p}
-                      onSave={(t) => rename.mutate({ pageId: p.id, title: t })}
-                    />
-                  </Cell>
-                  <Cell className="hidden xs:block">
-                    <AreaCell
-                      page={p}
-                      areas={areas}
-                      onPick={(v) =>
-                        setProp.mutate({ pageId: p.id, key: "area", value: v })
-                      }
-                    />
-                  </Cell>
-                  <Cell>
-                    <OwnerCell
-                      page={p}
-                      members={members}
-                      onPick={(uid) =>
-                        setProp.mutate({ pageId: p.id, key: "owner", value: uid })
-                      }
-                    />
-                  </Cell>
-                  <Cell>
-                    <StatusCell
-                      page={p}
-                      def={statusDef}
-                      onPick={(v) =>
-                        setProp.mutate({ pageId: p.id, key: "status", value: v })
-                      }
-                    />
-                  </Cell>
-                  <Cell className="hidden sm:block">
-                    <TagsCell
-                      page={p}
-                      pages={pages}
-                      onSet={(tags) =>
-                        setProp.mutate({ pageId: p.id, key: "tags", value: tags })
-                      }
-                    />
-                  </Cell>
-                  <Cell className="hidden md:block">
+                <button
+                  key={p.id}
+                  type="button"
+                  draggable
+                  onDragStart={(e) => e.dataTransfer.setData("text/pageId", p.id)}
+                  onClick={() => navigate({ to: "/p/$pageId", params: { pageId: p.id } })}
+                  className="rounded-lg border border-line bg-surface p-2 text-left shadow-card transition hover:shadow-cardHover"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-row leading-none">{p.icon ?? "📄"}</span>
+                    <span className="min-w-0 flex-1 truncate text-row font-bold text-noir">
+                      {p.title || "Untitled"}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2 text-caption">
+                    {owner && (
+                      <span
+                        className="grid h-5 w-5 place-items-center rounded-full text-caption font-bold"
+                        style={{
+                          background: `var(--color-${owner.avatar_tint ?? "sunken"})`,
+                          color: `var(--color-${owner.avatar_ink ?? "body"})`,
+                        }}
+                      >
+                        {(owner.full_name ?? owner.email ?? "?").slice(0, 1).toUpperCase()}
+                      </span>
+                    )}
                     {isStale ? (
-                      <span className="inline-flex items-center gap-1 font-bold text-amberInk">
-                        ⚠ {relTime(p.verified_at)}
+                      <span className="ml-auto font-display text-label uppercase text-amberInk">
+                        STALE
                       </span>
                     ) : (
-                      <span className="text-meta text-muted">{relTime(p.verified_at)}</span>
+                      <span className="ml-auto text-muted">{relTime(p.edited_at)}</span>
                     )}
-                  </Cell>
-                  <Cell>
-                    <span className="text-meta text-muted">{relTime(p.edited_at)}</span>
-                  </Cell>
-                </RowGroup>
+                  </div>
+                </button>
               );
             })}
           </div>
         </div>
+      ))}
+      {columns.length === 0 && (
+        <div className="text-meta text-muted">Pick a property with options to group by.</div>
       )}
     </div>
   );
 }
+
+/* ─────────────────────────── List body ─────────────────────────── */
+
+function ListBody({
+  rows,
+  members,
+  propDefs,
+  staleThreshold,
+}: {
+  rows: PageListItem[];
+  members: MemberRow[];
+  propDefs: PropDef[];
+  staleThreshold: number;
+}) {
+  const navigate = useNavigate();
+  const statusDef = propDefs.find((d) => d.key === "status");
+  const statusOpts =
+    (statusDef?.options as unknown as Array<{ value: string; label: string }>) ?? [];
+
+  return (
+    <div className="mx-auto max-w-[800px]">
+      {rows.map((p) => {
+        const props = propsOf(p);
+        const isStale = new Date(p.verified_at).getTime() < staleThreshold;
+        const ownerId = props["owner"];
+        const owner =
+          typeof ownerId === "string"
+            ? members.find((m) => m.user_id === ownerId)?.profiles
+            : null;
+        const status = statusOpts.find((o) => o.value === props["status"])?.label;
+        const area = typeof props["area"] === "string" ? props["area"] : null;
+        const subline = [area, owner?.full_name ?? owner?.email, status]
+          .filter(Boolean)
+          .join(" · ");
+        return (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => navigate({ to: "/p/$pageId", params: { pageId: p.id } })}
+            className="flex w-full items-start gap-3 border-b border-lineSoft px-2 py-3 text-left hover:bg-sunken"
+          >
+            <span className="text-row leading-none">{p.icon ?? "📄"}</span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-row font-bold text-noir">
+                {p.title || "Untitled"}
+              </div>
+              {subline && (
+                <div className="mt-0.5 truncate text-meta text-muted">{subline}</div>
+              )}
+            </div>
+            {isStale ? (
+              <span className="shrink-0 font-display text-label uppercase text-amberInk">
+                STALE
+              </span>
+            ) : (
+              <span className="shrink-0 text-meta text-muted">{relTime(p.edited_at)}</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+
 
 function HeaderCell({ children, className }: { children: ReactNode; className?: string }) {
   return (
