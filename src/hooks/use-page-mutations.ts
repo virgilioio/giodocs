@@ -326,6 +326,7 @@ export function useForkView() {
       filter: Filter[];
       sort: SortSpec;
       layout: "table" | "board" | "list";
+      groupBy?: string | null;
     }) => {
       const { data, error } = await supabase.rpc("fork_view", {
         p_view: v.viewId,
@@ -335,14 +336,24 @@ export function useForkView() {
         p_layout: v.layout,
       });
       if (error) throw error;
-      return data as unknown as ViewFull;
+      const row = data as unknown as ViewFull;
+      if (v.groupBy !== undefined) {
+        const { error: e2 } = await supabase
+          .from("views")
+          .update({ group_by: v.groupBy } as never)
+          .eq("id", row.id);
+        if (e2) throw e2;
+        row.group_by = v.groupBy;
+      }
+      return row;
     },
     onSuccess: (row) => {
       qc.setQueryData<ViewFull[]>(qk.views(ws), (prev) =>
         prev ? [...prev, row] : [row],
       );
-      toast.push(`Forked to "${row.name}"`);
+      toast.push(`Saved to My views — "${row.name}" is unchanged for the team.`);
     },
+
     onError: (err) => toast.push(`Couldn't fork: ${(err as Error).message}`),
     onSettled: () => qc.invalidateQueries({ queryKey: qk.views(ws) }),
   });
