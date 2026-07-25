@@ -255,16 +255,16 @@ function SidebarBody({
     }
   };
 
-  const renderCount = (c: number | "!") =>
+  const renderCount = (c: number | "!", sizeClass: string) =>
     c === "!" ? (
       <span
-        className="tnum text-whisper text-amberInk"
+        className={`tnum ${sizeClass} text-amberInk`}
         title="This view's filter is invalid"
       >
         !
       </span>
     ) : (
-      <span className="tnum text-whisper">{c}</span>
+      <span className={`tnum ${sizeClass} text-whisper`}>{c}</span>
     );
 
   const [openAreas, setOpenAreas] = useState<Set<string>>(new Set());
@@ -321,7 +321,7 @@ function SidebarBody({
                   >
                     <LayoutGlyph layout={v.layout} />
                     <span className="min-w-0 flex-1 truncate text-row">{v.name}</span>
-                    {renderCount(countFor(v))}
+                    {renderCount(countFor(v), "text-row")}
                   </Link>
                 </li>
               ))}
@@ -345,7 +345,7 @@ function SidebarBody({
                     <span className="min-w-0 flex-1 truncate text-meta text-secondary">
                       {v.name}
                     </span>
-                    {renderCount(countFor(v))}
+                    {renderCount(countFor(v), "text-meta")}
                   </Link>
                 </li>
               ))}
@@ -391,7 +391,7 @@ function SidebarBody({
                         <span className="min-w-0 flex-1 truncate text-row">
                           {area}
                         </span>
-                        <span className="tnum text-whisper">{count}</span>
+                        <span className="tnum text-row text-whisper">{count}</span>
                       </Link>
                     </div>
                     {open && (
