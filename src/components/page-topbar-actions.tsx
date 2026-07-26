@@ -70,10 +70,12 @@ function EditedStamp({
   page,
   editorName,
   saving,
+  savedFlash,
 }: {
   page: PageListItem;
   editorName: string | null;
   saving: boolean;
+  savedFlash: boolean;
 }) {
   const { prefs } = usePrefs();
   const [tick, setTick] = useState(0);
@@ -85,11 +87,12 @@ function EditedStamp({
 
   const label = useMemo(() => {
     if (saving) return "Saving…";
+    if (savedFlash) return "Saved";
     if (prefs.dateFormat === "absolute") {
       return `Edited ${formatTimestamp(page.edited_at, "absolute")}`;
     }
     return `Edited ${shortRel(page.edited_at)}`;
-  }, [page.edited_at, prefs.dateFormat, saving]);
+  }, [page.edited_at, prefs.dateFormat, saving, savedFlash]);
 
   const tooltip = `${fullFmt.format(new Date(page.edited_at))}${
     editorName ? ` · ${editorName}` : ""
@@ -106,6 +109,7 @@ function EditedStamp({
     </span>
   );
 }
+
 
 /* ────────────── Icon button ────────────── */
 
