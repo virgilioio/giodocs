@@ -28,3 +28,13 @@ export function getPageOrigin(pageId: string): PageOrigin | null {
     return null;
   }
 }
+
+export const PageOriginContext = createContext<PageOrigin | null>(null);
+
+export function useSetPageOrigin() {
+  const origin = useContext(PageOriginContext);
+  return (pageId: string, override?: PageOrigin) => {
+    const o = override ?? origin;
+    if (o) setPageOrigin(pageId, o);
+  };
+}
