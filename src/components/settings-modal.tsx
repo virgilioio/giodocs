@@ -397,7 +397,7 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
           left: 2,
           width: 18,
           height: 18,
-          background: "#ffffff",
+          background: "var(--color-surface)",
           borderRadius: 999,
           boxShadow: "0 1px 3px rgba(13,13,9,.2)",
           transition: "transform 150ms ease",
