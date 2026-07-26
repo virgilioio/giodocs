@@ -1631,8 +1631,8 @@ function ListBody({
     (statusDef?.options as unknown as Array<{ value: string; label: string }>) ?? [];
 
   return (
-    <div className="mx-auto max-w-[800px]">
-      {rows.map((p) => {
+    <div style={{ maxWidth: 800 }}>
+      {rows.map((p, idx) => {
         const props = propsOf(p);
         const isStale = new Date(p.verified_at).getTime() < staleThreshold;
         const ownerId = props["owner"];
@@ -1642,31 +1642,48 @@ function ListBody({
             : null;
         const status = statusOpts.find((o) => o.value === props["status"])?.label;
         const area = typeof props["area"] === "string" ? props["area"] : null;
-        const subline = [area, owner?.full_name ?? owner?.email, status]
-          .filter(Boolean)
-          .join(" · ");
+        const ownerName = owner?.full_name ?? owner?.email ?? null;
+        const parts = [area, ownerName, status].filter(Boolean) as string[];
+        const isLast = idx === rows.length - 1;
         return (
           <button
             key={p.id}
             type="button"
             onClick={() => navigate({ to: "/p/$pageId", params: { pageId: p.id } })}
-            className="flex w-full items-start gap-3 border-b border-lineSoft px-2 py-3 text-left hover:bg-sunken"
+            className={
+              "grid w-full items-center gap-[11px] rounded-lg text-left hover:bg-sunken " +
+              (isLast ? "" : "border-b border-lineSoft ")
+            }
+            style={{
+              gridTemplateColumns: "20px minmax(0,1fr) auto",
+              minHeight: "var(--gio-list-row, 44px)",
+              padding: "7px 10px",
+            }}
           >
             <span className="text-row leading-none">{p.icon ?? "📄"}</span>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0">
               <div className="truncate text-row font-bold text-noir">
                 {p.title || "Untitled"}
               </div>
-              {subline && (
-                <div className="mt-0.5 truncate text-meta text-muted">{subline}</div>
+              {parts.length > 0 && (
+                <div className="truncate text-caption text-muted" style={{ marginTop: 1 }}>
+                  {parts.map((s, i) => (
+                    <span key={i}>
+                      {i > 0 && <span className="text-rule"> · </span>}
+                      {s}
+                    </span>
+                  ))}
+                </div>
               )}
             </div>
             {isStale ? (
-              <span className="shrink-0 font-display text-label uppercase text-amberInk">
-                STALE
+              <span className="shrink-0 text-caption font-bold text-amberInk tnum">
+                ⚠ {relTime(p.verified_at)}
               </span>
             ) : (
-              <span className="shrink-0 text-meta text-muted">{relTime(p.edited_at)}</span>
+              <span className="shrink-0 text-caption text-faint tnum">
+                {relTime(p.edited_at)}
+              </span>
             )}
           </button>
         );
@@ -1674,6 +1691,7 @@ function ListBody({
     </div>
   );
 }
+
 
 
 
