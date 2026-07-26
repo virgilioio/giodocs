@@ -873,6 +873,8 @@ export function PageEditor({ pageId }: { pageId: string }) {
   const accessQ = usePageAccess(pageId);
   const setProp = useSetPageProperty();
   const verify = useVerifyPage();
+  const rename = useRenamePage();
+  const updateBlocks = useUpdateBlocks();
   const qc = useQueryClient();
   const { prefs } = usePrefs();
   const { app } = usePageAppearance(pageId);
@@ -920,6 +922,106 @@ export function PageEditor({ pageId }: { pageId: string }) {
     );
   };
 
+  /* ────────── Title editing ────────── */
+  const [titleDraft, setTitleDraft] = useState<string | null>(null);
+  const titleValue = titleDraft ?? page?.title ?? "";
+  const titleTimerRef = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (titleTimerRef.current) window.clearTimeout(titleTimerRef.current);
+    },
+    [],
+  );
+
+  // Focus title on freshly created page (via sessionStorage hint).
+  const [titleAutoFocus, setTitleAutoFocus] = useState(false);
+  useEffect(() => {
+    if (!page) return;
+    try {
+      const want = sessionStorage.getItem("gio.focus-title");
+      if (want && want === page.id) {
+        setTitleAutoFocus(true);
+        sessionStorage.removeItem("gio.focus-title");
+      }
+    } catch {
+      /* storage unavailable */
+    }
+  }, [page]);
+
+  const onTitleChange = useCallback(
+    (v: string) => {
+      setTitleDraft(v);
+      if (titleTimerRef.current) window.clearTimeout(titleTimerRef.current);
+      titleTimerRef.current = window.setTimeout(() => {
+        if (!page) return;
+        rename.mutate({ pageId: page.id, title: v });
+      }, 500);
+    },
+    [page, rename],
+  );
+
+  const focusFirstBlock = useCallback(() => {
+    const el = document.querySelector<HTMLTextAreaElement>(
+      "#page-body textarea",
+    );
+    if (el) {
+      el.focus();
+      el.setSelectionRange(0, 0);
+    }
+  }, []);
+
+  /* ────────── Body debounced save ────────── */
+  const latestRef = useRef<Block[] | null>(null);
+  const savedRef = useRef<string>("");
+  const sendingRef = useRef(false);
+  const debounceRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!page) return;
+    savedRef.current = JSON.stringify(page.blocks ?? []);
+  }, [page]);
+
+  useEffect(
+    () => () => {
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    },
+    [],
+  );
+
+  const flush = useCallback(() => {
+    if (!page || app.locked) return;
+    if (sendingRef.current) return;
+    const latest = latestRef.current;
+    if (!latest) return;
+    const json = JSON.stringify(latest);
+    if (json === savedRef.current) return;
+    sendingRef.current = true;
+    updateBlocks.mutate(
+      { pageId: page.id, blocks: latest },
+      {
+        onSettled: () => {
+          sendingRef.current = false;
+          savedRef.current = json;
+          // If more edits arrived while we were sending, dispatch one more.
+          const now = latestRef.current;
+          if (now && JSON.stringify(now) !== savedRef.current) {
+            flush();
+          }
+        },
+      },
+    );
+  }, [page, app.locked, updateBlocks]);
+
+  const onBlocksChange = useCallback(
+    (blocks: Block[]) => {
+      latestRef.current = blocks;
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+      debounceRef.current = window.setTimeout(flush, 500);
+    },
+    [flush],
+  );
+
   if (pageQ.isLoading) {
     return (
       <div
@@ -945,9 +1047,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
     );
   }
 
-  const blocks: Blk[] = Array.isArray(page.blocks)
-    ? (page.blocks as Blk[])
-    : [];
+  const blocks = Array.isArray(page.blocks) ? (page.blocks as unknown[]) : [];
 
   return (
     <div
@@ -956,12 +1056,9 @@ export function PageEditor({ pageId }: { pageId: string }) {
       data-small={app.small ? "1" : "0"}
       data-wide={app.wide ? "1" : "0"}
       data-locked={app.locked ? "1" : "0"}
-      style={{
-        maxWidth: 780,
-        padding: "42px 44px",
-      }}
+      style={{ maxWidth: 780, padding: "42px 44px" }}
     >
-      {/* 1. Emoji icon on its own line, ~44px, not clickable this phase. */}
+      {/* 1. Emoji icon on its own line. */}
       <div
         className="select-none"
         aria-hidden
@@ -970,15 +1067,15 @@ export function PageEditor({ pageId }: { pageId: string }) {
         {page.icon || "📄"}
       </div>
 
-      {/* 2. Title — read-only this phase. */}
-      <h1
-        className="mt-3 font-display text-display text-noir"
-        style={{ whiteSpace: "pre-wrap" }}
-      >
-        {page.title || "Untitled"}
-      </h1>
+      {/* 2. Editable title. */}
+      <EditableTitle
+        value={titleValue}
+        onChange={onTitleChange}
+        onEnter={focusFirstBlock}
+        autoFocus={titleAutoFocus}
+      />
 
-      {/* 3. Permissions chip row: pill · edited stamp. */}
+      {/* 3. Permissions chip · edited stamp. */}
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <PermissionsChip
           page={page}
@@ -1003,7 +1100,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
         />
       </div>
 
-      {/* 5. Properties strip (read-only + × removal on non-system rows). */}
+      {/* 5. Properties strip. */}
       <div style={{ marginTop: 18 }}>
         <PropertyStrip
           page={page}
@@ -1021,21 +1118,20 @@ export function PageEditor({ pageId }: { pageId: string }) {
       </div>
 
       {/* 6. Hairline divider. */}
-      <div
-        className="border-t border-lineSoft"
-        style={{ marginTop: 20 }}
-      />
+      <div className="border-t border-lineSoft" style={{ marginTop: 20 }} />
 
-      {/* 7. Body. */}
-      <div style={{ marginTop: 26 }}>
-        <ReadOnlyBody blocks={blocks} />
+      {/* 7. Editable body. */}
+      <div id="page-body" style={{ marginTop: 26 }}>
+        <EditableBody
+          pageId={page.id}
+          initialBlocks={blocks}
+          onChange={onBlocksChange}
+          locked={app.locked}
+        />
       </div>
     </div>
   );
 }
-
-
-
 
 async function updatePageIcon(
   pageId: string,
@@ -1046,3 +1142,4 @@ async function updatePageIcon(
   await supabase.from("pages").update({ icon }).eq("id", pageId);
   qc.invalidateQueries({ queryKey: qk.page(pageId) });
 }
+
