@@ -292,7 +292,7 @@ export function AppShell() {
           )}
         </header>
 
-        <main className="min-w-0 flex-1 bg-canvas overflow-y-auto">
+        <main className="min-w-0 flex-1 bg-surface overflow-y-auto">
           {selection && selection.kind === "page" ? (
             <PageEditor pageId={selection.id} />
           ) : selection ? (
