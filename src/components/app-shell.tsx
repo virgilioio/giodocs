@@ -1482,3 +1482,254 @@ function SkeletonList() {
     </div>
   );
 }
+
+// ─────────────────────────────────────────────────────────────
+// Sidebar "+" button + popovers
+// ─────────────────────────────────────────────────────────────
+
+function SidebarPlusButton({
+  title,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        title={title}
+        aria-label={title}
+        aria-expanded={open}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+        className="grid h-5 w-5 place-items-center rounded-sm text-faint hover:bg-railHover hover:text-secondary"
+      >
+        <Glyph path="M12 5v14M5 12h14" className="h-3.5 w-3.5" />
+      </button>
+      {open && children}
+    </div>
+  );
+}
+
+function NewPersonalViewPopover({
+  onClose,
+  currentView,
+}: {
+  onClose: () => void;
+  currentView?: ViewRow;
+}) {
+  const [name, setName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const createView = useCreateView();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (!rootRef.current) return;
+      if (!rootRef.current.contains(e.target as Node)) onClose();
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [onClose]);
+
+  const trimmed = name.trim();
+  const valid = trimmed.length > 0 && trimmed.length <= 60;
+
+  const submit = async () => {
+    if (!valid || submitting) return;
+    setSubmitting(true);
+    try {
+      const seedFilter = (currentView?.filter ?? []) as Filter[];
+      const seedSort =
+        (currentView?.sort as SortSpec | null) ?? { prop: "edited", dir: "desc" };
+      const seedLayout = currentView?.layout ?? "table";
+      const created = await createView.mutateAsync({
+        name: trimmed,
+        filter: seedFilter,
+        sort: seedSort,
+        layout: seedLayout,
+      });
+      onClose();
+      navigate({ to: "/v/$viewId", params: { viewId: created.id } });
+    } catch (err) {
+      console.error(err);
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      ref={rootRef}
+      onMouseDown={(e) => e.stopPropagation()}
+      style={{ width: 262 }}
+      className="absolute right-0 top-full z-40 mt-1 rounded-md border border-rule bg-surface p-3 shadow-lg"
+    >
+      <div className="mb-2 text-label uppercase text-faint">New view</div>
+      <input
+        ref={inputRef}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            submit();
+          }
+        }}
+        maxLength={60}
+        placeholder="View name"
+        className="w-full rounded-sm border border-rule bg-canvas px-2 py-1.5 text-ui text-strong placeholder:text-faint focus:border-brand focus:outline-none"
+      />
+      <p className="mt-1.5 text-caption text-faint">
+        {currentView
+          ? `Seeded from "${currentView.name}"`
+          : "Empty personal view"}
+      </p>
+      <div className="mt-3 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-sm px-2 py-1 text-ui text-secondary hover:bg-rail"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={!valid || submitting}
+          onClick={submit}
+          className="rounded-sm bg-brand px-2.5 py-1 text-ui text-onBrand disabled:opacity-50"
+        >
+          {submitting ? "Creating…" : "Create view"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function NewAreaPopover({
+  onClose,
+  existingAreas,
+}: {
+  onClose: () => void;
+  existingAreas: string[];
+}) {
+  const [name, setName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const createPage = useCreatePage();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (!rootRef.current) return;
+      if (!rootRef.current.contains(e.target as Node)) onClose();
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [onClose]);
+
+  const trimmed = name.trim();
+  const lower = trimmed.toLowerCase();
+  const duplicate =
+    trimmed.length > 0 &&
+    existingAreas.some((a) => a.toLowerCase() === lower);
+  const valid = trimmed.length > 0 && trimmed.length <= 60 && !duplicate;
+
+  const submit = async () => {
+    if (!valid || submitting) return;
+    setSubmitting(true);
+    try {
+      const created = await createPage.mutateAsync({
+        seedProps: { area: trimmed },
+        blocks: [
+          {
+            id: nanoid(10),
+            type: "paragraph",
+            text: "",
+          },
+        ],
+      });
+      try {
+        sessionStorage.setItem(
+          "gio.page-back",
+          JSON.stringify({ pageId: created.id, area: trimmed }),
+        );
+        sessionStorage.setItem("gio.focus-title", created.id);
+      } catch {
+        /* storage unavailable */
+      }
+      onClose();
+      navigate({ to: "/p/$pageId", params: { pageId: created.id } });
+    } catch (err) {
+      console.error(err);
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      ref={rootRef}
+      onMouseDown={(e) => e.stopPropagation()}
+      style={{ width: 262 }}
+      className="absolute right-0 top-full z-40 mt-1 rounded-md border border-rule bg-surface p-3 shadow-lg"
+    >
+      <div className="mb-2 text-label uppercase text-faint">New area</div>
+      <input
+        ref={inputRef}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            submit();
+          }
+        }}
+        maxLength={60}
+        placeholder="Area name"
+        aria-invalid={duplicate}
+        className="w-full rounded-sm border border-rule bg-canvas px-2 py-1.5 text-ui text-strong placeholder:text-faint focus:border-brand focus:outline-none"
+      />
+      <p className="mt-1.5 text-caption text-faint">
+        {duplicate
+          ? "That area already exists."
+          : "Creates the area and opens a new untitled page in it."}
+      </p>
+      <div className="mt-3 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-sm px-2 py-1 text-ui text-secondary hover:bg-rail"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={!valid || submitting}
+          onClick={submit}
+          className="rounded-sm bg-brand px-2.5 py-1 text-ui text-onBrand disabled:opacity-50"
+        >
+          {submitting ? "Creating…" : "Create area"}
+        </button>
+      </div>
+    </div>
+  );
+}
