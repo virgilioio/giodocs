@@ -115,6 +115,7 @@ export type Database = {
       pages: {
         Row: {
           access_type: string
+          archived_at: string | null
           blocks: Json
           created_at: string
           created_by: string | null
@@ -132,6 +133,7 @@ export type Database = {
         }
         Insert: {
           access_type?: string
+          archived_at?: string | null
           blocks?: Json
           created_at?: string
           created_by?: string | null
@@ -149,6 +151,7 @@ export type Database = {
         }
         Update: {
           access_type?: string
+          archived_at?: string | null
           blocks?: Json
           created_at?: string
           created_by?: string | null
@@ -475,6 +478,7 @@ export type Database = {
         Args: { p_key: string; p_page: string; p_value: Json }
         Returns: {
           access_type: string
+          archived_at: string | null
           blocks: Json
           created_at: string
           created_by: string | null
@@ -501,6 +505,7 @@ export type Database = {
         Args: { p_page: string }
         Returns: {
           access_type: string
+          archived_at: string | null
           blocks: Json
           created_at: string
           created_by: string | null
