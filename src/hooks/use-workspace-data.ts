@@ -4,10 +4,10 @@ import { qk } from "@/lib/query-keys";
 import type { PageListItem, PageFull, PageAccessRow } from "@/lib/types";
 
 const PAGE_LIST_COLUMNS =
-  "id, title, icon, props, verified_at, verified_by, edited_at, edited_by, access_type";
+  "id, title, icon, props, verified_at, verified_by, edited_at, edited_by, access_type, archived_at";
 
 const PAGE_FULL_COLUMNS =
-  "id, workspace_id, title, icon, props, blocks, access_type, verified_at, verified_by, edited_at, edited_by, created_by, created_at, deleted_at";
+  "id, workspace_id, title, icon, props, blocks, access_type, verified_at, verified_by, edited_at, edited_by, created_by, created_at, deleted_at, archived_at";
 
 async function fetchPages(ws: string): Promise<PageListItem[]> {
   const { data, error } = await supabase
