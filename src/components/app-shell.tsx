@@ -182,28 +182,35 @@ export function AppShell() {
     if (selection.kind === "view") {
       const v = views.find((x) => x.id === selection.id);
       if (!v) return null;
-      const section =
-        v.scope === "team" ? "Team views" : "My views";
-      return { section, name: v.name };
+      const section = v.scope === "team" ? "Team views" : "My views";
+      return { crumbs: [section], name: v.name };
     }
     if (selection.kind === "area") {
-      return { section: "Areas", name: selection.area };
+      return { crumbs: ["Areas"], name: selection.area };
     }
     const p = pages.find((x) => x.id === selection.id);
-    // Optional "back to area" hint set by the New area flow.
-    try {
-      const raw = sessionStorage.getItem("gio.page-back");
-      if (raw) {
-        const parsed = JSON.parse(raw) as { pageId?: string; area?: string };
-        if (parsed.pageId === selection.id && parsed.area) {
-          return { section: "Areas", name: p?.title || parsed.area };
-        }
+    const title = p?.title || "Untitled";
+    const origin = getPageOrigin(selection.id);
+    if (origin) {
+      if (origin.kind === "view") {
+        const section = origin.scope === "team" ? "Team views" : "My views";
+        return { crumbs: [section, origin.viewName], name: title };
       }
-    } catch {
-      /* ignore */
+      if (origin.kind === "area") {
+        return { crumbs: ["Areas", origin.area], name: title };
+      }
+      if (origin.kind === "search") {
+        return { crumbs: ["Search"], name: title };
+      }
     }
-    return { section: "Page", name: p?.title || "Untitled" };
+    // Fall back to the page's own area if we can infer it.
+    const area = p && typeof (p.props as Record<string, unknown> | null)?.area === "string"
+      ? (p.props as Record<string, unknown>).area as string
+      : null;
+    if (area) return { crumbs: ["Areas", area], name: title };
+    return { crumbs: ["Page"], name: title };
   }, [selection, views, pages]);
+
 
 
   async function handleSignOut() {
