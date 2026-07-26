@@ -1026,8 +1026,9 @@ export function MainView({ selection }: { selection: Selection }) {
       if (f.op === "is_me" && f.prop && user?.id) seed[f.prop] = user.id;
     }
     if (selection.kind === "area") seed.area = selection.area;
-    create.mutate({ seedProps: seed });
+    void createAndOpen({ seedProps: seed });
   };
+
 
   const editable = selection.kind === "area" || isOwnerOfView;
 
