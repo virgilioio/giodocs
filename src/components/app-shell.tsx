@@ -292,13 +292,18 @@ export function AppShell() {
           </button>
           {breadcrumb && (
             <div className="flex min-w-0 items-center gap-2">
-              <span className="text-ui text-secondary">{breadcrumb.section}</span>
-              <span className="text-ui text-rule">/</span>
+              {breadcrumb.crumbs.map((c, i) => (
+                <span key={i} className="flex items-center gap-2 shrink-0">
+                  <span className="text-ui text-secondary">{c}</span>
+                  <span className="text-ui text-rule">/</span>
+                </span>
+              ))}
               <span className="min-w-0 truncate text-ui text-body">
                 {breadcrumb.name}
               </span>
             </div>
           )}
+
         </header>
 
         <main className="min-w-0 flex-1 bg-surface overflow-y-auto">
