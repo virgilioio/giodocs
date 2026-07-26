@@ -1073,6 +1073,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
   const verify = useVerifyPage();
   const qc = useQueryClient();
   const { prefs } = usePrefs();
+  const { app } = usePageAppearance(pageId);
   useEffect(() => {
     setDateModeForPageView(prefs.dateFormat);
   }, [prefs.dateFormat]);
