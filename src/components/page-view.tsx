@@ -223,12 +223,13 @@ type PermsData = {
 };
 
 function PermissionsChip({
+  id,
   page,
   workspaceName,
   members,
   access,
   areaAccessNorm,
-}: PermsData) {
+}: PermsData & { id?: string }) {
   const isWorkspace = page.access_type === "workspace";
   const guests = access.filter((a) => a.guest_email);
   const explicitUsers = access.filter((a) => a.user_id);
@@ -256,6 +257,7 @@ function PermissionsChip({
       trigger={({ onClick, ref }) => (
         <button
           ref={ref}
+          id={id}
           type="button"
           onClick={onClick}
           className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 text-meta text-secondary hover:bg-rail"
