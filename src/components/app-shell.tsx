@@ -79,20 +79,56 @@ export function AppShell() {
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsPane, setSettingsPane] = useState<SettingsPane>("preferences");
+  const [membersTab, setMembersTab] = useState<"members" | "guests">("members");
+  const [accountMenu, setAccountMenu] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+
+  const domainsQ = useAllowedDomains(workspaceId);
+  const allowedDomains = domainsQ.data ?? [];
+
+  const openSettings = (p: SettingsPane = "preferences") => {
+    setSettingsPane(p);
+    setSettingsOpen(true);
+  };
+  const closeSettings = () => setSettingsOpen(false);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
         e.preventDefault();
         setPaletteOpen((v) => !v);
+        return;
       }
       if ((e.metaKey || e.ctrlKey) && e.key === ",") {
         e.preventDefault();
         setSettingsOpen((v) => !v);
+        return;
+      }
+      if (e.key === "Escape") {
+        // Ordered dismissal — topmost layer first.
+        if (inviteOpen) {
+          e.preventDefault();
+          setInviteOpen(false);
+          return;
+        }
+        if (settingsOpen) {
+          e.preventDefault();
+          setSettingsOpen(false);
+          return;
+        }
+        if (accountMenu) {
+          e.preventDefault();
+          setAccountMenu(false);
+          return;
+        }
+        // Palette and popovers own their own escape below.
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [inviteOpen, settingsOpen, accountMenu]);
 
   const pages = (shell.pages.data ?? []) as PageListItem[];
   const views = shell.views.data ?? [];
