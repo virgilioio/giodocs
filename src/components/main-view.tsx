@@ -198,18 +198,8 @@ function ViewHeader({
           <Glyph path="M12 5v14M5 12h14" className="h-3 w-3" />
           New page
         </button>
-        <button
-          type="button"
-          aria-label="View options"
-          onClick={(e) => onOpenMenu(e.currentTarget)}
-          className="grid place-items-center rounded-lg text-faint hover:bg-sunken"
-          style={{ height: 30, width: 30 }}
-        >
-          <Glyph
-            path="M6 12a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"
-            className="h-4 w-4"
-          />
-        </button>
+        <RowMoreButton size="md" build={menuBuild} />
+
       </div>
     </div>
   );
