@@ -1212,7 +1212,9 @@ export function MainView({ selection }: { selection: Selection }) {
 
       {body}
     </div>
+    </PageOriginContext.Provider>
   );
+
 }
 
 /* ─────────────────────────── Modified banner ─────────────────────────── */
