@@ -873,7 +873,8 @@ export function PageEditor({ pageId }: { pageId: string }) {
     setDateModeForPageView(prefs.dateFormat);
   }, [prefs.dateFormat]);
 
-  const meId = useAuthUserId();
+  const { user } = useAuth();
+  const meId = user?.id ?? "";
 
   const [justVerified, setJustVerified] = useState(false);
   const justVerifiedTimerRef = useRef<number | null>(null);
