@@ -340,7 +340,7 @@ function FreshnessRow({
 }) {
   const verifiedByName = useMemo(() => {
     const m = members.find((x) => x.user_id === page.verified_by);
-    return m?.profiles?.full_name || m?.profiles?.email || "someone";
+    return m?.profiles?.full_name || m?.profiles?.email || null;
   }, [members, page.verified_by]);
 
   const ageMs = Date.now() - new Date(page.verified_at).getTime();
@@ -398,7 +398,8 @@ function FreshnessRow({
         className="h-4 w-4 text-accent"
       />
       <span>
-        Verified {relTime(page.verified_at)} by {verifiedByName}
+        Verified {relTime(page.verified_at)}
+        {verifiedByName ? ` by ${verifiedByName}` : ""}
       </span>
       <button
         type="button"
@@ -410,6 +411,7 @@ function FreshnessRow({
     </div>
   );
 }
+
 
 /* ────────────── Property strip ────────────── */
 
