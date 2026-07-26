@@ -84,6 +84,7 @@ export function AppShell() {
   const [accountMenu, setAccountMenu] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+  const [sidebarPopover, setSidebarPopover] = useState<"view" | "area" | null>(null);
 
   const domainsQ = useAllowedDomains(workspaceId);
   const allowedDomains = domainsQ.data ?? [];
