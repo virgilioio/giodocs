@@ -7,6 +7,8 @@ import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell, pageQuery } from "@/hooks/use-workspace-data";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
+import { PageOriginContext, useSetPageOrigin } from "@/lib/page-origin";
+
 import { Popover } from "./popover";
 import {
   useSetPageProperty,
