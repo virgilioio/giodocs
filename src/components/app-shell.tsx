@@ -692,7 +692,7 @@ function SidebarBody({
                       active={viewActive(v.id)}
                       count={countFor(v)}
                       renderCount={renderCount}
-                      isOwner={v.owner === user?.id}
+                      isOwner={v.owner_id === user?.id}
                       onHide={hideTeamView}
                     />
                   ))}
