@@ -669,6 +669,8 @@ function SidebarBody({
                     active={viewActive(v.id)}
                     count={countFor(v)}
                     renderCount={renderCount}
+                    wsName={workspaceName}
+                    wsMembers={memberCount}
                   />
                 ))}
               </ul>
@@ -690,6 +692,8 @@ function SidebarBody({
                       active={viewActive(v.id)}
                       count={countFor(v)}
                       renderCount={renderCount}
+                      isOwner={v.owner === user?.id}
+                      onHide={hideTeamView}
                     />
                   ))}
                 </ul>
@@ -737,7 +741,15 @@ function SidebarBody({
                       active={areaActive(area)}
                       items={items}
                       isStale={isStale}
+                      propDefs={propDefs}
+                      members={members}
                       me={user?.id ?? ""}
+                      onVerify={(id) => verifyPage.mutate(id)}
+                      setPageProperty={setPageProperty}
+                      moveToArea={moveToArea}
+                      duplicatePage={duplicatePage}
+                      deletePage={deletePage}
+                      navigate={navigate}
                     />
                   );
                 })}
