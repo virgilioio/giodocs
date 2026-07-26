@@ -21,6 +21,7 @@ import {
   useSetPageProperty,
   useRenamePage,
   useCreatePage,
+  useCreatePageAndOpen,
   useUpdateView,
   useForkView,
   usePublishView,
