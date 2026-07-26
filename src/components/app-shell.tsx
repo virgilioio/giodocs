@@ -18,6 +18,7 @@ import { resolvePageIdParam } from "@/lib/slug";
 
 import {
   useCreatePage,
+  useCreatePageAndOpen,
   useCreateView,
   useDeleteView,
   useDeletePage,
