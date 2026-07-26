@@ -119,10 +119,9 @@ function EditedStamp({
   return (
     <span
       title={tooltip}
-      className={`hidden shrink-0 whitespace-nowrap md:block ${
-        saving ? "text-faint" : "text-whisper"
+      className={`hidden shrink-0 whitespace-nowrap text-meta md:block ${
+        saving ? "text-faint" : "text-muted"
       }`}
-      style={{ fontSize: 12.5 }}
     >
       {label}
     </span>
