@@ -28,6 +28,7 @@ import { useToast } from "@/lib/toast";
 import type { PageListItem } from "@/lib/types";
 import { MainView } from "./main-view";
 import { PageEditor } from "./page-view";
+import { PageTopbarActions } from "./page-topbar-actions";
 import { CommandPalette } from "./command-palette";
 import { SettingsModal, type SettingsPane } from "./settings-modal";
 import { AddMembersModal, type PendingInvite } from "./add-members-modal";
