@@ -103,9 +103,12 @@ export function runView(
   view: ViewSpec,
   ctx: RunViewCtx,
 ): PageListItem[] {
-  const filtered = pages.filter((page) =>
-    view.filter.every((f) => matches(page, f, ctx)),
-  );
+  const filtered = pages.filter((page) => {
+    // Archived pages leave every view. They stay in ⌘K search (which reads
+    // the server RPC directly, not this in-memory list).
+    if (page.archived_at) return false;
+    return view.filter.every((f) => matches(page, f, ctx));
+  });
 
   const dir = view.sort.dir === "asc" ? 1 : -1;
   const prop = view.sort.prop;

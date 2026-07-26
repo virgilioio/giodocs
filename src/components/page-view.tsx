@@ -21,6 +21,7 @@ import {
 import { qk } from "@/lib/query-keys";
 import { Popover } from "./popover";
 import { usePrefs } from "@/lib/preferences";
+import { usePageAppearance } from "@/lib/page-appearance";
 import { formatTimestamp } from "@/lib/format";
 import { useEmojiFavorites } from "@/lib/emoji-favorites";
 import type { Block, PageAccessRow, PageFull, PageListItem } from "@/lib/types";
@@ -223,12 +224,13 @@ type PermsData = {
 };
 
 function PermissionsChip({
+  id,
   page,
   workspaceName,
   members,
   access,
   areaAccessNorm,
-}: PermsData) {
+}: PermsData & { id?: string }) {
   const isWorkspace = page.access_type === "workspace";
   const guests = access.filter((a) => a.guest_email);
   const explicitUsers = access.filter((a) => a.user_id);
@@ -256,6 +258,7 @@ function PermissionsChip({
       trigger={({ onClick, ref }) => (
         <button
           ref={ref}
+          id={id}
           type="button"
           onClick={onClick}
           className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 text-meta text-secondary hover:bg-rail"
@@ -1071,6 +1074,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
   const verify = useVerifyPage();
   const qc = useQueryClient();
   const { prefs } = usePrefs();
+  const { app } = usePageAppearance(pageId);
   useEffect(() => {
     setDateModeForPageView(prefs.dateFormat);
   }, [prefs.dateFormat]);
@@ -1164,7 +1168,11 @@ export function PageEditor({ pageId }: { pageId: string }) {
 
   return (
     <div
-      className="mx-auto"
+      className="gio-page mx-auto"
+      data-font={app.font}
+      data-small={app.small ? "1" : "0"}
+      data-wide={app.wide ? "1" : "0"}
+      data-locked={app.locked ? "1" : "0"}
       style={{
         maxWidth: "var(--container-page)",
         padding: "42px 44px",
@@ -1187,6 +1195,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
       {/* 2. Permissions chip */}
       <div style={{ marginTop: 14 }}>
         <PermissionsChip
+          id="gio-perm-chip"
           page={page}
           workspaceName={workspaceName}
           members={members}

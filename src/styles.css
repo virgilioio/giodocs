@@ -120,4 +120,18 @@
   /* Page font preference — applied to page body content only. */
   .gio-page-body[data-font="serif"] { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; }
   .gio-page-body[data-font="mono"]  { font-family: var(--font-mono); }
+
+  /* Per-page appearance overrides (font/small/wide/locked). Higher-specificity
+     rules override Tailwind font-display and container max-width. */
+  .gio-page[data-font="serif"], .gio-page[data-font="serif"] * {
+    font-family: Georgia, "Iowan Old Style", "Times New Roman", serif !important;
+  }
+  .gio-page[data-font="mono"], .gio-page[data-font="mono"] * {
+    font-family: var(--font-mono) !important;
+  }
+  .gio-page[data-wide="1"] { max-width: var(--container-pageWide) !important; }
+  .gio-page[data-small="1"] .gio-page-body { font-size: 15px; line-height: 1.55; }
+  .gio-page[data-small="1"] .gio-page-body :where(h1,h2) { font-size: 19px; }
+  .gio-page[data-small="1"] .gio-page-body :where(h3) { font-size: 15.5px; }
+  .gio-page[data-locked="1"] .gio-block-gutter { opacity: 0.4; pointer-events: none; }
 }

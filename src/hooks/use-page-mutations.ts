@@ -519,3 +519,199 @@ export function usePublishView() {
     onSettled: () => qc.invalidateQueries({ queryKey: qk.views(ws) }),
   });
 }
+
+/* ────────────── Page-level actions used by the topbar menu ────────────── */
+
+// Move to area with menu-appropriate toast wording that names both
+// consequences (the view/area it left, the one it joined).
+export function useMovePageToArea() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (v: { pageId: string; area: string | null }) => {
+      const { error } = await supabase.rpc("set_page_property", {
+        p_page: v.pageId,
+        p_key: "area",
+        p_value: (v.area ?? null) as never,
+      });
+      if (error) throw error;
+    },
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: qk.pages(ws) });
+      const snapshot = qc.getQueryData<PageListItem[]>(qk.pages(ws)) ?? [];
+      const prev = snapshot.find((p) => p.id === v.pageId);
+      const prevArea =
+        prev && prev.props && typeof prev.props === "object" &&
+        !Array.isArray(prev.props)
+          ? ((prev.props as Record<string, unknown>).area as string | undefined) ?? null
+          : null;
+      const next = snapshot.map((p) => {
+        if (p.id !== v.pageId) return p;
+        const props =
+          p.props && typeof p.props === "object" && !Array.isArray(p.props)
+            ? { ...(p.props as Record<string, unknown>) }
+            : {};
+        if (v.area) props.area = v.area;
+        else delete props.area;
+        return {
+          ...p,
+          props: props as PageListItem["props"],
+          edited_at: new Date().toISOString(),
+        };
+      });
+      qc.setQueryData<PageListItem[]>(qk.pages(ws), next);
+      return { snapshot, prevArea };
+    },
+    onError: (err, _v, ctx) => {
+      if (ctx?.snapshot) qc.setQueryData(qk.pages(ws), ctx.snapshot);
+      toast.push(`Couldn't move: ${(err as Error).message}`);
+    },
+    onSuccess: (_d, v, ctx) => {
+      const from = ctx?.prevArea;
+      if (v.area && from && from !== v.area) {
+        toast.push(`Moved to ${v.area} — it left "${from}" and joined "${v.area}".`);
+      } else if (v.area && !from) {
+        toast.push(`Moved to ${v.area}.`);
+      } else if (!v.area && from) {
+        toast.push(`Removed from ${from}.`);
+      } else {
+        toast.push(`Moved.`);
+      }
+    },
+  });
+}
+
+export function useDuplicatePage() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const { user } = useAuth();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (pageId: string) => {
+      const { data: src, error: e1 } = await supabase
+        .from("pages")
+        .select("title, icon, props, blocks, access_type")
+        .eq("id", pageId)
+        .maybeSingle();
+      if (e1) throw e1;
+      if (!src) throw new Error("Original page not found");
+
+      // Fresh block ids on every block. Any non-object entries are kept as-is.
+      const rawBlocks = Array.isArray(src.blocks) ? (src.blocks as unknown[]) : [];
+      const cloned = rawBlocks.map((b) => {
+        if (b && typeof b === "object" && !Array.isArray(b)) {
+          const rec = b as Record<string, unknown>;
+          return {
+            ...rec,
+            id:
+              globalThis.crypto?.randomUUID?.() ??
+              `blk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          };
+        }
+        return b;
+      });
+
+      const suffixed = `${(src.title ?? "").trim() || "Untitled"} (copy)`;
+
+      const { data, error } = await supabase
+        .from("pages")
+        .insert({
+          workspace_id: ws,
+          created_by: user!.id,
+          edited_by: user!.id,
+          verified_by: user!.id,
+          icon: src.icon ?? "📄",
+          title: suffixed,
+          props: (src.props ?? {}) as never,
+          blocks: cloned as never,
+          access_type: src.access_type,
+        })
+        .select(
+          "id, title, icon, props, verified_at, verified_by, edited_at, edited_by, access_type, archived_at",
+        )
+        .single();
+      if (error) throw error;
+      return data as PageListItem;
+    },
+    onSuccess: (row) => {
+      qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) =>
+        prev ? [row, ...prev] : [row],
+      );
+      toast.push("Duplicated — you're on the copy.");
+    },
+    onError: (err) => {
+      toast.push(`Couldn't duplicate: ${(err as Error).message}`);
+    },
+  });
+}
+
+export function useArchivePage() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (v: { pageId: string; archived: boolean }) => {
+      const { error } = await supabase
+        .from("pages")
+        .update({ archived_at: v.archived ? new Date().toISOString() : null } as never)
+        .eq("id", v.pageId);
+      if (error) throw error;
+    },
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: qk.pages(ws) });
+      const snapshot = qc.getQueryData<PageListItem[]>(qk.pages(ws)) ?? [];
+      const nowIso = new Date().toISOString();
+      qc.setQueryData<PageListItem[]>(
+        qk.pages(ws),
+        snapshot.map((p) =>
+          p.id === v.pageId
+            ? { ...p, archived_at: v.archived ? nowIso : null }
+            : p,
+        ),
+      );
+      return { snapshot };
+    },
+    onError: (err, _v, ctx) => {
+      if (ctx?.snapshot) qc.setQueryData(qk.pages(ws), ctx.snapshot);
+      toast.push(`Couldn't ${_v.archived ? "archive" : "unarchive"}: ${(err as Error).message}`);
+    },
+    onSuccess: (_d, v) => {
+      toast.push(
+        v.archived
+          ? `Archived — it left every view but ⌘K still finds it.`
+          : `Unarchived — it's back in every view that matches.`,
+      );
+    },
+  });
+}
+
+export function useDeletePage() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (pageId: string) => {
+      const { error } = await supabase
+        .from("pages")
+        .update({ deleted_at: new Date().toISOString() } as never)
+        .eq("id", pageId);
+      if (error) throw error;
+    },
+    onMutate: async (pageId) => {
+      await qc.cancelQueries({ queryKey: qk.pages(ws) });
+      const snapshot = qc.getQueryData<PageListItem[]>(qk.pages(ws)) ?? [];
+      qc.setQueryData<PageListItem[]>(
+        qk.pages(ws),
+        snapshot.filter((p) => p.id !== pageId),
+      );
+      return { snapshot };
+    },
+    onError: (err, _pageId, ctx) => {
+      if (ctx?.snapshot) qc.setQueryData(qk.pages(ws), ctx.snapshot);
+      toast.push(`Couldn't delete: ${(err as Error).message}`);
+    },
+    onSuccess: () => toast.push("Page deleted."),
+  });
+}
+

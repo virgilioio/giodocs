@@ -14,6 +14,7 @@ import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { useRealtimeWorkspace } from "@/hooks/use-realtime";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
 import { getPageOrigin } from "@/lib/page-origin";
+import { resolvePageIdParam } from "@/lib/slug";
 
 import {
   useCreatePage,
@@ -28,6 +29,7 @@ import { useToast } from "@/lib/toast";
 import type { PageListItem } from "@/lib/types";
 import { MainView } from "./main-view";
 import { PageEditor } from "./page-view";
+import { PageTopbarActions } from "./page-topbar-actions";
 import { CommandPalette } from "./command-palette";
 import { SettingsModal, type SettingsPane } from "./settings-modal";
 import { AddMembersModal, type PendingInvite } from "./add-members-modal";
@@ -68,7 +70,17 @@ export function AppShell() {
   const workspaceId = useWorkspaceId();
   const shell = useWorkspaceShell(workspaceId);
   useRealtimeWorkspace(workspaceId);
-  const selection = useSelection();
+  const rawSelection = useSelection();
+  const pagesForResolve = (shell.pages.data ?? []) as PageListItem[];
+  const selection = useMemo<Selection>(() => {
+    if (rawSelection?.kind === "page") {
+      // The URL may be the raw UUID or the cosmetic slug-shortId form emitted
+      // by Copy link. Resolve to the canonical id so downstream queries hit.
+      const resolved = resolvePageIdParam(rawSelection.id, pagesForResolve);
+      return { kind: "page", id: resolved };
+    }
+    return rawSelection;
+  }, [rawSelection, pagesForResolve]);
   const navigate = useNavigate();
 
   const [collapsed, setCollapsed] = useState<boolean>(() => {
@@ -89,6 +101,7 @@ export function AppShell() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [sidebarPopover, setSidebarPopover] = useState<"view" | "area" | null>(null);
+  const [pageMenuOpen, setPageMenuOpen] = useState(false);
 
   const domainsQ = useAllowedDomains(workspaceId);
   const allowedDomains = domainsQ.data ?? [];
@@ -123,6 +136,11 @@ export function AppShell() {
           setSettingsOpen(false);
           return;
         }
+        if (pageMenuOpen) {
+          e.preventDefault();
+          setPageMenuOpen(false);
+          return;
+        }
         if (sidebarPopover) {
           e.preventDefault();
           setSidebarPopover(null);
@@ -138,7 +156,7 @@ export function AppShell() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [inviteOpen, settingsOpen, accountMenu, sidebarPopover]);
+  }, [inviteOpen, settingsOpen, accountMenu, sidebarPopover, pageMenuOpen]);
 
   const pages = (shell.pages.data ?? []) as PageListItem[];
   const views = shell.views.data ?? [];
@@ -304,6 +322,16 @@ export function AppShell() {
             </div>
           )}
 
+          {selection && selection.kind === "page" ? (
+            <div className="ml-auto flex items-center gap-2.5">
+              <PageTopbarActions
+                pageId={selection.id}
+                menuOpen={pageMenuOpen}
+                onMenuOpen={() => setPageMenuOpen(true)}
+                onMenuClose={() => setPageMenuOpen(false)}
+              />
+            </div>
+          ) : null}
         </header>
 
         <main className="min-w-0 flex-1 bg-surface overflow-y-auto">
@@ -451,6 +479,7 @@ function SidebarBody({
   const areas = useMemo(() => {
     const counts = new Map<string, number>();
     for (const p of pages) {
+      if (p.archived_at) continue;
       const props =
         p.props && typeof p.props === "object" && !Array.isArray(p.props)
           ? (p.props as Record<string, unknown>)
@@ -466,6 +495,7 @@ function SidebarBody({
   const areaPages = useMemo(() => {
     const m = new Map<string, PageListItem[]>();
     for (const p of pages) {
+      if (p.archived_at) continue;
       const props =
         p.props && typeof p.props === "object" && !Array.isArray(p.props)
           ? (p.props as Record<string, unknown>)
