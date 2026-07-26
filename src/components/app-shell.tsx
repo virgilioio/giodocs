@@ -189,6 +189,18 @@ export function AppShell() {
       return { section: "Areas", name: selection.area };
     }
     const p = pages.find((x) => x.id === selection.id);
+    // Optional "back to area" hint set by the New area flow.
+    try {
+      const raw = sessionStorage.getItem("gio.page-back");
+      if (raw) {
+        const parsed = JSON.parse(raw) as { pageId?: string; area?: string };
+        if (parsed.pageId === selection.id && parsed.area) {
+          return { section: "Areas", name: p?.title || parsed.area };
+        }
+      }
+    } catch {
+      /* ignore */
+    }
     return { section: "Page", name: p?.title || "Untitled" };
   }, [selection, views, pages]);
 
