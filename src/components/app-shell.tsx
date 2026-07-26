@@ -486,12 +486,45 @@ function SidebarBody({
   const { prefs } = usePrefs();
   const showSidebarCounts = prefs.showSidebarCounts;
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const members = (useMembers().data ?? []) as MemberLite[];
+  const propDefs = (usePropDefs().data ?? []) as Array<{
+    key: string;
+    label: string;
+    options: unknown;
+  }>;
+  const verifyPage = useVerifyPage();
+  const setPageProperty = useSetPageProperty();
+  const moveToArea = useMovePageToArea();
+  const duplicatePage = useDuplicatePage();
+  const deletePage = useDeletePage();
+
+  // Local "hide from my sidebar" list for team views. Persisted per-user.
+  const hideKey = user?.id ? `gio.hiddenTeamViews.${user.id}` : "";
+  const [hiddenTeamViews, setHiddenTeamViews] = useState<Set<string>>(() => {
+    if (typeof window === "undefined" || !hideKey) return new Set();
+    try {
+      const raw = window.localStorage.getItem(hideKey);
+      return new Set<string>(raw ? (JSON.parse(raw) as string[]) : []);
+    } catch {
+      return new Set<string>();
+    }
+  });
+  const hideTeamView = (id: string) => {
+    setHiddenTeamViews((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      if (hideKey && typeof window !== "undefined")
+        window.localStorage.setItem(hideKey, JSON.stringify([...next]));
+      return next;
+    });
+  };
 
   const personal = views
     .filter((v) => v.scope === "personal")
     .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
   const team = views
-    .filter((v) => v.scope === "team")
+    .filter((v) => v.scope === "team" && !hiddenTeamViews.has(v.id))
     .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
 
   const areas = useMemo(() => {
