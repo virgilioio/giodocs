@@ -359,10 +359,15 @@ function SidebarBody({
   userEmail,
   initials,
   workspaceName,
+  workspaceIcon,
   memberCount,
   areaIcons,
+  accountMenu,
+  onOpenAccountMenu,
+  onCloseAccountMenu,
   onSignOut,
   onOpenSettings,
+  onOpenInvite,
   onOpenPalette,
 }: {
   loading: boolean;
@@ -374,10 +379,15 @@ function SidebarBody({
   userEmail: string;
   initials: string;
   workspaceName: string;
+  workspaceIcon: string;
   memberCount: number;
   areaIcons: Map<string, string>;
+  accountMenu: boolean;
+  onOpenAccountMenu: () => void;
+  onCloseAccountMenu: () => void;
   onSignOut: () => void;
   onOpenSettings: () => void;
+  onOpenInvite: () => void;
   onOpenPalette: () => void;
 }) {
   const [sections, toggleSection] = useSectionState();
