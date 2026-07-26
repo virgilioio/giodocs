@@ -334,7 +334,17 @@ export function AppShell() {
           >
             <Glyph path="M4 6h16M4 12h16M4 18h16" />
           </button>
-          {breadcrumb && (
+          {pageBack ? (
+            <Link
+              to={pageBack.to}
+              params={pageBack.params as never}
+              className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-ui text-secondary hover:bg-rail hover:text-strong"
+              title={`Back to ${pageBack.label}`}
+            >
+              <Glyph path="M15 6l-6 6 6 6" className="h-4 w-4" />
+              <span className="min-w-0 truncate">{pageBack.label}</span>
+            </Link>
+          ) : breadcrumb ? (
             <div className="flex min-w-0 items-center gap-2">
               {breadcrumb.crumbs.map((c, i) => (
                 <span key={i} className="flex items-center gap-2 shrink-0">
@@ -346,7 +356,7 @@ export function AppShell() {
                 {breadcrumb.name}
               </span>
             </div>
-          )}
+          ) : null}
 
           {selection && selection.kind === "page" ? (
             <div className="ml-auto flex items-center gap-2.5">
