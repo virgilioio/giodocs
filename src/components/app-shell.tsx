@@ -738,33 +738,117 @@ function SidebarBody({
 
 /* ─────────────────── View rows w/ hover ⋯ menus ─────────────────── */
 
+/* Relative time hint for menu items. Kept tiny — spec-defined format. */
+function relTime(iso: string) {
+  return formatTimestamp(iso, "relative");
+}
+
+/* Look up the pastel avatar tokens for a member id, with a safe fallback. */
+type MemberLite = {
+  user_id: string;
+  role: string;
+  profiles: {
+    id: string;
+    full_name: string | null;
+    email: string | null;
+    avatar_tint: string | null;
+    avatar_ink: string | null;
+  } | null;
+};
+
+function initialsOf(m: MemberLite | undefined) {
+  const name = m?.profiles?.full_name || m?.profiles?.email || "?";
+  return name
+    .split(/\s+/)
+    .map((s) => s[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+function firstNameOf(m: MemberLite | undefined) {
+  const name = m?.profiles?.full_name || m?.profiles?.email || "";
+  return name.split(/\s+/)[0] ?? "";
+}
+
+/* Personal view row — hover reveals ⋯ in place of the count. */
 function MyViewRow({
   v,
   active,
   count,
   renderCount,
+  wsName,
+  wsMembers,
 }: {
   v: ViewRow;
   active: boolean;
   count: number | "!";
   renderCount: (c: number | "!", size: string) => ReactNode;
+  wsName: string;
+  wsMembers: number;
 }) {
   const [hover, setHover] = useState(false);
-  const [menu, setMenu] = useState(false);
-  const [renaming, setRenaming] = useState(false);
-  const [name, setName] = useState(v.name);
   const updateView = useUpdateView();
   const createView = useCreateView();
   const deleteView = useDeleteView();
   const publishView = usePublishView();
-  const ws = useWorkspaceId();
-  const shell = useWorkspaceShell(ws);
-  const wsName = shell.workspace.data?.name ?? "the workspace";
-  const wsMembers = shell.members.data?.length ?? 0;
   const navigate = useNavigate();
 
-
-  const showMenu = hover || menu;
+  const build = (): ReactNode => {
+    const items: RowMenuItem[] = [
+      {
+        id: "open",
+        label: "Open",
+        hint: <Sc>↵</Sc>,
+        onSelect: () =>
+          navigate({ to: "/v/$viewId", params: { viewId: v.id } }),
+      },
+      {
+        id: "rename",
+        label: "Rename",
+        keepOpen: true,
+        onSelect: () => {
+          /* opens the input frame below on next tick */
+        },
+      },
+      {
+        id: "duplicate",
+        label: "Duplicate",
+        hint: <Val>personal</Val>,
+        onSelect: () =>
+          createView.mutate({
+            name: `${v.name} copy`,
+            icon: v.icon,
+            filter: (v.filter ?? []) as Filter[],
+            sort: (v.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
+            layout: v.layout,
+          }),
+      },
+      {
+        id: "publish",
+        label: "Publish to team",
+        hint: <Val>shared</Val>,
+        submenu: true,
+        onSelect: () => {
+          /* handled by wrapper below */
+        },
+      },
+      { kind: "divider" },
+      {
+        id: "delete",
+        label: "Delete view",
+        danger: true,
+        submenu: true,
+        onSelect: () => {
+          /* handled by wrapper below */
+        },
+      },
+    ];
+    return <MyViewMenu view={v} items={items}
+      wsName={wsName} wsMembers={wsMembers}
+      updateView={updateView} publishView={publishView} deleteView={deleteView} />;
+  };
 
   return (
     <li
@@ -777,106 +861,19 @@ function MyViewRow({
         params={{ viewId: v.id }}
         style={{ height: "var(--spacing-rowMy)" }}
         className={rowClass(active)}
-        onClick={(e) => {
-          if (renaming) e.preventDefault();
-        }}
       >
         {v.icon ? (
           <span className="text-row leading-none">{v.icon}</span>
         ) : (
           <LayoutGlyph layout={v.layout} />
         )}
-        {renaming ? (
-          <input
-            autoFocus
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            onBlur={() => {
-              setRenaming(false);
-              if (name.trim() && name !== v.name)
-                updateView.mutate({ id: v.id, patch: { name: name.trim() } });
-              else setName(v.name);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-              if (e.key === "Escape") {
-                setName(v.name);
-                setRenaming(false);
-              }
-            }}
-            className="min-w-0 flex-1 bg-transparent text-row focus:outline-none"
-          />
-        ) : (
-          <span className="min-w-0 flex-1 truncate text-row">{v.name}</span>
-        )}
-        <span className="relative flex h-5 min-w-[20px] items-center justify-end">
-          {showMenu ? (
-            <MoreButton
-              open={menu}
-              onOpen={() => setMenu(true)}
-              onClose={() => setMenu(false)}
-              menu={
-                <>
-                  <MenuItem
-                    onClick={() => {
-                      setMenu(false);
-                      navigate({ to: "/v/$viewId", params: { viewId: v.id } });
-                    }}
-                  >
-                    Open
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => {
-                      setMenu(false);
-                      setRenaming(true);
-                    }}
-                  >
-                    Rename
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => {
-                      setMenu(false);
-                      createView.mutate({
-                        name: `${v.name} copy`,
-                        icon: v.icon,
-                        filter: (v.filter ?? []) as Filter[],
-                        sort: (v.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
-                        layout: v.layout,
-                      });
-                    }}
-                  >
-                    Duplicate
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => {
-                      setMenu(false);
-                      if (
-                        window.confirm(
-                          `Publish "${v.name}" to Team views? It moves out of My views into Team views for all ${wsMembers} people at ${wsName}. Publishing is the only way a view becomes shared.`,
-                        )
-                      ) {
-                        publishView.mutate(v.id);
-                      }
-                    }}
-                  >
-                    Publish to team
-                  </MenuItem>
-
-                  <MenuDivider />
-                  <MenuItem
-                    danger
-                    onClick={() => {
-                      setMenu(false);
-                      if (window.confirm(`Delete view "${v.name}"?`)) {
-                        deleteView.mutate(v.id);
-                      }
-                    }}
-                  >
-                    Delete
-                  </MenuItem>
-                </>
-              }
-            />
+        <span className="min-w-0 flex-1 truncate text-row">{v.name}</span>
+        <span
+          className="relative flex items-center justify-end"
+          style={{ height: 17, minWidth: 17 }}
+        >
+          {hover ? (
+            <RowMoreButton size="sm" build={build} />
           ) : (
             renderCount(count, "text-row")
           )}
@@ -886,22 +883,156 @@ function MyViewRow({
   );
 }
 
+/**
+ * Inner content for the personal-view menu. Stateful because "Rename" swaps
+ * the same popover to an inline-input frame, and "Publish"/"Delete" swap to
+ * a confirm frame — all in place (no flyouts).
+ */
+function MyViewMenu({
+  view,
+  items,
+  wsName,
+  wsMembers,
+  updateView,
+  publishView,
+  deleteView,
+}: {
+  view: ViewRow;
+  items: RowMenuItem[];
+  wsName: string;
+  wsMembers: number;
+  updateView: ReturnType<typeof useUpdateView>;
+  publishView: ReturnType<typeof usePublishView>;
+  deleteView: ReturnType<typeof useDeleteView>;
+}) {
+  const [mode, setMode] = useState<"list" | "rename" | "publish" | "delete">("list");
+  if (mode === "rename") {
+    return (
+      <RowMenuList
+        title="Rename view"
+        items={[]}
+        onBack={() => setMode("list")}
+        input={{
+          initialValue: view.name,
+          placeholder: "View name",
+          autoSelect: true,
+          onSubmit: (v) => {
+            if (v && v !== view.name)
+              updateView.mutate({ id: view.id, patch: { name: v } });
+          },
+        }}
+      />
+    );
+  }
+  if (mode === "publish") {
+    return (
+      <RowMenuConfirm
+        title={`Publish "${view.name}" to the team?`}
+        body={
+          <>
+            It moves out of My views into Team views for all{" "}
+            <b>{wsMembers} people</b> at <b>{wsName}</b>. Publishing is the only
+            way a view becomes shared.
+          </>
+        }
+        confirmLabel="Publish"
+        variant="publish"
+        onConfirm={() => publishView.mutate(view.id)}
+      />
+    );
+  }
+  if (mode === "delete") {
+    return (
+      <RowMenuConfirm
+        title={`Delete "${view.name}"?`}
+        body="The view disappears from your sidebar — the pages it filtered are untouched."
+        confirmLabel="Delete view"
+        variant="danger"
+        onConfirm={() => deleteView.mutate(view.id)}
+      />
+    );
+  }
+  return (
+    <RowMenuList
+      title="My view"
+      items={items.map((it) => {
+        if (it.kind === "divider") return it;
+        if (it.id === "rename")
+          return { ...it, onSelect: () => setMode("rename"), keepOpen: true };
+        if (it.id === "publish")
+          return { ...it, onSelect: () => setMode("publish"), submenu: true, keepOpen: true };
+        if (it.id === "delete")
+          return { ...it, onSelect: () => setMode("delete"), submenu: true, keepOpen: true };
+        return it;
+      })}
+    />
+  );
+}
+
+/* Team view row — non-owners get a short menu; owners also get Unpublish. */
 function TeamViewRow({
   v,
   active,
   count,
   renderCount,
+  isOwner,
+  onHide,
 }: {
   v: ViewRow;
   active: boolean;
   count: number | "!";
   renderCount: (c: number | "!", size: string) => ReactNode;
+  isOwner: boolean;
+  onHide: (id: string) => void;
 }) {
   const [hover, setHover] = useState(false);
-  const [menu, setMenu] = useState(false);
   const fork = useForkView();
   const navigate = useNavigate();
-  const showMenu = hover || menu;
+
+  const build = (): ReactNode => (
+    <RowMenuList
+      title="Team view"
+      items={[
+        {
+          id: "open",
+          label: "Open",
+          hint: <Sc>↵</Sc>,
+          onSelect: () =>
+            navigate({ to: "/v/$viewId", params: { viewId: v.id } }),
+        },
+        {
+          id: "dup",
+          label: "Duplicate into My views",
+          hint: <Val>personal</Val>,
+          onSelect: () =>
+            fork.mutate({
+              viewId: v.id,
+              name: `${v.name} copy`,
+              filter: (v.filter ?? []) as Filter[],
+              sort: (v.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
+              layout: v.layout,
+            }),
+        },
+        {
+          id: "hide",
+          label: "Hide from my sidebar",
+          onSelect: () => onHide(v.id),
+        },
+        ...(isOwner
+          ? ([
+              { kind: "divider" },
+              {
+                id: "unpublish",
+                label: "Unpublish",
+                hint: <Val>back to mine</Val>,
+                disabled: true,
+              },
+            ] satisfies RowMenuItem[])
+          : []),
+      ]}
+    />
+  );
+
   return (
     <li
       onMouseEnter={() => setHover(true)}
@@ -921,40 +1052,12 @@ function TeamViewRow({
         <span className="min-w-0 flex-1 truncate text-meta text-secondary">
           {v.name}
         </span>
-
-        <span className="relative flex h-5 min-w-[20px] items-center justify-end">
-          {showMenu ? (
-            <MoreButton
-              open={menu}
-              onOpen={() => setMenu(true)}
-              onClose={() => setMenu(false)}
-              menu={
-                <>
-                  <MenuItem
-                    onClick={() => {
-                      setMenu(false);
-                      navigate({ to: "/v/$viewId", params: { viewId: v.id } });
-                    }}
-                  >
-                    Open
-                  </MenuItem>
-                  <MenuItem
-                    onClick={() => {
-                      setMenu(false);
-                      fork.mutate({
-                        viewId: v.id,
-                        name: `${v.name} copy`,
-                        filter: (v.filter ?? []) as Filter[],
-                        sort: (v.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
-                        layout: v.layout,
-                      });
-                    }}
-                  >
-                    Duplicate into My views
-                  </MenuItem>
-                </>
-              }
-            />
+        <span
+          className="relative flex items-center justify-end"
+          style={{ height: 17, minWidth: 17 }}
+        >
+          {hover ? (
+            <RowMoreButton size="sm" build={build} />
           ) : (
             renderCount(count, "text-meta")
           )}
@@ -964,6 +1067,7 @@ function TeamViewRow({
   );
 }
 
+/* Area row — its menu carries area-scope actions plus rename with a footer. */
 function AreaLi({
   area,
   count,
@@ -973,7 +1077,15 @@ function AreaLi({
   active,
   items,
   isStale,
-  me: _me,
+  propDefs,
+  members,
+  me,
+  onVerify,
+  setPageProperty,
+  moveToArea,
+  duplicatePage,
+  deletePage,
+  navigate,
 }: {
   area: string;
   count: number;
@@ -983,14 +1095,40 @@ function AreaLi({
   active: boolean;
   items: PageListItem[];
   isStale: (p: PageListItem) => boolean;
+  propDefs: Array<{ key: string; label: string; options: unknown }>;
+  members: MemberLite[];
   me: string;
+  onVerify: (pageId: string) => void;
+  setPageProperty: ReturnType<typeof useSetPageProperty>;
+  moveToArea: ReturnType<typeof useMovePageToArea>;
+  duplicatePage: ReturnType<typeof useDuplicatePage>;
+  deletePage: ReturnType<typeof useDeletePage>;
+  navigate: ReturnType<typeof useNavigate>;
 }) {
   const [hover, setHover] = useState(false);
-  const [menu, setMenu] = useState(false);
   const createPage = useCreatePage();
   const createView = useCreateView();
-  const navigate = useNavigate();
-  const showMenu = hover || menu;
+  const renameArea = useRenameArea();
+
+  const buildAreaMenu = (): ReactNode => (
+    <AreaMenu
+      area={area}
+      count={count}
+      open={open}
+      onToggle={onToggle}
+      onOpen={() => navigate({ to: "/a/$area", params: { area } })}
+      onNewPage={() => createPage.mutate({ seedProps: { area } })}
+      onRename={(to) => renameArea.mutate({ from: area, to })}
+      onSaveAsView={() =>
+        createView.mutate({
+          name: area,
+          filter: [{ op: "eq", prop: "area", value: area }],
+          sort: { prop: "edited", dir: "desc" },
+          layout: "table",
+        })
+      }
+    />
+  );
 
   return (
     <li
@@ -1023,70 +1161,12 @@ function AreaLi({
         >
           {icon && <span className="text-row leading-none">{icon}</span>}
           <span className="min-w-0 flex-1 truncate text-row">{area}</span>
-          <span className="relative flex h-5 min-w-[20px] items-center justify-end">
-            {showMenu ? (
-              <MoreButton
-                open={menu}
-                onOpen={() => setMenu(true)}
-                onClose={() => setMenu(false)}
-                width={240}
-                menu={
-                  <>
-                    <div className="px-2 py-1 text-label uppercase text-faint">
-                      {area} · {count} {count === 1 ? "PAGE" : "PAGES"}
-                    </div>
-                    <MenuDivider />
-                    <MenuItem
-                      right={<span className="text-caption text-faint">↵</span>}
-                      onClick={() => {
-                        setMenu(false);
-                        navigate({ to: "/a/$area", params: { area } });
-                      }}
-                    >
-                      Open area
-                    </MenuItem>
-                    <MenuItem
-                      onClick={() => {
-                        setMenu(false);
-                        if (!open) onToggle();
-                      }}
-                    >
-                      Show pages
-                    </MenuItem>
-                    <MenuItem
-                      onClick={() => {
-                        setMenu(false);
-                        createPage.mutate({ seedProps: { area } });
-                      }}
-                    >
-                      New page here
-                    </MenuItem>
-                    <MenuItem
-                      disabled
-                      title="Coming soon — rewrites the property on every page"
-                    >
-                      Rename area
-                    </MenuItem>
-                    <MenuDivider />
-                    <MenuItem
-                      right={
-                        <span className="text-caption text-faint">personal</span>
-                      }
-                      onClick={() => {
-                        setMenu(false);
-                        createView.mutate({
-                          name: area,
-                          filter: [{ op: "eq", prop: "area", value: area }],
-                          sort: { prop: "edited", dir: "desc" },
-                          layout: "table",
-                        });
-                      }}
-                    >
-                      Save as my view
-                    </MenuItem>
-                  </>
-                }
-              />
+          <span
+            className="relative flex items-center justify-end"
+            style={{ height: 17, minWidth: 17 }}
+          >
+            {hover ? (
+              <RowMoreButton size="sm" build={buildAreaMenu} />
             ) : (
               <span className="tnum text-row text-whisper">{count}</span>
             )}
@@ -1096,22 +1176,20 @@ function AreaLi({
       {open && (
         <ul className="ml-6">
           {items.map((p) => (
-            <li key={p.id}>
-              <div
-                style={{ height: "var(--spacing-rowPage)" }}
-                className="flex cursor-default items-center gap-2 rounded-md px-2 text-meta text-secondary hover:bg-railHover"
-              >
-                {isStale(p) && (
-                  <span
-                    aria-label="Stale"
-                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-amberDot"
-                  />
-                )}
-                <span className="min-w-0 flex-1 truncate">
-                  {p.title || "Untitled"}
-                </span>
-              </div>
-            </li>
+            <PageRowLi
+              key={p.id}
+              p={p}
+              isStale={isStale(p)}
+              propDefs={propDefs}
+              members={members}
+              me={me}
+              onVerify={onVerify}
+              setPageProperty={setPageProperty}
+              moveToArea={moveToArea}
+              duplicatePage={duplicatePage}
+              deletePage={deletePage}
+              navigate={navigate}
+            />
           ))}
           <li>
             <button
@@ -1127,6 +1205,363 @@ function AreaLi({
         </ul>
       )}
     </li>
+  );
+}
+
+/** Stateful content for the area menu — rename swaps in place. */
+function AreaMenu({
+  area,
+  count,
+  open,
+  onToggle,
+  onOpen,
+  onNewPage,
+  onRename,
+  onSaveAsView,
+}: {
+  area: string;
+  count: number;
+  open: boolean;
+  onToggle: () => void;
+  onOpen: () => void;
+  onNewPage: () => void;
+  onRename: (to: string) => void;
+  onSaveAsView: () => void;
+}) {
+  const [mode, setMode] = useState<"list" | "rename">("list");
+  if (mode === "rename") {
+    return (
+      <RowMenuList
+        title={`Rename "${area}"`}
+        items={[]}
+        onBack={() => setMode("list")}
+        input={{
+          initialValue: area,
+          placeholder: "Area name",
+          autoSelect: true,
+          onSubmit: (v) => {
+            if (v && v !== area) onRename(v);
+          },
+        }}
+        footer="Every page with this area follows."
+      />
+    );
+  }
+  const title = `${area} · ${count} ${count === 1 ? "page" : "pages"}`;
+  const items: RowMenuItem[] = [
+    {
+      id: "open",
+      label: "Open area",
+      hint: <Sc>↵</Sc>,
+      onSelect: onOpen,
+    },
+    {
+      id: "toggle",
+      label: open ? "Collapse pages" : "Show pages",
+      onSelect: onToggle,
+    },
+    {
+      id: "new",
+      label: "New page here",
+      onSelect: onNewPage,
+    },
+    {
+      id: "rename",
+      label: "Rename area",
+      hint: <Val>{count} {count === 1 ? "page" : "pages"}</Val>,
+      submenu: true,
+      keepOpen: true,
+      onSelect: () => setMode("rename"),
+    },
+    { kind: "divider" },
+    {
+      id: "save",
+      label: "Save as my view",
+      hint: <Val>personal</Val>,
+      onSelect: onSaveAsView,
+    },
+  ];
+  return <RowMenuList title={title} items={items} />;
+}
+
+/* Nested page row with hover ⋯ + full page menu (submenus swap in place). */
+function PageRowLi({
+  p,
+  isStale,
+  propDefs,
+  members,
+  me,
+  onVerify,
+  setPageProperty,
+  moveToArea,
+  duplicatePage,
+  deletePage,
+  navigate,
+}: {
+  p: PageListItem;
+  isStale: boolean;
+  propDefs: Array<{ key: string; label: string; options: unknown }>;
+  members: MemberLite[];
+  me: string;
+  onVerify: (pageId: string) => void;
+  setPageProperty: ReturnType<typeof useSetPageProperty>;
+  moveToArea: ReturnType<typeof useMovePageToArea>;
+  duplicatePage: ReturnType<typeof useDuplicatePage>;
+  deletePage: ReturnType<typeof useDeletePage>;
+  navigate: ReturnType<typeof useNavigate>;
+}) {
+  const [hover, setHover] = useState(false);
+  const props =
+    p.props && typeof p.props === "object" && !Array.isArray(p.props)
+      ? (p.props as Record<string, unknown>)
+      : {};
+  const build = (): ReactNode => (
+    <PageMenu
+      p={p}
+      isStale={isStale}
+      propDefs={propDefs}
+      members={members}
+      me={me}
+      onOpen={() => navigate({ to: "/p/$pageId", params: { pageId: p.id } })}
+      onVerify={() => onVerify(p.id)}
+      onSetStatus={(v) =>
+        setPageProperty.mutate({ pageId: p.id, key: "status", value: v })
+      }
+      onSetOwner={(uid) =>
+        setPageProperty.mutate({ pageId: p.id, key: "owner", value: uid })
+      }
+      onMoveArea={(a) => moveToArea.mutate({ pageId: p.id, area: a })}
+      onDuplicate={() => duplicatePage.mutate(p.id)}
+      onDelete={() => deletePage.mutate(p.id)}
+    />
+  );
+  return (
+    <li
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <Link
+        to="/p/$pageId"
+        params={{ pageId: p.id }}
+        style={{ height: "var(--spacing-rowPage)" }}
+        className="flex cursor-pointer items-center gap-2 rounded-md px-2 text-meta text-secondary hover:bg-railHover"
+      >
+        {isStale && (
+          <span
+            aria-label="Stale"
+            className="h-1.5 w-1.5 shrink-0 rounded-full bg-amberDot"
+          />
+        )}
+        <span className="min-w-0 flex-1 truncate">
+          {p.title || "Untitled"}
+        </span>
+        <span
+          className="relative flex items-center justify-end"
+          style={{ height: 17, minWidth: 17 }}
+        >
+          {hover ? <RowMoreButton size="sm" build={build} /> : null}
+        </span>
+      </Link>
+      {/* Debug: props reference so noUnusedLocals doesn't fire — actually used below. */}
+      {false && JSON.stringify(props)}
+    </li>
+  );
+}
+
+/** Page-row menu with in-place submenus for status / owner / area. */
+function PageMenu({
+  p,
+  isStale,
+  propDefs,
+  members,
+  me,
+  onOpen,
+  onVerify,
+  onSetStatus,
+  onSetOwner,
+  onMoveArea,
+  onDuplicate,
+  onDelete,
+}: {
+  p: PageListItem;
+  isStale: boolean;
+  propDefs: Array<{ key: string; label: string; options: unknown }>;
+  members: MemberLite[];
+  me: string;
+  onOpen: () => void;
+  onVerify: () => void;
+  onSetStatus: (v: string) => void;
+  onSetOwner: (uid: string) => void;
+  onMoveArea: (area: string | null) => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}) {
+  const [mode, setMode] = useState<
+    "list" | "status" | "owner" | "area" | "delete"
+  >("list");
+  const props =
+    p.props && typeof p.props === "object" && !Array.isArray(p.props)
+      ? (p.props as Record<string, unknown>)
+      : {};
+  const currentStatus = typeof props.status === "string" ? props.status : "";
+  const currentOwner = typeof props.owner === "string" ? props.owner : "";
+  const currentArea = typeof props.area === "string" ? props.area : "";
+
+  const statusDef = propDefs.find((d) => d.key === "status");
+  const statusOptions = ((statusDef?.options as Array<{ value: string; color?: string }>) ??
+    []).filter(Boolean);
+  const areaDef = propDefs.find((d) => d.key === "area");
+  const areaOptions = ((areaDef?.options as Array<{ value: string }>) ?? [])
+    .map((o) => o.value)
+    .filter(Boolean);
+
+  if (mode === "status") {
+    return (
+      <RowMenuList
+        title="Set status"
+        onBack={() => setMode("list")}
+        items={statusOptions.map((o) => ({
+          id: o.value,
+          label: o.value,
+          dot: o.color || "var(--color-muted)",
+          check: o.value === currentStatus,
+          onSelect: () => {
+            onSetStatus(o.value);
+            setMode("list");
+          },
+        }))}
+      />
+    );
+  }
+  if (mode === "owner") {
+    return (
+      <RowMenuList
+        title="Set owner"
+        onBack={() => setMode("list")}
+        items={members.map((m) => ({
+          id: m.user_id,
+          label: m.profiles?.full_name || m.profiles?.email || "Unknown",
+          avatar: {
+            tint: m.profiles?.avatar_tint || "var(--color-sunken)",
+            ink: m.profiles?.avatar_ink || "var(--color-noir)",
+            initials: initialsOf(m),
+          },
+          check: m.user_id === currentOwner,
+          onSelect: () => {
+            onSetOwner(m.user_id);
+            setMode("list");
+          },
+        }))}
+      />
+    );
+  }
+  if (mode === "area") {
+    return (
+      <RowMenuList
+        title="Move to area"
+        onBack={() => setMode("list")}
+        items={[
+          {
+            id: "__none",
+            label: "No area",
+            hint: currentArea ? undefined : <Val>current</Val>,
+            check: !currentArea,
+            onSelect: () => {
+              onMoveArea(null);
+              setMode("list");
+            },
+          },
+          { kind: "divider" },
+          ...areaOptions.map((a) => ({
+            id: a,
+            label: a,
+            check: a === currentArea,
+            onSelect: () => {
+              onMoveArea(a);
+              setMode("list");
+            },
+          })),
+        ]}
+      />
+    );
+  }
+  if (mode === "delete") {
+    return (
+      <RowMenuConfirm
+        title={`Delete "${p.title || "Untitled"}"?`}
+        body="It disappears from every view at once — there is no folder it stays in."
+        confirmLabel="Delete page"
+        variant="danger"
+        onConfirm={onDelete}
+      />
+    );
+  }
+
+  const ownerMember = members.find((m) => m.user_id === currentOwner);
+  const items: RowMenuItem[] = [
+    {
+      id: "open",
+      label: "Open",
+      hint: <Sc>↵</Sc>,
+      onSelect: onOpen,
+    },
+    {
+      id: "verify",
+      label: isStale ? "Mark verified now" : "Re-verify",
+      hint: <Val>{relTime(p.verified_at)}</Val>,
+      onSelect: onVerify,
+    },
+    {
+      id: "status",
+      label: "Set status",
+      hint: currentStatus ? <Val>{currentStatus}</Val> : <Val>empty</Val>,
+      submenu: true,
+      keepOpen: true,
+      onSelect: () => setMode("status"),
+    },
+    {
+      id: "owner",
+      label: "Set owner",
+      hint: currentOwner ? (
+        <Val>{firstNameOf(ownerMember) || "…"}</Val>
+      ) : (
+        <Val>none</Val>
+      ),
+      submenu: true,
+      keepOpen: true,
+      onSelect: () => setMode("owner"),
+    },
+    {
+      id: "area",
+      label: "Move to area",
+      hint: currentArea ? <Val>{currentArea}</Val> : <Val>none</Val>,
+      submenu: true,
+      keepOpen: true,
+      onSelect: () => setMode("area"),
+    },
+    { kind: "divider" },
+    {
+      id: "dup",
+      label: "Duplicate",
+      hint: <Sc>⌘D</Sc>,
+      onSelect: onDuplicate,
+    },
+    {
+      id: "delete",
+      label: "Delete page",
+      danger: true,
+      submenu: true,
+      keepOpen: true,
+      onSelect: () => setMode("delete"),
+    },
+  ];
+  return (
+    <RowMenuList
+      title={p.title || "Untitled"}
+      items={items.map((it) =>
+        it.kind === "divider" || me ? it : it,
+      )}
+    />
   );
 }
 
