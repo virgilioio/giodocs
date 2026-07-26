@@ -1073,6 +1073,12 @@ export function PageEditor({ pageId }: { pageId: string }) {
     return { hasGuests: otherRestricted };
   }, [page, pages]);
 
+  const editorName = useMemo(() => {
+    if (!page) return "someone";
+    const m = members.find((x) => x.user_id === page.edited_by);
+    return m?.profiles?.full_name || m?.profiles?.email || "someone";
+  }, [members, page]);
+
   const onVerify = () => {
     if (!page) return;
     verify.mutate(page.id);
@@ -1110,10 +1116,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
     );
   }
 
-  const editorName = useMemo(() => {
-    const m = members.find((x) => x.user_id === page.edited_by);
-    return m?.profiles?.full_name || m?.profiles?.email || "someone";
-  }, [members, page.edited_by]);
+
 
   const blocks: Block[] = Array.isArray(page.blocks)
     ? (page.blocks as Block[])
