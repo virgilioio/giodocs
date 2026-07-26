@@ -430,7 +430,11 @@ export function useCreatePage() {
   const toast = useToast();
 
   return useMutation({
-    mutationFn: async (v: { seedProps: Record<string, unknown>; _tempId?: string }) => {
+    mutationFn: async (v: {
+      seedProps: Record<string, unknown>;
+      blocks?: unknown[];
+      _tempId?: string;
+    }) => {
       const { data, error } = await supabase
         .from("pages")
         .insert({
@@ -441,7 +445,7 @@ export function useCreatePage() {
           icon: "📄",
           title: "",
           props: v.seedProps as never,
-          blocks: [] as never,
+          blocks: (v.blocks ?? []) as never,
         })
         .select(
           "id, title, icon, props, verified_at, verified_by, edited_at, edited_by, access_type",
