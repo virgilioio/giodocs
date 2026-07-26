@@ -13,6 +13,8 @@ import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { useRealtimeWorkspace } from "@/hooks/use-realtime";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
+import { getPageOrigin } from "@/lib/page-origin";
+
 import {
   useCreatePage,
   useCreateView,
