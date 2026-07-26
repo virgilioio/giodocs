@@ -162,8 +162,11 @@ function ViewHeader({
         </h1>
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <div className="flex items-center rounded-md border border-line bg-surface">
-          {(["table", "board", "list"] as const).map((l) => {
+        <div
+          className="flex items-center overflow-hidden rounded-lg border border-line"
+          style={{ height: 30 }}
+        >
+          {(["table", "board", "list"] as const).map((l, i) => {
             const active = l === layout;
             return (
               <button
@@ -173,9 +176,11 @@ function ViewHeader({
                 aria-label={l}
                 onClick={() => onChangeLayout(l)}
                 className={
-                  "grid h-8 w-8 place-items-center " +
-                  (active ? "bg-selected text-noir" : "text-muted hover:bg-rail")
+                  "grid place-items-center " +
+                  (i > 0 ? "border-l border-line " : "") +
+                  (active ? "bg-selected text-noir" : "text-faint hover:bg-sunken")
                 }
+                style={{ height: 30, width: 32 }}
               >
                 <LayoutGlyph layout={l} />
               </button>
@@ -185,17 +190,18 @@ function ViewHeader({
         <button
           type="button"
           onClick={onNewPage}
-          className="inline-flex items-center gap-1 rounded-lg bg-noir px-3 text-ui font-bold text-canvas"
-          style={{ height: 36 }}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-noir text-track"
+          style={{ height: 30, padding: "0 13px", fontSize: 13.5, fontWeight: 700 }}
         >
-          <Glyph path="M12 5v14M5 12h14" className="h-3.5 w-3.5" />
+          <Glyph path="M12 5v14M5 12h14" className="h-3 w-3" />
           New page
         </button>
         <button
           type="button"
           aria-label="View options"
           onClick={(e) => onOpenMenu(e.currentTarget)}
-          className="grid h-8 w-8 place-items-center rounded-md border border-line bg-surface text-muted hover:bg-rail"
+          className="grid place-items-center rounded-lg text-faint hover:bg-sunken"
+          style={{ height: 30, width: 30 }}
         >
           <Glyph
             path="M6 12a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"
@@ -206,6 +212,7 @@ function ViewHeader({
     </div>
   );
 }
+
 
 
 
