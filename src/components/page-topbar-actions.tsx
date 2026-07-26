@@ -185,14 +185,27 @@ export function PageTopbarActions({
     },
   });
   const [showSaving, setShowSaving] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const wasSavingRef = useRef(false);
   useEffect(() => {
-    if (!inFlight) {
-      setShowSaving(false);
-      return;
+    if (inFlight) {
+      const t = window.setTimeout(() => setShowSaving(true), 1200);
+      wasSavingRef.current = true;
+      return () => window.clearTimeout(t);
     }
-    const t = window.setTimeout(() => setShowSaving(true), 1200);
-    return () => window.clearTimeout(t);
-  }, [inFlight]);
+    // Just settled: flash "Saved" for 1.5s if we had shown "Saving…".
+    if (wasSavingRef.current) {
+      wasSavingRef.current = false;
+      if (showSaving) {
+        setSavedFlash(true);
+        const t = window.setTimeout(() => setSavedFlash(false), 1500);
+        setShowSaving(false);
+        return () => window.clearTimeout(t);
+      }
+    }
+    setShowSaving(false);
+  }, [inFlight, showSaving]);
+
 
   const doCopyLink = useCallback(async () => {
     if (!page) return;
