@@ -782,3 +782,97 @@ export function useDeletePage() {
   });
 }
 
+
+/* ────────────── Part B: block edits + create-and-open ────────────── */
+
+/**
+ * Writes pages.blocks and lets the server-side touch_page trigger bump
+ * edited_at/edited_by. Optimistically patches the page detail cache and
+ * the workspace list cache so the topbar's "Edited …" stamp updates
+ * immediately. Variables carry `pageId` so useIsMutating in
+ * page-topbar-actions can detect the in-flight save.
+ */
+export function useUpdateBlocks() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const { user } = useAuth();
+  const toast = useToast();
+
+  return useMutation({
+    mutationFn: async (v: { pageId: string; blocks: Block[] }) => {
+      const { data, error } = await supabase
+        .from("pages")
+        .update({ blocks: v.blocks as never })
+        .eq("id", v.pageId)
+        .select("edited_at, edited_by")
+        .single();
+      if (error) throw error;
+      return data as { edited_at: string; edited_by: string | null };
+    },
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: qk.page(v.pageId) });
+      const nowIso = new Date().toISOString();
+
+      qc.setQueryData<PageFull | null>(qk.page(v.pageId), (prev) =>
+        prev
+          ? {
+              ...prev,
+              blocks: v.blocks as unknown as PageFull["blocks"],
+              edited_at: nowIso,
+              edited_by: user?.id ?? prev.edited_by,
+            }
+          : prev,
+      );
+      qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) =>
+        prev
+          ? prev.map((p) =>
+              p.id === v.pageId
+                ? { ...p, edited_at: nowIso, edited_by: user?.id ?? p.edited_by }
+                : p,
+            )
+          : prev,
+      );
+    },
+    onError: (err) => {
+      toast.push(`Couldn't save: ${(err as Error).message}`);
+    },
+    onSuccess: (row, v) => {
+      // Reconcile with the server-authoritative edited_at.
+      qc.setQueryData<PageFull | null>(qk.page(v.pageId), (prev) =>
+        prev ? { ...prev, edited_at: row.edited_at, edited_by: row.edited_by } : prev,
+      );
+      qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) =>
+        prev
+          ? prev.map((p) =>
+              p.id === v.pageId
+                ? { ...p, edited_at: row.edited_at, edited_by: row.edited_by }
+                : p,
+            )
+          : prev,
+      );
+    },
+  });
+}
+
+/**
+ * Creates a page and navigates the user to /p/{id} with the title focused.
+ * Every "New page" entry point routes through this hook so the workflow
+ * is uniform: no more leaving the user on the table.
+ */
+export function useCreatePageAndOpen() {
+  const create = useCreatePage();
+  const navigate = useNavigate();
+  return useCallback(
+    async (v: { seedProps: Record<string, unknown>; blocks?: unknown[] }) => {
+      const created = await create.mutateAsync(v);
+      try {
+        sessionStorage.setItem("gio.focus-title", created.id);
+      } catch {
+        /* storage unavailable */
+      }
+      await navigate({ to: "/p/$pageId", params: { pageId: created.id } });
+      return created;
+    },
+    [create, navigate],
+  );
+}
