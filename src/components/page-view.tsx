@@ -21,6 +21,7 @@ import {
 import { qk } from "@/lib/query-keys";
 import { Popover } from "./popover";
 import { usePrefs } from "@/lib/preferences";
+import { usePageAppearance } from "@/lib/page-appearance";
 import { formatTimestamp } from "@/lib/format";
 import { useEmojiFavorites } from "@/lib/emoji-favorites";
 import type { Block, PageAccessRow, PageFull, PageListItem } from "@/lib/types";
