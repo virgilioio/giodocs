@@ -224,28 +224,37 @@ export function AppShell() {
     if (selection.kind === "area") {
       return { crumbs: ["Areas"], name: selection.area };
     }
-    const p = pages.find((x) => x.id === selection.id);
-    const title = p?.title || "Untitled";
+    return null;
+  }, [selection, views]);
+
+  // On page routes, the breadcrumb is replaced by a back-arrow + origin label.
+  const pageBack = useMemo(() => {
+    if (!selection || selection.kind !== "page") return null;
     const origin = getPageOrigin(selection.id);
     if (origin) {
       if (origin.kind === "view") {
-        const section = origin.scope === "team" ? "Team views" : "My views";
-        return { crumbs: [section, origin.viewName], name: title };
+        return {
+          label: origin.viewName,
+          to: "/v/$viewId" as const,
+          params: { viewId: origin.viewId },
+        };
       }
       if (origin.kind === "area") {
-        return { crumbs: ["Areas", origin.area], name: title };
-      }
-      if (origin.kind === "search") {
-        return { crumbs: ["Search"], name: title };
+        return {
+          label: origin.area,
+          to: "/a/$area" as const,
+          params: { area: encodeURIComponent(origin.area) },
+        };
       }
     }
-    // Fall back to the page's own area if we can infer it.
-    const area = p && typeof (p.props as Record<string, unknown> | null)?.area === "string"
-      ? (p.props as Record<string, unknown>).area as string
-      : null;
-    if (area) return { crumbs: ["Areas", area], name: title };
-    return { crumbs: ["Page"], name: title };
-  }, [selection, views, pages]);
+    // Fall back to "All pages" (home) when the origin is unknown.
+    return {
+      label: "All pages",
+      to: "/" as const,
+      params: {} as Record<string, string>,
+    };
+  }, [selection]);
+
 
 
 
@@ -325,7 +334,17 @@ export function AppShell() {
           >
             <Glyph path="M4 6h16M4 12h16M4 18h16" />
           </button>
-          {breadcrumb && (
+          {pageBack ? (
+            <Link
+              to={pageBack.to}
+              params={pageBack.params as never}
+              className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-ui text-secondary hover:bg-rail hover:text-strong"
+              title={`Back to ${pageBack.label}`}
+            >
+              <Glyph path="M15 6l-6 6 6 6" className="h-4 w-4" />
+              <span className="min-w-0 truncate">{pageBack.label}</span>
+            </Link>
+          ) : breadcrumb ? (
             <div className="flex min-w-0 items-center gap-2">
               {breadcrumb.crumbs.map((c, i) => (
                 <span key={i} className="flex items-center gap-2 shrink-0">
@@ -337,7 +356,7 @@ export function AppShell() {
                 {breadcrumb.name}
               </span>
             </div>
-          )}
+          ) : null}
 
           {selection && selection.kind === "page" ? (
             <div className="ml-auto flex items-center gap-2.5">

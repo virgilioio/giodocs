@@ -69,3 +69,53 @@ view; owners still see Publish/Edit affordances on their own team views.
 
 team-view fork rule (SHIP) → board + list layouts → page editor →
 command palette → settings → realtime.
+
+## Page editor (Part A) — 2026-07-26
+
+Route `/p/$pageId` renders inside the authenticated shell. Header column
+is 780px with 42/44 padding. Reads only — no editing affordances beyond
+verify and the property-row × removal.
+
+- Topbar on `/p/*`: back-arrow + originating view/area name (fall back
+  "All pages"). Right group: `Edited {rel}` (text-meta text-muted),
+  copy-link button (⌘⌥L, toast "Link copied"), and an INERT ⋯ with
+  title "Page actions — next phase". `verify_page` never touches
+  `edited_at` (touch_page trigger's WHEN clause excludes verified_*),
+  so the edited stamp is stable across a Still-accurate click.
+- Header order: 44px emoji · display title · permissions pill · edited
+  stamp · freshness banner (fresh / stale / just-verified — 2.6s hold) ·
+  properties strip · lineSoft divider.
+- Permissions pill counts only rows in `page_access` with `user_id` set
+  (`Only {n} people` variant). Compensation bands shows `Only 4 people`.
+- Property strip: Area · Owner · Status · then `property_defs.position`
+  order of any other present properties, then read-only Last verified.
+  Non-system rows show a × on hover next to the label; system rows
+  (area, owner, status, tags) do not.
+- Add-a-property popover: `multi_select` / `checkbox` / `text` seed the
+  row with an empty-typed value the `validate_page_props` trigger
+  accepts. `select` / `status` / `number` / `date` are disabled with
+  title "Set a value in the next phase" because the trigger rejects
+  their empty-typed seeds — those show up in Part B where the row lets
+  the user pick a value inline.
+- Body renders all 12 block types read-only: text, h1, h2, bullet,
+  numbered, todo (disabled checkbox), toggle (`<details>`), quote
+  (Lato italic, left border), callout (icon + sunken card), divider
+  (`<hr>`), code (mono, sunken, horizontal scroll), table (rows[][],
+  first row is header). Unknown types render text and `console.warn`
+  once. Empty body → centered "This page has no body yet." + subtle
+  "Blocks arrive in the next phase."
+- Table PageTitleCell: title click navigates via `useSetPageOrigin` +
+  `useNavigate`, hover reveals ✎ pencil on the right that switches to
+  the inline rename input; double-click also triggers rename.
+
+Playwright end-to-end verification against Allan is not runnable in this
+sandbox — `LOVABLE_BROWSER_AUTH_STATUS=external_unmanaged` means no
+session can be minted for the user's own Supabase project. The four
+build gates (typecheck, vitest 13/13, token+server-only guards,
+production build+bundle guard) all pass; live verification is deferred
+to preview.
+
+## Next-phase acceptance
+
+Typing `/` opens the block menu; blocks create, reorder and delete;
+body persists on reload.
