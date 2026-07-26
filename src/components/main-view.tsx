@@ -1116,21 +1116,11 @@ export function MainView({ selection }: { selection: Selection }) {
     setDateModeForMainView(prefs.dateFormat);
   }, [prefs.dateFormat]);
 
-  const explainer = useMemo(() => {
-    if (filters.length === 0) return "Every page in this workspace, no filters.";
-    const parts = filters.map((f) => describeFilter(f, propDefs, staleDays));
-    const sortLabel = `sorted by ${sort.prop} ${sort.dir === "asc" ? "ascending" : "descending"}`;
-    return `Pages where ${parts.join(" and ")} — ${sortLabel}.`;
-  }, [filters, propDefs, staleDays, sort]);
-
   return (
-    <div className="mx-auto max-w-view px-6 py-6">
-      {prefs.explainQuery && (
-        <p className="mb-3 rounded-md border border-lineSoft bg-track px-3 py-2 text-caption text-secondary">
-          <span className="mr-1 uppercase text-label text-faint">What you're looking at</span>
-          {explainer}
-        </p>
-      )}
+    <div
+      className="mx-auto"
+      style={{ maxWidth: "var(--container-view)", padding: "34px 40px" }}
+    >
       <ViewHeader
         selection={selection}
         view={view}
@@ -1140,6 +1130,7 @@ export function MainView({ selection }: { selection: Selection }) {
         onChangeLayout={onChangeLayout}
         onOpenMenu={(btn) => setHeaderMenuAnchor(btn)}
       />
+
 
       {headerMenuAnchor && (
         <HeaderMenu
