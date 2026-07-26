@@ -158,6 +158,26 @@ function TitleField({
     [],
   );
 
+  // One-shot focus after "New area" creation.
+  useEffect(() => {
+    try {
+      const target = sessionStorage.getItem("gio.focus-title");
+      if (target && target === page.id) {
+        sessionStorage.removeItem("gio.focus-title");
+        const el = taRef.current;
+        if (el) {
+          el.focus();
+          const end = el.value.length;
+          el.setSelectionRange(end, end);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page.id]);
+
+
   return (
     <textarea
       ref={taRef}
