@@ -1264,9 +1264,9 @@ function ModifiedBanner({
 
 /* ─────────────────────────── Header options menu ─────────────────────────── */
 
-function HeaderMenu({
-  anchor,
-  onClose,
+function ViewHeaderMenu({
+  view,
+  selection,
   canPublish,
   canDelete,
   canSaveAs,
@@ -1274,8 +1274,8 @@ function HeaderMenu({
   onSaveAs,
   onDelete,
 }: {
-  anchor: HTMLElement;
-  onClose: () => void;
+  view: ViewRow | null;
+  selection: Selection;
   canPublish: boolean;
   canDelete: boolean;
   canSaveAs: boolean;
@@ -1283,51 +1283,71 @@ function HeaderMenu({
   onSaveAs: () => void;
   onDelete: () => void;
 }) {
-  const rect = anchor.getBoundingClientRect();
-  return (
-    <>
-      <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div
-        className="fixed z-50 min-w-[180px] rounded-md border border-line bg-surface shadow-popover"
-        style={{ top: rect.bottom + 6, left: rect.right - 180 }}
-      >
-        {canSaveAs && (
-          <button
-            type="button"
-            className="block w-full px-3 py-2 text-left text-meta hover:bg-rail"
-            onClick={() => { onClose(); onSaveAs(); }}
-          >
-            Save as my view
-          </button>
-        )}
-        {canPublish && (
-          <button
-            type="button"
-            className="block w-full px-3 py-2 text-left text-meta hover:bg-rail"
-            onClick={() => { onClose(); onPublish(); }}
-          >
-            Publish to team
-          </button>
-        )}
-        {canDelete && (
-          <>
-            <div className="my-1 border-t border-lineSoft" />
-            <button
-              type="button"
-              className="block w-full px-3 py-2 text-left text-meta text-danger hover:bg-dangerTint"
-              onClick={() => { onClose(); onDelete(); }}
-            >
-              Delete view
-            </button>
-          </>
-        )}
-        {!canSaveAs && !canPublish && !canDelete && (
-          <div className="px-3 py-2 text-meta text-muted">No actions available</div>
-        )}
-      </div>
-    </>
-  );
+  const [mode, setMode] = useState<"list" | "publish" | "delete">("list");
+  const title =
+    selection.kind === "view" && view
+      ? view.scope === "team"
+        ? "Team view"
+        : "My view"
+      : "View";
+  const name = view?.name ?? (selection.kind === "area" ? selection.area : "");
+
+  if (mode === "publish") {
+    return (
+      <RowMenuConfirm
+        title={`Publish "${name}" to the team?`}
+        body="It moves out of My views into Team views for everyone in this workspace."
+        confirmLabel="Publish"
+        variant="publish"
+        onConfirm={onPublish}
+      />
+    );
+  }
+  if (mode === "delete") {
+    return (
+      <RowMenuConfirm
+        title={`Delete "${name}"?`}
+        body="The view disappears — the pages it filtered are untouched."
+        confirmLabel="Delete view"
+        variant="danger"
+        onConfirm={onDelete}
+      />
+    );
+  }
+  const items = [];
+  if (canSaveAs)
+    items.push({
+      id: "save",
+      label: "Save as my view",
+      hint: <Val>personal</Val>,
+      onSelect: onSaveAs,
+    });
+  if (canPublish)
+    items.push({
+      id: "publish",
+      label: "Publish to team",
+      hint: <Val>shared</Val>,
+      submenu: true as const,
+      keepOpen: true as const,
+      onSelect: () => setMode("publish"),
+    });
+  if (canDelete) {
+    if (items.length) items.push({ kind: "divider" as const });
+    items.push({
+      id: "delete",
+      label: "Delete view",
+      danger: true,
+      submenu: true as const,
+      keepOpen: true as const,
+      hint: <Sc>⌫</Sc>,
+      onSelect: () => setMode("delete"),
+    });
+  }
+  if (!items.length)
+    items.push({ id: "none", label: "No actions available", disabled: true });
+  return <RowMenuList title={title} items={items} />;
 }
+
 
 /* ─────────────────────────── Table body ─────────────────────────── */
 
