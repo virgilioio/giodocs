@@ -246,6 +246,10 @@ export function AppShell() {
               setInviteOpen(true);
             }}
             onOpenPalette={() => setPaletteOpen(true)}
+            sidebarPopover={sidebarPopover}
+            onOpenNewView={() => setSidebarPopover("view")}
+            onOpenNewArea={() => setSidebarPopover("area")}
+            onCloseSidebarPopover={() => setSidebarPopover(null)}
           />
         </div>
       </div>
