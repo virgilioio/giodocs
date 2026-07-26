@@ -451,6 +451,7 @@ function SidebarBody({
   const areas = useMemo(() => {
     const counts = new Map<string, number>();
     for (const p of pages) {
+      if (p.archived_at) continue;
       const props =
         p.props && typeof p.props === "object" && !Array.isArray(p.props)
           ? (p.props as Record<string, unknown>)
@@ -466,6 +467,7 @@ function SidebarBody({
   const areaPages = useMemo(() => {
     const m = new Map<string, PageListItem[]>();
     for (const p of pages) {
+      if (p.archived_at) continue;
       const props =
         p.props && typeof p.props === "object" && !Array.isArray(p.props)
           ? (p.props as Record<string, unknown>)
