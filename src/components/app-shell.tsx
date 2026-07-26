@@ -530,13 +530,24 @@ function SidebarBody({
               open={sections.my}
               onToggle={() => toggleSection("my")}
               trailing={
-                <button
-                  type="button"
-                  title="New view — coming soon"
-                  className="grid h-5 w-5 place-items-center rounded-sm text-faint hover:bg-railHover hover:text-secondary"
+                <SidebarPlusButton
+                  title="New personal view"
+                  open={sidebarPopover === "view"}
+                  onToggle={() =>
+                    sidebarPopover === "view"
+                      ? onCloseSidebarPopover()
+                      : onOpenNewView()
+                  }
                 >
-                  <Glyph path="M12 5v14M5 12h14" className="h-3.5 w-3.5" />
-                </button>
+                  <NewPersonalViewPopover
+                    onClose={onCloseSidebarPopover}
+                    currentView={
+                      selection?.kind === "view"
+                        ? views.find((v) => v.id === selection.id)
+                        : undefined
+                    }
+                  />
+                </SidebarPlusButton>
               }
             />
             {sections.my && (
@@ -584,13 +595,20 @@ function SidebarBody({
               open={sections.areas}
               onToggle={() => toggleSection("areas")}
               trailing={
-                <button
-                  type="button"
-                  title="New page in an area — use an area's ⋯ menu"
-                  className="grid h-5 w-5 place-items-center rounded-sm text-faint hover:bg-railHover hover:text-secondary"
+                <SidebarPlusButton
+                  title="New area"
+                  open={sidebarPopover === "area"}
+                  onToggle={() =>
+                    sidebarPopover === "area"
+                      ? onCloseSidebarPopover()
+                      : onOpenNewArea()
+                  }
                 >
-                  <Glyph path="M12 5v14M5 12h14" className="h-3.5 w-3.5" />
-                </button>
+                  <NewAreaPopover
+                    onClose={onCloseSidebarPopover}
+                    existingAreas={areas.map((a) => a.area)}
+                  />
+                </SidebarPlusButton>
               }
             />
             {sections.areas && (
