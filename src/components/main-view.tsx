@@ -1126,7 +1126,20 @@ export function MainView({ selection }: { selection: Selection }) {
     setDateModeForMainView(prefs.dateFormat);
   }, [prefs.dateFormat]);
 
+  const originValue: import("@/lib/page-origin").PageOrigin =
+    selection.kind === "area"
+      ? { kind: "area", area: selection.area }
+      : view
+        ? {
+            kind: "view",
+            viewId: view.id,
+            viewName: view.name,
+            scope: view.scope === "team" ? "team" : "personal",
+          }
+        : { kind: "search" };
+
   return (
+    <PageOriginContext.Provider value={originValue}>
     <div
       className="mx-auto"
       style={{ maxWidth: "var(--container-view)", padding: "34px 40px" }}
@@ -1158,6 +1171,7 @@ export function MainView({ selection }: { selection: Selection }) {
       <QueryToolbar
         filters={filters}
         sort={sort}
+
         onChangeFilters={onChangeFilters}
         onChangeSort={onChangeSort}
         propDefs={propDefs}
