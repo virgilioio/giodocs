@@ -467,7 +467,7 @@ function PropertyStrip({
       {rows.map((r) => (
         <div
           key={r.key}
-          className="flex items-center gap-2 rounded-md px-1 hover:bg-sunken"
+          className="flex items-center gap-3 px-1"
           style={{ minHeight: 32 }}
         >
           <div
@@ -477,17 +477,23 @@ function PropertyStrip({
             {labelFor(r.key, propDefs)}
           </div>
           <div className="min-w-0 flex-1">
-            <PropertyEditor
-              propKey={r.key}
-              page={page}
-              propDefs={propDefs}
-              members={members}
-              areas={areas}
-              onSet={onSet}
-            />
+            <div
+              className="inline-block rounded-md hover:bg-sunken"
+              style={{ padding: "3px 8px", margin: "0 -8px" }}
+            >
+              <PropertyEditor
+                propKey={r.key}
+                page={page}
+                propDefs={propDefs}
+                members={members}
+                areas={areas}
+                onSet={onSet}
+              />
+            </div>
           </div>
         </div>
       ))}
+
 
       <div
         className="flex items-center gap-2 rounded-md px-1"
