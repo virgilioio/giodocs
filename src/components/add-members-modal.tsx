@@ -219,7 +219,7 @@ export function AddMembersModal({
     hintState = "neutral";
     hintText = `Type an email and press Enter. Anyone at ${domainsSentence} joins as a member.`;
     hintIcon = ICON_INFO;
-    hintColor = { color: "#5A6072" };
+    hintColor = { color: "var(--color-secondary)" };
   } else if (outside.length === 0) {
     hintState = "good";
     const n = inside.length;
