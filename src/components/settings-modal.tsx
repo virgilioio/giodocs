@@ -992,7 +992,7 @@ function PeoplePane({
           </div>
         )}
 
-        <p className="mt-3 text-faint" style={{ fontSize: 13, color: "#5A6072" }}>
+        <p className="mt-3" style={{ fontSize: 13, color: "var(--color-secondary)" }}>
           {tab === "members"
             ? "Owners can publish team views and change these settings. Members can do everything else. Click a page count to save that person's pages as a view."
             : `Guests are invited page by page — there is no guest role to manage here, only the pages that name them.`}
