@@ -1594,7 +1594,8 @@ function BoardBody({
                   type="button"
                   draggable
                   onDragStart={(e) => e.dataTransfer.setData("text/pageId", p.id)}
-                  onClick={() => navigate({ to: "/p/$pageId", params: { pageId: p.id } })}
+                  onClick={() => { setOrigin(p.id); navigate({ to: "/p/$pageId", params: { pageId: p.id } }); }}
+
                   className="rounded-lg border border-line bg-surface p-2 text-left shadow-card transition hover:shadow-cardHover"
                 >
                   <div className="flex items-center gap-2">
