@@ -14,6 +14,7 @@ import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { useRealtimeWorkspace } from "@/hooks/use-realtime";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
 import { getPageOrigin } from "@/lib/page-origin";
+import { resolvePageIdParam } from "@/lib/slug";
 
 import {
   useCreatePage,
@@ -69,7 +70,17 @@ export function AppShell() {
   const workspaceId = useWorkspaceId();
   const shell = useWorkspaceShell(workspaceId);
   useRealtimeWorkspace(workspaceId);
-  const selection = useSelection();
+  const rawSelection = useSelection();
+  const pagesForResolve = (shell.pages.data ?? []) as PageListItem[];
+  const selection = useMemo<Selection>(() => {
+    if (rawSelection?.kind === "page") {
+      // The URL may be the raw UUID or the cosmetic slug-shortId form emitted
+      // by Copy link. Resolve to the canonical id so downstream queries hit.
+      const resolved = resolvePageIdParam(rawSelection.id, pagesForResolve);
+      return { kind: "page", id: resolved };
+    }
+    return rawSelection;
+  }, [rawSelection, pagesForResolve]);
   const navigate = useNavigate();
 
   const [collapsed, setCollapsed] = useState<boolean>(() => {
