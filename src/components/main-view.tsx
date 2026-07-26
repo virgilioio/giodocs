@@ -11,6 +11,13 @@ import { PageOriginContext, useSetPageOrigin } from "@/lib/page-origin";
 
 import { Popover } from "./popover";
 import {
+  MoreButton as RowMoreButton,
+  RowMenuList,
+  RowMenuConfirm,
+  Sc,
+  Val,
+} from "./row-menu";
+import {
   useSetPageProperty,
   useRenamePage,
   useCreatePage,
