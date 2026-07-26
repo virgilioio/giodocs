@@ -1154,22 +1154,20 @@ export function MainView({ selection }: { selection: Selection }) {
         onNewPage={onNewPage}
         layout={layout}
         onChangeLayout={onChangeLayout}
-        onOpenMenu={(btn) => setHeaderMenuAnchor(btn)}
+        menuBuild={() => (
+          <ViewHeaderMenu
+            view={view}
+            selection={selection}
+            canPublish={isOwnerOfView}
+            canDelete={isOwnerOfView}
+            canSaveAs={isTeamView}
+            onPublish={doPublish}
+            onSaveAs={doSaveAsMyView}
+            onDelete={doDelete}
+          />
+        )}
       />
 
-
-      {headerMenuAnchor && (
-        <HeaderMenu
-          anchor={headerMenuAnchor}
-          onClose={() => setHeaderMenuAnchor(null)}
-          canPublish={isOwnerOfView}
-          canDelete={isOwnerOfView}
-          canSaveAs={isTeamView}
-          onPublish={doPublish}
-          onSaveAs={doSaveAsMyView}
-          onDelete={doDelete}
-        />
-      )}
 
       <QueryToolbar
         filters={filters}
