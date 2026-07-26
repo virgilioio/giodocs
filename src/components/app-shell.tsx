@@ -119,6 +119,11 @@ export function AppShell() {
           setSettingsOpen(false);
           return;
         }
+        if (sidebarPopover) {
+          e.preventDefault();
+          setSidebarPopover(null);
+          return;
+        }
         if (accountMenu) {
           e.preventDefault();
           setAccountMenu(false);
@@ -129,7 +134,7 @@ export function AppShell() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [inviteOpen, settingsOpen, accountMenu]);
+  }, [inviteOpen, settingsOpen, accountMenu, sidebarPopover]);
 
   const pages = (shell.pages.data ?? []) as PageListItem[];
   const views = shell.views.data ?? [];
