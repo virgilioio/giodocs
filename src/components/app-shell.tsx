@@ -494,10 +494,6 @@ function SidebarBody({
     label: string;
     options: unknown;
   }>;
-    key: string;
-    label: string;
-    options: unknown;
-  }>;
   const verifyPage = useVerifyPage();
   const setPageProperty = useSetPageProperty();
   const moveToArea = useMovePageToArea();
