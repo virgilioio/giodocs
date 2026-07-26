@@ -1172,7 +1172,7 @@ function AreaLi({
   navigate: ReturnType<typeof useNavigate>;
 }) {
   const [hover, setHover] = useState(false);
-  void useCreatePage; // kept for API stability; createAndOpen supersedes .mutate
+  useCreatePage(); // hook order stability; createAndOpen supersedes the .mutate path
   const createAndOpen = useCreatePageAndOpen();
   const createView = useCreateView();
   const renameArea = useRenameArea();
