@@ -606,17 +606,20 @@ function SidebarBody({
         No folders. A page lives wherever its properties say it does.
       </p>
 
-      <div className="border-t border-line px-2.5 py-2">
-        <FooterAccount
-          profile={profile}
-          userEmail={userEmail}
-          initials={initials}
-          workspaceName={workspaceName}
-          memberCount={memberCount}
-          onSignOut={onSignOut}
-          onOpenSettings={onOpenSettings}
-        />
-      </div>
+      <FooterAccount
+        profile={profile}
+        userEmail={userEmail}
+        initials={initials}
+        workspaceName={workspaceName}
+        workspaceIcon={workspaceIcon}
+        memberCount={memberCount}
+        open={accountMenu}
+        onOpen={onOpenAccountMenu}
+        onClose={onCloseAccountMenu}
+        onSignOut={onSignOut}
+        onOpenSettings={onOpenSettings}
+        onOpenInvite={onOpenInvite}
+      />
     </>
   );
 }
