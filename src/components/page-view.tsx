@@ -625,7 +625,7 @@ function PropertyEditor({
             {typeof raw === "string" && raw ? (
               raw
             ) : (
-              <span className="text-faint">Empty</span>
+              <Missing />
             )}
           </button>
         )}
@@ -699,7 +699,7 @@ function PropertyEditor({
                 <span className="truncate">{current.profiles?.full_name}</span>
               </>
             ) : (
-              <span className="text-faint">Empty</span>
+              <Missing />
             )}
           </button>
         )}
@@ -771,7 +771,7 @@ function PropertyEditor({
                 {cur.label}
               </span>
             ) : (
-              <span className="text-faint">Empty</span>
+              <Missing />
             )}
           </button>
         )}
@@ -833,7 +833,7 @@ function PropertyEditor({
             onClick={onClick}
             className="flex w-full flex-wrap items-center gap-1 rounded-sm px-1 py-1 text-left"
           >
-            {tags.length === 0 && <span className="text-faint">Empty</span>}
+            {tags.length === 0 && <Missing />}
             {tags.map((t) => (
               <span
                 key={t}
@@ -916,7 +916,7 @@ function PropertyEditor({
     <input
       type={def?.type === "date" ? "date" : "text"}
       defaultValue={typeof raw === "string" ? raw : ""}
-      placeholder="Empty"
+      placeholder={missingLabel}
       onBlur={(e) => {
         const v = e.target.value;
         if (v !== raw) onSet(propKey, v === "" ? null : v);
