@@ -12,6 +12,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { useCreatePage } from "@/hooks/use-page-mutations";
+import { setPageOrigin } from "@/lib/page-origin";
+
 import { describeFilter } from "./main-view";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
