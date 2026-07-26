@@ -1185,7 +1185,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
       </div>
 
       {/* 2. Permissions chip */}
-      <div className="mt-3">
+      <div style={{ marginTop: 14 }}>
         <PermissionsChip
           page={page}
           workspaceName={workspaceName}
@@ -1196,7 +1196,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
       </div>
 
       {/* 3. Freshness row */}
-      <div className="mt-4">
+      <div style={{ marginTop: 12 }}>
         <FreshnessRow
           page={page}
           members={members}
@@ -1207,31 +1207,39 @@ export function PageEditor({ pageId }: { pageId: string }) {
       </div>
 
       {/* Quiet edited line */}
-      <p className="mt-2 text-caption text-whisper">
-        Edited {relTime(page.edited_at)} · {editorName}
+      <p className="text-caption text-whisper" style={{ marginTop: 6 }}>
+        Edited {relTime(page.edited_at)}
+        {editorName ? ` · ${editorName}` : ""}
       </p>
 
       {/* 4. Property strip */}
-      <PropertyStrip
-        page={page}
-        propDefs={propDefs}
-        members={members}
-        pages={pages}
-        onSet={(key, value) => {
-          if (key === "icon") {
-            // Icon is a column, not a property. Route through a small helper.
-            void updatePageIcon(page.id, value as string, qc, ws);
-            return;
-          }
-          setProp.mutate({ pageId: page.id, key, value });
-        }}
-      />
+      <div style={{ marginTop: 18 }}>
+        <PropertyStrip
+          page={page}
+          propDefs={propDefs}
+          members={members}
+          pages={pages}
+          onSet={(key, value) => {
+            if (key === "icon") {
+              void updatePageIcon(page.id, value as string, qc, ws);
+              return;
+            }
+            setProp.mutate({ pageId: page.id, key, value });
+          }}
+        />
+      </div>
 
       {/* 5. Divider */}
-      <div className="mt-6 border-t border-lineSoft" />
+      <div className="border-t border-lineSoft" style={{ marginTop: 20 }} />
 
       {/* Body */}
-      <ReadOnlyBody blocks={blocks} />
+      <div style={{ marginTop: 26 }}>
+        <ReadOnlyBody blocks={blocks} />
+      </div>
+    </div>
+  );
+}
+
     </div>
   );
 }
