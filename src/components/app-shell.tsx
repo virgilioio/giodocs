@@ -225,10 +225,20 @@ export function AppShell() {
             userEmail={user?.email ?? ""}
             initials={initials}
             workspaceName={workspaceName}
+            workspaceIcon={workspace?.icon ?? "📄"}
             memberCount={memberCount}
             areaIcons={areaIcons}
+            accountMenu={accountMenu}
+            onOpenAccountMenu={() => setAccountMenu(true)}
+            onCloseAccountMenu={() => setAccountMenu(false)}
             onSignOut={handleSignOut}
-            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenSettings={() => openSettings("preferences")}
+            onOpenInvite={() => {
+              setAccountMenu(false);
+              openSettings("people");
+              setMembersTab("members");
+              setInviteOpen(true);
+            }}
             onOpenPalette={() => setPaletteOpen(true)}
           />
         </div>
