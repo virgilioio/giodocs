@@ -1024,135 +1024,219 @@ function FooterAccount({
   userEmail,
   initials,
   workspaceName,
+  workspaceIcon,
   memberCount,
+  open,
+  onOpen,
+  onClose,
   onSignOut,
   onOpenSettings,
+  onOpenInvite,
 }: {
   profile: { full_name: string; avatar_tint: string; avatar_ink: string } | null;
   userEmail: string;
   initials: string;
   workspaceName: string;
+  workspaceIcon: string;
   memberCount: number;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
   onSignOut: () => void;
   onOpenSettings: () => void;
+  onOpenInvite: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!wrapRef.current) return;
-      if (!wrapRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const wsInitial = workspaceName ? workspaceName[0].toUpperCase() : "?";
-
+  const displayName = profile?.full_name || userEmail || "You";
   return (
-    <div ref={wrapRef} className="relative">
-      <div className="flex items-center gap-2">
+    <>
+      {/* Footer button */}
+      <button
+        type="button"
+        onClick={() => (open ? onClose() : onOpen())}
+        aria-label="Account menu"
+        aria-expanded={open}
+        className={
+          "flex items-center border-t border-line w-full text-left " +
+          (open ? "bg-railHover" : "hover:bg-railHover")
+        }
+        style={{ padding: "9px 10px", gap: 9, cursor: "pointer" }}
+      >
         <span
-          className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-label"
+          className="grid shrink-0 place-items-center rounded-full"
           style={{
+            width: 26,
+            height: 26,
             background: profile?.avatar_tint ?? "var(--color-sunken)",
             color: profile?.avatar_ink ?? "var(--color-noir)",
+            fontSize: 11.5,
+            fontWeight: 700,
           }}
+          aria-hidden
         >
           {initials}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-row text-body">
-            {profile?.full_name || userEmail}
+          <div className="truncate text-body" style={{ fontSize: 14, fontWeight: 700 }}>
+            {displayName}
           </div>
-          <div className="truncate text-caption text-muted">
+          <div className="truncate text-muted" style={{ fontSize: 12.5 }}>
             {workspaceName}
             {memberCount ? ` · ${memberCount} people` : ""}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-label="Account menu"
-          aria-expanded={open}
-          className="grid h-7 w-7 place-items-center rounded-md text-secondary hover:bg-railHover hover:text-strong"
-        >
-          <Glyph
-            path="M7 15l5-5 5 5M7 9l5 5 5-5"
-            className="h-4 w-4"
-          />
-        </button>
-      </div>
+        <span className="shrink-0 text-whisper">
+          <svg width={14} height={14} viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth={2} strokeLinecap="round"
+            strokeLinejoin="round" aria-hidden>
+            <path d="m8 14.5 4 4 4-4" />
+            <path d="m8 9.5 4-4 4 4" />
+          </svg>
+        </span>
+      </button>
 
       {open && (
-        <div
-          className="absolute bottom-full left-0 right-0 mb-2 rounded-xl border border-line bg-surface p-1 shadow-popover animate-popIn"
-        >
-          {/* Workspace card */}
-          <div className="flex items-center gap-2 rounded-lg px-2 py-2">
-            <span
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-sunken text-row font-bold text-noir"
-              aria-hidden
+        <>
+          {/* Scrim */}
+          <div
+            className="fixed inset-0"
+            style={{ zIndex: 95 }}
+            onClick={onClose}
+            aria-hidden
+          />
+          <div
+            className="fixed bg-surface animate-popIn"
+            style={{
+              zIndex: 96,
+              left: 10,
+              bottom: 56,
+              width: 268,
+              border: "1px solid var(--color-line)",
+              borderRadius: 12,
+              overflow: "hidden",
+              boxShadow: "var(--shadow-popover)",
+            }}
+          >
+            {/* A. Workspace header */}
+            <div
+              className="flex items-center"
+              style={{ padding: "12px 13px 11px", gap: 10 }}
             >
-              {wsInitial}
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-row font-bold text-noir">
-                {workspaceName}
-              </div>
-              <div className="truncate text-caption text-muted">
-                MVP plan · {memberCount} members
+              <span
+                className="grid shrink-0 place-items-center bg-sunken"
+                style={{ width: 30, height: 30, borderRadius: 8, fontSize: 16 }}
+                aria-hidden
+              >
+                {workspaceIcon}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div
+                  className="truncate font-display text-noir"
+                  style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-0.02em" }}
+                >
+                  {workspaceName}
+                </div>
+                <div className="truncate text-muted" style={{ fontSize: 12.5 }}>
+                  MVP plan · {memberCount} member{memberCount === 1 ? "" : "s"}
+                </div>
               </div>
             </div>
+
+            {/* B. Actions */}
+            <div style={{ borderTop: "1px solid var(--color-lineSoft)", padding: 5 }}>
+              <DropdownRow
+                icon="M4 21v-6M4 11V3M12 21v-9M12 8V3M20 21v-4M20 13V3M1.5 15h5M9.5 8h5M17.5 17h5"
+                onClick={onOpenSettings}
+                right={
+                  <span
+                    className="font-mono text-whisper"
+                    style={{ fontSize: 11 }}
+                  >
+                    ⌘,
+                  </span>
+                }
+              >
+                Settings
+              </DropdownRow>
+              <DropdownRow
+                icon="M9 3.6a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2zM2 20.4v-1.8a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v1.8M16.5 3.9a3.6 3.6 0 0 1 0 7M22 20.4v-1.8a4 4 0 0 0-3-3.8"
+                onClick={onOpenInvite}
+              >
+                Invite members
+              </DropdownRow>
+            </div>
+
+            {/* C. Account + workspace switcher */}
+            <div style={{ borderTop: "1px solid var(--color-lineSoft)", padding: 5 }}>
+              <div
+                className="truncate text-faint"
+                style={{ fontSize: 12, padding: "5px 9px 4px" }}
+              >
+                {userEmail}
+              </div>
+              <div
+                className="flex items-center rounded-lg"
+                style={{ padding: "6px 9px", gap: 9, fontSize: 14 }}
+              >
+                <span
+                  className="grid shrink-0 place-items-center bg-sunken"
+                  style={{ width: 22, height: 22, borderRadius: 6, fontSize: 12 }}
+                  aria-hidden
+                >
+                  {workspaceIcon}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-body">
+                  {workspaceName}
+                </span>
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth={2} strokeLinecap="round"
+                  strokeLinejoin="round" className="text-accent" aria-hidden>
+                  <path d="M5 12l5 5 9-11" />
+                </svg>
+              </div>
+            </div>
+
+            {/* D. Log out */}
+            <div style={{ borderTop: "1px solid var(--color-lineSoft)", padding: 5 }}>
+              <DropdownRow
+                icon="M15 12H3m0 0l4-4m-4 4l4 4M9 4h9a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H9"
+                onClick={onSignOut}
+              >
+                Log out
+              </DropdownRow>
+            </div>
           </div>
-          <MenuDivider />
-          <MenuItem
-            onClick={() => {
-              setOpen(false);
-              onOpenSettings();
-            }}
-            right={<span className="font-mono text-caption text-faint">⌘,</span>}
-          >
-            Settings
-          </MenuItem>
-          <MenuItem disabled title="Coming soon">
-            Invite members
-          </MenuItem>
-          <MenuDivider />
-          <div className="px-2 py-1 text-caption text-muted truncate">
-            {userEmail}
-          </div>
-          <div className="flex items-center gap-2 rounded-md px-2 py-1.5 text-row text-body">
-            <span
-              className="grid h-5 w-5 shrink-0 place-items-center rounded-sm bg-sunken text-caption font-bold text-noir"
-              aria-hidden
-            >
-              {wsInitial}
-            </span>
-            <span className="min-w-0 flex-1 truncate">{workspaceName}</span>
-            <Glyph path="M5 12l5 5 9-11" className="h-3.5 w-3.5 text-accent" />
-          </div>
-          <MenuDivider />
-          <MenuItem
-            onClick={() => {
-              setOpen(false);
-              onSignOut();
-            }}
-          >
-            Log out
-          </MenuItem>
-        </div>
+        </>
       )}
-    </div>
+    </>
+  );
+}
+
+function DropdownRow({
+  icon,
+  children,
+  onClick,
+  right,
+}: {
+  icon: string;
+  children: ReactNode;
+  onClick?: () => void;
+  right?: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center rounded-lg text-body hover:bg-rail hover:text-noir"
+      style={{ padding: "7px 9px", gap: 10, fontSize: 14, textAlign: "left" }}
+    >
+      <svg width={15} height={15} viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" strokeWidth={1.8} strokeLinecap="round"
+        strokeLinejoin="round" className="text-secondary shrink-0" aria-hidden>
+        <path d={icon} />
+      </svg>
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {right}
+    </button>
   );
 }
 
