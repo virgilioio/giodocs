@@ -11,8 +11,22 @@ export type PendingInvite = {
   ink: string;
 };
 
-const AVATAR_TINTS = ["#DCFBE9", "#FCE7C8", "#DCEAFE", "#EDE4FF", "#FBE0EE", "#FAF4C4"];
-const AVATAR_INKS = ["#0B7A57", "#B45309", "#2563EB", "#5B21B6", "#BE185D", "#7A6A10"];
+const AVATAR_TINTS = [
+  "var(--color-accentTint)",
+  "var(--color-amberRing)",
+  "var(--color-blueWash)",
+  "var(--color-purpleTint)",
+  "var(--color-pinkTint)",
+  "var(--color-yellowTint)",
+];
+const AVATAR_INKS = [
+  "var(--color-accent)",
+  "var(--color-amberInk)",
+  "var(--color-blueInk)",
+  "var(--color-purple)",
+  "var(--color-pinkInk)",
+  "var(--color-yellowInk)",
+];
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i;
 const SPLIT_RE = /[,;\s]+/;
