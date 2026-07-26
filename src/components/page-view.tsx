@@ -1027,14 +1027,8 @@ export function PageEditor({ pageId }: { pageId: string }) {
   );
 }
 
-/* Small helper to avoid pulling the full auth context type here. */
-function useAuthUserId(): string {
-  // Lazy import so this module has no top-level auth dependency for tests.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { useAuth } = require("@/lib/auth-context") as typeof import("@/lib/auth-context");
-  const { user } = useAuth();
-  return user?.id ?? "";
-}
+
+
 
 async function updatePageIcon(
   pageId: string,
