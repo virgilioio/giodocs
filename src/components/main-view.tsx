@@ -943,7 +943,7 @@ export function MainView({ selection }: { selection: Selection }) {
   const [localSort, setLocalSort] = useState<SortSpec | null>(null);
   const [localLayout, setLocalLayout] = useState<Layout | null>(null);
   const [localGroupBy, setLocalGroupBy] = useState<string | null | undefined>(undefined);
-  const [headerMenuAnchor, setHeaderMenuAnchor] = useState<HTMLElement | null>(null);
+  // Header ⋯ menu is now handled by the unified RowMenu popover; no local anchor state.
 
   const baseFilters: Filter[] = useMemo(() => {
     if (selection.kind === "area") return [{ op: "eq", prop: "area", value: selection.area }];
