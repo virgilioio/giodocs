@@ -11,6 +11,13 @@ import { PageOriginContext, useSetPageOrigin } from "@/lib/page-origin";
 
 import { Popover } from "./popover";
 import {
+  MoreButton as RowMoreButton,
+  RowMenuList,
+  RowMenuConfirm,
+  Sc,
+  Val,
+} from "./row-menu";
+import {
   useSetPageProperty,
   useRenamePage,
   useCreatePage,
@@ -127,7 +134,7 @@ function ViewHeader({
   onNewPage,
   layout,
   onChangeLayout,
-  onOpenMenu,
+  menuBuild,
 }: {
   selection: Selection;
   view: ViewRow | null;
@@ -135,7 +142,7 @@ function ViewHeader({
   onNewPage: () => void;
   layout: Layout;
   onChangeLayout: (l: Layout) => void;
-  onOpenMenu: (btn: HTMLElement) => void;
+  menuBuild: () => ReactNode;
 }) {
   let scopeLabel: ReactNode = "AREA";
   let name = "";
@@ -198,18 +205,8 @@ function ViewHeader({
           <Glyph path="M12 5v14M5 12h14" className="h-3 w-3" />
           New page
         </button>
-        <button
-          type="button"
-          aria-label="View options"
-          onClick={(e) => onOpenMenu(e.currentTarget)}
-          className="grid place-items-center rounded-lg text-faint hover:bg-sunken"
-          style={{ height: 30, width: 30 }}
-        >
-          <Glyph
-            path="M6 12a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"
-            className="h-4 w-4"
-          />
-        </button>
+        <RowMoreButton size="md" build={menuBuild} />
+
       </div>
     </div>
   );
@@ -946,7 +943,7 @@ export function MainView({ selection }: { selection: Selection }) {
   const [localSort, setLocalSort] = useState<SortSpec | null>(null);
   const [localLayout, setLocalLayout] = useState<Layout | null>(null);
   const [localGroupBy, setLocalGroupBy] = useState<string | null | undefined>(undefined);
-  const [headerMenuAnchor, setHeaderMenuAnchor] = useState<HTMLElement | null>(null);
+  // Header ⋯ menu is now handled by the unified RowMenu popover; no local anchor state.
 
   const baseFilters: Filter[] = useMemo(() => {
     if (selection.kind === "area") return [{ op: "eq", prop: "area", value: selection.area }];
@@ -1157,22 +1154,20 @@ export function MainView({ selection }: { selection: Selection }) {
         onNewPage={onNewPage}
         layout={layout}
         onChangeLayout={onChangeLayout}
-        onOpenMenu={(btn) => setHeaderMenuAnchor(btn)}
+        menuBuild={() => (
+          <ViewHeaderMenu
+            view={view}
+            selection={selection}
+            canPublish={isOwnerOfView}
+            canDelete={isOwnerOfView}
+            canSaveAs={isTeamView}
+            onPublish={doPublish}
+            onSaveAs={doSaveAsMyView}
+            onDelete={doDelete}
+          />
+        )}
       />
 
-
-      {headerMenuAnchor && (
-        <HeaderMenu
-          anchor={headerMenuAnchor}
-          onClose={() => setHeaderMenuAnchor(null)}
-          canPublish={isOwnerOfView}
-          canDelete={isOwnerOfView}
-          canSaveAs={isTeamView}
-          onPublish={doPublish}
-          onSaveAs={doSaveAsMyView}
-          onDelete={doDelete}
-        />
-      )}
 
       <QueryToolbar
         filters={filters}
@@ -1269,9 +1264,9 @@ function ModifiedBanner({
 
 /* ─────────────────────────── Header options menu ─────────────────────────── */
 
-function HeaderMenu({
-  anchor,
-  onClose,
+function ViewHeaderMenu({
+  view,
+  selection,
   canPublish,
   canDelete,
   canSaveAs,
@@ -1279,8 +1274,8 @@ function HeaderMenu({
   onSaveAs,
   onDelete,
 }: {
-  anchor: HTMLElement;
-  onClose: () => void;
+  view: ViewRow | null;
+  selection: Selection;
   canPublish: boolean;
   canDelete: boolean;
   canSaveAs: boolean;
@@ -1288,51 +1283,71 @@ function HeaderMenu({
   onSaveAs: () => void;
   onDelete: () => void;
 }) {
-  const rect = anchor.getBoundingClientRect();
-  return (
-    <>
-      <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div
-        className="fixed z-50 min-w-[180px] rounded-md border border-line bg-surface shadow-popover"
-        style={{ top: rect.bottom + 6, left: rect.right - 180 }}
-      >
-        {canSaveAs && (
-          <button
-            type="button"
-            className="block w-full px-3 py-2 text-left text-meta hover:bg-rail"
-            onClick={() => { onClose(); onSaveAs(); }}
-          >
-            Save as my view
-          </button>
-        )}
-        {canPublish && (
-          <button
-            type="button"
-            className="block w-full px-3 py-2 text-left text-meta hover:bg-rail"
-            onClick={() => { onClose(); onPublish(); }}
-          >
-            Publish to team
-          </button>
-        )}
-        {canDelete && (
-          <>
-            <div className="my-1 border-t border-lineSoft" />
-            <button
-              type="button"
-              className="block w-full px-3 py-2 text-left text-meta text-danger hover:bg-dangerTint"
-              onClick={() => { onClose(); onDelete(); }}
-            >
-              Delete view
-            </button>
-          </>
-        )}
-        {!canSaveAs && !canPublish && !canDelete && (
-          <div className="px-3 py-2 text-meta text-muted">No actions available</div>
-        )}
-      </div>
-    </>
-  );
+  const [mode, setMode] = useState<"list" | "publish" | "delete">("list");
+  const title =
+    selection.kind === "view" && view
+      ? view.scope === "team"
+        ? "Team view"
+        : "My view"
+      : "View";
+  const name = view?.name ?? (selection.kind === "area" ? selection.area : "");
+
+  if (mode === "publish") {
+    return (
+      <RowMenuConfirm
+        title={`Publish "${name}" to the team?`}
+        body="It moves out of My views into Team views for everyone in this workspace."
+        confirmLabel="Publish"
+        variant="publish"
+        onConfirm={onPublish}
+      />
+    );
+  }
+  if (mode === "delete") {
+    return (
+      <RowMenuConfirm
+        title={`Delete "${name}"?`}
+        body="The view disappears — the pages it filtered are untouched."
+        confirmLabel="Delete view"
+        variant="danger"
+        onConfirm={onDelete}
+      />
+    );
+  }
+  const items = [];
+  if (canSaveAs)
+    items.push({
+      id: "save",
+      label: "Save as my view",
+      hint: <Val>personal</Val>,
+      onSelect: onSaveAs,
+    });
+  if (canPublish)
+    items.push({
+      id: "publish",
+      label: "Publish to team",
+      hint: <Val>shared</Val>,
+      submenu: true as const,
+      keepOpen: true as const,
+      onSelect: () => setMode("publish"),
+    });
+  if (canDelete) {
+    if (items.length) items.push({ kind: "divider" as const });
+    items.push({
+      id: "delete",
+      label: "Delete view",
+      danger: true,
+      submenu: true as const,
+      keepOpen: true as const,
+      hint: <Sc>⌫</Sc>,
+      onSelect: () => setMode("delete"),
+    });
+  }
+  if (!items.length)
+    items.push({ id: "none", label: "No actions available", disabled: true });
+  return <RowMenuList title={title} items={items} />;
 }
+
 
 /* ─────────────────────────── Table body ─────────────────────────── */
 
