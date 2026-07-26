@@ -533,6 +533,8 @@ function PageTitleCell({
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const setOrigin = useSetPageOrigin();
+
   return (
     <div className="flex min-w-0 items-center gap-1">
       <span className="text-row">{page.icon || "📄"}</span>
