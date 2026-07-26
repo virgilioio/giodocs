@@ -1164,7 +1164,11 @@ export function PageEditor({ pageId }: { pageId: string }) {
 
   return (
     <div
-      className="mx-auto"
+      className="gio-page mx-auto"
+      data-font={app.font}
+      data-small={app.small ? "1" : "0"}
+      data-wide={app.wide ? "1" : "0"}
+      data-locked={app.locked ? "1" : "0"}
       style={{
         maxWidth: "var(--container-page)",
         padding: "42px 44px",
@@ -1187,6 +1191,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
       {/* 2. Permissions chip */}
       <div style={{ marginTop: 14 }}>
         <PermissionsChip
+          id="gio-perm-chip"
           page={page}
           workspaceName={workspaceName}
           members={members}
