@@ -1511,9 +1511,41 @@ function SidebarPlusButton({
   onToggle: () => void;
   children: ReactNode;
 }) {
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setPos(null);
+      return;
+    }
+    const place = () => {
+      const el = btnRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const width = 262;
+      const gap = 6;
+      // Anchor to the button's right edge, but keep the popover on-screen.
+      let left = r.right - width;
+      const margin = 8;
+      if (left < margin) left = margin;
+      const maxLeft = window.innerWidth - width - margin;
+      if (left > maxLeft) left = maxLeft;
+      setPos({ top: r.bottom + gap, left });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open]);
+
   return (
-    <div className="relative">
+    <>
       <button
+        ref={btnRef}
         type="button"
         title={title}
         aria-label={title}
@@ -1526,8 +1558,23 @@ function SidebarPlusButton({
       >
         <Glyph path="M12 5v14M5 12h14" className="h-3.5 w-3.5" />
       </button>
-      {open && children}
-    </div>
+      {open && pos
+        ? createPortal(
+            <div
+              style={{
+                position: "fixed",
+                top: pos.top,
+                left: pos.left,
+                width: 262,
+                zIndex: 60,
+              }}
+            >
+              {children}
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }
 
