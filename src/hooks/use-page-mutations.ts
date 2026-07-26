@@ -1,4 +1,6 @@
+import { useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { qk } from "@/lib/query-keys";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
@@ -6,7 +8,8 @@ import { useToast } from "@/lib/toast";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell } from "@/hooks/use-workspace-data";
-import type { PageListItem } from "@/lib/types";
+import type { PageListItem, PageFull, Block } from "@/lib/types";
+
 
 type ViewRow = {
   id: string;
