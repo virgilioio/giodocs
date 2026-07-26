@@ -20,12 +20,19 @@ import {
   useCreatePage,
   useCreateView,
   useDeleteView,
+  useDeletePage,
+  useDuplicatePage,
   useForkView,
+  useMovePageToArea,
+  useRenameArea,
+  useSetPageProperty,
   useUpdateView,
   usePublishView,
+  useVerifyPage,
 } from "@/hooks/use-page-mutations";
 
 import { useToast } from "@/lib/toast";
+import { formatTimestamp } from "@/lib/format";
 import type { PageListItem } from "@/lib/types";
 import { MainView } from "./main-view";
 import { PageEditor } from "./page-view";
@@ -33,7 +40,16 @@ import { PageTopbarActions } from "./page-topbar-actions";
 import { CommandPalette } from "./command-palette";
 import { SettingsModal, type SettingsPane } from "./settings-modal";
 import { AddMembersModal, type PendingInvite } from "./add-members-modal";
-import { useAllowedDomains } from "@/hooks/use-workspace-data";
+import {
+  RowMenuProvider,
+  MoreButton as RowMoreButton,
+  RowMenuList,
+  RowMenuConfirm,
+  Sc,
+  Val,
+  type RowMenuItem,
+} from "./row-menu";
+import { useAllowedDomains, useMembers, usePropDefs } from "@/hooks/use-workspace-data";
 import { usePrefs } from "@/lib/preferences";
 import { nanoid } from "nanoid";
 
