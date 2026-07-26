@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -1511,9 +1512,41 @@ function SidebarPlusButton({
   onToggle: () => void;
   children: ReactNode;
 }) {
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      setPos(null);
+      return;
+    }
+    const place = () => {
+      const el = btnRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const width = 262;
+      const gap = 6;
+      // Anchor to the button's right edge, but keep the popover on-screen.
+      let left = r.right - width;
+      const margin = 8;
+      if (left < margin) left = margin;
+      const maxLeft = window.innerWidth - width - margin;
+      if (left > maxLeft) left = maxLeft;
+      setPos({ top: r.bottom + gap, left });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open]);
+
   return (
-    <div className="relative">
+    <>
       <button
+        ref={btnRef}
         type="button"
         title={title}
         aria-label={title}
@@ -1526,8 +1559,23 @@ function SidebarPlusButton({
       >
         <Glyph path="M12 5v14M5 12h14" className="h-3.5 w-3.5" />
       </button>
-      {open && children}
-    </div>
+      {open && pos
+        ? createPortal(
+            <div
+              style={{
+                position: "fixed",
+                top: pos.top,
+                left: pos.left,
+                width: 262,
+                zIndex: 60,
+              }}
+            >
+              {children}
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }
 
@@ -1589,7 +1637,7 @@ function NewPersonalViewPopover({
       ref={rootRef}
       onMouseDown={(e) => e.stopPropagation()}
       style={{ width: 262 }}
-      className="absolute right-0 top-full z-40 mt-1 rounded-md border border-rule bg-surface p-3 shadow-lg"
+      className="rounded-md border border-rule bg-surface p-3 shadow-lg"
     >
       <div className="mb-2 text-label uppercase text-faint">New view</div>
       <input
@@ -1703,7 +1751,7 @@ function NewAreaPopover({
       ref={rootRef}
       onMouseDown={(e) => e.stopPropagation()}
       style={{ width: 262 }}
-      className="absolute right-0 top-full z-40 mt-1 rounded-md border border-rule bg-surface p-3 shadow-lg"
+      className="rounded-md border border-rule bg-surface p-3 shadow-lg"
     >
       <div className="mb-2 text-label uppercase text-faint">New area</div>
       <input
