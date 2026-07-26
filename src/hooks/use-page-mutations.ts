@@ -582,6 +582,70 @@ export function useMovePageToArea() {
   });
 }
 
+/**
+ * Rewrites `props.area` on every page in the workspace whose current area
+ * matches `from`. The sidebar entry vanishes on its own because nothing
+ * carries the old area name anymore.
+ */
+export function useRenameArea() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (v: { from: string; to: string }) => {
+      const snapshot = qc.getQueryData<PageListItem[]>(qk.pages(ws)) ?? [];
+      const ids = snapshot
+        .filter((p) => {
+          const props =
+            p.props && typeof p.props === "object" && !Array.isArray(p.props)
+              ? (p.props as Record<string, unknown>)
+              : {};
+          return props.area === v.from;
+        })
+        .map((p) => p.id);
+      for (const pageId of ids) {
+        const { error } = await supabase.rpc("set_page_property", {
+          p_page: pageId,
+          p_key: "area",
+          p_value: v.to as never,
+        });
+        if (error) throw error;
+      }
+      return { count: ids.length };
+    },
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: qk.pages(ws) });
+      const snapshot = qc.getQueryData<PageListItem[]>(qk.pages(ws)) ?? [];
+      const nowIso = new Date().toISOString();
+      qc.setQueryData<PageListItem[]>(
+        qk.pages(ws),
+        snapshot.map((p) => {
+          const props =
+            p.props && typeof p.props === "object" && !Array.isArray(p.props)
+              ? { ...(p.props as Record<string, unknown>) }
+              : {};
+          if (props.area !== v.from) return p;
+          props.area = v.to;
+          return {
+            ...p,
+            props: props as PageListItem["props"],
+            edited_at: nowIso,
+          };
+        }),
+      );
+      return { snapshot };
+    },
+    onError: (err, _v, ctx) => {
+      if (ctx?.snapshot) qc.setQueryData(qk.pages(ws), ctx.snapshot);
+      toast.push(`Couldn't rename area: ${(err as Error).message}`);
+    },
+    onSuccess: (res, v) =>
+      toast.push(
+        `Renamed "${v.from}" → "${v.to}" — ${res.count} ${res.count === 1 ? "page" : "pages"} updated.`,
+      ),
+  });
+}
+
 export function useDuplicatePage() {
   const qc = useQueryClient();
   const ws = useWorkspaceId();
