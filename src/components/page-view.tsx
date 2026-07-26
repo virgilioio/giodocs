@@ -954,7 +954,7 @@ function ReadOnlyBody({ blocks }: { blocks: Block[] }) {
   const { prefs } = usePrefs();
   if (!blocks.length) {
     return (
-      <p className="mt-6 text-meta italic text-faint">
+      <p className="text-meta italic text-faint">
         This page has no body yet. The editor lands in a later batch.
       </p>
     );
@@ -964,7 +964,7 @@ function ReadOnlyBody({ blocks }: { blocks: Block[] }) {
       id="page-body"
       tabIndex={-1}
       data-font={prefs.fontFamily}
-      className="gio-page-body mt-6 space-y-4 focus:outline-none"
+      className="gio-page-body space-y-4 focus:outline-none"
     >
       {blocks.map((b, i) => {
         const text = (b.text ?? b.body ?? "").trim();
