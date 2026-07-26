@@ -1651,6 +1651,8 @@ function ListBody({
   staleThreshold: number;
 }) {
   const navigate = useNavigate();
+  const setOrigin = useSetPageOrigin();
+
   const statusDef = propDefs.find((d) => d.key === "status");
   const statusOpts =
     (statusDef?.options as unknown as Array<{ value: string; label: string }>) ?? [];
