@@ -127,7 +127,7 @@ function ViewHeader({
   onNewPage,
   layout,
   onChangeLayout,
-  onOpenMenu,
+  menuBuild,
 }: {
   selection: Selection;
   view: ViewRow | null;
@@ -135,7 +135,7 @@ function ViewHeader({
   onNewPage: () => void;
   layout: Layout;
   onChangeLayout: (l: Layout) => void;
-  onOpenMenu: (btn: HTMLElement) => void;
+  menuBuild: () => ReactNode;
 }) {
   let scopeLabel: ReactNode = "AREA";
   let name = "";
