@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
@@ -7,14 +7,21 @@ import {
   usePage,
   usePageAccess,
 } from "@/hooks/use-workspace-data";
-import { useSetPageProperty, useVerifyPage } from "@/hooks/use-page-mutations";
+import {
+  useRenamePage,
+  useSetPageProperty,
+  useUpdateBlocks,
+  useVerifyPage,
+} from "@/hooks/use-page-mutations";
 import { qk } from "@/lib/query-keys";
 import { usePrefs } from "@/lib/preferences";
 import { usePageAppearance } from "@/lib/page-appearance";
 import { Popover } from "./popover";
 import { formatTimestamp } from "@/lib/format";
+import { EditableBody, EditableTitle } from "./page-editor-body";
 import type { Block, PageAccessRow, PageFull, PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
+
 
 type PropDef = Database["public"]["Tables"]["property_defs"]["Row"];
 type MemberRow = {
