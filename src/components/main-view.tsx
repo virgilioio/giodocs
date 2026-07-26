@@ -1165,6 +1165,8 @@ export function MainView({ selection }: { selection: Selection }) {
         editable={editable}
         fixedFilterIndex={fixedFilterIndex}
         pages={pages}
+        verbose={prefs.explainQuery}
+
       />
 
       {layout === "board" && (
