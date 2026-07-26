@@ -1637,7 +1637,7 @@ function NewPersonalViewPopover({
       ref={rootRef}
       onMouseDown={(e) => e.stopPropagation()}
       style={{ width: 262 }}
-      className="absolute right-0 top-full z-40 mt-1 rounded-md border border-rule bg-surface p-3 shadow-lg"
+      className="rounded-md border border-rule bg-surface p-3 shadow-lg"
     >
       <div className="mb-2 text-label uppercase text-faint">New view</div>
       <input
@@ -1751,7 +1751,7 @@ function NewAreaPopover({
       ref={rootRef}
       onMouseDown={(e) => e.stopPropagation()}
       style={{ width: 262 }}
-      className="absolute right-0 top-full z-40 mt-1 rounded-md border border-rule bg-surface p-3 shadow-lg"
+      className="rounded-md border border-rule bg-surface p-3 shadow-lg"
     >
       <div className="mb-2 text-label uppercase text-faint">New area</div>
       <input
