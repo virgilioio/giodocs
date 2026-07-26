@@ -598,6 +598,17 @@ function PropertyEditor({
 }) {
   const def = propDefs.find((d) => d.key === propKey);
   const raw = propsOf(page)[propKey];
+  const missingLabel = (() => {
+    if (propKey === "area") return "No area";
+    if (propKey === "owner" || def?.type === "person") return "No owner";
+    if (propKey === "tags" || def?.type === "multi_select") return "No tags";
+    const lbl = (def?.label ?? propKey).toLowerCase();
+    return `No ${lbl}`;
+  })();
+  const Missing = () => (
+    <span className="italic text-whisper">{missingLabel}</span>
+  );
+
 
   if (propKey === "area") {
     const [neu, setNeu] = useState("");
