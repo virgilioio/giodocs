@@ -379,6 +379,10 @@ function SidebarBody({
   onOpenSettings,
   onOpenInvite,
   onOpenPalette,
+  sidebarPopover,
+  onOpenNewView,
+  onOpenNewArea,
+  onCloseSidebarPopover,
 }: {
   loading: boolean;
   pages: PageListItem[];
@@ -399,6 +403,10 @@ function SidebarBody({
   onOpenSettings: () => void;
   onOpenInvite: () => void;
   onOpenPalette: () => void;
+  sidebarPopover: "view" | "area" | null;
+  onOpenNewView: () => void;
+  onOpenNewArea: () => void;
+  onCloseSidebarPopover: () => void;
 }) {
   const [sections, toggleSection] = useSectionState();
   const { prefs } = usePrefs();
