@@ -7,6 +7,8 @@ import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell, pageQuery } from "@/hooks/use-workspace-data";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
+import { PageOriginContext, useSetPageOrigin } from "@/lib/page-origin";
+
 import { Popover } from "./popover";
 import {
   useSetPageProperty,
@@ -162,8 +164,11 @@ function ViewHeader({
         </h1>
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <div className="flex items-center rounded-md border border-line bg-surface">
-          {(["table", "board", "list"] as const).map((l) => {
+        <div
+          className="flex items-center overflow-hidden rounded-lg border border-line"
+          style={{ height: 30 }}
+        >
+          {(["table", "board", "list"] as const).map((l, i) => {
             const active = l === layout;
             return (
               <button
@@ -173,9 +178,11 @@ function ViewHeader({
                 aria-label={l}
                 onClick={() => onChangeLayout(l)}
                 className={
-                  "grid h-8 w-8 place-items-center " +
-                  (active ? "bg-selected text-noir" : "text-muted hover:bg-rail")
+                  "grid place-items-center " +
+                  (i > 0 ? "border-l border-line " : "") +
+                  (active ? "bg-selected text-noir" : "text-faint hover:bg-sunken")
                 }
+                style={{ height: 30, width: 32 }}
               >
                 <LayoutGlyph layout={l} />
               </button>
@@ -185,17 +192,18 @@ function ViewHeader({
         <button
           type="button"
           onClick={onNewPage}
-          className="inline-flex items-center gap-1 rounded-lg bg-noir px-3 text-ui font-bold text-canvas"
-          style={{ height: 36 }}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-noir text-track"
+          style={{ height: 30, padding: "0 13px", fontSize: 13.5, fontWeight: 700 }}
         >
-          <Glyph path="M12 5v14M5 12h14" className="h-3.5 w-3.5" />
+          <Glyph path="M12 5v14M5 12h14" className="h-3 w-3" />
           New page
         </button>
         <button
           type="button"
           aria-label="View options"
           onClick={(e) => onOpenMenu(e.currentTarget)}
-          className="grid h-8 w-8 place-items-center rounded-md border border-line bg-surface text-muted hover:bg-rail"
+          className="grid place-items-center rounded-lg text-faint hover:bg-sunken"
+          style={{ height: 30, width: 30 }}
         >
           <Glyph
             path="M6 12a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"
@@ -206,6 +214,7 @@ function ViewHeader({
     </div>
   );
 }
+
 
 
 
@@ -221,6 +230,7 @@ function QueryToolbar({
   editable,
   fixedFilterIndex,
   pages,
+  verbose,
 }: {
   filters: Filter[];
   sort: SortSpec;
@@ -231,13 +241,15 @@ function QueryToolbar({
   editable: boolean;
   fixedFilterIndex?: number;
   pages: PageListItem[];
+  verbose: boolean;
 }) {
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-lineSoft pb-3">
-      <span className="text-meta text-muted">Pages where</span>
-      {filters.length === 0 && (
+      {verbose && <span className="text-meta text-muted">Pages where</span>}
+      {verbose && filters.length === 0 && (
         <span className="italic text-meta text-secondary">anything — every page</span>
       )}
+
       {filters.map((f, i) => {
         const fixed = i === fixedFilterIndex;
         return (
@@ -521,6 +533,8 @@ function PageTitleCell({
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const setOrigin = useSetPageOrigin();
+
   return (
     <div className="flex min-w-0 items-center gap-1">
       <span className="text-row">{page.icon || "📄"}</span>
@@ -548,9 +562,11 @@ function PageTitleCell({
           <button
             type="button"
             className="min-w-0 flex-1 truncate text-left text-row font-bold hover:underline"
-            onClick={() =>
-              navigate({ to: "/p/$pageId", params: { pageId: page.id } })
-            }
+            onClick={() => {
+              setOrigin(page.id);
+              navigate({ to: "/p/$pageId", params: { pageId: page.id } });
+            }}
+
             onMouseEnter={() => {
               qc.prefetchQuery(pageQuery(page.id));
             }}
@@ -1116,21 +1132,24 @@ export function MainView({ selection }: { selection: Selection }) {
     setDateModeForMainView(prefs.dateFormat);
   }, [prefs.dateFormat]);
 
-  const explainer = useMemo(() => {
-    if (filters.length === 0) return "Every page in this workspace, no filters.";
-    const parts = filters.map((f) => describeFilter(f, propDefs, staleDays));
-    const sortLabel = `sorted by ${sort.prop} ${sort.dir === "asc" ? "ascending" : "descending"}`;
-    return `Pages where ${parts.join(" and ")} — ${sortLabel}.`;
-  }, [filters, propDefs, staleDays, sort]);
+  const originValue: import("@/lib/page-origin").PageOrigin =
+    selection.kind === "area"
+      ? { kind: "area", area: selection.area }
+      : view
+        ? {
+            kind: "view",
+            viewId: view.id,
+            viewName: view.name,
+            scope: view.scope === "team" ? "team" : "personal",
+          }
+        : { kind: "search" };
 
   return (
-    <div className="mx-auto max-w-view px-6 py-6">
-      {prefs.explainQuery && (
-        <p className="mb-3 rounded-md border border-lineSoft bg-track px-3 py-2 text-caption text-secondary">
-          <span className="mr-1 uppercase text-label text-faint">What you're looking at</span>
-          {explainer}
-        </p>
-      )}
+    <PageOriginContext.Provider value={originValue}>
+    <div
+      className="mx-auto"
+      style={{ maxWidth: "var(--container-view)", padding: "34px 40px" }}
+    >
       <ViewHeader
         selection={selection}
         view={view}
@@ -1140,6 +1159,7 @@ export function MainView({ selection }: { selection: Selection }) {
         onChangeLayout={onChangeLayout}
         onOpenMenu={(btn) => setHeaderMenuAnchor(btn)}
       />
+
 
       {headerMenuAnchor && (
         <HeaderMenu
@@ -1157,6 +1177,7 @@ export function MainView({ selection }: { selection: Selection }) {
       <QueryToolbar
         filters={filters}
         sort={sort}
+
         onChangeFilters={onChangeFilters}
         onChangeSort={onChangeSort}
         propDefs={propDefs}
@@ -1164,6 +1185,8 @@ export function MainView({ selection }: { selection: Selection }) {
         editable={editable}
         fixedFilterIndex={fixedFilterIndex}
         pages={pages}
+        verbose={prefs.explainQuery}
+
       />
 
       {layout === "board" && (
@@ -1195,7 +1218,9 @@ export function MainView({ selection }: { selection: Selection }) {
 
       {body}
     </div>
+    </PageOriginContext.Provider>
   );
+
 }
 
 /* ─────────────────────────── Modified banner ─────────────────────────── */
@@ -1504,6 +1529,8 @@ function BoardBody({
   onMove: (pageId: string, value: string) => void;
 }) {
   const navigate = useNavigate();
+  const setOrigin = useSetPageOrigin();
+
   const def = propDefs.find((d) => d.key === groupBy);
   const opts =
     (def?.options as unknown as Array<{
@@ -1567,7 +1594,8 @@ function BoardBody({
                   type="button"
                   draggable
                   onDragStart={(e) => e.dataTransfer.setData("text/pageId", p.id)}
-                  onClick={() => navigate({ to: "/p/$pageId", params: { pageId: p.id } })}
+                  onClick={() => { setOrigin(p.id); navigate({ to: "/p/$pageId", params: { pageId: p.id } }); }}
+
                   className="rounded-lg border border-line bg-surface p-2 text-left shadow-card transition hover:shadow-cardHover"
                 >
                   <div className="flex items-center gap-2">
@@ -1623,13 +1651,15 @@ function ListBody({
   staleThreshold: number;
 }) {
   const navigate = useNavigate();
+  const setOrigin = useSetPageOrigin();
+
   const statusDef = propDefs.find((d) => d.key === "status");
   const statusOpts =
     (statusDef?.options as unknown as Array<{ value: string; label: string }>) ?? [];
 
   return (
-    <div className="mx-auto max-w-[800px]">
-      {rows.map((p) => {
+    <div style={{ maxWidth: 800 }}>
+      {rows.map((p, idx) => {
         const props = propsOf(p);
         const isStale = new Date(p.verified_at).getTime() < staleThreshold;
         const ownerId = props["owner"];
@@ -1639,31 +1669,48 @@ function ListBody({
             : null;
         const status = statusOpts.find((o) => o.value === props["status"])?.label;
         const area = typeof props["area"] === "string" ? props["area"] : null;
-        const subline = [area, owner?.full_name ?? owner?.email, status]
-          .filter(Boolean)
-          .join(" · ");
+        const ownerName = owner?.full_name ?? owner?.email ?? null;
+        const parts = [area, ownerName, status].filter(Boolean) as string[];
+        const isLast = idx === rows.length - 1;
         return (
           <button
             key={p.id}
             type="button"
-            onClick={() => navigate({ to: "/p/$pageId", params: { pageId: p.id } })}
-            className="flex w-full items-start gap-3 border-b border-lineSoft px-2 py-3 text-left hover:bg-sunken"
+            onClick={() => { setOrigin(p.id); navigate({ to: "/p/$pageId", params: { pageId: p.id } }); }}
+            className={
+              "grid w-full items-center gap-[11px] rounded-lg text-left hover:bg-sunken " +
+              (isLast ? "" : "border-b border-lineSoft ")
+            }
+            style={{
+              gridTemplateColumns: "20px minmax(0,1fr) auto",
+              minHeight: "var(--gio-list-row, 44px)",
+              padding: "7px 10px",
+            }}
           >
             <span className="text-row leading-none">{p.icon ?? "📄"}</span>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0">
               <div className="truncate text-row font-bold text-noir">
                 {p.title || "Untitled"}
               </div>
-              {subline && (
-                <div className="mt-0.5 truncate text-meta text-muted">{subline}</div>
+              {parts.length > 0 && (
+                <div className="truncate text-caption text-muted" style={{ marginTop: 1 }}>
+                  {parts.map((s, i) => (
+                    <span key={i}>
+                      {i > 0 && <span className="text-rule"> · </span>}
+                      {s}
+                    </span>
+                  ))}
+                </div>
               )}
             </div>
             {isStale ? (
-              <span className="shrink-0 font-display text-label uppercase text-amberInk">
-                STALE
+              <span className="shrink-0 text-caption font-bold text-amberInk tnum">
+                ⚠ {relTime(p.verified_at)}
               </span>
             ) : (
-              <span className="shrink-0 text-meta text-muted">{relTime(p.edited_at)}</span>
+              <span className="shrink-0 text-caption text-faint tnum">
+                {relTime(p.edited_at)}
+              </span>
             )}
           </button>
         );
@@ -1674,11 +1721,12 @@ function ListBody({
 
 
 
+
 function HeaderCell({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div
       className={
-        "border-b border-line px-[11px] py-1 text-label uppercase text-faint " +
+        "border-b border-line bg-canvas px-[11px] py-1 text-label uppercase text-faint " +
         (className ?? "")
       }
     >
@@ -1686,6 +1734,7 @@ function HeaderCell({ children, className }: { children: ReactNode; className?: 
     </div>
   );
 }
+
 
 function Cell({ children, className }: { children: ReactNode; className?: string }) {
   return (

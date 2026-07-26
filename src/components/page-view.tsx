@@ -340,7 +340,7 @@ function FreshnessRow({
 }) {
   const verifiedByName = useMemo(() => {
     const m = members.find((x) => x.user_id === page.verified_by);
-    return m?.profiles?.full_name || m?.profiles?.email || "someone";
+    return m?.profiles?.full_name || m?.profiles?.email || null;
   }, [members, page.verified_by]);
 
   const ageMs = Date.now() - new Date(page.verified_at).getTime();
@@ -398,7 +398,8 @@ function FreshnessRow({
         className="h-4 w-4 text-accent"
       />
       <span>
-        Verified {relTime(page.verified_at)} by {verifiedByName}
+        Verified {relTime(page.verified_at)}
+        {verifiedByName ? ` by ${verifiedByName}` : ""}
       </span>
       <button
         type="button"
@@ -410,6 +411,7 @@ function FreshnessRow({
     </div>
   );
 }
+
 
 /* ────────────── Property strip ────────────── */
 
@@ -461,11 +463,11 @@ function PropertyStrip({
     .filter((d) => d.key !== "area" && d.key !== "owner");
 
   return (
-    <div className="mt-6">
+    <div>
       {rows.map((r) => (
         <div
           key={r.key}
-          className="flex items-center gap-2 rounded-md px-1 hover:bg-sunken"
+          className="flex items-center gap-3 px-1"
           style={{ minHeight: 32 }}
         >
           <div
@@ -475,17 +477,23 @@ function PropertyStrip({
             {labelFor(r.key, propDefs)}
           </div>
           <div className="min-w-0 flex-1">
-            <PropertyEditor
-              propKey={r.key}
-              page={page}
-              propDefs={propDefs}
-              members={members}
-              areas={areas}
-              onSet={onSet}
-            />
+            <div
+              className="inline-block rounded-md hover:bg-sunken"
+              style={{ padding: "3px 8px", margin: "0 -8px" }}
+            >
+              <PropertyEditor
+                propKey={r.key}
+                page={page}
+                propDefs={propDefs}
+                members={members}
+                areas={areas}
+                onSet={onSet}
+              />
+            </div>
           </div>
         </div>
       ))}
+
 
       <div
         className="flex items-center gap-2 rounded-md px-1"
@@ -590,6 +598,17 @@ function PropertyEditor({
 }) {
   const def = propDefs.find((d) => d.key === propKey);
   const raw = propsOf(page)[propKey];
+  const missingLabel = (() => {
+    if (propKey === "area") return "No area";
+    if (propKey === "owner" || def?.type === "person") return "No owner";
+    if (propKey === "tags" || def?.type === "multi_select") return "No tags";
+    const lbl = (def?.label ?? propKey).toLowerCase();
+    return `No ${lbl}`;
+  })();
+  const Missing = () => (
+    <span className="italic text-whisper">{missingLabel}</span>
+  );
+
 
   if (propKey === "area") {
     const [neu, setNeu] = useState("");
@@ -606,7 +625,7 @@ function PropertyEditor({
             {typeof raw === "string" && raw ? (
               raw
             ) : (
-              <span className="text-faint">Empty</span>
+              <Missing />
             )}
           </button>
         )}
@@ -680,7 +699,7 @@ function PropertyEditor({
                 <span className="truncate">{current.profiles?.full_name}</span>
               </>
             ) : (
-              <span className="text-faint">Empty</span>
+              <Missing />
             )}
           </button>
         )}
@@ -752,7 +771,7 @@ function PropertyEditor({
                 {cur.label}
               </span>
             ) : (
-              <span className="text-faint">Empty</span>
+              <Missing />
             )}
           </button>
         )}
@@ -814,7 +833,7 @@ function PropertyEditor({
             onClick={onClick}
             className="flex w-full flex-wrap items-center gap-1 rounded-sm px-1 py-1 text-left"
           >
-            {tags.length === 0 && <span className="text-faint">Empty</span>}
+            {tags.length === 0 && <Missing />}
             {tags.map((t) => (
               <span
                 key={t}
@@ -897,7 +916,7 @@ function PropertyEditor({
     <input
       type={def?.type === "date" ? "date" : "text"}
       defaultValue={typeof raw === "string" ? raw : ""}
-      placeholder="Empty"
+      placeholder={missingLabel}
       onBlur={(e) => {
         const v = e.target.value;
         if (v !== raw) onSet(propKey, v === "" ? null : v);
@@ -935,7 +954,7 @@ function ReadOnlyBody({ blocks }: { blocks: Block[] }) {
   const { prefs } = usePrefs();
   if (!blocks.length) {
     return (
-      <p className="mt-6 text-meta italic text-faint">
+      <p className="text-meta italic text-faint">
         This page has no body yet. The editor lands in a later batch.
       </p>
     );
@@ -945,7 +964,7 @@ function ReadOnlyBody({ blocks }: { blocks: Block[] }) {
       id="page-body"
       tabIndex={-1}
       data-font={prefs.fontFamily}
-      className="gio-page-body mt-6 space-y-4 focus:outline-none"
+      className="gio-page-body space-y-4 focus:outline-none"
     >
       {blocks.map((b, i) => {
         const text = (b.text ?? b.body ?? "").trim();
@@ -1094,10 +1113,11 @@ export function PageEditor({ pageId }: { pageId: string }) {
   }, [page, pages]);
 
   const editorName = useMemo(() => {
-    if (!page) return "someone";
+    if (!page) return null;
     const m = members.find((x) => x.user_id === page.edited_by);
-    return m?.profiles?.full_name || m?.profiles?.email || "someone";
+    return m?.profiles?.full_name || m?.profiles?.email || null;
   }, [members, page]);
+
 
   const onVerify = () => {
     if (!page) return;
@@ -1165,7 +1185,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
       </div>
 
       {/* 2. Permissions chip */}
-      <div className="mt-3">
+      <div style={{ marginTop: 14 }}>
         <PermissionsChip
           page={page}
           workspaceName={workspaceName}
@@ -1176,7 +1196,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
       </div>
 
       {/* 3. Freshness row */}
-      <div className="mt-4">
+      <div style={{ marginTop: 12 }}>
         <FreshnessRow
           page={page}
           members={members}
@@ -1187,34 +1207,40 @@ export function PageEditor({ pageId }: { pageId: string }) {
       </div>
 
       {/* Quiet edited line */}
-      <p className="mt-2 text-caption text-whisper">
-        Edited {relTime(page.edited_at)} · {editorName}
+      <p className="text-caption text-whisper" style={{ marginTop: 6 }}>
+        Edited {relTime(page.edited_at)}
+        {editorName ? ` · ${editorName}` : ""}
       </p>
 
       {/* 4. Property strip */}
-      <PropertyStrip
-        page={page}
-        propDefs={propDefs}
-        members={members}
-        pages={pages}
-        onSet={(key, value) => {
-          if (key === "icon") {
-            // Icon is a column, not a property. Route through a small helper.
-            void updatePageIcon(page.id, value as string, qc, ws);
-            return;
-          }
-          setProp.mutate({ pageId: page.id, key, value });
-        }}
-      />
+      <div style={{ marginTop: 18 }}>
+        <PropertyStrip
+          page={page}
+          propDefs={propDefs}
+          members={members}
+          pages={pages}
+          onSet={(key, value) => {
+            if (key === "icon") {
+              void updatePageIcon(page.id, value as string, qc, ws);
+              return;
+            }
+            setProp.mutate({ pageId: page.id, key, value });
+          }}
+        />
+      </div>
 
       {/* 5. Divider */}
-      <div className="mt-6 border-t border-lineSoft" />
+      <div className="border-t border-lineSoft" style={{ marginTop: 20 }} />
 
       {/* Body */}
-      <ReadOnlyBody blocks={blocks} />
+      <div style={{ marginTop: 26 }}>
+        <ReadOnlyBody blocks={blocks} />
+      </div>
     </div>
   );
 }
+
+
 
 /* Icon updates go directly to the pages table since icon is a column,
    not a jsonb prop. We keep this here to avoid churn in mutations file. */

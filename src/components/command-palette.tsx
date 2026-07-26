@@ -12,6 +12,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { useCreatePage } from "@/hooks/use-page-mutations";
+import { setPageOrigin } from "@/lib/page-origin";
+
 import { describeFilter } from "./main-view";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
@@ -157,7 +159,7 @@ export function CommandPalette({
             {
               onSuccess: (row) => {
                 onClose();
-                navigate({ to: "/p/$pageId", params: { pageId: row.id } });
+                (setPageOrigin(row.id, { kind: "search" }), navigate({ to: "/p/$pageId", params: { pageId: row.id } }));
               },
             },
           );
@@ -213,7 +215,7 @@ export function CommandPalette({
           {
             onSuccess: (row) => {
               onClose();
-              navigate({ to: "/p/$pageId", params: { pageId: row.id } });
+              (setPageOrigin(row.id, { kind: "search" }), navigate({ to: "/p/$pageId", params: { pageId: row.id } }));
             },
           },
         );
@@ -251,7 +253,7 @@ export function CommandPalette({
     (row: Row) => {
       if (row.kind === "page") {
         onClose();
-        navigate({ to: "/p/$pageId", params: { pageId: row.page.id } });
+        (setPageOrigin(row.page.id, { kind: "search" }), navigate({ to: "/p/$pageId", params: { pageId: row.page.id } }));
       } else if (row.kind === "block") {
         onClose();
         navigate({

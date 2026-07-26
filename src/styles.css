@@ -102,6 +102,7 @@
   .tnum { font-variant-numeric: tabular-nums; }
 
   /* Density preference — overrides row-height tokens and cell padding. */
+  html { --gio-cell-py: 10px; --gio-list-py: 10px; --gio-list-row: 44px; }
   html[data-density="compact"] {
     --spacing-rowMy: 25px;
     --spacing-rowArea: 24px;
@@ -109,8 +110,10 @@
     --spacing-rowPage: 22px;
     --gio-cell-py: 4px;
     --gio-list-py: 6px;
+    --gio-list-row: 38px;
   }
-  html { --gio-cell-py: 10px; --gio-list-py: 10px; }
+
+
   .gio-cell-pad { padding-top: var(--gio-cell-py); padding-bottom: var(--gio-cell-py); }
   .gio-list-pad { padding-top: var(--gio-list-py); padding-bottom: var(--gio-list-py); }
 

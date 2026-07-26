@@ -13,6 +13,8 @@ import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { useRealtimeWorkspace } from "@/hooks/use-realtime";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
+import { getPageOrigin } from "@/lib/page-origin";
+
 import {
   useCreatePage,
   useCreateView,
@@ -182,28 +184,35 @@ export function AppShell() {
     if (selection.kind === "view") {
       const v = views.find((x) => x.id === selection.id);
       if (!v) return null;
-      const section =
-        v.scope === "team" ? "Team views" : "My views";
-      return { section, name: v.name };
+      const section = v.scope === "team" ? "Team views" : "My views";
+      return { crumbs: [section], name: v.name };
     }
     if (selection.kind === "area") {
-      return { section: "Areas", name: selection.area };
+      return { crumbs: ["Areas"], name: selection.area };
     }
     const p = pages.find((x) => x.id === selection.id);
-    // Optional "back to area" hint set by the New area flow.
-    try {
-      const raw = sessionStorage.getItem("gio.page-back");
-      if (raw) {
-        const parsed = JSON.parse(raw) as { pageId?: string; area?: string };
-        if (parsed.pageId === selection.id && parsed.area) {
-          return { section: "Areas", name: p?.title || parsed.area };
-        }
+    const title = p?.title || "Untitled";
+    const origin = getPageOrigin(selection.id);
+    if (origin) {
+      if (origin.kind === "view") {
+        const section = origin.scope === "team" ? "Team views" : "My views";
+        return { crumbs: [section, origin.viewName], name: title };
       }
-    } catch {
-      /* ignore */
+      if (origin.kind === "area") {
+        return { crumbs: ["Areas", origin.area], name: title };
+      }
+      if (origin.kind === "search") {
+        return { crumbs: ["Search"], name: title };
+      }
     }
-    return { section: "Page", name: p?.title || "Untitled" };
+    // Fall back to the page's own area if we can infer it.
+    const area = p && typeof (p.props as Record<string, unknown> | null)?.area === "string"
+      ? (p.props as Record<string, unknown>).area as string
+      : null;
+    if (area) return { crumbs: ["Areas", area], name: title };
+    return { crumbs: ["Page"], name: title };
   }, [selection, views, pages]);
+
 
 
   async function handleSignOut() {
@@ -283,16 +292,21 @@ export function AppShell() {
           </button>
           {breadcrumb && (
             <div className="flex min-w-0 items-center gap-2">
-              <span className="text-ui text-secondary">{breadcrumb.section}</span>
-              <span className="text-ui text-rule">/</span>
+              {breadcrumb.crumbs.map((c, i) => (
+                <span key={i} className="flex items-center gap-2 shrink-0">
+                  <span className="text-ui text-secondary">{c}</span>
+                  <span className="text-ui text-rule">/</span>
+                </span>
+              ))}
               <span className="min-w-0 truncate text-ui text-body">
                 {breadcrumb.name}
               </span>
             </div>
           )}
+
         </header>
 
-        <main className="min-w-0 flex-1 bg-canvas overflow-y-auto">
+        <main className="min-w-0 flex-1 bg-surface overflow-y-auto">
           {selection && selection.kind === "page" ? (
             <PageEditor pageId={selection.id} />
           ) : selection ? (
@@ -854,11 +868,12 @@ function TeamViewRow({
       >
         <Glyph
           path="M8 12a3 3 0 100-6 3 3 0 000 6zm8 0a3 3 0 100-6 3 3 0 000 6zM2 20c0-3 3-5 6-5s6 2 6 5m2 0c0-2 2-4 4-4s4 2 4 4"
-          className="h-3.5 w-3.5 shrink-0 text-muted"
+          className="h-3 w-3 shrink-0 text-muted"
         />
         <span className="min-w-0 flex-1 truncate text-meta text-secondary">
           {v.name}
         </span>
+
         <span className="relative flex h-5 min-w-[20px] items-center justify-end">
           {showMenu ? (
             <MoreButton
