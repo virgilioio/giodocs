@@ -1113,10 +1113,11 @@ export function PageEditor({ pageId }: { pageId: string }) {
   }, [page, pages]);
 
   const editorName = useMemo(() => {
-    if (!page) return "someone";
+    if (!page) return null;
     const m = members.find((x) => x.user_id === page.edited_by);
-    return m?.profiles?.full_name || m?.profiles?.email || "someone";
+    return m?.profiles?.full_name || m?.profiles?.email || null;
   }, [members, page]);
+
 
   const onVerify = () => {
     if (!page) return;
