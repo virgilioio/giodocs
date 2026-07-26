@@ -26,7 +26,9 @@ import type { PageListItem } from "@/lib/types";
 import { MainView } from "./main-view";
 import { PageEditor } from "./page-view";
 import { CommandPalette } from "./command-palette";
-import { SettingsModal } from "./settings-modal";
+import { SettingsModal, type SettingsPane } from "./settings-modal";
+import { AddMembersModal, type PendingInvite } from "./add-members-modal";
+import { useAllowedDomains } from "@/hooks/use-workspace-data";
 import { usePrefs } from "@/lib/preferences";
 
 type Selection =
