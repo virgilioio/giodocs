@@ -487,8 +487,13 @@ function SidebarBody({
   const showSidebarCounts = prefs.showSidebarCounts;
   const { user } = useAuth();
   const navigate = useNavigate();
-  const members = (useMembers().data ?? []) as MemberLite[];
-  const propDefs = (usePropDefs().data ?? []) as Array<{
+  const wsId = useWorkspaceId();
+  const members = (useMembers(wsId).data ?? []) as MemberLite[];
+  const propDefs = (usePropDefs(wsId).data ?? []) as Array<{
+    key: string;
+    label: string;
+    options: unknown;
+  }>;
     key: string;
     label: string;
     options: unknown;
