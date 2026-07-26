@@ -20,15 +20,12 @@ import {
 } from "@/hooks/use-workspace-mutations";
 import { useCreateView } from "@/hooks/use-page-mutations";
 import { usePrefs, type FontFamily, type Density, type DateFormatMode } from "@/lib/preferences";
-import {
-  useEmojiFavorites,
-  addFavorite,
-  removeFavorite,
-} from "@/lib/emoji-favorites";
+import { useToast } from "@/lib/toast";
 import { useFormatDate } from "@/lib/format";
 import type { PageListItem } from "@/lib/types";
+import type { PendingInvite } from "./add-members-modal";
 
-type Pane = "preferences" | "general" | "people" | "emoji";
+export type SettingsPane = "preferences" | "general" | "people" | "emoji";
 
 type MemberRow = {
   user_id: string;
@@ -48,25 +45,71 @@ function propsOf(p: PageListItem): Record<string, unknown> {
     : {};
 }
 
+function initialsOf(name: string): string {
+  return name
+    .split(/\s+/)
+    .map((s) => s[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+/* ─────────────────────────── Icons ─────────────────────────── */
+
+function NavIcon({ d, active }: { d: string; active: boolean }) {
+  return (
+    <svg
+      width={15}
+      height={15}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={active ? "text-noir" : "text-faint"}
+      aria-hidden
+    >
+      <path d={d} />
+    </svg>
+  );
+}
+
+const ICON_SLIDERS =
+  "M4 21v-6M4 11V3M12 21v-9M12 8V3M20 21v-4M20 13V3M1.5 15h5M9.5 8h5M17.5 17h5";
+const ICON_GEAR =
+  "M12 9.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6zM19.6 14.4a1.5 1.5 0 0 0 .3 1.7l.1.1a1.9 1.9 0 1 1-2.7 2.7l-.1-.1a1.5 1.5 0 0 0-2.6 1.1v.2a1.9 1.9 0 1 1-3.8 0v-.1a1.5 1.5 0 0 0-2.6-1.1l-.1.1a1.9 1.9 0 1 1-2.7-2.7l.1-.1a1.5 1.5 0 0 0-1.1-2.6h-.2a1.9 1.9 0 1 1 0-3.8h.1a1.5 1.5 0 0 0 1.1-2.6l-.1-.1a1.9 1.9 0 1 1 2.7-2.7l.1.1a1.5 1.5 0 0 0 2.6-1.1v-.2a1.9 1.9 0 1 1 3.8 0v.1a1.5 1.5 0 0 0 2.6 1.1l.1-.1a1.9 1.9 0 1 1 2.7 2.7l-.1.1a1.5 1.5 0 0 0 1.1 2.6h.2a1.9 1.9 0 1 1 0 3.8h-.1a1.5 1.5 0 0 0-1.4.9z";
+const ICON_PEOPLE =
+  "M9 3.6a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2zM2 20.4v-1.8a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v1.8M16.5 3.9a3.6 3.6 0 0 1 0 7M22 20.4v-1.8a4 4 0 0 0-3-3.8";
+const ICON_SMILEY =
+  "M12 3.2a8.8 8.8 0 1 0 0 17.6 8.8 8.8 0 0 0 0-17.6zM8.7 14.4a4.4 4.4 0 0 0 6.6 0M9.2 9.6h.01M14.8 9.6h.01";
+const ICON_CLOSE = "M6 6l12 12M18 6L6 18";
+const ICON_PLUS = "M12 5v14M5 12h14";
+
 /* ─────────────────────────── Modal shell ─────────────────────────── */
 
-export function SettingsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [pane, setPane] = useState<Pane>("preferences");
-
-  // Escape closes before any other layer.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        e.preventDefault();
-        onClose();
-      }
-    };
-    document.addEventListener("keydown", onKey, true);
-    return () => document.removeEventListener("keydown", onKey, true);
-  }, [open, onClose]);
-
+export function SettingsModal({
+  open,
+  pane,
+  onPaneChange,
+  onClose,
+  pendingInvites,
+  onRevokeInvite,
+  onOpenInvite,
+  membersTab,
+  onMembersTabChange,
+}: {
+  open: boolean;
+  pane: SettingsPane;
+  onPaneChange: (p: SettingsPane) => void;
+  onClose: () => void;
+  pendingInvites: PendingInvite[];
+  onRevokeInvite: (email: string) => void;
+  onOpenInvite: () => void;
+  membersTab: "members" | "guests";
+  onMembersTabChange: (t: "members" | "guests") => void;
+}) {
   if (!open) return null;
 
   return (
@@ -74,21 +117,56 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
       role="dialog"
       aria-modal="true"
       aria-label="Settings"
-      className="fixed inset-0 z-[70] flex items-center justify-center px-4"
-      style={{ background: "rgba(13,13,9,.32)" }}
+      className="fixed inset-0 flex items-center justify-center"
+      style={{
+        zIndex: 110,
+        background: "rgba(13,13,9,.32)",
+        backdropFilter: "blur(3px)",
+        padding: "4vh 3vw",
+      }}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
-        className="flex overflow-hidden rounded-[14px] border border-line bg-surface shadow-modal animate-cardIn"
-        style={{ width: "min(1000px, 100vw - 32px)", height: "min(860px, 100vh - 64px)" }}
+        className="flex bg-surface shadow-modal animate-palIn"
+        style={{
+          width: 1000,
+          maxWidth: "100%",
+          height: "100%",
+          maxHeight: 860,
+          borderRadius: 14,
+          overflow: "hidden",
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
       >
-        <SettingsNav pane={pane} onPick={setPane} />
-        <div className="min-w-0 flex-1 overflow-y-auto">
+        <SettingsNav pane={pane} onPick={onPaneChange} />
+        <div className="relative min-w-0 flex-1 overflow-y-auto">
+          <button
+            type="button"
+            aria-label="Close settings"
+            onClick={onClose}
+            className="absolute right-4 top-4 grid place-items-center rounded-md text-whisper hover:bg-sunken"
+            style={{ width: 26, height: 26, zIndex: 2 }}
+          >
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth={1.8} strokeLinecap="round"
+              strokeLinejoin="round" aria-hidden>
+              <path d={ICON_CLOSE} />
+            </svg>
+          </button>
           {pane === "preferences" && <PreferencesPane />}
           {pane === "general" && <GeneralPane />}
-          {pane === "people" && <PeoplePane onClose={onClose} />}
+          {pane === "people" && (
+            <PeoplePane
+              onClose={onClose}
+              pendingInvites={pendingInvites}
+              onRevokeInvite={onRevokeInvite}
+              onOpenInvite={onOpenInvite}
+              tab={membersTab}
+              onTabChange={onMembersTabChange}
+            />
+          )}
           {pane === "emoji" && <EmojiPane />}
         </div>
       </div>
@@ -98,55 +176,122 @@ export function SettingsModal({ open, onClose }: { open: boolean; onClose: () =>
 
 /* ─────────────────────────── Left rail ─────────────────────────── */
 
-function SettingsNav({ pane, onPick }: { pane: Pane; onPick: (p: Pane) => void }) {
-  const items: { key: Pane; label: string; path: string }[] = [
-    { key: "preferences", label: "Preferences", path: "M4 12h6M14 12h6M12 4v6M12 14v6" },
-    { key: "general", label: "General", path: "M12 4l8 4v8l-8 4-8-4V8z" },
-    { key: "people", label: "People", path: "M8 12a3 3 0 100-6 3 3 0 000 6zm8 0a3 3 0 100-6 3 3 0 000 6zM2 20c0-3 3-5 6-5s6 2 6 5m2 0c0-2 2-4 4-4s4 2 4 4" },
-    { key: "emoji", label: "Emoji", path: "M12 21a9 9 0 100-18 9 9 0 000 18zM8 10h.01M16 10h.01M8 14c1 2 3 3 4 3s3-1 4-3" },
+function SettingsNav({ pane, onPick }: { pane: SettingsPane; onPick: (p: SettingsPane) => void }) {
+  const { user, profile } = useAuth();
+  const name = profile?.full_name || user?.email || "";
+  const email = user?.email || "";
+  const initials = initialsOf(name || email || "?");
+
+  type NavItem = { key: SettingsPane; label: string; path: string; group: "ACCOUNT" | "WORKSPACE" };
+  const items: NavItem[] = [
+    { key: "preferences", label: "Preferences", path: ICON_SLIDERS, group: "ACCOUNT" },
+    { key: "general", label: "General", path: ICON_GEAR, group: "WORKSPACE" },
+    { key: "people", label: "People", path: ICON_PEOPLE, group: "WORKSPACE" },
+    { key: "emoji", label: "Emoji", path: ICON_SMILEY, group: "WORKSPACE" },
   ];
+
+  const groups: Array<{ name: "ACCOUNT" | "WORKSPACE"; items: NavItem[] }> = [];
+  for (const it of items) {
+    const g = groups.find((x) => x.name === it.group);
+    if (g) g.items.push(it);
+    else groups.push({ name: it.group, items: [it] });
+  }
+
   return (
     <nav
-      className="shrink-0 border-r border-line bg-track p-2"
-      style={{ width: "var(--spacing-settingsRail)" }}
+      className="shrink-0 overflow-y-auto border-r border-line bg-canvas"
+      style={{ width: 214, padding: "16px 10px" }}
       aria-label="Settings sections"
     >
-      <div className="px-2 pb-2 pt-1 text-label uppercase text-faint">SETTINGS</div>
-      <ul>
-        {items.map((it) => {
-          const active = pane === it.key;
-          return (
-            <li key={it.key}>
-              <button
-                type="button"
-                onClick={() => onPick(it.key)}
-                style={{ height: 31 }}
-                className={
-                  "flex w-full items-center gap-2 rounded-md px-2 text-row " +
-                  (active
-                    ? "bg-selected font-bold text-noir"
-                    : "text-body hover:bg-railHover")
-                }
-                aria-current={active ? "page" : undefined}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  className={"h-4 w-4 " + (active ? "text-noir" : "text-faint")}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={1.6}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <path d={it.path} />
-                </svg>
-                {it.label}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      {/* Identity card — NOT a nav row */}
+      <div
+        className="flex items-center bg-surface"
+        style={{
+          gap: 9,
+          border: "1px solid var(--color-line)",
+          borderRadius: 9,
+          padding: "8px 9px",
+          marginBottom: 12,
+        }}
+      >
+        <span
+          className="grid shrink-0 place-items-center rounded-full"
+          style={{
+            width: 28,
+            height: 28,
+            background: profile?.avatar_tint ?? "var(--color-sunken)",
+            color: profile?.avatar_ink ?? "var(--color-noir)",
+            fontSize: 10.5,
+            fontWeight: 700,
+          }}
+          aria-hidden
+        >
+          {initials}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-noir" style={{ fontSize: 13.5, fontWeight: 700 }}>
+            {name || email || "You"}
+          </div>
+          <div className="truncate text-faint" style={{ fontSize: 11.5 }}>
+            {email}
+          </div>
+        </div>
+      </div>
+
+      {groups.map((group, gi) => (
+        <div key={group.name}>
+          <div
+            className="text-faint"
+            style={{
+              fontSize: 11.5,
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.085em",
+              padding: "6px 8px",
+              marginTop: gi === 0 ? 0 : 12,
+              borderTop: gi === 0 ? "none" : "1px solid var(--color-line)",
+              paddingTop: gi === 0 ? 6 : 12,
+            }}
+          >
+            {group.name}
+          </div>
+          <ul>
+            {group.items.map((it) => {
+              const active = pane === it.key;
+              return (
+                <li key={it.key}>
+                  <button
+                    type="button"
+                    onClick={() => onPick(it.key)}
+                    style={{
+                      height: 31,
+                      padding: "0 9px",
+                      gap: 9,
+                    }}
+                    className={
+                      "flex w-full items-center rounded-lg text-body " +
+                      (active
+                        ? "bg-selected text-noir"
+                        : "hover:bg-railHover")
+                    }
+                    aria-current={active ? "page" : undefined}
+                  >
+                    <NavIcon d={it.path} active={active} />
+                    <span
+                      style={{
+                        fontSize: 14,
+                        fontWeight: active ? 700 : 400,
+                      }}
+                    >
+                      {it.label}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
     </nav>
   );
 }
@@ -155,21 +300,37 @@ function SettingsNav({ pane, onPick }: { pane: Pane; onPick: (p: Pane) => void }
 
 function PaneHeader({ title, sub }: { title: string; sub: string }) {
   return (
-    <div className="border-b border-lineSoft px-8 pb-4 pt-6">
-      <h2 className="font-display text-title text-noir">{title}</h2>
-      <p className="mt-1 text-meta text-secondary">{sub}</p>
+    <div style={{ padding: "26px 30px 14px" }}>
+      <h2
+        className="font-display text-noir"
+        style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.05em", lineHeight: 1.15 }}
+      >
+        {title}
+      </h2>
+      <p className="text-secondary" style={{ fontSize: 15, marginTop: 4, maxWidth: 640 }}>
+        {sub}
+      </p>
     </div>
   );
 }
 
 function Row({ label, help, children }: { label: string; help?: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[220px_minmax(0,1fr)] items-start gap-6 py-4">
-      <div>
-        <div className="text-ui font-bold text-noir">{label}</div>
-        {help && <div className="mt-1 text-caption text-secondary">{help}</div>}
+    <div
+      className="flex items-start justify-between border-t border-lineSoft"
+      style={{ padding: "16px 0", gap: 24 }}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="text-noir" style={{ fontSize: 14.5, fontWeight: 700 }}>
+          {label}
+        </div>
+        {help && (
+          <div className="text-muted" style={{ fontSize: 13.5, marginTop: 3 }}>
+            {help}
+          </div>
+        )}
       </div>
-      <div className="min-w-0">{children}</div>
+      <div className="shrink-0">{children}</div>
     </div>
   );
 }
@@ -184,8 +345,11 @@ function Segmented<T extends string>({
   options: { value: T; label: string }[];
 }) {
   return (
-    <div className="inline-flex rounded-md border border-line bg-surface p-0.5">
-      {options.map((o) => {
+    <div
+      className="inline-flex border border-line"
+      style={{ borderRadius: 10, overflow: "hidden" }}
+    >
+      {options.map((o, i) => {
         const active = o.value === value;
         return (
           <button
@@ -193,9 +357,14 @@ function Segmented<T extends string>({
             type="button"
             onClick={() => onChange(o.value)}
             className={
-              "rounded-sm px-3 py-1 text-ui " +
-              (active ? "bg-selected font-bold text-noir" : "text-secondary hover:bg-rail")
+              active ? "bg-selected text-noir" : "text-secondary hover:bg-rail"
             }
+            style={{
+              padding: "5px 13px",
+              fontSize: 13.5,
+              fontWeight: active ? 700 : 400,
+              borderLeft: i === 0 ? "none" : "1px solid var(--color-line)",
+            }}
           >
             {o.label}
           </button>
@@ -212,14 +381,28 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
       role="switch"
       aria-checked={value}
       onClick={() => onChange(!value)}
-      className={
-        "relative inline-flex h-5 w-9 items-center rounded-full transition-colors " +
-        (value ? "bg-accent" : "bg-lineStrong")
-      }
+      className={value ? "bg-accent" : "bg-lineStrong"}
+      style={{
+        position: "relative",
+        width: 40,
+        height: 22,
+        borderRadius: 999,
+        transition: "background-color 150ms ease",
+      }}
     >
       <span
-        className="inline-block h-4 w-4 rounded-full bg-canvas transition-transform"
-        style={{ transform: value ? "translateX(18px)" : "translateX(2px)" }}
+        style={{
+          position: "absolute",
+          top: 2,
+          left: 2,
+          width: 18,
+          height: 18,
+          background: "var(--color-surface)",
+          borderRadius: 999,
+          boxShadow: "0 1px 3px rgba(13,13,9,.2)",
+          transition: "transform 150ms ease",
+          transform: value ? "translateX(18px)" : "translateX(0)",
+        }}
       />
     </button>
   );
@@ -233,10 +416,10 @@ function PreferencesPane() {
     <div>
       <PaneHeader
         title="Preferences"
-        sub="Personal — per device. Nothing here is visible to your teammates."
+        sub="How Gio Docs looks and behaves for you. These settings are yours alone."
       />
-      <div className="px-8 py-2">
-        <Row label="Default page font" help="Applies to page body text — headings stay Poppins.">
+      <div style={{ padding: "0 30px 30px" }}>
+        <Row label="Default page font" help="Applies to page body and headings.">
           <Segmented<FontFamily>
             value={prefs.fontFamily}
             onChange={(v) => set("fontFamily", v)}
@@ -247,7 +430,7 @@ function PreferencesPane() {
             ]}
           />
         </Row>
-        <Row label="Density" help="Compact tightens table and list rows.">
+        <Row label="Density" help="Tighter table and list rows.">
           <Segmented<Density>
             value={prefs.density}
             onChange={(v) => set("density", v)}
@@ -267,7 +450,7 @@ function PreferencesPane() {
             ]}
           />
         </Row>
-        <Row label="Explain the query above every view" help="Shows a plain-English sentence of what the current query returns.">
+        <Row label="Explain the query above every view" help="Show a plain-language filter sentence.">
           <Toggle value={prefs.explainQuery} onChange={(v) => set("explainQuery", v)} />
         </Row>
         <Row label="Show counts in the sidebar" help="Numbers next to views and areas.">
@@ -300,6 +483,7 @@ function GeneralPane() {
 
   const [nameDraft, setNameDraft] = useState(workspace?.name ?? "");
   useEffect(() => setNameDraft(workspace?.name ?? ""), [workspace?.name]);
+  const [iconOpen, setIconOpen] = useState(false);
 
   const staleDays = workspace?.stale_days ?? 90;
   const [sliderDays, setSliderDays] = useState(staleDays);
@@ -325,14 +509,15 @@ function GeneralPane() {
     <div>
       <PaneHeader
         title="General"
-        sub={
-          isOwner
-            ? "Workspace settings — everyone here sees these changes."
-            : "Workspace settings — only owners can edit."
-        }
+        sub="Your workspace name, icon, and the one rule that decides what counts as stale."
       />
-      <div className="px-8 py-2">
-        <Row label="Name" help="Shows in the sidebar and every permission line.">
+      {!isOwner && (
+        <div className="text-muted" style={{ padding: "0 30px 8px", fontSize: 13.5, fontStyle: "italic" }}>
+          Read-only — only owners can edit workspace settings.
+        </div>
+      )}
+      <div style={{ padding: "0 30px 30px" }}>
+        <Row label="Name" help="Live-updates the sidebar and every permission line.">
           <input
             value={nameDraft}
             onChange={(e) => setNameDraft(e.target.value)}
@@ -344,31 +529,45 @@ function GeneralPane() {
             onKeyDown={(e) => {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             }}
-            className="w-full max-w-sm rounded-md border border-line bg-surface px-3 py-2 text-ui focus:outline-none disabled:opacity-60"
+            className="w-full max-w-sm rounded-md border border-line bg-surface focus:outline-none disabled:opacity-60"
+            style={{ padding: "8px 12px", fontSize: 14 }}
           />
         </Row>
 
-        <Row label="Icon" help="A single emoji.">
-          <div className="flex flex-wrap gap-1">
-            {WS_EMOJI.map((e) => {
-              const active = workspace?.icon === e;
-              return (
-                <button
-                  key={e}
-                  type="button"
-                  disabled={!isOwner}
-                  onClick={() => updateWs.mutate({ icon: e })}
-                  className={
-                    "grid h-9 w-9 place-items-center rounded-md text-row " +
-                    (active
-                      ? "bg-selected ring-2 ring-noir"
-                      : "hover:bg-rail")
-                  }
-                >
-                  {e}
-                </button>
-              );
-            })}
+        <Row label="Icon" help="One emoji.">
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              disabled={!isOwner}
+              onClick={() => setIconOpen((v) => !v)}
+              className="grid place-items-center border border-line rounded-lg hover:bg-rail disabled:opacity-60"
+              style={{ width: 52, height: 52, fontSize: 26 }}
+            >
+              {workspace?.icon ?? "📄"}
+            </button>
+            {iconOpen && (
+              <div
+                className="absolute z-10 mt-1 bg-surface border border-line shadow-popover animate-popIn"
+                style={{ borderRadius: 12, padding: 6, width: 240 }}
+              >
+                <div className="grid grid-cols-6 gap-1">
+                  {WS_EMOJI.map((e) => (
+                    <button
+                      key={e}
+                      type="button"
+                      onClick={() => {
+                        updateWs.mutate({ icon: e });
+                        setIconOpen(false);
+                      }}
+                      className="grid h-8 w-8 place-items-center rounded-md hover:bg-rail"
+                      style={{ fontSize: 18 }}
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </Row>
 
@@ -376,7 +575,7 @@ function GeneralPane() {
           label="Pages need re-verifying after"
           help="Older than this and a page is flagged as stale."
         >
-          <div className="max-w-md">
+          <div style={{ width: 320 }}>
             <input
               type="range"
               min={30}
@@ -395,12 +594,12 @@ function GeneralPane() {
               }}
               className="w-full"
             />
-            <div className="mt-2 flex items-center justify-between text-meta text-secondary">
+            <div className="mt-2 flex items-center justify-between text-secondary" style={{ fontSize: 13.5 }}>
               <span>
-                <b className="text-noir">{sliderDays}</b> days
+                <b className="text-noir tnum">{sliderDays}</b> days
               </span>
-              <span className={staleNow > 0 ? "text-amberInk" : "text-muted"}>
-                {staleNow} stale now
+              <span className={staleNow > 0 ? "text-amberInk" : "text-muted"} style={{ fontWeight: staleNow > 0 ? 700 : 400 }}>
+                {staleNow} pages are stale right now.
               </span>
             </div>
           </div>
@@ -410,11 +609,12 @@ function GeneralPane() {
           label="Allowed email domains"
           help="Anyone signing up with one of these joins automatically."
         >
-          <div className="flex max-w-lg flex-wrap items-center gap-2">
+          <div className="flex max-w-lg flex-wrap items-center gap-2" style={{ minWidth: 320 }}>
             {(domainsQ.data ?? []).map((d) => (
               <span
                 key={d}
-                className="inline-flex items-center gap-1 rounded-full border border-line bg-sunken px-2.5 py-1 text-meta"
+                className="inline-flex items-center gap-1 rounded-md border border-line bg-sunken"
+                style={{ padding: "3px 8px", fontSize: 13 }}
               >
                 @{d}
                 {isOwner && (
@@ -437,29 +637,26 @@ function GeneralPane() {
                   if (!v) return;
                   addDomain.mutate(v, { onSuccess: () => setNewDomain("") });
                 }}
-                className="inline-flex items-center gap-1"
+                className="inline-flex items-center"
               >
                 <input
                   value={newDomain}
                   onChange={(e) => setNewDomain(e.target.value)}
                   placeholder="add domain…"
-                  className="w-40 rounded-full border border-dashed border-lineStrong bg-surface px-3 py-1 text-meta focus:outline-none"
+                  className="rounded-md border border-dashed border-lineStrong bg-surface focus:outline-none"
+                  style={{ width: 160, padding: "3px 8px", fontSize: 13 }}
                 />
               </form>
             )}
           </div>
         </Row>
 
-        <Row label="Structure" help="How this workspace is shaped, in numbers.">
-          <div className="max-w-lg text-meta text-secondary">
-            Pages live wherever their properties say — no folders, no nesting.
-            A view is just a saved query.
-            <div className="mt-2 flex flex-wrap gap-2">
-              <StatChip>{pages.length} pages</StatChip>
-              <StatChip>{areaCount} areas</StatChip>
-              <StatChip>{views.length} saved views</StatChip>
-              <StatChip bold>0 folders</StatChip>
-            </div>
+        <Row label="Structure" help="A page lives wherever its properties say.">
+          <div className="flex flex-wrap gap-2" style={{ maxWidth: 460 }}>
+            <StatChip>{pages.length} pages</StatChip>
+            <StatChip>{areaCount} areas</StatChip>
+            <StatChip>{views.length} saved views</StatChip>
+            <StatChip bold>0 folders</StatChip>
           </div>
         </Row>
       </div>
@@ -471,9 +668,10 @@ function StatChip({ children, bold }: { children: ReactNode; bold?: boolean }) {
   return (
     <span
       className={
-        "inline-flex items-center rounded-md border border-line bg-sunken px-2.5 py-1 text-caption text-secondary " +
-        (bold ? "font-bold text-noir" : "")
+        "inline-flex items-center rounded-md border border-line bg-sunken " +
+        (bold ? "text-noir" : "text-secondary")
       }
+      style={{ padding: "3px 9px", fontSize: 12.5, fontWeight: bold ? 700 : 400 }}
     >
       {children}
     </span>
@@ -482,19 +680,37 @@ function StatChip({ children, bold }: { children: ReactNode; bold?: boolean }) {
 
 /* ─────────────────────────── People pane ─────────────────────────── */
 
-function PeoplePane({ onClose }: { onClose: () => void }) {
+type PeoplePaneProps = {
+  onClose: () => void;
+  pendingInvites: PendingInvite[];
+  onRevokeInvite: (email: string) => void;
+  onOpenInvite: () => void;
+  tab: "members" | "guests";
+  onTabChange: (t: "members" | "guests") => void;
+};
+
+function PeoplePane({
+  onClose,
+  pendingInvites,
+  onRevokeInvite,
+  onOpenInvite,
+  tab,
+  onTabChange,
+}: PeoplePaneProps) {
   const ws = useWorkspaceId();
   const shell = useWorkspaceShell(ws);
   const workspace = shell.workspace.data;
   const members = (shell.members.data ?? []) as unknown as MemberRow[];
   const pages = (shell.pages.data ?? []) as PageListItem[];
+  const domainsQ = useAllowedDomains(ws);
+  const domains = domainsQ.data ?? [];
+  const toast = useToast();
 
   const { user } = useAuth();
   const isOwner = members.find((m) => m.user_id === user?.id)?.role === "owner";
   const staleDays = workspace?.stale_days ?? 90;
   const staleThreshold = Date.now() - staleDays * 24 * 60 * 60 * 1000;
 
-  const [tab, setTab] = useState<"members" | "guests">("members");
   const [inviteLinkOn, setInviteLinkOn] = useState(true);
 
   const updateRole = useUpdateMemberRole();
@@ -515,209 +731,450 @@ function PeoplePane({ onClose }: { onClose: () => void }) {
     return m;
   }, [pages]);
 
-  const guestsByEmail = useMemo(() => {
-    // Guests derive from page_access — we don't have that data hydrated here for the whole
-    // workspace, so this list is derived from access rows attached to pages we know about.
-    // For members-only info we count pages a guest can access indirectly (none available here).
-    return new Map<string, number>();
-  }, []);
-
   const withOwner = pages.filter((p) => typeof propsOf(p)["owner"] === "string").length;
-  const pagesWithoutOwner = pages.length - withOwner;
+
+  // Guests derived from access rows on individual pages (page_access table
+  // is fetched per page, so at workspace scope we can only surface what is
+  // encoded in blocks/props at this time). Keep the derived set for the
+  // stat card, but show "0" honestly when nothing is known.
+  const guestEmails = useMemo(() => new Set<string>(), []);
 
   const inviteUrl = typeof window !== "undefined" ? `${window.location.origin}/login` : "";
+  const domainSentence = domains.length
+    ? domains.map((d) => `@${d}`).join(", ")
+    : "your allowed domain";
+
+  const membersLabel =
+    pendingInvites.length > 0
+      ? `Members · ${pendingInvites.length} invited`
+      : "Members";
 
   return (
     <div>
       <PaneHeader
         title="People"
-        sub={
-          isOwner
-            ? "Members and their pages. Roles are editable inline."
-            : "Members and their pages. Only owners can change roles."
-        }
+        sub={`Who is in ${workspace?.name ?? "this workspace"}, what they own, and what they can do.`}
       />
-      <div className="px-8 py-4">
-        <div className="grid grid-cols-3 gap-2">
-          <StatCard label="Members" value={members.length} />
-          <StatCard label="Guests" value={guestsByEmail.size} />
-          <StatCard label="Pages with an owner" value={`${withOwner} / ${pages.length}`} sub={`${pagesWithoutOwner} unowned`} />
+      <div style={{ padding: "0 30px 30px" }}>
+        {/* Stat cards */}
+        <div className="flex flex-wrap gap-3">
+          <StatCard label={membersLabel} value={members.length} />
+          <StatCard label="Guests" value={guestEmails.size} />
+          <StatCard
+            label="Pages with an owner"
+            value={`${withOwner} of ${pages.length}`}
+          />
         </div>
 
-        <div className="mt-4 flex items-center gap-2 rounded-lg border border-line bg-track px-3 py-2 text-meta">
-          <Toggle value={inviteLinkOn} onChange={setInviteLinkOn} />
-          <span className="text-body">Invite link</span>
-          <span className="text-muted">
-            {inviteLinkOn
-              ? "Anyone with the link can request to join."
-              : "Turned off — only allowed-domain sign-ups can join."}
-          </span>
+        {/* Invite by link */}
+        <div
+          className="mt-4 flex items-center gap-3 bg-canvas border border-line"
+          style={{ borderRadius: 10, padding: "11px 13px" }}
+        >
+          <div className="min-w-0 flex-1">
+            <div className="text-noir" style={{ fontSize: 14, fontWeight: 700 }}>
+              Invite by link
+            </div>
+            <div className="text-secondary" style={{ fontSize: 12.5, marginTop: 2 }}>
+              Anyone signing in with {domainSentence} joins automatically.
+            </div>
+          </div>
           <button
             type="button"
             disabled={!inviteLinkOn}
             onClick={() => {
               if (typeof navigator !== "undefined" && inviteUrl) {
                 navigator.clipboard?.writeText(inviteUrl);
+                toast.push("Link copied");
               }
             }}
-            className="ml-auto rounded-md border border-line bg-surface px-2 py-1 text-meta hover:bg-rail disabled:opacity-40"
+            className="text-accent disabled:opacity-40"
+            style={{ fontSize: 13.5, fontWeight: 700 }}
           >
             Copy link
           </button>
+          <Toggle value={inviteLinkOn} onChange={setInviteLinkOn} />
         </div>
 
-        <div className="mt-4 flex items-center gap-1 border-b border-line">
-          {(["members", "guests"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className={
-                "-mb-px border-b-2 px-3 py-2 text-ui " +
-                (tab === t
-                  ? "border-noir font-bold text-noir"
-                  : "border-transparent text-secondary hover:text-body")
-              }
-            >
-              {t === "members" ? "Members" : "Guests"}
-            </button>
-          ))}
+        {/* Tabs + Add member */}
+        <div className="mt-4 flex items-center gap-2">
+          {(["members", "guests"] as const).map((t) => {
+            const active = tab === t;
+            const count = t === "members"
+              ? members.length + pendingInvites.length
+              : guestEmails.size;
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => onTabChange(t)}
+                className={active ? "bg-sunken text-noir" : "text-secondary hover:bg-rail"}
+                style={{
+                  padding: "5px 12px",
+                  borderRadius: 999,
+                  fontSize: 13.5,
+                  fontWeight: active ? 700 : 400,
+                }}
+              >
+                {t === "members" ? "Members" : "Guests"}{" "}
+                <span className="text-whisper tnum">{count}</span>
+              </button>
+            );
+          })}
+          <div className="flex-1" />
+          <button
+            type="button"
+            onClick={onOpenInvite}
+            className="inline-flex items-center gap-1 bg-noir text-track"
+            style={{ borderRadius: 10, padding: "6px 13px", fontSize: 13.5, fontWeight: 700 }}
+          >
+            <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d={ICON_PLUS} />
+            </svg>
+            Add member
+          </button>
         </div>
 
+        {/* Table */}
         {tab === "members" ? (
-          <div className="pt-2">
-            {members.map((m) => {
+          <div className="mt-3 border border-line overflow-hidden" style={{ borderRadius: 10 }}>
+            <div
+              className="grid bg-canvas border-b border-line text-faint"
+              style={{
+                gridTemplateColumns: "minmax(0,1.7fr) 92px 96px 128px 32px",
+                gap: 12,
+                padding: "8px 13px",
+                fontSize: 11.5,
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+              }}
+            >
+              <div>PERSON</div>
+              <div>OWNS</div>
+              <div>STALE</div>
+              <div>ROLE</div>
+              <div></div>
+            </div>
+            {members.map((m, i) => {
               const owned = ownedBy.get(m.user_id) ?? [];
               const staleCount = owned.filter(
                 (p) => new Date(p.verified_at).getTime() < staleThreshold,
               ).length;
-              const name =
-                m.profiles?.full_name || m.profiles?.email || "Unknown";
+              const name = m.profiles?.full_name || m.profiles?.email || "Unknown";
               const isMe = m.user_id === user?.id;
-              const canRemove = isOwner && !isMe && owned.length === 0;
+              const isLast = i === members.length - 1 && pendingInvites.length === 0;
               return (
-                <div
+                <MemberTableRow
                   key={m.user_id}
-                  className="grid grid-cols-[minmax(0,1fr)_90px_90px_140px_32px] items-center gap-3 border-b border-lineSoft py-3 text-meta"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <MemberAvatar profile={m.profiles} />
-                    <div className="min-w-0">
-                      <div className="truncate text-row font-bold text-noir">{name}</div>
-                      <div className="truncate text-caption text-muted">
-                        {m.profiles?.email}
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (owned.length === 0) return;
-                      createView.mutate(
-                        {
-                          name: `Owned by ${name}`,
-                          filter: [{ op: "eq", prop: "owner", value: m.user_id }],
-                          sort: { prop: "edited", dir: "desc" },
-                          layout: "table",
-                        },
-                        {
-                          onSuccess: (row) => {
-                            onClose();
-                            navigate({ to: "/v/$viewId", params: { viewId: row.id } });
-                          },
-                        },
-                      );
-                    }}
-                    disabled={owned.length === 0}
-                    className="text-left tabular-nums text-body hover:text-noir disabled:cursor-default disabled:text-faint"
-                    title={owned.length ? "Open as a saved view" : "Owns nothing"}
-                  >
-                    <span className="text-caption text-faint">Owns</span>{" "}
-                    <b>{owned.length}</b>
-                  </button>
-                  <div className="tabular-nums">
-                    <span className="text-caption text-faint">Stale</span>{" "}
-                    <b className={staleCount ? "text-amberInk" : "text-faint"}>
-                      {staleCount}
-                    </b>
-                  </div>
-                  <select
-                    value={m.role}
-                    disabled={!isOwner || isMe}
-                    onChange={(e) =>
-                      updateRole.mutate({
-                        userId: m.user_id,
-                        role: e.target.value as "owner" | "member",
-                      })
-                    }
-                    className="rounded-md border border-line bg-surface px-2 py-1 text-meta focus:outline-none disabled:opacity-70"
-                  >
-                    <option value="member">Member</option>
-                    <option value="owner">Owner</option>
-                  </select>
-                  <button
-                    type="button"
-                    aria-label={`Remove ${name}`}
-                    disabled={!canRemove}
-                    title={
-                      isMe
-                        ? "That's you"
-                        : owned.length > 0
-                          ? `Reassign ${owned.length} page${owned.length === 1 ? "" : "s"} first`
-                          : "Remove from workspace"
-                    }
-                    onClick={() => {
-                      if (window.confirm(`Remove ${name} from this workspace?`)) {
-                        removeMember.mutate(m.user_id);
+                  isLast={isLast}
+                  avatar={
+                    <MemberAvatar
+                      tint={m.profiles?.avatar_tint ?? null}
+                      ink={m.profiles?.avatar_ink ?? null}
+                      initials={initialsOf(name)}
+                    />
+                  }
+                  name={name}
+                  email={m.profiles?.email ?? ""}
+                  pending={false}
+                  owns={
+                    owned.length === 0 ? (
+                      <span className="text-whisper">none</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const first = (name.split(/\s+/)[0] || name);
+                          createView.mutate(
+                            {
+                              name: `${first}'s pages`,
+                              filter: [{ op: "eq", prop: "owner", value: m.user_id }],
+                              sort: { prop: "edited", dir: "desc" },
+                              layout: "table",
+                            },
+                            {
+                              onSuccess: (row) => {
+                                onClose();
+                                navigate({ to: "/v/$viewId", params: { viewId: row.id } });
+                                toast.push(`Saved '${first}'s pages' to My views`);
+                              },
+                            },
+                          );
+                        }}
+                        className="text-body hover:text-noir tnum"
+                        style={{ textDecoration: "underline dotted", fontSize: 13.5 }}
+                      >
+                        {owned.length} pages
+                      </button>
+                    )
+                  }
+                  stale={
+                    staleCount === 0 ? (
+                      <span className="text-whisper">—</span>
+                    ) : (
+                      <span className="text-amberInk tnum" style={{ fontWeight: 700 }}>
+                        {staleCount} stale
+                      </span>
+                    )
+                  }
+                  role={
+                    <RolePicker
+                      value={m.role as "owner" | "member"}
+                      disabled={!isOwner || isMe}
+                      onPick={(role) =>
+                        updateRole.mutate({ userId: m.user_id, role })
                       }
-                    }}
-                    className="grid h-7 w-7 place-items-center rounded-md text-faint hover:bg-rail hover:text-strong disabled:cursor-not-allowed disabled:opacity-30"
-                  >
-                    ×
-                  </button>
-                </div>
+                    />
+                  }
+                  onRemove={() => {
+                    if (isMe) {
+                      toast.push("You cannot remove yourself");
+                      return;
+                    }
+                    if (owned.length > 0) {
+                      const first = name.split(/\s+/)[0] || name;
+                      toast.push(`${first} owns ${owned.length} pages — reassign them first`);
+                      return;
+                    }
+                    removeMember.mutate(m.user_id);
+                    toast.push(`${name} removed from ${workspace?.name ?? "workspace"}`);
+                  }}
+                />
+              );
+            })}
+            {pendingInvites.map((inv, i) => {
+              const isLast = i === pendingInvites.length - 1;
+              return (
+                <MemberTableRow
+                  key={`inv-${inv.email}`}
+                  isLast={isLast}
+                  avatar={
+                    <MemberAvatar
+                      tint={inv.tint}
+                      ink={inv.ink}
+                      initials={initialsOf(inv.name)}
+                    />
+                  }
+                  name={inv.name}
+                  email={inv.email}
+                  pending
+                  owns={
+                    <button
+                      type="button"
+                      onClick={() => toast.push(`Invite resent to ${inv.email}`)}
+                      className="text-body hover:text-noir"
+                      style={{ textDecoration: "underline dotted", fontSize: 13.5 }}
+                    >
+                      Resend
+                    </button>
+                  }
+                  stale={<span className="text-whisper">—</span>}
+                  role={
+                    <span className="text-secondary" style={{ fontSize: 13.5 }}>
+                      {inv.role}
+                    </span>
+                  }
+                  onRemove={() => {
+                    onRevokeInvite(inv.email);
+                    toast.push(`Invite to ${inv.email} revoked`);
+                  }}
+                />
               );
             })}
           </div>
         ) : (
-          <div className="pt-6">
-            <p className="text-meta text-secondary">
-              Guests are people outside {workspace?.name ?? "this workspace"} who
-              were given access to specific pages. There is no guest role to
-              manage here — guest access lives on the page it was granted from.
+          <div className="mt-3 border border-line" style={{ borderRadius: 10, padding: 20 }}>
+            <p className="text-secondary" style={{ fontSize: 13.5 }}>
+              No guests yet. Guests are added page by page — open a page and
+              share it with someone outside {workspace?.name ?? "the workspace"}.
             </p>
           </div>
         )}
+
+        <p className="mt-3" style={{ fontSize: 13, color: "var(--color-secondary)" }}>
+          {tab === "members"
+            ? "Owners can publish team views and change these settings. Members can do everything else. Click a page count to save that person's pages as a view."
+            : `Guests are invited page by page — there is no guest role to manage here, only the pages that name them.`}
+        </p>
       </div>
     </div>
   );
 }
 
-function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
+function MemberTableRow({
+  isLast,
+  avatar,
+  name,
+  email,
+  pending,
+  owns,
+  stale,
+  role,
+  onRemove,
+}: {
+  isLast: boolean;
+  avatar: ReactNode;
+  name: string;
+  email: string;
+  pending: boolean;
+  owns: ReactNode;
+  stale: ReactNode;
+  role: ReactNode;
+  onRemove: () => void;
+}) {
   return (
-    <div className="rounded-lg border border-line bg-track px-3 py-2">
-      <div className="text-label uppercase text-faint">{label}</div>
-      <div className="mt-1 font-display text-heading text-noir tabular-nums">{value}</div>
-      {sub && <div className="text-caption text-muted">{sub}</div>}
+    <div
+      className="grid items-center"
+      style={{
+        gridTemplateColumns: "minmax(0,1.7fr) 92px 96px 128px 32px",
+        gap: 12,
+        padding: "9px 13px",
+        borderBottom: isLast ? "none" : "1px solid var(--color-lineSoft)",
+      }}
+    >
+      <div className="flex min-w-0 items-center gap-3">
+        {avatar}
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-noir" style={{ fontSize: 14, fontWeight: 700 }}>
+              {name}
+            </span>
+            {pending && (
+              <span
+                className="bg-amberTint text-amberInk"
+                style={{
+                  border: "1px solid var(--color-amberRing)",
+                  borderRadius: 5,
+                  padding: "1px 5px",
+                  fontSize: 10,
+                  fontFamily: "var(--font-display)",
+                  fontWeight: 700,
+                  letterSpacing: "0.05em",
+                }}
+              >
+                INVITED
+              </span>
+            )}
+          </div>
+          <div className="truncate text-faint" style={{ fontSize: 12.5 }}>
+            {email}
+          </div>
+        </div>
+      </div>
+      <div style={{ fontSize: 13.5 }}>{owns}</div>
+      <div style={{ fontSize: 13.5 }}>{stale}</div>
+      <div>{role}</div>
+      <button
+        type="button"
+        aria-label={`Remove ${name}`}
+        onClick={onRemove}
+        className="grid h-6 w-6 place-items-center text-whisper hover:bg-dangerTint hover:text-danger"
+        style={{ borderRadius: 6 }}
+      >
+        ×
+      </button>
     </div>
   );
 }
 
-function MemberAvatar({ profile }: { profile: MemberRow["profiles"] }) {
-  const initials = (profile?.full_name || profile?.email || "?")
-    .split(/\s+/)
-    .map((s) => s[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
+function RolePicker({
+  value,
+  disabled,
+  onPick,
+}: {
+  value: "owner" | "member";
+  disabled: boolean;
+  onPick: (r: "owner" | "member") => void;
+}) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest("[data-role-picker]")) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+  const label = value === "owner" ? "Owner" : "Member";
+  return (
+    <div data-role-picker style={{ position: "relative" }}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1 rounded-md hover:bg-rail disabled:opacity-60"
+        style={{ padding: "3px 8px", fontSize: 13.5 }}
+      >
+        {label}
+        <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          className="absolute left-0 top-full z-10 mt-1 bg-surface border border-line shadow-popover animate-popIn"
+          style={{ borderRadius: 8, padding: 4, width: 140 }}
+        >
+          {(["member", "owner"] as const).map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => {
+                onPick(r);
+                setOpen(false);
+              }}
+              className="flex w-full items-center rounded-md hover:bg-rail"
+              style={{ padding: "5px 8px", fontSize: 13.5, textAlign: "left" }}
+            >
+              {r === "owner" ? "Owner" : "Member"}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div
+      className="border border-line"
+      style={{ borderRadius: 10, padding: "11px 13px", flex: 1, minWidth: 150 }}
+    >
+      <div className="text-muted" style={{ fontSize: 13 }}>{label}</div>
+      <div
+        className="font-display text-noir tnum"
+        style={{ fontSize: 21.5, fontWeight: 700, letterSpacing: "-0.04em", marginTop: 2 }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function MemberAvatar({
+  tint,
+  ink,
+  initials,
+}: {
+  tint: string | null;
+  ink: string | null;
+  initials: string;
+}) {
   return (
     <span
-      className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-caption font-bold"
+      className="grid shrink-0 place-items-center rounded-full"
       style={{
-        background: profile?.avatar_tint ?? "var(--color-sunken)",
-        color: profile?.avatar_ink ?? "var(--color-noir)",
+        width: 28,
+        height: 28,
+        background: tint ?? "var(--color-sunken)",
+        color: ink ?? "var(--color-noir)",
+        fontSize: 11.5,
+        fontWeight: 700,
       }}
+      aria-hidden
     >
       {initials}
     </span>
@@ -733,10 +1190,11 @@ function EmojiPane() {
   const members = (shell.members.data ?? []) as unknown as MemberRow[];
   const { user } = useAuth();
   const isOwner = members.find((m) => m.user_id === user?.id)?.role === "owner";
-  const favorites = useEmojiFavorites();
   const fmt = useFormatDate();
+  const toast = useToast();
 
   const [ownerOnlyAdd, setOwnerOnlyAdd] = useState(false);
+  const [query, setQuery] = useState("");
 
   const inventory = useMemo(() => {
     const m = new Map<string, PageListItem[]>();
@@ -754,10 +1212,9 @@ function EmojiPane() {
           .reduce((a, b) => (a > b ? a : b), 0);
         return { emoji, pages: pgs, count: pgs.length, lastEdited };
       })
-      .sort((a, b) => b.count - a.count);
-  }, [pages]);
-
-  const [neu, setNeu] = useState("");
+      .sort((a, b) => b.count - a.count)
+      .filter((row) => !query || row.pages.some((p) => (p.title ?? "").toLowerCase().includes(query.toLowerCase())));
+  }, [pages, query]);
 
   const canAdd = !ownerOnlyAdd || isOwner;
 
@@ -765,119 +1222,103 @@ function EmojiPane() {
     <div>
       <PaneHeader
         title="Emoji"
-        sub="This inventory is derived from the pages that wear each icon."
+        sub="Every icon in use across the workspace, generated from the pages that wear them."
       />
-      <div className="px-8 py-2">
-        <Row label="Only owners can add emoji" help="Doesn't stop teammates from picking existing ones.">
+      <div style={{ padding: "0 30px 30px" }}>
+        <Row
+          label="Only owners can add emoji"
+          help="Existing icons stay editable by whoever set them."
+        >
           <Toggle value={ownerOnlyAdd} onChange={setOwnerOnlyAdd} />
         </Row>
 
-        <Row label="Favorites" help="These appear first in the page-icon picker.">
-          <div className="flex flex-wrap items-center gap-2">
-            {favorites.length === 0 && (
-              <span className="text-caption italic text-faint">Nothing pinned yet.</span>
-            )}
-            {favorites.map((e) => (
-              <span
-                key={e}
-                className="inline-flex items-center gap-1 rounded-md border border-line bg-sunken px-2 py-1 text-row"
-              >
-                {e}
-                <button
-                  type="button"
-                  aria-label={`Unpin ${e}`}
-                  onClick={() => removeFavorite(e)}
-                  className="text-faint hover:text-strong"
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const v = neu.trim();
-                if (!v || !canAdd) return;
-                addFavorite(v);
-                setNeu("");
-              }}
-              className="inline-flex items-center gap-1"
-            >
-              <input
-                value={neu}
-                onChange={(e) => setNeu(e.target.value)}
-                placeholder="paste an emoji…"
-                disabled={!canAdd}
-                className="w-40 rounded-md border border-dashed border-lineStrong bg-surface px-2 py-1 text-meta focus:outline-none disabled:opacity-50"
-              />
-              <button
-                type="submit"
-                disabled={!canAdd || !neu.trim()}
-                className="rounded-md bg-noir px-2 py-1 text-meta font-bold text-canvas disabled:opacity-40"
-              >
-                Pin
-              </button>
-            </form>
+        <div className="mt-4 flex items-center gap-3">
+          <div className="text-secondary" style={{ fontSize: 13.5 }}>
+            <b className="text-noir tnum">{inventory.length}</b> distinct emoji in use
           </div>
-        </Row>
-
-        <div className="mt-4 border-t border-lineSoft pt-4">
-          <div className="mb-2 text-label uppercase text-faint">In use</div>
-          {inventory.length === 0 && (
-            <p className="text-meta text-secondary">
-              No pages carry an emoji yet.
-            </p>
-          )}
-          {inventory.map((it) => {
-            const inUse = it.count > 0;
-            const isFav = favorites.includes(it.emoji);
-            return (
-              <div
-                key={it.emoji}
-                className="grid grid-cols-[44px_minmax(0,1fr)_120px_96px] items-center gap-3 border-b border-lineSoft py-2 text-meta"
-              >
-                <span className="grid h-9 w-9 place-items-center text-row">
-                  {it.emoji}
-                </span>
-                <div className="min-w-0 truncate text-secondary">
-                  {it.pages
-                    .slice(0, 4)
-                    .map((p) => p.title || "Untitled")
-                    .join(", ")}
-                  {it.pages.length > 4 && ` +${it.pages.length - 4} more`}
-                </div>
-                <div className="tabular-nums text-muted">
-                  <b className="text-noir">{it.count}</b>{" "}
-                  page{it.count === 1 ? "" : "s"} · last edited{" "}
-                  {fmt(new Date(it.lastEdited).toISOString())}
-                </div>
-                <div className="flex items-center justify-end gap-1">
-                  {!isFav && canAdd && (
-                    <button
-                      type="button"
-                      onClick={() => addFavorite(it.emoji)}
-                      className="rounded-md border border-line bg-surface px-2 py-1 text-caption hover:bg-rail"
-                    >
-                      Pin
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    disabled={inUse}
-                    title={
-                      inUse
-                        ? `${it.count} page${it.count === 1 ? "" : "s"} still use this — change them first`
-                        : "Remove"
-                    }
-                    className="rounded-md px-2 py-1 text-caption text-faint hover:bg-rail hover:text-strong disabled:cursor-not-allowed disabled:opacity-30"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+          <div className="flex-1" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search pages…"
+            className="border border-line bg-surface rounded-md focus:outline-none"
+            style={{ padding: "5px 10px", fontSize: 13.5, width: 200 }}
+          />
+          <button
+            type="button"
+            disabled={!canAdd}
+            onClick={() =>
+              toast.push("Emoji are added by setting them on a page.")
+            }
+            className="bg-noir text-track disabled:opacity-40"
+            style={{ borderRadius: 10, padding: "6px 13px", fontSize: 13.5, fontWeight: 700 }}
+          >
+            Add emoji
+          </button>
         </div>
+
+        <div className="mt-3 border border-line overflow-hidden" style={{ borderRadius: 10 }}>
+          <div
+            className="grid bg-canvas border-b border-line text-faint"
+            style={{
+              gridTemplateColumns: "56px minmax(0,1.4fr) 96px minmax(0,1.3fr) 32px",
+              gap: 12,
+              padding: "8px 13px",
+              fontSize: 11.5,
+              fontWeight: 700,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+            }}
+          >
+            <div>EMOJI</div>
+            <div>PAGES USING IT</div>
+            <div>COUNT</div>
+            <div>MOST RECENT</div>
+            <div></div>
+          </div>
+          {inventory.length === 0 && (
+            <div className="text-secondary" style={{ padding: 20, fontSize: 13.5 }}>
+              No pages carry an emoji yet.
+            </div>
+          )}
+          {inventory.map((it, i) => (
+            <div
+              key={it.emoji}
+              className="grid items-center"
+              style={{
+                gridTemplateColumns: "56px minmax(0,1.4fr) 96px minmax(0,1.3fr) 32px",
+                gap: 12,
+                padding: "9px 13px",
+                borderBottom: i === inventory.length - 1 ? "none" : "1px solid var(--color-lineSoft)",
+              }}
+            >
+              <span style={{ fontSize: 21 }}>{it.emoji}</span>
+              <div className="min-w-0 truncate text-secondary" style={{ fontSize: 13.5 }}>
+                {it.pages.slice(0, 4).map((p) => p.title || "Untitled").join(", ")}
+                {it.pages.length > 4 && ` +${it.pages.length - 4} more`}
+              </div>
+              <div className="text-noir tnum" style={{ fontSize: 13.5, fontWeight: 700 }}>
+                {it.count}
+              </div>
+              <div className="text-muted" style={{ fontSize: 12.5 }}>
+                {fmt(new Date(it.lastEdited).toISOString())}
+              </div>
+              <button
+                type="button"
+                disabled
+                title={`${it.count} page${it.count === 1 ? "" : "s"} still use this — change them first`}
+                className="grid h-6 w-6 place-items-center text-whisper"
+                style={{ borderRadius: 6, cursor: "not-allowed" }}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <p className="mt-3 text-secondary" style={{ fontSize: 13 }}>
+          This list is generated from the pages themselves — an emoji exists here because a page wears it.
+        </p>
       </div>
     </div>
   );
