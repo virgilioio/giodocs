@@ -1678,7 +1678,7 @@ function HeaderCell({ children, className }: { children: ReactNode; className?: 
   return (
     <div
       className={
-        "border-b border-line px-[11px] py-1 text-label uppercase text-faint " +
+        "border-b border-line bg-canvas px-[11px] py-1 text-label uppercase text-faint " +
         (className ?? "")
       }
     >
@@ -1686,6 +1686,7 @@ function HeaderCell({ children, className }: { children: ReactNode; className?: 
     </div>
   );
 }
+
 
 function Cell({ children, className }: { children: ReactNode; className?: string }) {
   return (
