@@ -1676,7 +1676,7 @@ function ListBody({
           <button
             key={p.id}
             type="button"
-            onClick={() => navigate({ to: "/p/$pageId", params: { pageId: p.id } })}
+            onClick={() => { setOrigin(p.id); navigate({ to: "/p/$pageId", params: { pageId: p.id } }); }}
             className={
               "grid w-full items-center gap-[11px] rounded-lg text-left hover:bg-sunken " +
               (isLast ? "" : "border-b border-lineSoft ")
