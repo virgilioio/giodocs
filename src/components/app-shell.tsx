@@ -89,6 +89,7 @@ export function AppShell() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [sidebarPopover, setSidebarPopover] = useState<"view" | "area" | null>(null);
+  const [pageMenuOpen, setPageMenuOpen] = useState(false);
 
   const domainsQ = useAllowedDomains(workspaceId);
   const allowedDomains = domainsQ.data ?? [];
@@ -123,6 +124,11 @@ export function AppShell() {
           setSettingsOpen(false);
           return;
         }
+        if (pageMenuOpen) {
+          e.preventDefault();
+          setPageMenuOpen(false);
+          return;
+        }
         if (sidebarPopover) {
           e.preventDefault();
           setSidebarPopover(null);
@@ -138,7 +144,7 @@ export function AppShell() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [inviteOpen, settingsOpen, accountMenu, sidebarPopover]);
+  }, [inviteOpen, settingsOpen, accountMenu, sidebarPopover, pageMenuOpen]);
 
   const pages = (shell.pages.data ?? []) as PageListItem[];
   const views = shell.views.data ?? [];
@@ -304,6 +310,16 @@ export function AppShell() {
             </div>
           )}
 
+          {selection && selection.kind === "page" ? (
+            <div className="ml-auto flex items-center gap-2.5">
+              <PageTopbarActions
+                pageId={selection.id}
+                menuOpen={pageMenuOpen}
+                onMenuOpen={() => setPageMenuOpen(true)}
+                onMenuClose={() => setPageMenuOpen(false)}
+              />
+            </div>
+          ) : null}
         </header>
 
         <main className="min-w-0 flex-1 bg-surface overflow-y-auto">
