@@ -922,6 +922,7 @@ export function MainView({ selection }: { selection: Selection }) {
   const setProp = useSetPageProperty();
   const rename = useRenamePage();
   const create = useCreatePage();
+  const createAndOpen = useCreatePageAndOpen();
   const updateView = useUpdateView();
   const forkView = useForkView();
   const publishView = usePublishView();
