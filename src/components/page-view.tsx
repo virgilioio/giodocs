@@ -463,7 +463,7 @@ function PropertyStrip({
     .filter((d) => d.key !== "area" && d.key !== "owner");
 
   return (
-    <div className="mt-6">
+    <div>
       {rows.map((r) => (
         <div
           key={r.key}
