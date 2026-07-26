@@ -1529,6 +1529,8 @@ function BoardBody({
   onMove: (pageId: string, value: string) => void;
 }) {
   const navigate = useNavigate();
+  const setOrigin = useSetPageOrigin();
+
   const def = propDefs.find((d) => d.key === groupBy);
   const opts =
     (def?.options as unknown as Array<{
