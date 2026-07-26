@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIsMutating } from "@tanstack/react-query";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell } from "@/hooks/use-workspace-data";
@@ -239,7 +239,12 @@ export function PageTopbarActions({
 
   return (
     <>
-      <EditedStamp page={page} editorName={editedName} saving={showSaving} />
+      <EditedStamp
+        page={page}
+        editorName={editedName}
+        saving={showSaving}
+        savedFlash={savedFlash}
+      />
 
       <IconButton
         onClick={doCopyLink}
