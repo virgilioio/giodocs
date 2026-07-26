@@ -113,13 +113,7 @@
     --gio-list-row: 38px;
   }
 
-    --spacing-rowArea: 24px;
-    --spacing-rowTeam: 23px;
-    --spacing-rowPage: 22px;
-    --gio-cell-py: 4px;
-    --gio-list-py: 6px;
-  }
-  html { --gio-cell-py: 10px; --gio-list-py: 10px; }
+
   .gio-cell-pad { padding-top: var(--gio-cell-py); padding-bottom: var(--gio-cell-py); }
   .gio-list-pad { padding-top: var(--gio-list-py); padding-bottom: var(--gio-list-py); }
 
