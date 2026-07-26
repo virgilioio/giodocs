@@ -385,6 +385,7 @@ export function AppShell() {
         onSend={(invs) => setPendingInvites((prev) => [...prev, ...invs])}
       />
     </div>
+    </RowMenuProvider>
   );
 }
 
