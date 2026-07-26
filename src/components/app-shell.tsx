@@ -281,7 +281,26 @@ export function AppShell() {
         </main>
       </div>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsModal
+        open={settingsOpen}
+        pane={settingsPane}
+        onPaneChange={setSettingsPane}
+        onClose={closeSettings}
+        pendingInvites={pendingInvites}
+        onRevokeInvite={(email) =>
+          setPendingInvites((prev) => prev.filter((i) => i.email !== email))
+        }
+        onOpenInvite={() => setInviteOpen(true)}
+        membersTab={membersTab}
+        onMembersTabChange={setMembersTab}
+      />
+      <AddMembersModal
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        workspaceName={workspaceName}
+        allowedDomains={allowedDomains}
+        onSend={(invs) => setPendingInvites((prev) => [...prev, ...invs])}
+      />
     </div>
   );
 }
