@@ -854,11 +854,12 @@ function TeamViewRow({
       >
         <Glyph
           path="M8 12a3 3 0 100-6 3 3 0 000 6zm8 0a3 3 0 100-6 3 3 0 000 6zM2 20c0-3 3-5 6-5s6 2 6 5m2 0c0-2 2-4 4-4s4 2 4 4"
-          className="h-3.5 w-3.5 shrink-0 text-muted"
+          className="h-3 w-3 shrink-0 text-muted"
         />
         <span className="min-w-0 flex-1 truncate text-meta text-secondary">
           {v.name}
         </span>
+
         <span className="relative flex h-5 min-w-[20px] items-center justify-end">
           {showMenu ? (
             <MoreButton
