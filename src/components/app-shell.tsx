@@ -266,6 +266,7 @@ export function AppShell() {
     shell.pages.isLoading || shell.views.isLoading || shell.workspace.isLoading;
 
   return (
+    <RowMenuProvider>
     <div className="flex min-h-screen bg-canvas">
       <div
         style={{
