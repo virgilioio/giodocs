@@ -18,6 +18,7 @@ import { resolvePageIdParam } from "@/lib/slug";
 
 import {
   useCreatePage,
+  useCreatePageAndOpen,
   useCreateView,
   useDeleteView,
   useDeletePage,
@@ -1171,7 +1172,8 @@ function AreaLi({
   navigate: ReturnType<typeof useNavigate>;
 }) {
   const [hover, setHover] = useState(false);
-  const createPage = useCreatePage();
+  
+  const createAndOpen = useCreatePageAndOpen();
   const createView = useCreateView();
   const renameArea = useRenameArea();
 
@@ -1182,7 +1184,7 @@ function AreaLi({
       open={open}
       onToggle={onToggle}
       onOpen={() => navigate({ to: "/a/$area", params: { area } })}
-      onNewPage={() => createPage.mutate({ seedProps: { area } })}
+      onNewPage={() => void createAndOpen({ seedProps: { area } })}
       onRename={(to) => renameArea.mutate({ from: area, to })}
       onSaveAsView={() =>
         createView.mutate({
@@ -1259,7 +1261,7 @@ function AreaLi({
           <li>
             <button
               type="button"
-              onClick={() => createPage.mutate({ seedProps: { area } })}
+              onClick={() => void createAndOpen({ seedProps: { area } })}
               style={{ height: "var(--spacing-rowPage)" }}
               className="flex w-full items-center gap-2 rounded-md px-2 text-meta text-faint hover:bg-railHover"
             >

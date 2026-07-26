@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIsMutating } from "@tanstack/react-query";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell } from "@/hooks/use-workspace-data";
@@ -70,10 +70,12 @@ function EditedStamp({
   page,
   editorName,
   saving,
+  savedFlash,
 }: {
   page: PageListItem;
   editorName: string | null;
   saving: boolean;
+  savedFlash: boolean;
 }) {
   const { prefs } = usePrefs();
   const [tick, setTick] = useState(0);
@@ -85,11 +87,12 @@ function EditedStamp({
 
   const label = useMemo(() => {
     if (saving) return "Saving…";
+    if (savedFlash) return "Saved";
     if (prefs.dateFormat === "absolute") {
       return `Edited ${formatTimestamp(page.edited_at, "absolute")}`;
     }
     return `Edited ${shortRel(page.edited_at)}`;
-  }, [page.edited_at, prefs.dateFormat, saving]);
+  }, [page.edited_at, prefs.dateFormat, saving, savedFlash]);
 
   const tooltip = `${fullFmt.format(new Date(page.edited_at))}${
     editorName ? ` · ${editorName}` : ""
@@ -106,6 +109,7 @@ function EditedStamp({
     </span>
   );
 }
+
 
 /* ────────────── Icon button ────────────── */
 
@@ -181,14 +185,27 @@ export function PageTopbarActions({
     },
   });
   const [showSaving, setShowSaving] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const wasSavingRef = useRef(false);
   useEffect(() => {
-    if (!inFlight) {
-      setShowSaving(false);
-      return;
+    if (inFlight) {
+      const t = window.setTimeout(() => setShowSaving(true), 1200);
+      wasSavingRef.current = true;
+      return () => window.clearTimeout(t);
     }
-    const t = window.setTimeout(() => setShowSaving(true), 1200);
-    return () => window.clearTimeout(t);
-  }, [inFlight]);
+    // Just settled: flash "Saved" for 1.5s if we had shown "Saving…".
+    if (wasSavingRef.current) {
+      wasSavingRef.current = false;
+      if (showSaving) {
+        setSavedFlash(true);
+        const t = window.setTimeout(() => setSavedFlash(false), 1500);
+        setShowSaving(false);
+        return () => window.clearTimeout(t);
+      }
+    }
+    setShowSaving(false);
+  }, [inFlight, showSaving]);
+
 
   const doCopyLink = useCallback(async () => {
     if (!page) return;
@@ -222,7 +239,12 @@ export function PageTopbarActions({
 
   return (
     <>
-      <EditedStamp page={page} editorName={editedName} saving={showSaving} />
+      <EditedStamp
+        page={page}
+        editorName={editedName}
+        saving={showSaving}
+        savedFlash={savedFlash}
+      />
 
       <IconButton
         onClick={doCopyLink}

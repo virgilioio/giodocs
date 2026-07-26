@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
@@ -7,14 +7,21 @@ import {
   usePage,
   usePageAccess,
 } from "@/hooks/use-workspace-data";
-import { useSetPageProperty, useVerifyPage } from "@/hooks/use-page-mutations";
+import {
+  useRenamePage,
+  useSetPageProperty,
+  useUpdateBlocks,
+  useVerifyPage,
+} from "@/hooks/use-page-mutations";
 import { qk } from "@/lib/query-keys";
 import { usePrefs } from "@/lib/preferences";
 import { usePageAppearance } from "@/lib/page-appearance";
 import { Popover } from "./popover";
 import { formatTimestamp } from "@/lib/format";
+import { EditableBody, EditableTitle } from "./page-editor-body";
 import type { Block, PageAccessRow, PageFull, PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
+
 
 type PropDef = Database["public"]["Tables"]["property_defs"]["Row"];
 type MemberRow = {
@@ -599,263 +606,12 @@ function PropertyStrip({
   );
 }
 
-/* ────────────── Read-only body — all 12 block types ────────────── */
+/* Read-only body renderer, its useFlashOnHash hook, and warnOnce lived
+ * here in Part A; Part B replaces them with EditableBody which manages
+ * its own state and focus. Anchor-scrolling to a specific block id is
+ * a Part C follow-up. */
 
-type Blk = Block & {
-  icon?: string;
-  checked?: boolean;
-  rows?: unknown;
-  language?: string;
-};
 
-const _warned = new Set<string>();
-function warnOnce(t: string) {
-  if (_warned.has(t)) return;
-  _warned.add(t);
-  // eslint-disable-next-line no-console
-  console.warn(`[page-view] unknown block type: ${t}`);
-}
-
-function BlockView({ b, idx }: { b: Blk; idx: number }) {
-  const t = (b.type ?? "text") as string;
-  const anchor = typeof b.id === "string" ? `block-${b.id}` : undefined;
-  const common = { id: anchor, "data-block-id": b.id, "data-block-idx": idx } as const;
-  const txt = (b.text ?? b.body ?? "") as string;
-
-  switch (t) {
-    case "text":
-      return (
-        <p {...common} className="text-prose text-body">
-          {txt}
-        </p>
-      );
-    case "h1":
-      return (
-        <h2 {...common} className="font-display text-title text-noir">
-          {txt}
-        </h2>
-      );
-    case "h2":
-      return (
-        <h3 {...common} className="font-display text-heading text-noir">
-          {txt}
-        </h3>
-      );
-    case "bullet":
-      return (
-        <ul {...common} className="list-disc pl-6 text-prose text-body">
-          <li>{txt}</li>
-        </ul>
-      );
-    case "numbered":
-      return (
-        <ol
-          {...common}
-          className="list-decimal pl-6 text-prose text-body marker:text-muted"
-        >
-          <li>{txt}</li>
-        </ol>
-      );
-    case "todo": {
-      const done = !!b.checked;
-      return (
-        <label
-          {...common}
-          className="flex items-start gap-2 text-prose text-body"
-        >
-          <input
-            type="checkbox"
-            checked={done}
-            disabled
-            className="mt-1.5 accent-accent"
-            aria-label={done ? "Done" : "Todo"}
-          />
-          <span className={done ? "line-through text-muted" : ""}>{txt}</span>
-        </label>
-      );
-    }
-    case "toggle":
-      return (
-        <details {...common} className="text-prose text-body">
-          <summary className="cursor-pointer list-none">
-            <span className="mr-1 inline-block transition-transform [details[open]_&]:rotate-90">
-              ›
-            </span>
-            {txt}
-          </summary>
-          {b.body ? (
-            <div className="ml-4 mt-1 text-prose text-body">
-              {String(b.body)}
-            </div>
-          ) : null}
-        </details>
-      );
-    case "quote":
-      return (
-        <blockquote
-          {...common}
-          className="border-l-2 border-lineStrong pl-4 text-quote italic text-body"
-          style={{ fontFamily: "Lato, sans-serif" }}
-        >
-          {txt}
-        </blockquote>
-      );
-    case "callout":
-      return (
-        <div
-          {...common}
-          className="flex items-start gap-2 rounded-lg bg-sunken p-3 text-prose text-body"
-          style={{ borderRadius: 10 }}
-        >
-          <span aria-hidden className="shrink-0 text-row">
-            {b.icon ?? "💡"}
-          </span>
-          <span>{txt}</span>
-        </div>
-      );
-    case "divider":
-      return (
-        <hr
-          {...common}
-          className="border-line"
-          style={{ marginBlock: 20 }}
-        />
-      );
-    case "code":
-      return (
-        <pre
-          {...common}
-          className="overflow-x-auto rounded-md bg-sunken p-3 font-mono text-meta text-body"
-          style={{ borderRadius: 6, whiteSpace: "pre" }}
-        >
-          <code>{txt}</code>
-        </pre>
-      );
-    case "table": {
-      const grid = Array.isArray(b.rows) ? (b.rows as unknown[][]) : [];
-      if (!grid.length) return null;
-      const [head, ...body] = grid;
-      return (
-        <div {...common} className="overflow-x-auto">
-          <table className="w-full border-collapse text-meta">
-            <thead>
-              <tr>
-                {(head as unknown[]).map((c, i) => (
-                  <th
-                    key={i}
-                    className="border border-line px-2 py-1 text-left text-label uppercase text-secondary"
-                  >
-                    {String(c ?? "")}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {body.map((row, ri) => (
-                <tr key={ri}>
-                  {(row as unknown[]).map((c, ci) => (
-                    <td
-                      key={ci}
-                      className="border border-line px-2 py-1 text-body"
-                    >
-                      {String(c ?? "")}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    }
-    default: {
-      warnOnce(t);
-      return (
-        <p {...common} className="text-prose text-body">
-          {txt}
-        </p>
-      );
-    }
-  }
-}
-
-function ReadOnlyBody({ blocks }: { blocks: Blk[] }) {
-  useFlashOnHash(blocks);
-  if (!blocks.length) {
-    return (
-      <div className="py-16 text-center">
-        <p className="font-display text-subhead text-body">
-          This page has no body yet.
-        </p>
-        <p className="mt-1 text-meta text-faint">
-          Blocks arrive in the next phase.
-        </p>
-      </div>
-    );
-  }
-  return (
-    <div id="page-body" tabIndex={-1} className="space-y-4 focus:outline-none">
-      {blocks.map((b, i) => (
-        <BlockView key={(b.id as string | undefined) ?? i} b={b} idx={i} />
-      ))}
-    </div>
-  );
-}
-
-/* ────────────── #block hash flash-on-arrival ────────────── */
-
-function findScrollParent(el: HTMLElement | null): HTMLElement | null {
-  let node = el?.parentElement ?? null;
-  while (node) {
-    const s = window.getComputedStyle(node);
-    if (
-      /(auto|scroll|overlay)/.test(s.overflowY) &&
-      node.scrollHeight > node.clientHeight
-    ) {
-      return node;
-    }
-    node = node.parentElement;
-  }
-  return null;
-}
-
-function useFlashOnHash(blocks: Blk[]) {
-  useEffect(() => {
-    const hash = typeof window !== "undefined" ? window.location.hash : "";
-    if (!hash.startsWith("#block-")) return;
-    const id = hash.slice(1);
-    let cancelled = false;
-    const attempt = (tries: number) => {
-      if (cancelled) return;
-      const el = document.getElementById(id) as HTMLElement | null;
-      if (!el) {
-        if (tries > 0) window.setTimeout(() => attempt(tries - 1), 60);
-        return;
-      }
-      const scroller = findScrollParent(el);
-      if (scroller) {
-        const rect = el.getBoundingClientRect();
-        const sRect = scroller.getBoundingClientRect();
-        const target = scroller.scrollTop + (rect.top - sRect.top) - 120;
-        scroller.scrollTop = Math.max(0, target);
-      }
-      const prev = el.style.transition;
-      el.style.transition = "background-color 500ms ease";
-      el.style.backgroundColor = "var(--color-highlight)";
-      window.setTimeout(() => {
-        el.style.backgroundColor = "transparent";
-        window.setTimeout(() => {
-          el.style.transition = prev;
-          el.style.backgroundColor = "";
-        }, 550);
-      }, 2400);
-    };
-    attempt(10);
-    return () => {
-      cancelled = true;
-    };
-  }, [blocks]);
-}
 
 /* ────────────── Container ────────────── */
 
@@ -866,6 +622,8 @@ export function PageEditor({ pageId }: { pageId: string }) {
   const accessQ = usePageAccess(pageId);
   const setProp = useSetPageProperty();
   const verify = useVerifyPage();
+  const rename = useRenamePage();
+  const updateBlocks = useUpdateBlocks();
   const qc = useQueryClient();
   const { prefs } = usePrefs();
   const { app } = usePageAppearance(pageId);
@@ -913,6 +671,106 @@ export function PageEditor({ pageId }: { pageId: string }) {
     );
   };
 
+  /* ────────── Title editing ────────── */
+  const [titleDraft, setTitleDraft] = useState<string | null>(null);
+  const titleValue = titleDraft ?? page?.title ?? "";
+  const titleTimerRef = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (titleTimerRef.current) window.clearTimeout(titleTimerRef.current);
+    },
+    [],
+  );
+
+  // Focus title on freshly created page (via sessionStorage hint).
+  const [titleAutoFocus, setTitleAutoFocus] = useState(false);
+  useEffect(() => {
+    if (!page) return;
+    try {
+      const want = sessionStorage.getItem("gio.focus-title");
+      if (want && want === page.id) {
+        setTitleAutoFocus(true);
+        sessionStorage.removeItem("gio.focus-title");
+      }
+    } catch {
+      /* storage unavailable */
+    }
+  }, [page]);
+
+  const onTitleChange = useCallback(
+    (v: string) => {
+      setTitleDraft(v);
+      if (titleTimerRef.current) window.clearTimeout(titleTimerRef.current);
+      titleTimerRef.current = window.setTimeout(() => {
+        if (!page) return;
+        rename.mutate({ pageId: page.id, title: v });
+      }, 500);
+    },
+    [page, rename],
+  );
+
+  const focusFirstBlock = useCallback(() => {
+    const el = document.querySelector<HTMLTextAreaElement>(
+      "#page-body textarea",
+    );
+    if (el) {
+      el.focus();
+      el.setSelectionRange(0, 0);
+    }
+  }, []);
+
+  /* ────────── Body debounced save ────────── */
+  const latestRef = useRef<Block[] | null>(null);
+  const savedRef = useRef<string>("");
+  const sendingRef = useRef(false);
+  const debounceRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!page) return;
+    savedRef.current = JSON.stringify(page.blocks ?? []);
+  }, [page]);
+
+  useEffect(
+    () => () => {
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    },
+    [],
+  );
+
+  const flush = useCallback(() => {
+    if (!page || app.locked) return;
+    if (sendingRef.current) return;
+    const latest = latestRef.current;
+    if (!latest) return;
+    const json = JSON.stringify(latest);
+    if (json === savedRef.current) return;
+    sendingRef.current = true;
+    updateBlocks.mutate(
+      { pageId: page.id, blocks: latest },
+      {
+        onSettled: () => {
+          sendingRef.current = false;
+          savedRef.current = json;
+          // If more edits arrived while we were sending, dispatch one more.
+          const now = latestRef.current;
+          if (now && JSON.stringify(now) !== savedRef.current) {
+            flush();
+          }
+        },
+      },
+    );
+  }, [page, app.locked, updateBlocks]);
+
+  const onBlocksChange = useCallback(
+    (blocks: Block[]) => {
+      latestRef.current = blocks;
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+      debounceRef.current = window.setTimeout(flush, 500);
+    },
+    [flush],
+  );
+
   if (pageQ.isLoading) {
     return (
       <div
@@ -938,9 +796,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
     );
   }
 
-  const blocks: Blk[] = Array.isArray(page.blocks)
-    ? (page.blocks as Blk[])
-    : [];
+  const blocks = Array.isArray(page.blocks) ? (page.blocks as unknown[]) : [];
 
   return (
     <div
@@ -949,12 +805,9 @@ export function PageEditor({ pageId }: { pageId: string }) {
       data-small={app.small ? "1" : "0"}
       data-wide={app.wide ? "1" : "0"}
       data-locked={app.locked ? "1" : "0"}
-      style={{
-        maxWidth: 780,
-        padding: "42px 44px",
-      }}
+      style={{ maxWidth: 780, padding: "42px 44px" }}
     >
-      {/* 1. Emoji icon on its own line, ~44px, not clickable this phase. */}
+      {/* 1. Emoji icon on its own line. */}
       <div
         className="select-none"
         aria-hidden
@@ -963,15 +816,15 @@ export function PageEditor({ pageId }: { pageId: string }) {
         {page.icon || "📄"}
       </div>
 
-      {/* 2. Title — read-only this phase. */}
-      <h1
-        className="mt-3 font-display text-display text-noir"
-        style={{ whiteSpace: "pre-wrap" }}
-      >
-        {page.title || "Untitled"}
-      </h1>
+      {/* 2. Editable title. */}
+      <EditableTitle
+        value={titleValue}
+        onChange={onTitleChange}
+        onEnter={focusFirstBlock}
+        autoFocus={titleAutoFocus}
+      />
 
-      {/* 3. Permissions chip row: pill · edited stamp. */}
+      {/* 3. Permissions chip · edited stamp. */}
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <PermissionsChip
           page={page}
@@ -996,7 +849,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
         />
       </div>
 
-      {/* 5. Properties strip (read-only + × removal on non-system rows). */}
+      {/* 5. Properties strip. */}
       <div style={{ marginTop: 18 }}>
         <PropertyStrip
           page={page}
@@ -1014,21 +867,20 @@ export function PageEditor({ pageId }: { pageId: string }) {
       </div>
 
       {/* 6. Hairline divider. */}
-      <div
-        className="border-t border-lineSoft"
-        style={{ marginTop: 20 }}
-      />
+      <div className="border-t border-lineSoft" style={{ marginTop: 20 }} />
 
-      {/* 7. Body. */}
-      <div style={{ marginTop: 26 }}>
-        <ReadOnlyBody blocks={blocks} />
+      {/* 7. Editable body. */}
+      <div id="page-body" style={{ marginTop: 26 }}>
+        <EditableBody
+          pageId={page.id}
+          initialBlocks={blocks}
+          onChange={onBlocksChange}
+          locked={app.locked}
+        />
       </div>
     </div>
   );
 }
-
-
-
 
 async function updatePageIcon(
   pageId: string,
@@ -1039,3 +891,4 @@ async function updatePageIcon(
   await supabase.from("pages").update({ icon }).eq("id", pageId);
   qc.invalidateQueries({ queryKey: qk.page(pageId) });
 }
+

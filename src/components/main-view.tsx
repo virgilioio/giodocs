@@ -21,6 +21,7 @@ import {
   useSetPageProperty,
   useRenamePage,
   useCreatePage,
+  useCreatePageAndOpen,
   useUpdateView,
   useForkView,
   usePublishView,
@@ -921,6 +922,7 @@ export function MainView({ selection }: { selection: Selection }) {
   const setProp = useSetPageProperty();
   const rename = useRenamePage();
   const create = useCreatePage();
+  const createAndOpen = useCreatePageAndOpen();
   const updateView = useUpdateView();
   const forkView = useForkView();
   const publishView = usePublishView();
@@ -1026,8 +1028,9 @@ export function MainView({ selection }: { selection: Selection }) {
       if (f.op === "is_me" && f.prop && user?.id) seed[f.prop] = user.id;
     }
     if (selection.kind === "area") seed.area = selection.area;
-    create.mutate({ seedProps: seed });
+    void createAndOpen({ seedProps: seed });
   };
+
 
   const editable = selection.kind === "area" || isOwnerOfView;
 

@@ -115,7 +115,51 @@ build gates (typecheck, vitest 13/13, token+server-only guards,
 production build+bundle guard) all pass; live verification is deferred
 to preview.
 
+## Page editor (Part B) — 2026-07-26
+
+Body is editable. Each block is its own auto-growing textarea (or `<input>`
+per cell for tables). No contenteditable anywhere. Block ids are minted
+with nanoid on creation and preserved through splits/merges.
+
+- Title is an auto-growing textarea styled as before. Enter moves focus
+  to the first body block, creating one if the page was empty.
+- Every "New page" entry point (view header, area ⋯ menu, sidebar area
+  +) now routes through `useCreatePageAndOpen`: create → navigate to
+  `/p/{id}` → focus title (via `sessionStorage["gio.focus-title"]`).
+- Key handling in body blocks: Enter splits at the caret (list types
+  inherit; empty list item converts to text); Backspace at position 0
+  converts non-text to text, merges empty text into previous, never
+  drops content; ArrowUp/Down at first/last line move focus across
+  blocks; Escape blurs.
+- Markdown shortcuts on empty text block: `# `, `## `, `- `, `1. `,
+  `[] `/`[ ] `, `> `, ` ``` ` transform the block and consume the prefix.
+- Interactive chrome: todo checkbox toggles + strike-through when done;
+  toggle chevron persists `open`; callout icon opens a 12-emoji picker;
+  table cells are single-line inputs with hover-only + row / + column
+  affordances.
+- Slash menu: typing "/" opens a portalled 324px popover anchored under
+  the caret, filterable by name, ArrowUp/Down + Enter to apply, Escape
+  closes. Bottom "Search all blocks…" row is deliberately inert.
+- Gutter (`left:-42px`, hover-only): `+` inserts an empty text block
+  below and focuses it; the six-dot handle is present but inert with
+  title "Reordering arrives next phase".
+- Empty body renders a "Click to start writing." affordance that
+  appends and focuses a text block.
+- Persistence: `useUpdateBlocks` writes `pages.blocks` whole via a
+  500ms trailing debounce. Exactly one request in flight per page —
+  new edits during a send queue only the latest snapshot, then fire
+  a single follow-up on settle. The `touch_page` DB trigger bumps
+  `edited_at` server-side; `verified_at` is untouched by any edit
+  because its WHEN clause excludes verified_*. Topbar shows
+  "Saving…" after 1.2s of continuous pending state and flashes
+  "Saved" for 1.5s on settle.
+
+Build gates: tsgo clean, vitest 13/13, check-tokens + check-server-only +
+production build + check-bundle all green. Live verification is deferred
+to preview because `LOVABLE_BROWSER_AUTH_STATUS=external_unmanaged`
+prevents session minting for the user's own Supabase project.
+
 ## Next-phase acceptance
 
-Typing `/` opens the block menu; blocks create, reorder and delete;
-body persists on reload.
+Blocks reorder by dragging the handle; the page ⋯ menu works.
+
