@@ -1240,9 +1240,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
   );
 }
 
-    </div>
-  );
-}
+
 
 /* Icon updates go directly to the pages table since icon is a column,
    not a jsonb prop. We keep this here to avoid churn in mutations file. */
