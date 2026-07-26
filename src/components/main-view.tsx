@@ -562,9 +562,11 @@ function PageTitleCell({
           <button
             type="button"
             className="min-w-0 flex-1 truncate text-left text-row font-bold hover:underline"
-            onClick={() =>
-              navigate({ to: "/p/$pageId", params: { pageId: page.id } })
-            }
+            onClick={() => {
+              setOrigin(page.id);
+              navigate({ to: "/p/$pageId", params: { pageId: page.id } });
+            }}
+
             onMouseEnter={() => {
               qc.prefetchQuery(pageQuery(page.id));
             }}
