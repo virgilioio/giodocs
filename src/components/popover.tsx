@@ -44,9 +44,19 @@ export function Popover({
           style={{ width, [align === "end" ? "right" : "left"]: 0 }}
           className="absolute top-full z-40 mt-1 rounded-lg border border-line bg-surface p-1 shadow-popover animate-popIn"
         >
-          {children(() => setOpen(false))}
+          <PopoverContent render={children} close={() => setOpen(false)} />
         </div>
       )}
     </div>
   );
+}
+
+function PopoverContent({
+  render,
+  close,
+}: {
+  render: (close: () => void) => ReactNode;
+  close: () => void;
+}) {
+  return <>{render(close)}</>;
 }
