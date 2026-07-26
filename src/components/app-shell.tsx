@@ -30,6 +30,7 @@ import { SettingsModal, type SettingsPane } from "./settings-modal";
 import { AddMembersModal, type PendingInvite } from "./add-members-modal";
 import { useAllowedDomains } from "@/hooks/use-workspace-data";
 import { usePrefs } from "@/lib/preferences";
+import { nanoid } from "nanoid";
 
 type Selection =
   | { kind: "view"; id: string }
