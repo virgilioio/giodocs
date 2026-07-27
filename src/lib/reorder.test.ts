@@ -189,6 +189,6 @@ describe("reclampIndents — reorder must not leave orphan levels", () => {
     ] as never[];
     const out = reclampIndents(moved);
     expect((out[0] as { indent?: number }).indent).toBe(1);
-    expect((out[1] as { indent?: number }).indent).toBeUndefined();
+    expect((out[1] as { indent?: number }).indent).toBe(0);
   });
 });
