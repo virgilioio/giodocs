@@ -2108,6 +2108,16 @@ function buildViewToolbarSpec(
       mctx.close();
     },
   });
+  rows.push({
+    kind: "row",
+    label: "Export view",
+    icon: "download",
+    hint: { text: "CSV, Markdown" },
+    onPick: () => {
+      args.onExportView();
+      mctx.close();
+    },
+  });
 
   if (scope === "personal" && isOwnerOfView) {
     rows.push({ kind: "sep" });
