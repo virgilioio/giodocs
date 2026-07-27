@@ -1966,15 +1966,15 @@ export function EditableBody({
         />
       ))}
 
-      {/* Drop indicator */}
+      {/* Drop indicator — column-relative width when dropping into a column. */}
       {indicatorVisible ? (
         <div
           aria-hidden
           style={{
             position: "absolute",
-            left: 0,
-            right: 0,
-            top: dragging!.indicatorY!,
+            left: dragging!.indicator!.x,
+            top: dragging!.indicator!.y,
+            width: dragging!.indicator!.width,
             height: 2,
             background: "var(--color-accentDot)",
             borderRadius: 1,
