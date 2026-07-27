@@ -2187,8 +2187,6 @@ function BlockRow({
   locked,
   selected,
   dimmed,
-  focused,
-  onRequestFocus,
   onEditorFocus,
   onEditorBlur,
   registerRowEl,
@@ -2209,8 +2207,6 @@ function BlockRow({
   locked: boolean;
   selected: boolean;
   dimmed: boolean;
-  focused: boolean;
-  onRequestFocus: (caret: number | "end") => void;
   onEditorFocus: () => void;
   onEditorBlur: () => void;
   registerRowEl: (id: string, el: HTMLElement | null) => void;
