@@ -1435,20 +1435,93 @@ export function EditableBody({
               return;
             }
 
-            if (e.key === "ArrowUp") {
-              const before = v.slice(0, ss);
-              if (!before.includes("\n")) {
-                e.preventDefault();
-                focusRelative(b.id, -1, "end");
+            // Arrow-key navigation across blocks. A non-empty text
+            // selection is left alone so shift-arrow and native drag-
+            // select keep working; every branch below only fires with
+            // a collapsed caret.
+            const hasSelection = ss !== se;
+
+            const focusTitle = () => {
+              const t = document.querySelector<HTMLTextAreaElement>(".gio-title");
+              if (!t) return;
+              t.focus({ preventScroll: true });
+              const end = t.value.length;
+              try {
+                t.setSelectionRange(end, end);
+              } catch {
+                /* noop */
               }
+            };
+            const jumpTo = (dir: 1 | -1, caret: "start" | "end") => {
+              const idx = blocks.findIndex((x) => x.id === b.id);
+              const target = nextEditableIndex(blocks, idx, dir);
+              if (target !== null) {
+                setFocusRequest({ id: blocks[target].id, caret });
+                return true;
+              }
+              return false;
+            };
+
+            if (e.key === "ArrowLeft" && !hasSelection && ss === 0) {
+              e.preventDefault();
+              if (!jumpTo(-1, "end")) focusTitle();
               return;
             }
-            if (e.key === "ArrowDown") {
-              const after = v.slice(se);
-              if (!after.includes("\n")) {
+            if (e.key === "ArrowRight" && !hasSelection && ss === v.length) {
+              if (jumpTo(1, "start")) e.preventDefault();
+              return;
+            }
+
+            if (e.key === "ArrowUp" && !hasSelection) {
+              const before = ss;
+              if (before === 0) {
                 e.preventDefault();
-                focusRelative(b.id, 1, "start");
+                if (!jumpTo(-1, "end")) focusTitle();
+                return;
               }
+              // Otherwise let the browser's ArrowUp resolve to a row
+              // above. If it collapses to index 0, the caret was on
+              // the first visual row — promote to the previous block.
+              const bid = b.id;
+              requestAnimationFrame(() => {
+                const cur = refs.current[bid] as
+                  | HTMLTextAreaElement
+                  | undefined;
+                if (!cur || document.activeElement !== cur) return;
+                if (cur.selectionStart === 0 && cur.selectionEnd === 0) {
+                  const idx = blocks.findIndex((x) => x.id === bid);
+                  const target = nextEditableIndex(blocks, idx, -1);
+                  if (target !== null) {
+                    setFocusRequest({ id: blocks[target].id, caret: "end" });
+                  } else {
+                    focusTitle();
+                  }
+                }
+              });
+              return;
+            }
+            if (e.key === "ArrowDown" && !hasSelection) {
+              const before = ss;
+              const len = v.length;
+              if (before === len) {
+                if (jumpTo(1, "start")) e.preventDefault();
+                return;
+              }
+              const bid = b.id;
+              requestAnimationFrame(() => {
+                const cur = refs.current[bid] as
+                  | HTMLTextAreaElement
+                  | undefined;
+                if (!cur || document.activeElement !== cur) return;
+                const l = cur.value.length;
+                if (cur.selectionStart === l && cur.selectionEnd === l) {
+                  const idx = blocks.findIndex((x) => x.id === bid);
+                  const target = nextEditableIndex(blocks, idx, 1);
+                  if (target !== null) {
+                    setFocusRequest({ id: blocks[target].id, caret: "start" });
+                  }
+                }
+              });
               return;
             }
           }}
