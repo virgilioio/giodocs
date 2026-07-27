@@ -853,12 +853,16 @@ export function EditableBody({
       if (froms.some((p) => p.index < 0)) return;
       const to: ReorderPath = { col: d.targetCol, index: d.gap };
       const makeEmpty = () => newBlock("text");
-      const next =
+      const next0 =
         d.ids.length === 1
           ? moveBlockAcross(blocks, froms[0], to, makeEmpty)
           : moveRunAcross(blocks, froms, to, makeEmpty);
-      if (next === blocks) return;
-      if (next.length === blocks.length && next.every((x, i) => x === blocks[i])) return;
+      if (next0 === blocks) return;
+      if (next0.length === blocks.length && next0.every((x, i) => x === blocks[i])) return;
+      // Re-clamp: a block dragged above a shallower neighbour must not
+      // remain at an orphan level. reclampIndents walks the flat list
+      // once and applies the parent+1 rule.
+      const next = reclampIndents(next0);
       commit(next);
     },
     [blocks, commit],
@@ -1356,11 +1360,11 @@ export function EditableBody({
       if (!run.length || run[0] === 0) return;
       const runStart = run[0];
       const runEnd = run[run.length - 1];
-      const next =
+      const raw =
         run.length === 1
           ? moveBlock(blocks, runStart, runStart - 1)
           : moveRun(blocks, runStart, runEnd, runStart - 1);
-      commit(next);
+      commit(reclampIndents(raw));
     },
     [blocks, commit, getRunIndicesForBlock],
   );
@@ -1372,11 +1376,11 @@ export function EditableBody({
       const runStart = run[0];
       const runEnd = run[run.length - 1];
       if (runEnd >= blocks.length - 1) return;
-      const next =
+      const raw =
         run.length === 1
           ? moveBlock(blocks, runStart, runStart + 1)
           : moveRun(blocks, runStart, runEnd, runEnd + 2);
-      commit(next);
+      commit(reclampIndents(raw));
     },
     [blocks, commit, getRunIndicesForBlock],
   );
