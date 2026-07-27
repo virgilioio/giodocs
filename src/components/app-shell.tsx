@@ -1179,6 +1179,71 @@ function TeamViewRow({
   );
 }
 
+/**
+ * Team-view menu content. Non-owners see open/duplicate/hide; owners also
+ * see an Unpublish row that swaps to a confirm submode in the same panel.
+ */
+function TeamViewMenu({
+  v,
+  isOwner,
+  onOpen,
+  onFork,
+  onHide,
+  onUnpublish,
+}: {
+  v: ViewRow;
+  isOwner: boolean;
+  onOpen: () => void;
+  onFork: () => void;
+  onHide: () => void;
+  onUnpublish: () => void;
+}) {
+  const [mode, setMode] = useState<"list" | "unpublish">("list");
+  if (mode === "unpublish") {
+    return (
+      <RowMenuConfirm
+        title={`Unpublish "${v.name}"?`}
+        body={
+          <>
+            The view leaves Team views and returns to your <b>My views</b>. The
+            pages it filtered are untouched. Only workspace owners can
+            publish or unpublish team views.
+          </>
+        }
+        confirmLabel="Unpublish"
+        variant="danger"
+        onConfirm={onUnpublish}
+      />
+    );
+  }
+  const items: RowMenuItem[] = [
+    { id: "open", label: "Open", hint: <Sc>↵</Sc>, onSelect: onOpen },
+    {
+      id: "dup",
+      label: "Duplicate into My views",
+      hint: <Val>personal</Val>,
+      onSelect: onFork,
+    },
+    { id: "hide", label: "Hide from my sidebar", onSelect: onHide },
+    ...(isOwner
+      ? ([
+          { kind: "divider" },
+          {
+            id: "unpublish",
+            label: "Unpublish",
+            hint: <Val>back to mine</Val>,
+            submenu: true,
+            keepOpen: true,
+            danger: true,
+            onSelect: () => setMode("unpublish"),
+          },
+        ] satisfies RowMenuItem[])
+      : []),
+  ];
+  return <RowMenuList title="Team view" items={items} />;
+}
+
+
 /* Area row — its menu carries area-scope actions plus rename with a footer. */
 function AreaLi({
   area,
