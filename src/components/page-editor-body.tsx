@@ -2789,7 +2789,7 @@ function ColumnStack({
     setBlocks(blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)));
   }
 
-  function applyTypeLocal(blockId: string, type: BlockType) {
+  function applyTypeLocal(blockId: string, type: BlockType, extra?: Partial<Blk>) {
     // Columns never nest — refuse the "columns" type even though the
     // in-column slash menu doesn't offer it.
     if (type === "columns") return;
@@ -2799,12 +2799,14 @@ function ColumnStack({
     const t = prev.text ?? "";
     const slashPos = t.lastIndexOf("/");
     const stripped = slashPos >= 0 ? t.slice(0, slashPos) : t;
-    const nb: Blk = { ...prev, type, text: stripped };
+    const nb: Blk = { ...prev, type, text: stripped, ...(extra ?? {}) };
     if (type === "todo" && nb.checked == null) nb.checked = false;
     if (type === "toggle" && nb.open == null) nb.open = false;
     if (type === "callout" && !nb.icon) nb.icon = "💡";
     if (type === "table" && !nb.rows) nb.rows = [["", "", ""], ["", "", ""]];
     if (type === "divider") nb.text = "";
+    if (type !== "toggle") delete nb.level;
+    else if (!extra?.level && !("level" in (extra ?? {}))) delete nb.level;
     const next = [...blocks];
     next[idx] = nb;
     setBlocks(next);
