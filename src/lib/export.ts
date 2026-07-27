@@ -85,6 +85,17 @@ function blockText(b: Block): string {
   return typeof b.text === "string" ? b.text : "";
 }
 
+/* Warn once per distinct unknown block type across both serialisers, so a
+ * 20-block page logs at most one line per type. Data outlives the code
+ * that wrote it — degrade rather than crash. */
+const _warnedUnknownBlocks = new Set<string>();
+function warnUnknownBlock(t: string): void {
+  if (_warnedUnknownBlocks.has(t)) return;
+  _warnedUnknownBlocks.add(t);
+  console.warn(`[export] unknown block type "${t}" — exported as plain text`);
+}
+
+
 /* ─────────────────────────── blockToMarkdown ───────────────────────────
  *
  * Per-block Markdown serialisation, extracted so the block-selection
