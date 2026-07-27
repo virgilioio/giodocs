@@ -35,6 +35,11 @@ const SK_ROWS: Array<{
   { w: "58%", area: 58, status: 66, tags: 84, ver: 44, edited: 50 },
 ];
 
+/* Property strip: 5 rows at min-height 32, label track 132px, ZERO gap
+ * between rows. Value bars share one width (they align) — only the
+ * label bar widths vary per row. The last row (row 5) stands in for
+ * "Last verified" and uses a plain 11px text bar (no pill). A 6th
+ * quieter row stands in for "+ Add a property". */
 const SK_PROPS: Array<{ l: number; v: number; h: number; r: number }> = [
   { l: 34, v: 132, h: 19, r: 999 },
   { l: 46, v: 132, h: 19, r: 999 },
@@ -198,42 +203,61 @@ export function PageSkeleton() {
         <Sk tone="soft" w={104} h={24} r={8} />
       </div>
 
-      {/* Properties strip — rows height 20, gap 10, label column 118. */}
+      {/* Properties strip — rows min-height 32, ZERO gap, label track
+       * 132px, container marginTop 22 + borderTop + paddingTop 8. Matches
+       * the loaded PropertyStrip so mount → data swap is zero-delta. */}
       <div
         style={{
-          marginTop: 18,
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
+          marginTop: 22,
+          borderTop: "1px solid var(--color-line)",
+          paddingTop: 8,
         }}
       >
         {SK_PROPS.map((p, i) => (
           <div
             key={i}
             style={{
-              display: "flex",
+              display: "grid",
+              gridTemplateColumns: "132px 1fr",
               alignItems: "center",
-              gap: 10,
-              height: 20,
-              padding: "0 4px",
+              minHeight: 32,
+              padding: "2px 6px",
             }}
           >
-            <div style={{ width: 118, flex: "none" }}>
+            <div>
               <Sk tone="soft" w={p.l} h={11} r={5} />
             </div>
             <Sk w={p.v} h={p.h} r={p.r} />
           </div>
         ))}
+        {/* + Add a property — quiet stand-in row, same geometry. */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "132px 1fr",
+            alignItems: "center",
+            minHeight: 32,
+            padding: "2px 6px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <Sk tone="soft" w={11} h={11} r={3} />
+            <Sk tone="soft" w={82} h={11} r={5} />
+          </div>
+          <span />
+        </div>
       </div>
 
-      {/* Divider. */}
+      {/* Body divider — matches PageEditor: marginTop 22, border-top
+       * var(--color-line), padding-top 8. */}
       <div
         style={{
-          height: 1,
-          background: "var(--color-sunken)",
-          margin: "20px 0 26px",
+          marginTop: 22,
+          borderTop: "1px solid var(--color-line)",
+          paddingTop: 8,
         }}
       />
+
 
       {/* Body. */}
       <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>

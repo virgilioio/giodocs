@@ -93,16 +93,18 @@ function firstName(full: string | null | undefined, email: string | null | undef
 function Glyph({
   path,
   className,
+  strokeWidth,
 }: {
   path: string;
   className?: string;
+  strokeWidth?: number;
 }) {
   return (
     <svg
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.6}
+      strokeWidth={strokeWidth ?? 1.6}
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className ?? "h-4 w-4"}
@@ -293,13 +295,45 @@ function MiniAvatar({ profile }: { profile: MemberRow["profiles"] }) {
     .toUpperCase();
   return (
     <span
-      className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-caption"
+      className="grid shrink-0 place-items-center rounded-full"
       style={{
+        width: 19,
+        height: 19,
+        fontSize: 9.5,
+        fontWeight: 700,
+        lineHeight: 1,
         background: profile?.avatar_tint ?? "var(--color-sunken)",
         color: profile?.avatar_ink ?? "var(--color-noir)",
       }}
     >
       {initials}
+    </span>
+  );
+}
+
+/* Shared classes/styles for every editable value cell in the property
+ * strip. The −7px margin-left is load-bearing: it pulls the value's
+ * hover box out to the value column's true left edge so it aligns with
+ * the strip's top hairline and never looks pinched against the label. */
+const VALUE_CELL_CLASS =
+  "gio-prop-value flex items-center rounded-md cursor-pointer text-left hover:bg-sunken";
+const VALUE_CELL_STYLE: React.CSSProperties = {
+  padding: "3px 7px",
+  marginLeft: -7,
+  minHeight: 24,
+};
+
+/* Empty-state copy varies per prop so an owner-less page reads
+ * differently from a bare tag list. */
+function emptyCopy(propKey: string, defType?: string): string {
+  if (propKey === "owner" || defType === "person") return "Unassigned";
+  if (defType === "multi_select") return "Empty — click to tag";
+  return "Empty";
+}
+function EmptyValue({ propKey, defType }: { propKey: string; defType?: string }) {
+  return (
+    <span style={{ fontSize: 14, color: "var(--color-whisper)" }}>
+      {emptyCopy(propKey, defType)}
     </span>
   );
 }
@@ -332,7 +366,7 @@ function EditableValue({
   onOpenChange: (open: boolean) => void;
 }) {
   const raw = propsOf(page)[propKey];
-  const missing = <span className="italic text-whisper">—</span>;
+  const empty = <EmptyValue propKey={propKey} defType={def?.type} />;
   const allTags = useMemo(() => {
     if (def?.type !== "multi_select") return [] as string[];
     const s = new Set<string>();
@@ -345,6 +379,7 @@ function EditableValue({
 
   /* ── Area ── */
   if (propKey === "area") {
+    const hasArea = typeof raw === "string" && raw;
     return (
       <AreaPicker
         value={typeof raw === "string" ? raw : null}
@@ -356,17 +391,15 @@ function EditableValue({
             ref={ref}
             type="button"
             onClick={onClick}
-            className="text-left"
+            className={VALUE_CELL_CLASS}
+            style={VALUE_CELL_STYLE}
           >
-            {typeof raw === "string" && raw ? (
-              <span
-                className="inline-flex items-center rounded-sm bg-sunken px-1.5 py-0.5 text-meta text-body"
-                style={{ paddingBlock: 2 }}
-              >
-                {raw}
+            {hasArea ? (
+              <span style={{ fontSize: 14, color: "var(--color-strong)" }}>
+                {raw as string}
               </span>
             ) : (
-              missing
+              empty
             )}
           </button>
         )}
@@ -388,17 +421,18 @@ function EditableValue({
             ref={ref}
             type="button"
             onClick={onClick}
-            className="flex min-w-0 items-center gap-2 text-left"
+            className={VALUE_CELL_CLASS + " min-w-0"}
+            style={{ ...VALUE_CELL_STYLE, gap: 7 }}
           >
             {m ? (
               <>
                 <MiniAvatar profile={m.profiles} />
-                <span className="text-meta text-body">
+                <span style={{ fontSize: 14, color: "var(--color-strong)" }}>
                   {m.profiles?.full_name ?? m.profiles?.email ?? "Unknown"}
                 </span>
               </>
             ) : (
-              missing
+              empty
             )}
           </button>
         )}
@@ -427,16 +461,18 @@ function EditableValue({
             ref={ref}
             type="button"
             onClick={onClick}
-            className="text-left"
+            className={VALUE_CELL_CLASS}
+            style={VALUE_CELL_STYLE}
           >
             {cur ? (
               <StatusChipInline
                 label={cur.label}
                 tint={cur.tint}
                 ink={cur.ink}
+                withDot={def.type === "status" || propKey === "stage"}
               />
             ) : (
-              missing
+              empty
             )}
           </button>
         )}
@@ -458,17 +494,22 @@ function EditableValue({
             ref={ref}
             type="button"
             onClick={onClick}
-            className="flex flex-wrap items-center gap-1"
+            className={VALUE_CELL_CLASS + " flex-wrap"}
+            style={{ ...VALUE_CELL_STYLE, gap: 5 }}
           >
             {tags.length === 0
-              ? missing
+              ? empty
               : tags.map((t) => {
                   const p = hashPair(t);
                   return (
                     <span
                       key={t}
-                      className="rounded-sm px-1.5 py-0.5 text-caption"
                       style={{
+                        padding: "2px 8px",
+                        borderRadius: 5,
+                        fontSize: 12.5,
+                        fontWeight: 400,
+                        lineHeight: 1.2,
                         background: `var(--color-${p.tint})`,
                         color: `var(--color-${p.ink})`,
                       }}
@@ -483,21 +524,29 @@ function EditableValue({
     );
   }
 
-  /* ── Checkbox ── (direct toggle, no popover) */
+  /* ── Checkbox ── (direct toggle, no popover). Uses a native input so
+   * accent-color themes the tick without a custom glyph. */
   if (def?.type === "checkbox") {
     const on = !!raw;
     return (
-      <button
-        type="button"
-        onClick={() => onSet(!on)}
-        className="grid h-5 w-5 place-items-center rounded-sm border border-line hover:bg-rail"
-        aria-pressed={on}
+      <label
+        className={VALUE_CELL_CLASS}
+        style={VALUE_CELL_STYLE}
         aria-label={def.label}
       >
-        {on ? (
-          <Glyph path="M5 12l5 5 9-11" className="h-3.5 w-3.5 text-accent" />
-        ) : null}
-      </button>
+        <input
+          type="checkbox"
+          checked={on}
+          onChange={(e) => onSet(e.currentTarget.checked)}
+          style={{
+            width: 15,
+            height: 15,
+            margin: 0,
+            accentColor: "var(--color-accent)",
+            cursor: "pointer",
+          }}
+        />
+      </label>
     );
   }
 
@@ -508,6 +557,8 @@ function EditableValue({
         value={typeof raw === "number" ? raw : null}
         onSet={onSet}
         onOpenChange={onOpenChange}
+        propKey={propKey}
+        defType={def?.type}
       />
     );
   }
@@ -519,6 +570,8 @@ function EditableValue({
         value={typeof raw === "string" ? raw : null}
         onSet={onSet}
         onOpenChange={onOpenChange}
+        propKey={propKey}
+        defType={def?.type}
       />
     );
   }
@@ -528,6 +581,8 @@ function EditableValue({
     <TextInline
       value={typeof raw === "string" ? raw : ""}
       onSet={onSet}
+      propKey={propKey}
+      defType={def?.type}
     />
   );
 }
@@ -536,23 +591,37 @@ function StatusChipInline({
   label,
   tint,
   ink,
+  withDot = true,
 }: {
   label: string;
   tint: string;
   ink: string;
+  withDot?: boolean;
 }) {
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-caption"
+      className="inline-flex items-center"
       style={{
+        padding: "2px 9px",
+        borderRadius: 999,
+        fontSize: 13.5,
+        fontWeight: 700,
+        lineHeight: 1.2,
+        gap: 6,
         background: `var(--color-${tint})`,
         color: `var(--color-${ink})`,
       }}
     >
-      <span
-        className="h-1.5 w-1.5 rounded-full"
-        style={{ background: `var(--color-${ink})` }}
-      />
+      {withDot ? (
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: 999,
+            background: `var(--color-${ink})`,
+          }}
+        />
+      ) : null}
       {label}
     </span>
   );
@@ -562,10 +631,14 @@ function NumberInline({
   value,
   onSet,
   onOpenChange,
+  propKey,
+  defType,
 }: {
   value: number | null;
   onSet: (v: number | null) => void;
   onOpenChange: (open: boolean) => void;
+  propKey: string;
+  defType?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<string>(value === null ? "" : String(value));
@@ -580,12 +653,13 @@ function NumberInline({
       <button
         type="button"
         onClick={() => setEditing(true)}
-        className="text-left text-meta text-body tnum"
+        className={VALUE_CELL_CLASS + " tnum"}
+        style={VALUE_CELL_STYLE}
       >
         {value === null ? (
-          <span className="italic text-whisper">—</span>
+          <EmptyValue propKey={propKey} defType={defType} />
         ) : (
-          value
+          <span style={{ fontSize: 14, color: "var(--color-strong)" }}>{value}</span>
         )}
       </button>
     );
@@ -625,10 +699,14 @@ function DateInline({
   value,
   onSet,
   onOpenChange,
+  propKey,
+  defType,
 }: {
   value: string | null;
   onSet: (v: string | null) => void;
   onOpenChange: (open: boolean) => void;
+  propKey: string;
+  defType?: string;
 }) {
   const label =
     value && !isNaN(new Date(value).getTime())
@@ -643,9 +721,14 @@ function DateInline({
           ref={ref}
           type="button"
           onClick={onClick}
-          className="text-left text-meta text-body"
+          className={VALUE_CELL_CLASS}
+          style={VALUE_CELL_STYLE}
         >
-          {label ?? <span className="italic text-whisper">—</span>}
+          {label ? (
+            <span style={{ fontSize: 14, color: "var(--color-strong)" }}>{label}</span>
+          ) : (
+            <EmptyValue propKey={propKey} defType={defType} />
+          )}
         </button>
       )}
     >
@@ -681,9 +764,13 @@ function DateInline({
 function TextInline({
   value,
   onSet,
+  propKey,
+  defType,
 }: {
   value: string;
   onSet: (v: string) => void;
+  propKey: string;
+  defType?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -695,9 +782,14 @@ function TextInline({
       <button
         type="button"
         onClick={() => setEditing(true)}
-        className="w-full text-left text-meta text-body"
+        className={VALUE_CELL_CLASS + " w-full"}
+        style={VALUE_CELL_STYLE}
       >
-        {value ? value : <span className="italic text-whisper">—</span>}
+        {value ? (
+          <span style={{ fontSize: 14, color: "var(--color-strong)" }}>{value}</span>
+        ) : (
+          <EmptyValue propKey={propKey} defType={defType} />
+        )}
       </button>
     );
   }
@@ -768,9 +860,20 @@ function AddPropertyPopover({
           ref={ref}
           type="button"
           onClick={onClick}
-          className="inline-flex items-center gap-1 rounded-md px-1 py-1 text-meta text-muted hover:bg-sunken"
+          className="gio-prop-add flex w-full items-center rounded-md text-left"
+          style={{
+            gap: 6,
+            padding: "2px 6px",
+            minHeight: 32,
+            fontSize: 14,
+            color: "var(--color-faint)",
+          }}
         >
-          <Glyph path="M12 5v14M5 12h14" className="h-3.5 w-3.5" />
+          <Glyph
+            path="M12 5v14M5 12h14"
+            className="h-[11px] w-[11px]"
+            strokeWidth={2.4}
+          />
           <span>Add a property</span>
         </button>
       )}
@@ -869,45 +972,74 @@ function PropertyStrip({
     return m?.profiles?.full_name || m?.profiles?.email || "you";
   }, [members, page.verified_by, meId]);
 
+  /* Rhythm rule: rows ABUT (no gap between them) and each row is its own
+   * min-height 32 box. The strip owns its own top hairline (marginTop 22,
+   * borderTop 1px var(--color-line), paddingTop 8); the page container no
+   * longer wraps this with any additional spacing. */
   return (
-    <div>
+    <div
+      style={{
+        marginTop: 22,
+        borderTop: "1px solid var(--color-line)",
+        paddingTop: 8,
+      }}
+    >
       {rows.map((r) => {
         const def = propDefs.find((d) => d.key === r.key);
         const removable =
           def && def.is_system === false && present.has(r.key);
         const active = hoverKey === r.key || openKey === r.key;
         const showX = removable && active;
+        const label = labelFor(r.key, propDefs);
         return (
           <div
             key={r.key}
-            className={
-              "flex items-center rounded-md px-1 " +
-              (active ? "bg-sunken" : "")
-            }
-            style={{ height: 20, gap: 10 }}
+            className="gio-prop-row rounded-md"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "132px 1fr",
+              alignItems: "center",
+              minHeight: 32,
+              padding: "2px 6px",
+              background: active ? "var(--color-track)" : undefined,
+            }}
             onMouseEnter={() => setHoverKey(r.key)}
             onMouseLeave={() => setHoverKey(null)}
           >
             <div
-              className="flex shrink-0 items-center gap-1 text-meta text-muted"
-              style={{ width: 118, flex: "none" }}
+              className="flex items-center"
+              style={{
+                gap: 6,
+                fontSize: 14,
+                color: "var(--color-muted)",
+              }}
             >
-              <span>{labelFor(r.key, propDefs)}</span>
+              <span>{label}</span>
               {showX ? (
                 <button
                   type="button"
-                  aria-label={`Remove ${labelFor(r.key, propDefs)}`}
-                  className="grid h-4 w-4 place-items-center rounded-sm text-faint hover:bg-rail hover:text-muted"
+                  title="Remove property"
+                  aria-label={`Remove ${label}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onSet(r.key, null);
+                  }}
+                  className="gio-prop-remove"
+                  style={{
+                    padding: 2,
+                    fontSize: 12,
+                    lineHeight: 1,
+                    color: "var(--color-rule)",
+                    background: "transparent",
+                    border: 0,
+                    cursor: "pointer",
                   }}
                 >
                   ×
                 </button>
               ) : null}
             </div>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0">
               <EditableValue
                 propKey={r.key}
                 page={page}
@@ -927,25 +1059,37 @@ function PropertyStrip({
         );
       })}
 
+      {/* Last verified — the one non-clickable row. No hover, cursor
+       * default. The way to change it is the freshness banner above. */}
       <div
-        className="flex items-center rounded-md px-1"
-        style={{ height: 20, gap: 10 }}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "132px 1fr",
+          alignItems: "center",
+          minHeight: 32,
+          padding: "2px 6px",
+          cursor: "default",
+        }}
       >
-        <div className="shrink-0 text-meta text-muted" style={{ width: 118, flex: "none" }}>
+        <div
+          className="flex items-center"
+          style={{ gap: 6, fontSize: 14, color: "var(--color-muted)" }}
+        >
           Last verified
         </div>
-        <div className="min-w-0 flex-1 text-meta text-secondary">
+        <div
+          className="min-w-0"
+          style={{ fontSize: 14, color: "var(--color-strong)" }}
+        >
           {relTime(page.verified_at)} · {verifiedByName}
         </div>
       </div>
 
-      <div className="mt-1">
-        <AddPropertyPopover
-          propDefs={propDefs}
-          present={present}
-          onAdd={(key, seed) => onSet(key, seed)}
-        />
-      </div>
+      <AddPropertyPopover
+        propDefs={propDefs}
+        present={present}
+        onAdd={(key, seed) => onSet(key, seed)}
+      />
     </div>
   );
 }
@@ -1275,32 +1419,38 @@ export function PageEditor({ pageId }: { pageId: string }) {
       </div>
 
 
-      {/* 5. Properties strip. */}
-      <div style={{ marginTop: 18 }}>
-        <PropertyStrip
-          page={page}
-          propDefs={propDefs}
-          members={members}
-          meId={meId}
-          pages={(shell.pages.data ?? []) as PageListItem[]}
-          areas={areasList}
-          onSet={(key, value) => {
-            if (key === "icon") {
-              if (typeof value === "string" && value)
-                setPageIcon.mutate({ pageId: page.id, icon: value });
-              return;
-            }
-            setProp.mutate({ pageId: page.id, key, value });
-          }}
+      {/* 5. Properties strip. The strip owns its own top hairline —
+       * marginTop 22 + border-top + padding-top 8 — so no wrapper spacing
+       * here. */}
+      <PropertyStrip
+        page={page}
+        propDefs={propDefs}
+        members={members}
+        meId={meId}
+        pages={(shell.pages.data ?? []) as PageListItem[]}
+        areas={areasList}
+        onSet={(key, value) => {
+          if (key === "icon") {
+            if (typeof value === "string" && value)
+              setPageIcon.mutate({ pageId: page.id, icon: value });
+            return;
+          }
+          setProp.mutate({ pageId: page.id, key, value });
+        }}
+      />
 
-        />
-      </div>
+      {/* 6. Body divider — a matching bracket to the strip's top rule:
+       * 22px from the strip's last row, hairline var(--color-line), then
+       * 8px padding before the body. */}
+      <div
+        id="page-body"
+        style={{
+          marginTop: 22,
+          borderTop: "1px solid var(--color-line)",
+          paddingTop: 8,
+        }}
+      >
 
-      {/* 6. Hairline divider. */}
-      <div className="border-t border-lineSoft" style={{ marginTop: 20 }} />
-
-      {/* 7. Editable body. */}
-      <div id="page-body" style={{ marginTop: 26 }}>
         <EditableBody
           pageId={page.id}
           initialBlocks={blocks}
