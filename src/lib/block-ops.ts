@@ -77,11 +77,10 @@ export function newColumnsBlock(n: number): Blk {
 
 /** ONE source of truth for typing-shortcut → block-type conversion. Used
  *  by both the top-level and column input handlers so they cannot drift.
- *  `###`/`####` map to h2 because we have no h3/h4. `!> ` opens a callout
- *  (matches the export inverse for callouts). */
+ *  `# ` → h1, `## ` → h2, `### `+ → h3 (we have exactly three levels; any
+ *  deeper input lands on the deepest we have). `!> ` opens a callout. */
 export const MARKDOWN_SHORTCUTS: ReadonlyArray<{ pat: RegExp; type: BlockType }> = [
-  { pat: /^#### $/, type: "h2" },
-  { pat: /^### $/, type: "h2" },
+  { pat: /^#{3,6} $/, type: "h3" },
   { pat: /^## $/, type: "h2" },
   { pat: /^# $/, type: "h1" },
   { pat: /^- $/, type: "bullet" },
