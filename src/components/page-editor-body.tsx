@@ -163,12 +163,16 @@ export function EditableBody({
   onChange,
   onBlur,
   locked,
+  editedRel,
+  editorFirstName,
 }: {
   pageId: string;
   initialBlocks: unknown[];
   onChange: (blocks: Blk[]) => void;
   onBlur?: () => void;
   locked?: boolean;
+  editedRel?: string | null;
+  editorFirstName?: string | null;
 }) {
   const [blocks, setBlocks] = useState<Blk[]>(() => {
     const n = normalize(initialBlocks);
