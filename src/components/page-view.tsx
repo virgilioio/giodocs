@@ -19,6 +19,7 @@ import { usePageAppearance } from "@/lib/page-appearance";
 import { Popover } from "./popover";
 import { formatTimestamp } from "@/lib/format";
 import { EditableBody, EditableTitle } from "./page-editor-body";
+import { createBlocksSaver } from "@/lib/blocks-saver";
 import type { Block, PageAccessRow, PageFull, PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -728,56 +729,79 @@ export function PageEditor({ pageId }: { pageId: string }) {
     empty?.click();
   }, []);
 
-  /* ────────── Body debounced save ────────── */
-  const latestRef = useRef<Block[] | null>(null);
-  const savedRef = useRef<string>("");
-  const sendingRef = useRef(false);
-  const debounceRef = useRef<number | null>(null);
+  /* ────────── Body debounced save ──────────
+   *
+   * The saver owns the latest-value ref, saved-value ref, single-flight
+   * guard, and follow-up dispatch. React only feeds it keystrokes and
+   * triggers flushes. No React effect ever resets the saved marker
+   * mid-mutation, so an optimistic cache patch cannot corrupt the diff. */
+  const updateBlocksRef = useRef(updateBlocks);
+  useEffect(() => {
+    updateBlocksRef.current = updateBlocks;
+  }, [updateBlocks]);
+
+  const saverRef = useRef<ReturnType<typeof createBlocksSaver<Block[]>> | null>(
+    null,
+  );
+  const pageIdForSaver = page?.id;
+  const locked = app.locked;
 
   useEffect(() => {
-    if (!page) return;
-    savedRef.current = JSON.stringify(page.blocks ?? []);
+    if (!pageIdForSaver) return;
+    const saver = createBlocksSaver<Block[]>({
+      debounceMs: 500,
+      send: async (blocks) => {
+        await updateBlocksRef.current.mutateAsync({
+          pageId: pageIdForSaver,
+          blocks,
+        });
+      },
+    });
+    saverRef.current = saver;
+    return () => {
+      // Flush before tearing down (route change / pageId change).
+      void saver.flush().finally(() => saver.dispose());
+      if (saverRef.current === saver) saverRef.current = null;
+    };
+  }, [pageIdForSaver]);
+
+  // Prime savedRef from the server-known blocks on first mount for this
+  // page so no-op saves don't fire.
+  const primedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!page || !saverRef.current) return;
+    if (primedRef.current === page.id) return;
+    primedRef.current = page.id;
+    saverRef.current.markSaved(
+      (Array.isArray(page.blocks) ? page.blocks : []) as Block[],
+    );
   }, [page]);
 
-  useEffect(
-    () => () => {
-      if (debounceRef.current) window.clearTimeout(debounceRef.current);
-    },
-    [],
-  );
-
-  const flush = useCallback(() => {
-    if (!page || app.locked) return;
-    if (sendingRef.current) return;
-    const latest = latestRef.current;
-    if (!latest) return;
-    const json = JSON.stringify(latest);
-    if (json === savedRef.current) return;
-    sendingRef.current = true;
-    updateBlocks.mutate(
-      { pageId: page.id, blocks: latest },
-      {
-        onSettled: () => {
-          sendingRef.current = false;
-          savedRef.current = json;
-          // If more edits arrived while we were sending, dispatch one more.
-          const now = latestRef.current;
-          if (now && JSON.stringify(now) !== savedRef.current) {
-            flush();
-          }
-        },
-      },
-    );
-  }, [page, app.locked, updateBlocks]);
+  // Flush on page unload (tab close, hard nav).
+  useEffect(() => {
+    const onBeforeUnload = () => {
+      saverRef.current?.flush();
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    window.addEventListener("pagehide", onBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      window.removeEventListener("pagehide", onBeforeUnload);
+    };
+  }, []);
 
   const onBlocksChange = useCallback(
     (blocks: Block[]) => {
-      latestRef.current = blocks;
-      if (debounceRef.current) window.clearTimeout(debounceRef.current);
-      debounceRef.current = window.setTimeout(flush, 500);
+      if (locked) return;
+      saverRef.current?.set(blocks);
     },
-    [flush],
+    [locked],
   );
+
+  const onBodyBlur = useCallback(() => {
+    void saverRef.current?.flush();
+  }, []);
+
 
   if (pageQ.isLoading) {
     return (
@@ -883,6 +907,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
           pageId={page.id}
           initialBlocks={blocks}
           onChange={onBlocksChange}
+          onBlur={onBodyBlur}
           locked={app.locked}
         />
       </div>

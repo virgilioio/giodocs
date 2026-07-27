@@ -153,11 +153,13 @@ export function EditableBody({
   pageId,
   initialBlocks,
   onChange,
+  onBlur,
   locked,
 }: {
   pageId: string;
   initialBlocks: unknown[];
   onChange: (blocks: Blk[]) => void;
+  onBlur?: () => void;
   locked?: boolean;
 }) {
   const [blocks, setBlocks] = useState<Blk[]>(() => normalize(initialBlocks));
@@ -410,6 +412,7 @@ export function EditableBody({
           key={b.id}
           block={b}
           locked={!!locked}
+          onBlur={onBlur}
           registerRef={(el) => {
             if (el) refs.current[b.id] = el;
             else delete refs.current[b.id];
@@ -546,6 +549,7 @@ export function EditableBody({
 function BlockRow({
   block,
   locked,
+  onBlur,
   registerRef,
   onChange,
   onInput,
@@ -555,6 +559,7 @@ function BlockRow({
 }: {
   block: Blk;
   locked: boolean;
+  onBlur?: () => void;
   registerRef: (el: HTMLTextAreaElement | HTMLInputElement | null) => void;
   onChange: (patch: Partial<Blk>) => void;
   onInput: (val: string) => void;
@@ -592,6 +597,7 @@ function BlockRow({
       <BlockContent
         block={block}
         locked={locked}
+        onBlur={onBlur}
         registerRef={registerRef}
         onChange={onChange}
         onInput={onInput}
@@ -605,6 +611,7 @@ function BlockRow({
 function BlockContent({
   block,
   locked,
+  onBlur,
   registerRef,
   onChange,
   onInput,
@@ -613,6 +620,7 @@ function BlockContent({
 }: {
   block: Blk;
   locked: boolean;
+  onBlur?: () => void;
   registerRef: (el: HTMLTextAreaElement | HTMLInputElement | null) => void;
   onChange: (patch: Partial<Blk>) => void;
   onInput: (val: string) => void;
@@ -626,6 +634,7 @@ function BlockContent({
       onChange({ text: e.target.value });
       onInput(e.target.value);
     },
+    onBlur: onBlur,
     onKeyDown,
     disabled: locked,
     rows: 1,
@@ -646,7 +655,7 @@ function BlockContent({
 
   if (t === "table") {
     return (
-      <TableBlock block={block} locked={locked} onChange={onChange} />
+      <TableBlock block={block} locked={locked} onChange={onChange} onBlur={onBlur} />
     );
   }
 
@@ -855,10 +864,12 @@ function TableBlock({
   block,
   locked,
   onChange,
+  onBlur,
 }: {
   block: Blk;
   locked: boolean;
   onChange: (patch: Partial<Blk>) => void;
+  onBlur?: () => void;
 }) {
   const rows = block.rows ?? [["", "", ""], ["", "", ""]];
   const nCols = Math.max(...rows.map((r) => r.length));
@@ -899,6 +910,7 @@ function TableBlock({
                       value={cell ?? ""}
                       disabled={locked}
                       onChange={(e) => setCell(ri, ci, e.target.value)}
+                      onBlur={onBlur}
                       className="w-full border-0 bg-transparent px-2 py-1 outline-none"
                     />
                   </Tag>
