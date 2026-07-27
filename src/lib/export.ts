@@ -198,38 +198,43 @@ export function toMarkdown(ctx: ExportContext): string {
 function blockHtml(b: Block, ordinal = 1): string {
   const t = (b.type ?? "text") as string;
   const text = blockText(b);
+  // Inline markdown (bold, italic, code, links, …) inside text-carrying
+  // positions is converted to HTML via inlineToHtml, which escapes user
+  // text FIRST and then inserts tags. Escaping is never bypassed.
+  const inline = (s: string) => inlineToHtml(s);
   switch (t) {
     case "text":
-      return `<p>${esc(text)}</p>`;
+      return `<p>${inline(text)}</p>`;
     case "h1":
-      return `<h1>${esc(text)}</h1>`;
+      return `<h1>${inline(text)}</h1>`;
     case "h2":
-      return `<h2>${esc(text)}</h2>`;
+      return `<h2>${inline(text)}</h2>`;
     case "bullet":
-      return `<ul><li>${esc(text)}</li></ul>`;
+      return `<ul><li>${inline(text)}</li></ul>`;
     case "numbered":
       // Each block is its own <ol>; use `start` so the number matches the
       // page's read of the run (see numberedOrdinals).
-      return `<ol start="${ordinal}"><li>${esc(text)}</li></ol>`;
+      return `<ol start="${ordinal}"><li>${inline(text)}</li></ol>`;
     case "todo":
       return `<p class="todo"><input type="checkbox" disabled${
         b.checked ? " checked" : ""
-      }/> <span${b.checked ? ' class="done"' : ""}>${esc(text)}</span></p>`;
+      }/> <span${b.checked ? ' class="done"' : ""}>${inline(text)}</span></p>`;
     case "toggle": {
       const body = typeof b.body === "string" ? b.body : "";
-      return `<details${b.open ? " open" : ""}><summary>${esc(
+      return `<details${b.open ? " open" : ""}><summary>${inline(
         text,
-      )}</summary>${body ? `<p>${esc(body)}</p>` : ""}</details>`;
+      )}</summary>${body ? `<p>${inline(body)}</p>` : ""}</details>`;
     }
     case "quote":
-      return `<blockquote>${esc(text)}</blockquote>`;
+      return `<blockquote>${inline(text)}</blockquote>`;
     case "callout": {
       const icon =
         typeof b.icon === "string" && b.icon ? (b.icon as string) : "💡";
-      return `<aside><span class="ico">${esc(icon)}</span><span>${esc(
+      return `<aside><span class="ico">${esc(icon)}</span><span>${inline(
         text,
       )}</span></aside>`;
     }
+
     case "divider":
       return `<hr/>`;
     case "code": {
