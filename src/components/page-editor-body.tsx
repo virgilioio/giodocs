@@ -2995,8 +2995,8 @@ function ColumnStack({
               applyOp(mr);
               return;
             }
-            const el = refs.current[b.id] as HTMLTextAreaElement | undefined;
-            const caret = el?.selectionStart ?? val.length;
+            const el = refs.current[b.id];
+            const caret = el ? (readCaret(el, val)?.start ?? val.length) : val.length;
             const before = val.slice(0, caret);
             const slashPos = before.lastIndexOf("/");
             const openable =
@@ -3015,10 +3015,11 @@ function ColumnStack({
           }}
           onKeyDown={(e) => {
             if (locked) return;
-            const el = e.currentTarget as HTMLTextAreaElement;
-            const v = el.value;
-            const ss = el.selectionStart ?? 0;
-            const se = el.selectionEnd ?? 0;
+            const el = e.currentTarget as HTMLElement;
+            const v = b.text ?? "";
+            const car = readCaret(el, v) ?? { start: 0, end: 0 };
+            const ss = car.start;
+            const se = car.end;
 
             if (slash?.blockId === b.id) {
               if (e.key === "ArrowDown") {
