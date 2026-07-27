@@ -121,17 +121,39 @@ function PermissionsChip({
   page,
   workspaceName,
   access,
+  members,
 }: {
   page: PageFull;
   workspaceName: string;
   access: PageAccessRow[];
+  members: MemberRow[];
 }) {
   const isWorkspace = page.access_type === "workspace";
-  const nExplicit = access.filter((a) => a.user_id).length;
 
-  const label = isWorkspace
-    ? `Everyone at ${workspaceName}`
-    : `Only ${nExplicit} ${nExplicit === 1 ? "person" : "people"}`;
+  const memberInfo = useMemo(
+    () =>
+      members.map((m) => ({
+        user_id: m.user_id,
+        full_name: m.profiles?.full_name ?? null,
+        email: m.profiles?.email ?? null,
+        avatar_tint: m.profiles?.avatar_tint ?? null,
+        avatar_ink: m.profiles?.avatar_ink ?? null,
+      })),
+    [members],
+  );
+  const areaLabel = useMemo(() => {
+    const p = page.props as Record<string, unknown> | null;
+    const v = p && typeof p === "object" ? (p as Record<string, unknown>)["area"] : null;
+    return typeof v === "string" && v.trim() ? v : null;
+  }, [page.props]);
+  const norm = useMemo(
+    () => normAccess(page as never, access, memberInfo),
+    [page, access, memberInfo],
+  );
+  const label = useMemo(
+    () => panelCopy(norm, workspaceName, members.length, areaLabel).chipLabel,
+    [norm, workspaceName, members.length, areaLabel],
+  );
 
   const path = isWorkspace
     ? "M12 3a9 9 0 100 18 9 9 0 000-18zM3 12h18M12 3c3 3.5 3 14 0 18M12 3c-3 3.5-3 14 0 18"
