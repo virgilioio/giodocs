@@ -676,7 +676,7 @@ export function EditableBody({
       rows.push({ id, top: el.offsetTop, height: el.offsetHeight });
     });
     rows.sort((a, b) => a.top - b.top);
-    const ids = new Set(rowsInBand(rows, y1, y2));
+    const ids = new Set<string>(rowsInBand(rows, y1, y2));
     setSelectedIds(ids);
   }, []);
 
