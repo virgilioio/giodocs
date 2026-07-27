@@ -37,7 +37,7 @@ import { Fragment } from "react";
 
 const ESC_PUNCT = /[\\*_`~<>\[\]()]/;
 
-function safeUrl(url: string): string | null {
+export function safeUrl(url: string): string | null {
   const trimmed = url.trim();
   if (!trimmed) return null;
   // Scheme test — case-insensitive, ignore surrounding whitespace.
