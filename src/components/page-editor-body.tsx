@@ -1139,7 +1139,7 @@ function BlockRow({
   dimmed,
   registerRowEl,
   onHandlePointerDown,
-  onHandlePlainClick,
+  onHandleClick,
   onHandleShiftClick,
   onBlur,
   registerRef,
@@ -1155,7 +1155,7 @@ function BlockRow({
   dimmed: boolean;
   registerRowEl: (id: string, el: HTMLElement | null) => void;
   onHandlePointerDown: (ev: React.PointerEvent<HTMLElement>) => void;
-  onHandlePlainClick: () => void;
+  onHandleClick: (anchor: HTMLElement) => void;
   onHandleShiftClick: () => void;
   onBlur?: () => void;
   registerRef: (el: HTMLTextAreaElement | HTMLInputElement | null) => void;
