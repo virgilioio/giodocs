@@ -74,6 +74,11 @@ type ColumnBridge = {
    * inner block from its column first — but never below the column's
    * one-block minimum. */
   escapeColumn: (parentBlockId: string, removeBlockId: string | null) => void;
+  /** Stage-2 ⌘A from inside a column: blur the caret and promote the
+   *  selection to every top-level block on the page. Column-scoped block
+   *  selection is deliberately NOT supported — selectedIds is flat and
+   *  the bulk bar / delete / drag paths only handle top-level runs. */
+  selectAllTopLevel: () => void;
 };
 const ColumnBridgeCtx = createContext<ColumnBridge | null>(null);
 
@@ -1834,14 +1839,19 @@ export function EditableBody({
     [blocks, commit],
   );
 
+  const selectAllTopLevel = useCallback(() => {
+    setSelectedIds(new Set(blocks.map((x) => x.id)));
+  }, [blocks]);
+
   const columnBridge = useMemo<ColumnBridge>(
     () => ({
       registerRow: (colRef, id, el) => registerRowEl(id, el, colRef),
       registerTrack: (colRef, el) => registerColTrack(colRef, el),
       beginDrag: (id, ev, colRef) => beginDrag(id, ev, colRef),
       escapeColumn,
+      selectAllTopLevel,
     }),
-    [registerRowEl, registerColTrack, beginDrag, escapeColumn],
+    [registerRowEl, registerColTrack, beginDrag, escapeColumn, selectAllTopLevel],
   );
 
 
@@ -3008,6 +3018,19 @@ function ColumnStack({
                 setSlash(null);
                 return;
               }
+            }
+
+            // ⌘A two-stage inside a column. Column-scoped block selection
+            // is not supported (selectedIds is flat; bulk bar / delete /
+            // drag operate on top-level runs), so stage 2 jumps straight
+            // to selecting every top-level block on the page.
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+              if (shouldSelectAllBlocks(ss, se, v.length)) {
+                e.preventDefault();
+                el.blur();
+                bridge?.selectAllTopLevel();
+              }
+              return;
             }
 
             if (e.key === "Enter" && !e.shiftKey) {
