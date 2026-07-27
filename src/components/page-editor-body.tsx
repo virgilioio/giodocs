@@ -1015,8 +1015,9 @@ export function EditableBody({
         clearSelection();
       } else {
         // Splice at caret within the target block, via the shared op.
-        const ta = e.currentTarget as HTMLTextAreaElement;
-        const caret = ta.selectionStart ?? (blocks[idx].text ?? "").length;
+        const ta = e.currentTarget;
+        const src = blocks[idx].text ?? "";
+        const caret = readCaret(ta, src)?.start ?? src.length;
         const r = splicePasteAtCaret(blocks, blockId, caret, parsed);
         if (!r) return;
         next = r.next;
