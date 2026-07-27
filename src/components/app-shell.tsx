@@ -59,7 +59,7 @@ import {
 } from "./row-menu";
 import { useAllowedDomains, useMembers, usePropDefs } from "@/hooks/use-workspace-data";
 import { usePrefs } from "@/lib/preferences";
-import { nanoid } from "nanoid";
+
 
 type Selection =
   | { kind: "view"; id: string }
