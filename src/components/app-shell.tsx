@@ -1424,20 +1424,24 @@ function TeamViewRow({
         to="/v/$viewId"
         params={{ viewId: v.id }}
         style={{ height: "var(--spacing-rowTeam)" }}
-        className={rowClass(active)}
+        className={rowClass(active) + " min-w-0"}
       >
         <span
-          className="grid place-items-center"
-          style={{ width: 18, height: 18 }}
+          className="grid shrink-0 place-items-center"
+          style={{ width: 18, height: 18, flex: "none" }}
         >
           <LayoutGlyph layout={effectiveLayout} />
         </span>
-        <span className="min-w-0 flex-1 truncate text-meta text-secondary">
+        <span
+          className="min-w-0 flex-1 truncate text-meta text-secondary"
+          style={{ flex: "1 1 auto" }}
+          title={v.name}
+        >
           {v.name}
         </span>
         <span
-          className="relative flex items-center justify-end"
-          style={{ height: 17, minWidth: 17 }}
+          className="relative flex shrink-0 items-center justify-end"
+          style={{ height: 17, minWidth: 17, flex: "none" }}
         >
           {hover ? (
             <SpecMenuTrigger size="sm" build={build} />
@@ -1446,6 +1450,7 @@ function TeamViewRow({
           )}
         </span>
       </Link>
+
     </li>
   );
 }
