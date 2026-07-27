@@ -1318,6 +1318,8 @@ export function MainView({ selection }: { selection: Selection }) {
   const ws = useWorkspaceId();
   const { user } = useAuth();
   const shell = useWorkspaceShell(ws);
+  const pagesPending = shell.pages.isPending && !shell.pages.data;
+  const showSkeleton = useDelayedPending(pagesPending);
   const navigate = useNavigate();
 
   const setProp = useSetPageProperty();
