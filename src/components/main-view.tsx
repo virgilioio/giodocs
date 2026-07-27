@@ -40,6 +40,7 @@ import {
   useDeleteView,
 } from "@/hooks/use-page-mutations";
 import { ExportViewDialog } from "./export-view-dialog";
+import { EmojiPicker } from "./emoji-picker";
 import type { ExportViewRow } from "@/lib/export";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
