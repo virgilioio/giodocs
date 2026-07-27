@@ -519,6 +519,21 @@ export function EditableBody({
         />
       ))}
 
+      {/* Trailing click zone: any click below the last block focuses it,
+       * or appends a new empty text block. Keeps the body directly
+       * clickable without any "Enter to start" ritual. */}
+      <div
+        aria-hidden
+        onMouseDown={(e) => {
+          // Prefer default focus behaviour when clicking an actual block.
+          if ((e.target as HTMLElement).closest("textarea, input")) return;
+          e.preventDefault();
+          onBelowClick();
+        }}
+        style={{ minHeight: 240 }}
+      />
+
+
       {slash ? (
         <SlashMenu
           x={slash.x}
