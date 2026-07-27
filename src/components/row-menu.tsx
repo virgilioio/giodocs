@@ -64,6 +64,8 @@ export type MenuSpec = {
     danger?: boolean;
     onConfirm: () => void;
   };
+  /** When set, the title bar renders a ‹ Back button that calls this. */
+  onBack?: () => void;
   width?: number;
 };
 
