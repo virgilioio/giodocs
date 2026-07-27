@@ -1293,7 +1293,14 @@ function AreaLi({
               : "text-body hover:bg-railHover")
           }
         >
-          {icon && <span className="text-row leading-none">{icon}</span>}
+          <AreaEmojiSlot
+            icon={icon}
+            emojiOpen={emojiOpen}
+            setEmojiOpen={setEmojiOpen}
+            hoverRow={hover}
+            onPick={(e) => setAreaIcon.mutate({ area, emoji: e })}
+          />
+
           <span className="min-w-0 flex-1 truncate text-row">{area}</span>
           <span
             className="relative flex items-center justify-end"
