@@ -2767,19 +2767,17 @@ function ColumnStack({
     const el = refs.current[focusRequest.id];
     if (!el) return;
     el.focus({ preventScroll: true });
-    if ("setSelectionRange" in el) {
-      const v = (el as HTMLTextAreaElement).value;
-      const c =
-        focusRequest.caret === "end"
-          ? v.length
-          : focusRequest.caret === "start" || focusRequest.caret == null
-            ? 0
-            : Math.min(focusRequest.caret, v.length);
-      try {
-        (el as HTMLTextAreaElement).setSelectionRange(c, c);
-      } catch {
-        /* noop */
-      }
+    const src = blocks.find((b) => b.id === focusRequest.id)?.text ?? "";
+    const c =
+      focusRequest.caret === "end"
+        ? src.length
+        : focusRequest.caret === "start" || focusRequest.caret == null
+          ? 0
+          : Math.min(focusRequest.caret, src.length);
+    try {
+      writeCaret(el, src, c, c);
+    } catch {
+      /* noop */
     }
     setFocusRequest(null);
   }, [focusRequest, blocks]);
