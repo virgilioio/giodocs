@@ -1309,8 +1309,15 @@ export function PageEditor({ pageId }: { pageId: string }) {
           locked={app.locked}
           editedRel={page.edited_at ? relTime(page.edited_at) : null}
           editorFirstName={editorName}
-        />
       </div>
+      <PermissionsPopoverHost
+        page={page}
+        workspaceName={workspaceName}
+        members={members}
+        isOwner={members.some(
+          (m) => m.user_id === meId && m.role === "owner",
+        )}
+      />
     </div>
   );
 }
