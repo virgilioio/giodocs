@@ -1989,10 +1989,14 @@ export function EditableBody({
                 const bid = b.id;
                 const dir = op.dir;
                 requestAnimationFrame(() => {
-                  const cur = refs.current[bid] as HTMLTextAreaElement | undefined;
+                  const cur = refs.current[bid];
                   if (!cur || document.activeElement !== cur) return;
+                  const curBlk = blocks.find((x) => x.id === bid);
+                  const src = curBlk?.text ?? "";
+                  const car = readCaret(cur, src);
+                  if (!car) return;
                   if (dir === -1) {
-                    if (cur.selectionStart === 0 && cur.selectionEnd === 0) {
+                    if (car.start === 0 && car.end === 0) {
                       const idx = blocks.findIndex((x) => x.id === bid);
                       const target = nextEditableIndex(blocks, idx, -1);
                       if (target !== null) {
@@ -2002,8 +2006,8 @@ export function EditableBody({
                       }
                     }
                   } else {
-                    const l = cur.value.length;
-                    if (cur.selectionStart === l && cur.selectionEnd === l) {
+                    const l = src.length;
+                    if (car.start === l && car.end === l) {
                       const idx = blocks.findIndex((x) => x.id === bid);
                       const target = nextEditableIndex(blocks, idx, 1);
                       if (target !== null) {
