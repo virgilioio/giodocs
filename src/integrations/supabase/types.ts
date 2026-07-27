@@ -188,6 +188,7 @@ export type Database = {
           verified_at: string
           verified_by: string | null
           workspace_id: string
+          ws_role: string
         }
         Insert: {
           access_type?: string
@@ -206,6 +207,7 @@ export type Database = {
           verified_at?: string
           verified_by?: string | null
           workspace_id: string
+          ws_role?: string
         }
         Update: {
           access_type?: string
@@ -224,6 +226,7 @@ export type Database = {
           verified_at?: string
           verified_by?: string | null
           workspace_id?: string
+          ws_role?: string
         }
         Relationships: [
           {
@@ -665,6 +668,16 @@ export type Database = {
           title: string
         }[]
       }
+      set_page_access: {
+        Args: {
+          p_guests: Json
+          p_page: string
+          p_people: Json
+          p_type: string
+          p_ws_role: string
+        }
+        Returns: undefined
+      }
       set_page_property: {
         Args: { p_key: string; p_page: string; p_value: Json }
         Returns: {
@@ -684,6 +697,7 @@ export type Database = {
           verified_at: string
           verified_by: string | null
           workspace_id: string
+          ws_role: string
         }
         SetofOptions: {
           from: "*"
@@ -711,6 +725,7 @@ export type Database = {
           verified_at: string
           verified_by: string | null
           workspace_id: string
+          ws_role: string
         }
         SetofOptions: {
           from: "*"
