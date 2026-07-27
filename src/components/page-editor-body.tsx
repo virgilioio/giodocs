@@ -893,11 +893,6 @@ export function EditableBody({
           hint: { text: "›" },
           onPick: () =>
             mctx.setSpec({ title: "Turn into", rows: turnIntoSub }),
-          disabled: isMulti
-            ? false
-            : target?.type === "divider"
-              ? true
-              : false,
         },
         { kind: "sep" },
         {
@@ -926,7 +921,6 @@ export function EditableBody({
           label: "Move up",
           icon: "chevUp",
           hint: atTop ? { text: "at top" } : undefined,
-          disabled: atTop,
           onPick: () => {
             runMoveUp(blockId);
             mctx.close();
@@ -937,7 +931,6 @@ export function EditableBody({
           label: "Move down",
           icon: "chevDown",
           hint: atEnd ? { text: "at end" } : undefined,
-          disabled: atEnd,
           onPick: () => {
             runMoveDown(blockId);
             mctx.close();
