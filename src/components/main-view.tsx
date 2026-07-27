@@ -344,17 +344,11 @@ function QueryToolbar({
             <option value="title:desc">Title Z–A</option>
           </select>
         </div>
-        <button
-          type="button"
-          title="View options — coming soon"
-          aria-label="View options"
-          className="grid h-7 w-7 place-items-center rounded-sm text-muted hover:bg-sunken"
-        >
-          <Glyph
-            path="M6 12a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"
-            className="h-4 w-4"
-          />
-        </button>
+        <RowMoreButton
+          ariaLabel="View options"
+          build={menuBuild}
+          className="!h-[26px] !w-[26px]"
+        />
       </div>
 
     </div>
