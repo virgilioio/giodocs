@@ -1305,96 +1305,69 @@ export function MainView({ selection }: { selection: Selection }) {
     (m) => m.user_id === user.id && m.role === "owner",
   );
 
-  // Local session-only overrides layered on top of the view/area base.
-  const [localFilters, setLocalFilters] = useState<Filter[] | null>(null);
-  const [localSort, setLocalSort] = useState<SortSpec | null>(null);
-  const [localLayout, setLocalLayout] = useState<Layout | null>(null);
-  const [localGroupBy, setLocalGroupBy] = useState<string | null | undefined>(undefined);
+  // Per-view drafts (session-only, keyed by base id). Toolbar edits on
+  // team/area views land here; personal-owned views bypass drafts and
+  // persist directly to the row.
+  const [drafts, setDrafts] = useState<Record<string, ViewDraft>>({});
   const [renaming, setRenaming] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
-  // Header ⋯ menu is now handled by the unified RowMenu popover; no local anchor state.
 
-  const baseFilters: Filter[] = useMemo(() => {
-    if (selection.kind === "area") return [{ op: "eq", prop: "area", value: selection.area }];
-    return ((view?.filter ?? []) as Filter[]);
+  const base: ViewBase | null = useMemo(() => {
+    if (selection.kind === "area") return areaBaseView(selection.area);
+    if (view)
+      return {
+        id: view.id,
+        name: view.name,
+        scope: view.scope === "team" ? "team" : "personal",
+        layout: (view.layout as ViewBase["layout"]) ?? "table",
+        filter: (view.filter ?? []) as Filter[],
+        sort: (view.sort as SortSpec | null) ?? { prop: "edited", dir: "desc" },
+        group_by: view.group_by ?? null,
+      };
+    return null;
   }, [selection, view]);
-  const baseSort: SortSpec = useMemo(
-    () => ((view?.sort as SortSpec | null) ?? { prop: "edited", dir: "desc" }),
-    [view],
-  );
-  const baseLayout: Layout = (view?.layout as Layout | undefined) ?? "table";
-  const baseGroupBy: string | null = view?.group_by ?? null;
 
-  const filters = localFilters ?? baseFilters;
-  const sort = localSort ?? baseSort;
-  const layout: Layout = localLayout ?? baseLayout;
-  const groupBy: string = (localGroupBy !== undefined ? localGroupBy : baseGroupBy) ?? "status";
+  const current = useMemo(
+    () =>
+      base
+        ? currentView(base, drafts)
+        : null,
+    [base, drafts],
+  );
+
+  const filters: Filter[] = current?.filter ?? [];
+  const sort: SortSpec = current?.sort ?? { prop: "edited", dir: "desc" };
+  const layout: Layout = (current?.layout as Layout) ?? "table";
+  const groupBy: string = current?.group_by ?? "status";
   const fixedFilterIndex = selection.kind === "area" ? 0 : undefined;
 
-  const rows = useMemo(
-    () => runView(pages, { filter: filters, sort }, { me: user?.id ?? "", staleDays }),
-    [pages, filters, sort, user?.id, staleDays],
-  );
-
-  const areas = useMemo(() => {
-    const s = new Set<string>();
-    for (const p of pages) {
-      const a = propsOf(p)["area"];
-      if (typeof a === "string" && a) s.add(a);
-    }
-    return [...s].sort();
-  }, [pages]);
-
-  const people = useMemo(
-    () =>
-      members.map((m) => ({
-        id: m.user_id,
-        full_name: m.profiles?.full_name ?? null,
-      })),
-    [members],
-  );
-
-  const unfilteredCount = useMemo(
-    () => pages.filter((p) => !p.archived_at).length,
-    [pages],
-  );
-
-  const staleThreshold = Date.now() - staleDays * 24 * 60 * 60 * 1000;
-
-  const onChangeFilters = (next: Filter[]) => {
-    if (selection.kind === "area") { setLocalFilters(next); return; }
-    if (isOwnerOfView && view) {
-      setLocalFilters(null);
-      updateView.mutate({ id: view.id, patch: { filter: next } });
-    } else setLocalFilters(next);
+  const patchDraft = (id: string, patch: ViewDraft) => {
+    setDrafts((prev) => {
+      const next: Record<string, ViewDraft> = { ...prev };
+      const merged: ViewDraft = { ...(next[id] ?? {}), ...patch };
+      // Prune fields that now match the base — a fully-equal draft is
+      // indistinguishable from having none, so drop the key entirely.
+      if (base && id === base.id) {
+        const drop = (k: keyof ViewDraft, eq: () => boolean) => {
+          if (k in merged && eq()) delete merged[k];
+        };
+        drop("filter", () => JSON.stringify(merged.filter) === JSON.stringify(base.filter));
+        drop("sort", () => JSON.stringify(merged.sort) === JSON.stringify(base.sort));
+        drop("layout", () => merged.layout === base.layout);
+        drop("group_by", () => (merged.group_by ?? null) === (base.group_by ?? null));
+      }
+      if (Object.keys(merged).length === 0) delete next[id];
+      else next[id] = merged;
+      return next;
+    });
   };
-  const onChangeSort = (s: SortSpec) => {
-    if (selection.kind === "area") { setLocalSort(s); return; }
-    if (isOwnerOfView && view) {
-      setLocalSort(null);
-      updateView.mutate({ id: view.id, patch: { sort: s } });
-    } else setLocalSort(s);
-  };
-  const onChangeLayout = (l: Layout) => {
-    if (selection.kind === "area") { setLocalLayout(l); return; }
-    if (isOwnerOfView && view) {
-      setLocalLayout(null);
-      updateView.mutate({ id: view.id, patch: { layout: l } });
-    } else setLocalLayout(l);
-  };
-  const onChangeGroupBy = (g: string) => {
-    if (selection.kind === "area") { setLocalGroupBy(g); return; }
-    if (isOwnerOfView && view) {
-      setLocalGroupBy(undefined);
-      updateView.mutate({ id: view.id, patch: { group_by: g } });
-    } else setLocalGroupBy(g);
-  };
+  const clearDraft = (id: string) =>
+    setDrafts((prev) => {
+      if (!(id in prev)) return prev;
+      const { [id]: _drop, ...rest } = prev;
+      return rest;
+    });
 
-  const filterEq = JSON.stringify(filters) !== JSON.stringify(baseFilters);
-  const sortEq = JSON.stringify(sort) !== JSON.stringify(baseSort);
-  const layoutEq = layout !== baseLayout;
-  const groupEq = groupBy !== (baseGroupBy ?? "status");
-  const isModified = isTeamView && (filterEq || sortEq || layoutEq || groupEq);
 
   const statusDef = propDefs.find((d) => d.key === "status");
 
