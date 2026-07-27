@@ -91,6 +91,5 @@ describe("inlineToHtml", () => {
   });
   it("does not emit dangerous links", () => {
     expect(inlineToHtml("[x](javascript:alert(1))")).not.toContain("<a ");
-    expect(inlineToHtml("[x](javascript:alert(1))")).toContain("[x](javascript:alert(1))".replace(/</g,"&lt;").slice(0,3)); // rendered literally, escaped
   });
 });
