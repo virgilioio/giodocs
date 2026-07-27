@@ -937,11 +937,7 @@ function MyViewRow({
         style={{ height: "var(--spacing-rowMy)" }}
         className={rowClass(active)}
       >
-        {v.icon ? (
-          <span className="text-row leading-none">{v.icon}</span>
-        ) : (
-          <LayoutGlyph layout={v.layout} />
-        )}
+        <ViewIconSlot view={v} onSet={(icon) => updateView.mutate({ id: v.id, patch: { icon } })} />
         <span className="min-w-0 flex-1 truncate text-row">{v.name}</span>
         <span
           className="relative flex items-center justify-end"
@@ -957,6 +953,61 @@ function MyViewRow({
     </li>
   );
 }
+
+/**
+ * Clickable icon slot for a personal view — opens the shared emoji picker
+ * in a portalled popover. Clicks stopPropagation so the enclosing row
+ * doesn't navigate.
+ */
+function ViewIconSlot({
+  view,
+  onSet,
+}: {
+  view: ViewRow;
+  onSet: (icon: string | null) => void;
+}) {
+  return (
+    <span
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <Popover
+        width={264}
+        trigger={({ open, onClick, ref }) => (
+          <button
+            ref={ref}
+            type="button"
+            aria-label="Change view icon"
+            aria-expanded={open}
+            onClick={(e) => {
+              e.preventDefault();
+              onClick();
+            }}
+            className="grid place-items-center rounded-sm hover:bg-sunken"
+            style={{ width: 18, height: 18 }}
+          >
+            {view.icon ? (
+              <span className="text-row leading-none">{view.icon}</span>
+            ) : (
+              <LayoutGlyph layout={view.layout} />
+            )}
+          </button>
+        )}
+      >
+        {(close) => (
+          <EmojiPicker
+            removable
+            onPick={(e) => {
+              onSet(e);
+              close();
+            }}
+          />
+        )}
+      </Popover>
+    </span>
+  );
+}
+
 
 /**
  * Inner content for the personal-view menu. Stateful because "Rename" swaps
