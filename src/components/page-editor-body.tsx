@@ -2549,10 +2549,7 @@ function BlockContent({
     );
   }
 
-  const contentWrap = (node: React.ReactNode) =>
-    indent > 0
-      ? <div style={{ paddingLeft: indent * 24 }}>{node}</div>
-      : node;
+
 
   if (t === "bullet") {
     const glyph = BULLET_GLYPHS[indent % 3];
