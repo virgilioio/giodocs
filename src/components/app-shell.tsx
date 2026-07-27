@@ -822,7 +822,6 @@ function SidebarBody({
                       onVerify={(id) => verifyPage.mutate(id)}
                       setPageProperty={setPageProperty}
                       moveToArea={moveToArea}
-                      duplicatePage={duplicatePage}
                       deletePage={deletePage}
                       navigate={navigate}
                     />
