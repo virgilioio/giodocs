@@ -1867,194 +1867,238 @@ function ModifiedBand({ baseName }: { baseName: string }) {
 }
 
 
-/* ─────────────────────────── Header options menu ─────────────────────────── */
+/* ─────────────────────────── View toolbar ⋯ spec ─────────────────────────── */
 
-function ViewHeaderMenu({
-  view,
-  selection,
-  isWorkspaceOwner,
-  isOwnerOfView,
-  isTeamView,
-  workspaceName,
-  memberCount,
-  onRename,
-  onChangeIcon,
-  onDuplicatePersonal,
-  onDuplicateTeam,
-  onPublish,
-  onUnpublish,
-  onExport,
-  onDelete,
-  onAreaSaveAsView,
-}: {
-  view: ViewRow | null;
-  selection: Selection;
-  isWorkspaceOwner: boolean;
-  isOwnerOfView: boolean;
-  isTeamView: boolean;
-  workspaceName: string;
-  memberCount: number;
-  onRename: () => void;
-  onChangeIcon: (icon: string | null) => void;
-  onDuplicatePersonal: () => void;
-  onDuplicateTeam: () => void;
-  onPublish: () => void;
-  onUnpublish: () => void;
-  onExport: () => void;
-  onDelete: () => void;
-  onAreaSaveAsView: () => void;
-}) {
-  const [mode, setMode] = useState<"list" | "publish" | "delete" | "icon">("list");
+/**
+ * The view/area toolbar's ⋯ menu. Contents depend on state — this is
+ * where the product's central guarantee (team & area views are read-only;
+ * changes fork to My views) becomes visible.
+ *
+ * Pure builder — no React state. Submenus & confirms swap in place.
+ * ⌘⌥L / ⌘⇧R hints are honoured by keyboard shortcuts wired in MainView;
+ * ⌘D is not offered here because a view row is duplicated via the row
+ * menu (chunk 2b), not the toolbar.
+ */
+function buildViewToolbarSpec(
+  args: {
+    scope: "team" | "area" | "personal";
+    isModified: boolean;
+    isWorkspaceOwner: boolean;
+    isOwnerOfView: boolean;
+    name: string;
+    workspaceName: string;
+    memberCount: number;
+    publisherName: string;
+    layout: Layout;
+    rowCount: number;
+    unfilteredCount: number;
+    sortLabel: string;
+    onSaveAsMyView: () => void;
+    onDiscard: () => void;
+    onDuplicateTeam: () => void;
+    onAreaSaveAsView: () => void;
+    onChangeLayout: (l: Layout) => void;
+    onCopyLink: () => void;
+    onRename: () => void;
+    onPublish: () => void;
+    onUnpublish: () => void;
+    onDelete: () => void;
+  },
+  mctx: { setSpec: (s: MenuSpec) => void; close: () => void },
+): MenuSpec {
+  const {
+    scope,
+    isModified,
+    isWorkspaceOwner,
+    isOwnerOfView,
+    name,
+    workspaceName,
+    memberCount,
+    publisherName,
+    layout,
+    rowCount,
+    unfilteredCount,
+    sortLabel,
+  } = args;
 
-  const name = view?.name ?? (selection.kind === "area" ? selection.area : "");
   const title =
-    selection.kind === "area"
-      ? "Area"
-      : isTeamView
-        ? "Team view"
-        : "My view";
+    scope === "area" ? "Area" : scope === "team" ? "Team view" : "My view";
 
-  if (mode === "publish") {
-    return (
-      <RowMenuConfirm
-        title="Publish to the whole team?"
-        body={`It moves out of My views into Team views for all ${memberCount} people at ${workspaceName}.`}
-        confirmLabel="Publish"
-        variant="publish"
-        onConfirm={onPublish}
-      />
-    );
-  }
-  if (mode === "delete") {
-    return (
-      <RowMenuConfirm
-        title={`Delete "${name}"?`}
-        body="The view disappears — the pages it filtered are untouched."
-        confirmLabel="Delete view"
-        variant="danger"
-        onConfirm={onDelete}
-      />
-    );
-  }
-  if (mode === "icon") {
-    return (
-      <EmojiPicker
-        removable
-        onPick={(e) => {
-          onChangeIcon(e);
-          setMode("list");
-        }}
-      />
-    );
-  }
+  const footer =
+    scope === "team"
+      ? `Published by ${publisherName || "someone"} · read-only here. Save a copy to change it.`
+      : scope === "area"
+        ? "An area view is a query on one property. Saving makes it yours."
+        : personalViewFooter({
+            matchCount: rowCount,
+            totalCount: unfilteredCount,
+            sortLabel,
+          });
 
+  const layoutSubmenu = (): MenuSpec => ({
+    title: "Change layout",
+    rows: (["table", "board", "list"] as const).map((l) => ({
+      kind: "row" as const,
+      label: l === "table" ? "Table" : l === "board" ? "Board" : "List",
+      icon: l === "table" ? "layout" : l === "board" ? "board" : "list",
+      checked: l === layout,
+      onPick: () => {
+        args.onChangeLayout(l);
+        mctx.close();
+      },
+    })),
+  });
 
-  type Item =
-    | { kind: "divider" }
-    | {
-        id: string;
-        label: string;
-        hint?: ReactNode;
-        danger?: boolean;
-        submenu?: true;
-        keepOpen?: true;
-        disabled?: boolean;
-        onSelect?: () => void;
-      };
-  const items: Item[] = [];
+  const rows: MenuRow[] = [];
 
-  if (selection.kind === "area") {
-    items.push({
-      id: "save-as-view",
+  if (isModified) {
+    rows.push({
+      kind: "row",
       label: "Save as my view",
-      hint: <Val>personal</Val>,
-      onSelect: onAreaSaveAsView,
+      icon: "bookmark",
+      hint: { text: "personal" },
+      onPick: () => {
+        args.onSaveAsMyView();
+        mctx.close();
+      },
     });
-    items.push({
-      id: "export",
-      label: "Export view",
-      hint: <Val>CSV, Markdown</Val>,
-      onSelect: onExport,
+    rows.push({
+      kind: "row",
+      label: "Discard my changes",
+      icon: "clear",
+      hint: { text: "back to saved" },
+      onPick: () => {
+        args.onDiscard();
+        mctx.close();
+      },
     });
-  } else if (isOwnerOfView) {
-    items.push({
-      id: "rename",
-      label: "Rename view",
-      onSelect: onRename,
-    });
-    items.push({
-      id: "change-icon",
-      label: "Change icon",
-      submenu: true,
-      keepOpen: true,
-      onSelect: () => setMode("icon"),
-    });
-    items.push({
-      id: "duplicate",
-      label: "Duplicate",
-      hint: <Val>personal</Val>,
-      onSelect: onDuplicatePersonal,
-    });
-    if (isWorkspaceOwner) {
-      items.push({
-        id: "publish",
-        label: "Publish to team",
-        hint: <Val>shared</Val>,
-        submenu: true,
-        keepOpen: true,
-        onSelect: () => setMode("publish"),
-      });
-    }
-    items.push({
-      id: "export",
-      label: "Export view",
-      hint: <Val>CSV, Markdown</Val>,
-      onSelect: onExport,
-    });
-    items.push({ kind: "divider" });
-    items.push({
-      id: "delete",
-      label: "Delete view",
-      danger: true,
-      submenu: true,
-      keepOpen: true,
-      onSelect: () => setMode("delete"),
-    });
-  } else if (isTeamView) {
-    items.push({
-      id: "duplicate",
+  } else if (scope === "team") {
+    rows.push({
+      kind: "row",
       label: "Duplicate into My views",
-      hint: <Val>personal</Val>,
-      onSelect: onDuplicateTeam,
+      icon: "dup",
+      hint: { text: "personal" },
+      onPick: () => {
+        args.onDuplicateTeam();
+        mctx.close();
+      },
     });
-    items.push({
-      id: "export",
-      label: "Export view",
-      hint: <Val>CSV, Markdown</Val>,
-      onSelect: onExport,
+  } else if (scope === "area") {
+    rows.push({
+      kind: "row",
+      label: "Save this area as my view",
+      icon: "bookmark",
+      hint: { text: "personal" },
+      onPick: () => {
+        args.onAreaSaveAsView();
+        mctx.close();
+      },
     });
-    if (isWorkspaceOwner) {
-      items.push({ kind: "divider" });
-      items.push({
-        id: "unpublish",
-        label: "Unpublish to personal",
-        hint: <Val>personal</Val>,
-        onSelect: onUnpublish,
-      });
-      items.push({
-        id: "delete",
-        label: "Delete view",
-        danger: true,
-        submenu: true,
-        keepOpen: true,
-        onSelect: () => setMode("delete"),
-      });
-    }
   }
 
-  if (!items.length)
-    items.push({ id: "none", label: "No actions available", disabled: true });
-  return <RowMenuList title={title} items={items} />;
+  if (rows.length > 0) rows.push({ kind: "sep" });
+
+  rows.push({
+    kind: "row",
+    label: "Change layout",
+    icon: "layout",
+    hint: { text: layout },
+    onPick: () => mctx.setSpec(layoutSubmenu()),
+  });
+  rows.push({
+    kind: "row",
+    label: "Copy link",
+    icon: "link",
+    hint: { text: "⌘⌥L", mono: true },
+    onPick: () => {
+      args.onCopyLink();
+      mctx.close();
+    },
+  });
+
+  if (scope === "personal" && isOwnerOfView) {
+    rows.push({ kind: "sep" });
+    rows.push({
+      kind: "row",
+      label: "Rename view",
+      icon: "pencil",
+      hint: { text: "⌘⇧R", mono: true },
+      onPick: () => {
+        args.onRename();
+        mctx.close();
+      },
+    });
+    if (isWorkspaceOwner) {
+      rows.push({
+        kind: "row",
+        label: "Publish to team",
+        icon: "people",
+        hint: { text: "everyone sees it" },
+        onPick: () =>
+          mctx.setSpec({
+            title,
+            rows: [],
+            confirm: {
+              title: `Publish "${name}"?`,
+              body: `It moves out of My views into Team views for all ${memberCount} people at ${workspaceName}. Publishing is the only way a view becomes shared.`,
+              cta: "Publish",
+              onConfirm: args.onPublish,
+            },
+          }),
+      });
+    }
+    rows.push({ kind: "sep" });
+    rows.push({
+      kind: "row",
+      label: "Delete view",
+      icon: "trash",
+      danger: true,
+      onPick: () =>
+        mctx.setSpec({
+          title,
+          rows: [],
+          confirm: {
+            title: `Delete "${name}"?`,
+            body: "The view disappears — the pages it filtered are untouched.",
+            cta: "Delete view",
+            danger: true,
+            onConfirm: args.onDelete,
+          },
+        }),
+    });
+  } else if (scope === "team" && isWorkspaceOwner) {
+    rows.push({ kind: "sep" });
+    rows.push({
+      kind: "row",
+      label: "Unpublish to personal",
+      icon: "eyeOff",
+      hint: { text: "personal" },
+      onPick: () => {
+        args.onUnpublish();
+        mctx.close();
+      },
+    });
+    rows.push({
+      kind: "row",
+      label: "Delete view",
+      icon: "trash",
+      danger: true,
+      onPick: () =>
+        mctx.setSpec({
+          title,
+          rows: [],
+          confirm: {
+            title: `Delete "${name}"?`,
+            body: "The view disappears — the pages it filtered are untouched.",
+            cta: "Delete view",
+            danger: true,
+            onConfirm: args.onDelete,
+          },
+        }),
+    });
+  }
+
+  return { title, rows, footer: footer || undefined };
 }
 
 
