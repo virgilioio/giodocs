@@ -273,11 +273,13 @@ export function EditableBody({
   const [handleMenu, setHandleMenu] = useState<{
     blockId: string;
     anchor: HTMLElement;
+    spec: MenuSpec;
   } | null>(null);
-
-  const handleClick = useCallback((id: string, anchor: HTMLElement) => {
-    setHandleMenu({ blockId: id, anchor });
+  const closeHandleMenu = useCallback(() => setHandleMenu(null), []);
+  const setHandleMenuSpec = useCallback((spec: MenuSpec) => {
+    setHandleMenu((cur) => (cur ? { ...cur, spec } : cur));
   }, []);
+
 
 
   /* ────────── Drag: pointer session on a handle ────────── */
