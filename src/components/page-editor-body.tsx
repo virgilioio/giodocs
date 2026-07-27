@@ -546,13 +546,21 @@ export function EditableBody({
   const handlePaste = useCallback(
     (blockId: string, e: React.ClipboardEvent<HTMLTextAreaElement>) => {
       if (locked) return;
-      const raw = e.clipboardData?.getData("text/plain") ?? "";
+      // Prefer text/html when the source app (Notion, Google Docs) gave us
+      // one — convert to markdown and let the existing parser take it from
+      // there. Fall back to text/plain unchanged.
+      const htmlSrc = e.clipboardData?.getData("text/html") ?? "";
+      const plainSrc = e.clipboardData?.getData("text/plain") ?? "";
+      const raw = htmlSrc ? htmlToMarkdown(htmlSrc) : plainSrc;
       if (!raw) return;
       const hasNewline = /\r|\n/.test(raw);
       const hasMdMarker = /(^|\n)\s*(#{1,6} |[-*+] |\d+\. |> |```|---|\*\*\*|\|)/.test(
         raw,
       );
-      if (!hasNewline && !hasMdMarker) return; // plain word — let browser handle
+      // For text/plain: if there's no newline and no markdown marker, let
+      // the browser paste it as ordinary text (native undo intact). For
+      // text/html we always intercept — the source gave structure.
+      if (!htmlSrc && !hasNewline && !hasMdMarker) return;
       e.preventDefault();
 
       const parsed = parseMarkdown(raw) as unknown as Blk[];
