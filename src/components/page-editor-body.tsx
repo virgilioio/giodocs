@@ -130,6 +130,18 @@ function normalize(raw: unknown[]): Blk[] {
     if (!b || typeof b !== "object" || Array.isArray(b)) continue;
     const rec = b as Record<string, unknown>;
     const type = ((rec.type as string) ?? "text") as BlockType;
+    // Recurse one level into columns: normalise inner blocks per column,
+    // and defensively strip any accidental nested columns block (search
+    // only indexes one level; nesting would silently drop from ⌘K).
+    let cols: Blk[][] | undefined;
+    if (type === "columns" && Array.isArray(rec.cols)) {
+      const stripped = stripNestedColumns(rec.cols) as unknown[][];
+      cols = stripped.map((col) => normalize(col as unknown[]));
+      // Ensure every column has at least one editable block so caret has a target.
+      for (let i = 0; i < cols.length; i++) {
+        if (cols[i].length === 0) cols[i] = [newBlock("text")];
+      }
+    }
     out.push({
       ...(rec as Record<string, unknown>),
       id: (rec.id as string) ?? nanoid(10),
@@ -139,10 +151,12 @@ function normalize(raw: unknown[]): Blk[] {
       open: !!rec.open,
       icon: typeof rec.icon === "string" ? (rec.icon as string) : undefined,
       rows: Array.isArray(rec.rows) ? (rec.rows as string[][]) : undefined,
+      cols,
     } as Blk);
   }
   return out;
 }
+
 
 /* ────────────── Auto-grow textarea hook ────────────── */
 
