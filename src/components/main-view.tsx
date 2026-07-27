@@ -10,6 +10,12 @@ import { runView, type Filter, type SortSpec } from "@/lib/run-view";
 import { applyFilterReplacement, filterLabel } from "@/lib/filter-label";
 import { PageOriginContext, useSetPageOrigin } from "@/lib/page-origin";
 import { areaBaseView, currentView, type ViewBase, type ViewDraft } from "@/lib/view-drafts";
+import {
+  useDrafts,
+  patchDraft as storePatchDraft,
+  clearDraft as storeClearDraft,
+} from "@/lib/view-drafts-store";
+
 import { useToast } from "@/lib/toast";
 
 import { Popover } from "./popover";
