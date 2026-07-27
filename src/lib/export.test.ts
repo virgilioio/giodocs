@@ -244,6 +244,48 @@ describe("toHtml", () => {
   });
 });
 
+describe("h3, caption, and toggle-heading serialisation", () => {
+  it("blockToMarkdown round-trips h3 (### heading)", () => {
+    expect(blockToMarkdown(B("h3", { text: "Small" }))).toBe("### Small");
+  });
+
+  it("toHtml emits <h4> for h3 and escapes text", () => {
+    const html = toHtml({ title: "T", blocks: [B("h3", { text: "<x>" })] });
+    expect(html).toContain("<h4>&lt;x&gt;</h4>");
+  });
+
+  it("caption exports as plain paragraph in markdown and <p class=\"caption\"> in HTML", () => {
+    expect(blockToMarkdown(B("caption", { text: "note" }))).toBe("note");
+    const html = toHtml({ title: "T", blocks: [B("caption", { text: "note" })] });
+    expect(html).toContain('<p class="caption">note</p>');
+  });
+
+  it("levelled toggle emits summary at heading depth in markdown", () => {
+    expect(
+      blockToMarkdown(B("toggle", { text: "Sec", body: "hi", level: "h2" })),
+    ).toBe("## Sec\n\nhi");
+  });
+
+  it("levelled toggle wraps summary in <h3> for h2 (post-demotion)", () => {
+    const html = toHtml({
+      title: "T",
+      blocks: [B("toggle", { text: "Sec", level: "h2" })],
+    });
+    expect(html).toContain("<summary><h3>Sec</h3></summary>");
+  });
+
+  it("plain toggle (no level) keeps today's output — regression guard", () => {
+    expect(
+      blockToMarkdown(B("toggle", { text: "Details", body: "line" })),
+    ).toBe("**Details**\n  line");
+    const html = toHtml({
+      title: "T",
+      blocks: [B("toggle", { text: "Details" })],
+    });
+    expect(html).toContain("<summary>Details</summary>");
+  });
+});
+
 /* ─────────────────────────── View exports ─────────────────────────── */
 
 const mkRow = (over: Partial<ExportViewRow> = {}): ExportViewRow => ({
