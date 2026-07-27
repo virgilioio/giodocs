@@ -131,6 +131,7 @@ function PermissionsChip({
 
   return (
     <span
+      data-permissions-chip
       className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1 text-meta text-secondary"
       style={{ borderRadius: 999 }}
     >

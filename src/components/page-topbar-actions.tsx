@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIsMutating } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useWorkspaceId } from "@/lib/workspace-context";
@@ -12,14 +12,8 @@ import { formatTimestamp } from "@/lib/format";
 import { useToast } from "@/lib/toast";
 import { pageUrl } from "@/lib/slug";
 import { getPageOrigin } from "@/lib/page-origin";
-import {
-  MoreButton as RowMoreButton,
-  RowMenuList,
-  RowMenuConfirm,
-  Sc,
-  Val,
-  type RowMenuItem,
-} from "./row-menu";
+import { PageActionsMenu, PageMoreButton } from "./page-actions-menu";
+import { usePageAppearance } from "@/lib/page-appearance";
 import {
   useArchivePage,
   useDeletePage,
@@ -28,9 +22,10 @@ import {
   useSetPageProperty,
   useVerifyPage,
 } from "@/hooks/use-page-mutations";
-import type { PageAccessRow, PageFull, PageListItem, Block } from "@/lib/types";
+import type { PageListItem, PageFull, Block } from "@/lib/types";
 import { ExportDialog } from "./export-dialog";
 import type { ExportContext } from "@/lib/export";
+
 
 /* ────────────── Glyph ────────────── */
 
@@ -182,191 +177,20 @@ function propsOf(p: PageListItem | PageFull): Record<string, unknown> {
     : {};
 }
 
-/* ────────────── The ⋯ menu content ────────────── */
+/* The inline PageActionsMenu / SearchAllHint helpers that previously lived
+ * here were retired when the page-route ⋯ moved to its own component in
+ * src/components/page-actions-menu.tsx. Keep this file focused on the
+ * topbar orchestration: edited stamp, copy-link icon, and the ⋯ trigger. */
 
-type MenuMode = "list" | "area" | "delete";
 
-function PageActionsMenu({
-  page,
-  workspaceName,
-  memberCount,
-  access,
-  areas,
-  onCopyLink,
-  onExport,
-  onDuplicate,
-  onMoveArea,
-  onVerify,
-  isVerifiedToday,
-  onArchive,
-  onUnarchive,
-  onDelete,
-}: {
-  page: PageFull;
-  workspaceName: string;
-  memberCount: number;
-  access: PageAccessRow[];
-  areas: string[];
-  onCopyLink: () => void;
-  onExport: () => void;
-  onDuplicate: () => void;
-  onMoveArea: (area: string | null) => void;
-  onVerify: () => void;
-  isVerifiedToday: boolean;
-  onArchive: () => void;
-  onUnarchive: () => void;
-  onDelete: () => void;
-}) {
-  const [mode, setMode] = useState<MenuMode>("list");
-
-  const isWorkspace = page.access_type === "workspace";
-  const nExplicit = access.filter((a) => a.user_id).length;
-  const whoLabel = isWorkspace
-    ? `Everyone at ${workspaceName || `${memberCount} people`}`
-    : `Only ${nExplicit} ${nExplicit === 1 ? "person" : "people"}`;
-  const currentArea =
-    typeof propsOf(page)["area"] === "string"
-      ? (propsOf(page)["area"] as string)
-      : null;
-  const isArchived = !!page.archived_at;
-
-  if (mode === "area") {
-    return (
-      <RowMenuList
-        title="Change area"
-        onBack={() => setMode("list")}
-        items={[
-          {
-            id: "__none",
-            label: "No area",
-            check: !currentArea,
-            onSelect: () => {
-              onMoveArea(null);
-              setMode("list");
-            },
-          },
-          { kind: "divider" },
-          ...areas.map((a) => ({
-            id: a,
-            label: a,
-            check: a === currentArea,
-            onSelect: () => {
-              onMoveArea(a);
-              setMode("list");
-            },
-          })),
-        ]}
-      />
-    );
-  }
-
-  if (mode === "delete") {
-    return (
-      <RowMenuConfirm
-        title="Delete this page?"
-        body="It leaves every view at once. You can undo for a few seconds."
-        confirmLabel="Delete page"
-        variant="danger"
-        onConfirm={onDelete}
-      />
-    );
-  }
-
-  const items: RowMenuItem[] = [
-    // Group A — visibility & placement
-    {
-      id: "who",
-      label: "Who can see this",
-      hint: <Val>{whoLabel}</Val>,
-      disabled: true,
-    },
-    {
-      id: "area",
-      label: "Change area",
-      hint: <Val>{currentArea ?? "none"}</Val>,
-      submenu: true,
-      keepOpen: true,
-      onSelect: () => setMode("area"),
-    },
-    {
-      id: "verify",
-      label: isVerifiedToday ? "Verified today" : "Mark verified today",
-      disabled: isVerifiedToday,
-      onSelect: onVerify,
-    },
-    { kind: "divider" },
-    // Group B — page actions
-    {
-      id: "copy",
-      label: "Copy link",
-      hint: <Sc>⌘⌥L</Sc>,
-      onSelect: onCopyLink,
-    },
-    {
-      id: "export",
-      label: "Export",
-      hint: <Val>PDF, HTML, MD</Val>,
-      onSelect: onExport,
-    },
-    {
-      id: "dup",
-      label: "Duplicate",
-      hint: <Sc>⌘D</Sc>,
-      onSelect: onDuplicate,
-    },
-    isArchived
-      ? {
-          id: "unarchive",
-          label: "Unarchive",
-          hint: <Val>back in views</Val>,
-          onSelect: onUnarchive,
-        }
-      : {
-          id: "archive",
-          label: "Archive",
-          hint: <Val>stays searchable</Val>,
-          onSelect: onArchive,
-        },
-    {
-      id: "delete",
-      label: "Delete page",
-      danger: true,
-      submenu: true,
-      keepOpen: true,
-      onSelect: () => setMode("delete"),
-    },
-  ];
-
-  return (
-    <RowMenuList
-      title={page.title || "Untitled"}
-      items={items}
-      footer={<SearchAllHint />}
-    />
-  );
-}
-
-function SearchAllHint() {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-meta text-faint">
-      <svg viewBox="0 0 24 24" width={12} height={12} aria-hidden fill="none"
-        stroke="currentColor" strokeWidth={1.8} strokeLinecap="round"
-        strokeLinejoin="round">
-        <circle cx={11} cy={11} r={7} />
-        <path d="m20 20-3.5-3.5" />
-      </svg>
-      Search all actions…
-    </span>
-  );
-}
 
 /* ────────────── Main ────────────── */
 
 export function PageTopbarActions({
   pageId,
-  menuOpen: _menuOpen,
-  onMenuOpen: _onMenuOpen,
-  onMenuClose: _onMenuClose,
+  menuOpen,
+  onMenuOpen,
+  onMenuClose,
 }: {
   pageId: string;
   menuOpen: boolean;
@@ -379,6 +203,7 @@ export function PageTopbarActions({
   const accessQ = usePageAccess(pageId);
   const toast = useToast();
   const navigate = useNavigate();
+  const { app, set: setAppearance } = usePageAppearance(pageId);
 
   const pages = (shell.pages.data ?? []) as PageListItem[];
   const listRow = useMemo(
@@ -574,41 +399,6 @@ export function PageTopbarActions({
   const access = accessQ.data ?? [];
 
 
-  const buildMenu = (): ReactNode => {
-    if (!page) {
-      return (
-        <RowMenuList
-          title={listRow.title || "Untitled"}
-          items={[{ id: "wait", label: "Loading page…", disabled: true }]}
-        />
-      );
-    }
-    return (
-      <PageActionsMenu
-        page={page}
-        workspaceName={workspaceName}
-        memberCount={memberCount}
-        access={access}
-        areas={areas}
-        onCopyLink={doCopyLink}
-        onExport={() => setExportOpen(true)}
-        onDuplicate={doDuplicate}
-        onMoveArea={(area) =>
-          setProp.mutate({ pageId: page.id, key: "area", value: area })
-        }
-        onVerify={() => verify.mutate(page.id)}
-        isVerifiedToday={isVerifiedToday}
-        onArchive={() =>
-          archive.mutate({ pageId: page.id, archived: true })
-        }
-        onUnarchive={() =>
-          archive.mutate({ pageId: page.id, archived: false })
-        }
-        onDelete={doDelete}
-      />
-    );
-  };
-
   return (
     <>
       <EditedStamp
@@ -626,12 +416,63 @@ export function PageTopbarActions({
         <Glyph path={linkIcon} />
       </IconButton>
 
-      <RowMoreButton
-        size="md"
-        ariaLabel="Page actions"
-        build={buildMenu}
-        width={264}
+      <PageMoreButton
+        open={menuOpen}
+        onClick={() => {
+          const next = !menuOpen;
+          if (next) onMenuOpen(); else onMenuClose();
+        }}
       />
+
+      {page && (
+        <PageActionsMenu
+          open={menuOpen}
+          onClose={onMenuClose}
+          page={page}
+          workspaceName={workspaceName}
+          memberCount={memberCount}
+          access={access}
+          areas={areas}
+          appearance={app}
+          onAppearance={setAppearance}
+          handlers={{
+            onCopyLink: () => { void doCopyLink(); },
+            onExport: () => setExportOpen(true),
+            onDuplicate: () => { void doDuplicate(); },
+            onArchive: () => archive.mutate({ pageId: page.id, archived: true }),
+            onUnarchive: () => archive.mutate({ pageId: page.id, archived: false }),
+            onDelete: doDelete,
+            onVerify: () => {
+              verify.mutate(page.id);
+              toast.push("Verified just now — thanks for keeping this fresh.");
+            },
+            onOpenPermissions: () => {
+              // No standalone permissions popover exists yet; the on-page
+              // permissions chip is the surface. Focus it so the user sees
+              // where "who can see this" lives, without building a second
+              // popover.
+              const chip = document.querySelector<HTMLElement>(
+                "[data-permissions-chip]",
+              );
+              if (chip) {
+                chip.scrollIntoView({ block: "center", behavior: "smooth" });
+              }
+            },
+            onMoveArea: (area) => {
+              setProp.mutate({ pageId: page.id, key: "area", value: area });
+              const from =
+                page.props && typeof page.props === "object" && !Array.isArray(page.props)
+                  ? ((page.props as Record<string, unknown>).area as string | undefined)
+                  : undefined;
+              toast.push(
+                area
+                  ? `Moved to ${area}${from ? ` · was ${from}` : ""}`
+                  : `Cleared area${from ? ` · was ${from}` : ""}`,
+              );
+            },
+          }}
+        />
+      )}
 
       {exportOpen && exportCtx && (
         <ExportDialog ctx={exportCtx} onClose={() => setExportOpen(false)} />
@@ -639,3 +480,4 @@ export function PageTopbarActions({
     </>
   );
 }
+
