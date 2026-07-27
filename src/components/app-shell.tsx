@@ -1779,7 +1779,6 @@ function PageRowLi({
       },
       mctx,
     );
-  void duplicatePage; // Sidebar page menu no longer offers Duplicate (CHUNK 3a).
   void me;
   void props;
   return (
