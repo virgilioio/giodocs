@@ -629,10 +629,14 @@ function NumberInline({
   value,
   onSet,
   onOpenChange,
+  propKey,
+  defType,
 }: {
   value: number | null;
   onSet: (v: number | null) => void;
   onOpenChange: (open: boolean) => void;
+  propKey: string;
+  defType?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<string>(value === null ? "" : String(value));
@@ -647,12 +651,13 @@ function NumberInline({
       <button
         type="button"
         onClick={() => setEditing(true)}
-        className="text-left text-meta text-body tnum"
+        className={VALUE_CELL_CLASS + " tnum"}
+        style={VALUE_CELL_STYLE}
       >
         {value === null ? (
-          <span className="italic text-whisper">—</span>
+          <EmptyValue propKey={propKey} defType={defType} />
         ) : (
-          value
+          <span style={{ fontSize: 14, color: "var(--color-strong)" }}>{value}</span>
         )}
       </button>
     );
