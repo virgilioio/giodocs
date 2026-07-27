@@ -170,8 +170,8 @@ function GuestAvatar({ email, size = 24 }: { email: string; size?: number }) {
       style={{
         width: size,
         height: size,
-        background: "#F1F0EC",
-        color: "#6B7080",
+        background: "var(--color-sunken)",
+        color: "var(--color-muted)",
         fontSize: 10,
         fontWeight: 700,
         lineHeight: 1,
@@ -910,7 +910,7 @@ export function PermissionsPopoverHost({
                   <IconTile
                     path={GLOBE}
                     bg="var(--color-accentTint)"
-                    color="var(--color-accent, #0B7A57)"
+                    color="var(--color-accent)"
                     size={24}
                     iconSize={13}
                   />
@@ -1080,7 +1080,7 @@ function AccessCard({
       <IconTile
         path={icon}
         bg={selected ? "var(--color-surface)" : "var(--color-sunken)"}
-        color={selected ? "var(--color-accent, #0B7A57)" : "var(--color-secondary)"}
+        color={selected ? "var(--color-accent)" : "var(--color-secondary)"}
       />
       <span style={{ minWidth: 0, flex: 1 }}>
         <span
@@ -1108,7 +1108,7 @@ function AccessCard({
         <Ic
           path={CHECK}
           size={15}
-          color="var(--color-accent, #0B7A57)"
+          color="var(--color-accent)"
           strokeWidth={2.2}
         />
       )}
@@ -1346,7 +1346,7 @@ function InlineRoleItem({
           <Ic
             path={CHECK}
             size={12}
-            color="var(--color-accent, #0B7A57)"
+            color="var(--color-accent)"
             strokeWidth={2.2}
           />
         )}

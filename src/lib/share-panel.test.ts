@@ -12,8 +12,8 @@ const M = [
     user_id: "u1",
     full_name: "Alice",
     email: "alice@acme.com",
-    avatar_tint: "#eee",
-    avatar_ink: "#111",
+    avatar_tint: "var(--color-sunken)",
+    avatar_ink: "var(--color-noir)",
   },
   {
     user_id: "u2",
