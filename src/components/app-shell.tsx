@@ -2323,7 +2323,7 @@ function NewAreaPopover({
   const [submitting, setSubmitting] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const setAreaIcon = useSetAreaIcon();
+  const registerArea = useRegisterArea();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -2351,16 +2351,11 @@ function NewAreaPopover({
     if (!valid || submitting) return;
     setSubmitting(true);
     try {
-      // Register the area in property_defs (no page is created — an area
-      // is a query over pages, not a container). applyAreaIcon(null)
-      // appends when the emoji is empty via the null-append fallback:
-      // we pass null and rely on the append case only when the value is
-      // new. Since the area is new by construction (duplicate check above),
-      // we call setAreaIcon with a placeholder emoji of null — but
-      // applyAreaIcon skips the append when emoji is null. To register
-      // with no emoji, write the options manually here rather than route
-      // through the icon transform.
-      await registerArea(trimmed);
+      // Register the area in property_defs. No page is created — areas
+      // are queries over pages, not containers. The area view will render
+      // its empty state until a page's props.area matches.
+      await registerArea.mutateAsync(trimmed);
+
       onClose();
       navigate({ to: "/a/$area", params: { area: trimmed } });
     } catch (err) {
