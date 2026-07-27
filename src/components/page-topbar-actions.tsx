@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIsMutating } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useWorkspaceId } from "@/lib/workspace-context";
@@ -12,14 +12,8 @@ import { formatTimestamp } from "@/lib/format";
 import { useToast } from "@/lib/toast";
 import { pageUrl } from "@/lib/slug";
 import { getPageOrigin } from "@/lib/page-origin";
-import {
-  MoreButton as RowMoreButton,
-  RowMenuList,
-  RowMenuConfirm,
-  Sc,
-  Val,
-  type RowMenuItem,
-} from "./row-menu";
+import { PageActionsMenu, PageMoreButton } from "./page-actions-menu";
+import { usePageAppearance } from "@/lib/page-appearance";
 import {
   useArchivePage,
   useDeletePage,
@@ -28,9 +22,10 @@ import {
   useSetPageProperty,
   useVerifyPage,
 } from "@/hooks/use-page-mutations";
-import type { PageAccessRow, PageFull, PageListItem, Block } from "@/lib/types";
+import type { PageListItem, PageFull, Block } from "@/lib/types";
 import { ExportDialog } from "./export-dialog";
 import type { ExportContext } from "@/lib/export";
+
 
 /* ────────────── Glyph ────────────── */
 
