@@ -1406,8 +1406,9 @@ function PageRowLi({
       }
       onMoveArea={(a) => moveToArea.mutate({ pageId: p.id, area: a })}
       onDuplicate={() => duplicatePage.mutate(p.id)}
-      onDelete={() => deletePage.mutate(p.id)}
+      onDelete={() => onDeleteWithUndo(p)}
     />
+
   );
   return (
     <li
