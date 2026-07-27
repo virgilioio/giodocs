@@ -1554,6 +1554,87 @@ export function MainView({ selection }: { selection: Selection }) {
   };
 
 
+  /* --- shortcut & spec support ---------------------------------------- */
+
+  const sortLabel = useMemo(() => {
+    const key = `${sort.prop}:${sort.dir}`;
+    return (
+      SORT_CHOICES.find((c) => c.key === key)?.label ?? SORT_CHOICES[0].label
+    );
+  }, [sort]);
+
+  const publisherName = useMemo(() => {
+    if (!view || view.scope !== "team" || !view.owner_id) return "";
+    const m = members.find((mm) => mm.user_id === view.owner_id);
+    return m?.profiles?.full_name || m?.profiles?.email || "";
+  }, [view, members]);
+
+  const copyLinkHere = () => {
+    const origin =
+      typeof window !== "undefined" && window.location
+        ? window.location.origin
+        : "";
+    const url =
+      selection.kind === "area"
+        ? `${origin}/a/${encodeURIComponent(selection.area)}`
+        : view
+          ? `${origin}/v/${view.id}`
+          : origin;
+    void navigator.clipboard?.writeText?.(url);
+    const name =
+      selection.kind === "area"
+        ? selection.area
+        : view?.name ?? "this view";
+    toast.push(`Copied link to "${name}"`);
+  };
+
+  const scope: "team" | "area" | "personal" =
+    selection.kind === "area"
+      ? "area"
+      : isTeamView
+        ? "team"
+        : "personal";
+
+  // Wire the mono keyboard hints the toolbar promises. Guard against
+  // focus in typable elements so shortcuts never eat a keystroke.
+  useEffect(() => {
+    const isTypable = (el: EventTarget | null): boolean => {
+      if (!(el instanceof HTMLElement)) return false;
+      const tag = el.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT")
+        return true;
+      return el.isContentEditable;
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (isTypable(document.activeElement)) return;
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const k = e.key.toLowerCase();
+      // ⌘⌥L / Ctrl+Alt+L — copy link (view or area).
+      if (k === "l" && e.altKey && (view || selection.kind === "area")) {
+        e.preventDefault();
+        copyLinkHere();
+        return;
+      }
+      // ⌘D — duplicate the current view (personal → dup; team → fork).
+      if (k === "d" && !e.altKey && !e.shiftKey && view) {
+        e.preventDefault();
+        if (isOwnerOfView) doDuplicatePersonal();
+        else if (isTeamView) doDuplicateTeam();
+        return;
+      }
+      // ⌘⇧R — start inline rename on a personal-owned view.
+      if (k === "r" && e.shiftKey && !e.altKey && view && isOwnerOfView) {
+        e.preventDefault();
+        setRenaming(true);
+        return;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, selection, isOwnerOfView, isTeamView]);
+
   const emptyBody = (
     <div className="grid place-items-center py-20 text-center">
       <div className="font-display text-subhead text-noir">
