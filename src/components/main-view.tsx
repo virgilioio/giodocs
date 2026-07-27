@@ -265,6 +265,7 @@ function QueryToolbar({
   fixedFilterIndex,
   pages,
   verbose,
+  pill,
   menuBuild,
 }: {
   filters: Filter[];
@@ -281,6 +282,7 @@ function QueryToolbar({
   fixedFilterIndex?: number;
   pages: PageListItem[];
   verbose: boolean;
+  pill?: ReactNode;
   menuBuild: () => ReactNode;
 }) {
   const pickFilter = (picked: Filter) =>
@@ -368,6 +370,8 @@ function QueryToolbar({
       )}
 
       <div style={{ flex: 1, minWidth: 8 }} />
+
+      {pill}
 
       <RowMoreButton
         size="view"
