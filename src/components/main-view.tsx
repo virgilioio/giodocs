@@ -1991,6 +1991,13 @@ function ViewHeaderMenu({
       onSelect: onRename,
     });
     items.push({
+      id: "change-icon",
+      label: "Change icon",
+      submenu: true,
+      keepOpen: true,
+      onSelect: () => setMode("icon"),
+    });
+    items.push({
       id: "duplicate",
       label: "Duplicate",
       hint: <Val>personal</Val>,
