@@ -1747,6 +1747,8 @@ function AreaEmojiSlot({
 }) {
   return (
     <span
+      className="shrink-0"
+      style={{ flex: "none" }}
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
