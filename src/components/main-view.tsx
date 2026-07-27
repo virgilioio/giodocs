@@ -33,6 +33,8 @@ import {
   type MenuRow,
 } from "./row-menu";
 import { personalViewFooter } from "@/lib/personal-view-footer";
+import { buildPageRowSpec, firstNameOf } from "@/lib/page-row-spec";
+import { rangeSelect } from "@/lib/row-selection";
 import {
   useSetPageProperty,
   useRenamePage,
@@ -43,6 +45,10 @@ import {
   useForkView,
   usePublishView,
   useDeleteView,
+  useVerifyPage,
+  useDeletePage,
+  useMovePageToArea,
+  useRestorePage,
 } from "@/hooks/use-page-mutations";
 import { ExportViewDialog } from "./export-view-dialog";
 import { useDelayedPending } from "./sk";
@@ -1361,6 +1367,16 @@ export function MainView({ selection }: { selection: Selection }) {
   const [renaming, setRenaming] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
 
+  // Multi-select — exactly two fields on the view. anchor drives shift-click
+  // range from the RENDERED row order (post-runView, post-sort).
+  const [selPages, setSelPages] = useState<string[]>([]);
+  const [selPageAnchor, setSelPageAnchor] = useState<string | null>(null);
+
+  const verifyPage = useVerifyPage();
+  const deletePage = useDeletePage();
+  const movePageToArea = useMovePageToArea();
+  const restorePage = useRestorePage();
+
   const base: ViewBase | null = useMemo(() => {
     if (selection.kind === "area") return areaBaseView(selection.area);
     if (view)
@@ -1409,6 +1425,58 @@ export function MainView({ selection }: { selection: Selection }) {
     () => runView(pages, { filter: filters, sort }, { me: user?.id ?? "", staleDays }),
     [pages, filters, sort, user?.id, staleDays],
   );
+
+  const rowIds = useMemo(() => rows.map((r) => r.id), [rows]);
+  const selectedSet = useMemo(() => new Set(selPages), [selPages]);
+  const anySelection = selPages.length > 0;
+
+  const toggleOne = (id: string) => {
+    setSelPages((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+    setSelPageAnchor(id);
+  };
+  const toggleShift = (id: string) => {
+    setSelPages((prev) => rangeSelect(rowIds, selPageAnchor, id, prev));
+    setSelPageAnchor(id);
+  };
+  const onCheckboxClick = (id: string, shift: boolean) => {
+    if (shift) toggleShift(id);
+    else toggleOne(id);
+  };
+  const clearSelection = () => {
+    setSelPages([]);
+    setSelPageAnchor(null);
+  };
+  const selectAllRendered = () => {
+    setSelPages(rowIds);
+    setSelPageAnchor(rowIds[rowIds.length - 1] ?? null);
+  };
+  const selectAllState: "none" | "some" | "all" =
+    selPages.length === 0
+      ? "none"
+      : rowIds.length > 0 && rowIds.every((id) => selectedSet.has(id))
+        ? "all"
+        : "some";
+  const onHeaderCheckboxClick = () => {
+    if (selectAllState === "none") selectAllRendered();
+    else clearSelection();
+  };
+
+  // Escape clears any active selection. Sits after popovers (which own
+  // their own escape) and before block selection (page editor scope).
+  useEffect(() => {
+    if (!anySelection) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // Popovers and menus stop propagation before this fires; if the event
+      // reaches window and there's a selection, clear it.
+      clearSelection();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anySelection]);
 
   const areas = useMemo(() => {
     const s = new Set<string>();
@@ -1686,6 +1754,63 @@ export function MainView({ selection }: { selection: Selection }) {
     </div>
   );
 
+  // Delete-with-undo — mirrors the sidebar page row behaviour so the two
+  // surfaces stay identical.
+  const onDeleteWithUndo = (row: PageListItem) => {
+    const snap = row;
+    deletePage.mutate(row.id, {
+      onSuccess: () => {
+        toast.push({
+          message: "Page deleted — it left every view at once.",
+          action: {
+            label: "Undo",
+            onClick: () =>
+              restorePage.mutate({ pageId: snap.id, row: snap }),
+          },
+          durationMs: 10_000,
+        });
+      },
+    });
+  };
+
+  // Adapter — the view surfaces receive `PropDef[]`, buildPageRowSpec wants
+  // { key, label, options }. Same rows, narrower shape.
+  const specPropDefs = useMemo(
+    () =>
+      propDefs.map((d) => ({
+        key: d.key,
+        label: d.label ?? d.key,
+        options: d.options,
+      })),
+    [propDefs],
+  );
+
+  const getPageMenuBuild = (p: PageListItem) => {
+    const editedByFirstName = firstNameOf(
+      members.find((m) => m.user_id === p.edited_by),
+    );
+    return (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) =>
+      buildPageRowSpec(
+        {
+          p,
+          isStale: new Date(p.verified_at).getTime() < staleThreshold,
+          propDefs: specPropDefs,
+          members,
+          editedByFirstName,
+          onOpen: () =>
+            navigate({ to: "/p/$pageId", params: { pageId: p.id } }),
+          onVerify: () => verifyPage.mutate(p.id),
+          onSetStatus: (v) =>
+            setProp.mutate({ pageId: p.id, key: "status", value: v }),
+          onSetOwner: (uid) =>
+            setProp.mutate({ pageId: p.id, key: "owner", value: uid }),
+          onMoveArea: (a) => movePageToArea.mutate({ pageId: p.id, area: a }),
+          onDelete: () => onDeleteWithUndo(p),
+        },
+        mctx,
+      );
+  };
+
   let body: ReactNode;
   if (rows.length === 0) body = emptyBody;
   else if (layout === "board")
@@ -1699,6 +1824,10 @@ export function MainView({ selection }: { selection: Selection }) {
         onMove={(pageId, value) =>
           setProp.mutate({ pageId, key: groupBy, value })
         }
+        selectedSet={selectedSet}
+        anySelection={anySelection}
+        onCheckboxClick={onCheckboxClick}
+        getPageMenuBuild={getPageMenuBuild}
       />
     );
   else if (layout === "list")
@@ -1708,6 +1837,10 @@ export function MainView({ selection }: { selection: Selection }) {
         members={members}
         propDefs={propDefs}
         staleThreshold={staleThreshold}
+        selectedSet={selectedSet}
+        anySelection={anySelection}
+        onCheckboxClick={onCheckboxClick}
+        getPageMenuBuild={getPageMenuBuild}
       />
     );
   else
@@ -1721,6 +1854,12 @@ export function MainView({ selection }: { selection: Selection }) {
         staleThreshold={staleThreshold}
         rename={rename}
         setProp={setProp}
+        selectedSet={selectedSet}
+        anySelection={anySelection}
+        onCheckboxClick={onCheckboxClick}
+        selectAllState={selectAllState}
+        onHeaderCheckboxClick={onHeaderCheckboxClick}
+        getPageMenuBuild={getPageMenuBuild}
       />
     );
 
