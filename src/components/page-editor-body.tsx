@@ -10,7 +10,15 @@ import {
 import { nanoid } from "nanoid";
 import { createPortal } from "react-dom";
 import type { Block } from "@/lib/types";
-import { moveBlock, moveRun, deleteIndices } from "@/lib/reorder";
+import {
+  moveBlock,
+  moveRun,
+  deleteIndices,
+  moveBlockAcross,
+  moveRunAcross,
+  type Path as ReorderPath,
+  type ColumnRef,
+} from "@/lib/reorder";
 import { blockToMarkdown } from "@/lib/export";
 import { parseMarkdown } from "@/lib/markdown-import";
 import { htmlToMarkdown, htmlToBlocks } from "@/lib/html-to-markdown";
