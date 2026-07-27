@@ -451,11 +451,11 @@ export function useCreatePage() {
           blocks: (v.blocks ?? []) as never,
         })
         .select(
-          "id, title, icon, props, verified_at, verified_by, edited_at, edited_by, access_type",
+          "id, workspace_id, title, icon, props, blocks, access_type, verified_at, verified_by, edited_at, edited_by, created_by, created_at, deleted_at, archived_at",
         )
         .single();
       if (error) throw error;
-      return data as PageListItem;
+      return data as unknown as PageFull;
     },
     onMutate: async (v) => {
       await qc.cancelQueries({ queryKey: qk.pages(ws) });
@@ -482,11 +482,27 @@ export function useCreatePage() {
     },
     onSuccess: (row, v, ctx) => {
       const tempId = ctx?.tempId ?? v._tempId;
+      // Project the PageFull row down to the list shape.
+      const listRow: PageListItem = {
+        id: row.id,
+        title: row.title,
+        icon: row.icon,
+        props: row.props as PageListItem["props"],
+        verified_at: row.verified_at,
+        verified_by: row.verified_by,
+        edited_at: row.edited_at,
+        edited_by: row.edited_by,
+        access_type: row.access_type,
+        archived_at: row.archived_at ?? null,
+      };
       qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) => {
-        if (!prev) return [row];
+        if (!prev) return [listRow];
         const filtered = prev.filter((p) => p.id !== tempId && p.id !== row.id);
-        return [row, ...filtered];
+        return [listRow, ...filtered];
       });
+      // Seed the page-detail cache so /p/{id} renders instantly with correct
+      // data instead of flashing a loading skeleton.
+      qc.setQueryData<PageFull>(qk.page(row.id), row);
       toast.push(`New page created`);
     },
     onError: (err, _v, ctx) => {
