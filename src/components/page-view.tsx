@@ -697,10 +697,14 @@ function DateInline({
   value,
   onSet,
   onOpenChange,
+  propKey,
+  defType,
 }: {
   value: string | null;
   onSet: (v: string | null) => void;
   onOpenChange: (open: boolean) => void;
+  propKey: string;
+  defType?: string;
 }) {
   const label =
     value && !isNaN(new Date(value).getTime())
@@ -715,9 +719,14 @@ function DateInline({
           ref={ref}
           type="button"
           onClick={onClick}
-          className="text-left text-meta text-body"
+          className={VALUE_CELL_CLASS}
+          style={VALUE_CELL_STYLE}
         >
-          {label ?? <span className="italic text-whisper">—</span>}
+          {label ? (
+            <span style={{ fontSize: 14, color: "var(--color-strong)" }}>{label}</span>
+          ) : (
+            <EmptyValue propKey={propKey} defType={defType} />
+          )}
         </button>
       )}
     >
@@ -753,9 +762,13 @@ function DateInline({
 function TextInline({
   value,
   onSet,
+  propKey,
+  defType,
 }: {
   value: string;
   onSet: (v: string) => void;
+  propKey: string;
+  defType?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -767,9 +780,14 @@ function TextInline({
       <button
         type="button"
         onClick={() => setEditing(true)}
-        className="w-full text-left text-meta text-body"
+        className={VALUE_CELL_CLASS + " w-full"}
+        style={VALUE_CELL_STYLE}
       >
-        {value ? value : <span className="italic text-whisper">—</span>}
+        {value ? (
+          <span style={{ fontSize: 14, color: "var(--color-strong)" }}>{value}</span>
+        ) : (
+          <EmptyValue propKey={propKey} defType={defType} />
+        )}
       </button>
     );
   }
