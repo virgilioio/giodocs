@@ -379,10 +379,10 @@ function QueryToolbar({
 
       {pill}
 
-      <RowMoreButton
-        size="view"
+      <SpecMenuTrigger
+        size="toolbar"
         ariaLabel="View options"
-        build={menuBuild}
+        build={menuSpec}
       />
     </div>
   );
