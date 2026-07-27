@@ -645,13 +645,51 @@ export function EditableBody({
     setFocusRequest({ id: spawn.id, caret: "start" });
   }
 
+  const draggingIdSet = useMemo(
+    () => new Set(dragging?.ids ?? []),
+    [dragging],
+  );
+  const runIdxs = useMemo(() => {
+    if (!dragging || dragging.ids.length < 2) return null;
+    const ids = blocks.map((b) => b.id);
+    const idxs = dragging.ids
+      .map((x) => ids.indexOf(x))
+      .filter((i) => i >= 0)
+      .sort((a, b) => a - b);
+    return idxs.length ? { start: idxs[0], end: idxs[idxs.length - 1] } : null;
+  }, [dragging, blocks]);
+  // Hide indicator when a run drop would land inside the run.
+  const indicatorVisible =
+    dragging &&
+    dragging.gap != null &&
+    dragging.indicatorY != null &&
+    (runIdxs
+      ? dragging.gap < runIdxs.start || dragging.gap > runIdxs.end + 1
+      : (() => {
+          const from = blocks.findIndex((b) => b.id === dragging.ids[0]);
+          return from < 0 ? true : dragging.gap !== from && dragging.gap !== from + 1;
+        })());
+
   return (
-    <div className="relative space-y-1">
+    <div
+      ref={containerRef}
+      className="relative space-y-1"
+      onFocusCapture={(e) => {
+        const t = e.target as HTMLElement;
+        if (t.tagName === "TEXTAREA" || t.tagName === "INPUT") clearSelection();
+      }}
+    >
       {blocks.map((b) => (
         <BlockRow
           key={b.id}
           block={b}
           locked={!!locked}
+          selected={selectedIds.has(b.id)}
+          dimmed={draggingIdSet.has(b.id)}
+          registerRowEl={registerRowEl}
+          onHandlePointerDown={(ev) => beginDrag(b.id, ev)}
+          onHandlePlainClick={handlePlainClick}
+          onHandleShiftClick={() => handleShiftClick(b.id)}
           onBlur={onBlur}
           registerRef={(el) => {
             if (el) refs.current[b.id] = el;
@@ -660,7 +698,6 @@ export function EditableBody({
           onChange={(patch) => updateBlock(b.id, patch)}
           onInput={(val) => {
             if (tryMarkdown(b.id, val)) return;
-            // Slash menu open on typing '/'
             const el = refs.current[b.id] as HTMLTextAreaElement | undefined;
             const caret = el?.selectionStart ?? val.length;
             const before = val.slice(0, caret);
@@ -686,7 +723,6 @@ export function EditableBody({
             const ss = el.selectionStart ?? 0;
             const se = el.selectionEnd ?? 0;
 
-            // Slash-menu keyboard capture
             if (slash?.blockId === b.id) {
               if (e.key === "ArrowDown") {
                 e.preventDefault();
@@ -718,7 +754,6 @@ export function EditableBody({
             }
 
             if (e.key === "Enter" && !e.shiftKey) {
-              // Table cells use a plain input — their handler is separate.
               e.preventDefault();
               const isEmptyListLike =
                 (b.type === "bullet" || b.type === "numbered" || b.type === "todo") &&
@@ -769,20 +804,34 @@ export function EditableBody({
         />
       ))}
 
-      {/* Trailing click zone: any click below the last block focuses it,
-       * or appends a new empty text block. Keeps the body directly
-       * clickable without any "Enter to start" ritual. */}
+      {/* Drop indicator */}
+      {indicatorVisible ? (
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            top: dragging!.indicatorY!,
+            height: 2,
+            background: "var(--color-accentDot)",
+            borderRadius: 1,
+            pointerEvents: "none",
+            zIndex: 40,
+          }}
+        />
+      ) : null}
+
+      {/* Trailing click zone */}
       <div
         aria-hidden
         onMouseDown={(e) => {
-          // Prefer default focus behaviour when clicking an actual block.
           if ((e.target as HTMLElement).closest("textarea, input")) return;
           e.preventDefault();
           onBelowClick();
         }}
         style={{ minHeight: 240 }}
       />
-
 
       {slash ? (
         <SlashMenu
@@ -795,6 +844,64 @@ export function EditableBody({
           onClose={closeSlash}
         />
       ) : null}
+
+      {selectedIds.size > 0 && !locked
+        ? createPortal(
+            <div
+              role="status"
+              aria-live="polite"
+              className="animate-toastUp"
+              style={{
+                position: "fixed",
+                bottom: 24,
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 80,
+                background: "var(--color-noir)",
+                color: "var(--color-track)",
+                borderRadius: 14,
+                padding: "10px 12px 10px 16px",
+                boxShadow: "0 12px 40px rgba(13,13,9,.35)",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                fontSize: 13.5,
+              }}
+            >
+              <span>
+                <strong>{selectedIds.size}</strong>{" "}
+                {selectedIds.size === 1 ? "block" : "blocks"} selected · drag any
+                handle to move them together
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const ids = blocks.map((b) => b.id);
+                  const toDrop = ids
+                    .map((id, i) => (selectedIds.has(id) ? i : -1))
+                    .filter((i) => i >= 0);
+                  const next = deleteIndices(blocks, toDrop, () => newBlock("text"));
+                  clearSelection();
+                  commit(next);
+                }}
+                className="rounded-md px-2 py-1 hover:bg-noirHover"
+                style={{ color: "var(--color-track)", fontWeight: 600 }}
+              >
+                Delete
+              </button>
+              <button
+                type="button"
+                aria-label="Dismiss selection"
+                onClick={clearSelection}
+                className="grid h-6 w-6 place-items-center rounded-md hover:bg-noirHover"
+                style={{ color: "var(--color-track)" }}
+              >
+                ×
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
