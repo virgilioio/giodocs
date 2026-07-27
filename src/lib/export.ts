@@ -491,9 +491,7 @@ ${propsHtml}
     : `<h1 class="title">${titleEsc}</h1>`;
 
   const ords = numberedOrdinals(ctx.blocks);
-  const body = ctx.blocks
-    .map((b) => blockHtml(b, (b.id && ords.get(b.id)) || 1))
-    .join("\n");
+  const body = renderBlocksHtml(ctx.blocks, ords);
 
   // Footer: logo (data URI) left, page title right. If the logo failed to
   // inline (very unlikely — module init exception), fall back to a text
