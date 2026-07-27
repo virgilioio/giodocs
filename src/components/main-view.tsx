@@ -2525,6 +2525,12 @@ function TableBody({
   staleThreshold,
   rename,
   setProp,
+  selectedSet,
+  anySelection,
+  onCheckboxClick,
+  selectAllState,
+  onHeaderCheckboxClick,
+  getPageMenuBuild,
 }: {
   rows: PageListItem[];
   pages: PageListItem[];
@@ -2534,6 +2540,12 @@ function TableBody({
   staleThreshold: number;
   rename: ReturnType<typeof useRenamePage>;
   setProp: ReturnType<typeof useSetPageProperty>;
+  selectedSet: Set<string>;
+  anySelection: boolean;
+  onCheckboxClick: (id: string, shift: boolean) => void;
+  selectAllState: "none" | "some" | "all";
+  onHeaderCheckboxClick: () => void;
+  getPageMenuBuild: (p: PageListItem) => (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
 }) {
   // Stable tag options: recompute from pages, but keep the same array ref
   // when contents are unchanged so memoized rows don't re-render.
@@ -2552,6 +2564,23 @@ function TableBody({
   const renameMutate = rename.mutate;
   const setPropMutate = setProp.mutate;
 
+  // Click delegation — while a selection is active, clicking a row body
+  // toggles that row instead of opening the page. Without this, one stray
+  // mid-selection click navigates away and the selection is lost. Skip
+  // clicks that originate on the checkbox or the ⋯ button — those handle
+  // themselves.
+  const onGridClickCapture = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!anySelection) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("[data-row-checkbox]") || target.closest("[data-row-more]") || target.closest('[aria-label="Page actions"]')) return;
+    const cell = target.closest("[data-page-id]") as HTMLElement | null;
+    const id = cell?.getAttribute("data-page-id");
+    if (!id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onCheckboxClick(id, e.shiftKey);
+  };
+
   return (
     <div className="overflow-x-auto">
       <div
@@ -2560,9 +2589,17 @@ function TableBody({
         style={{
           display: "grid",
           gridTemplateColumns:
-            "minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr) minmax(0,0.9fr) minmax(0,0.9fr)",
+            "16px minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr) minmax(0,0.9fr) minmax(0,0.9fr) 24px",
         }}
+        onClickCapture={onGridClickCapture}
       >
+        <HeaderCell>
+          <HeaderSelectAll
+            state={selectAllState}
+            count={rows.length}
+            onClick={onHeaderCheckboxClick}
+          />
+        </HeaderCell>
         <HeaderCell>Page</HeaderCell>
         <HeaderCell className="hidden xs:block">Area</HeaderCell>
         <HeaderCell>Owner</HeaderCell>
@@ -2570,6 +2607,7 @@ function TableBody({
         <HeaderCell className="hidden sm:block">Tags</HeaderCell>
         <HeaderCell className="hidden md:block">Verified</HeaderCell>
         <HeaderCell>Edited</HeaderCell>
+        <HeaderCell> </HeaderCell>
 
         {rows.map((p) => (
           <TableRow
@@ -2583,6 +2621,10 @@ function TableBody({
             rename={renameMutate}
             setProp={setPropMutate}
             pagesForTitleCell={pages}
+            selected={selectedSet.has(p.id)}
+            anySelection={anySelection}
+            onCheckboxClick={onCheckboxClick}
+            buildMenu={getPageMenuBuild(p)}
           />
         ))}
       </div>
@@ -2600,6 +2642,10 @@ function BoardBody({
   members,
   staleThreshold,
   onMove,
+  selectedSet,
+  anySelection,
+  onCheckboxClick,
+  getPageMenuBuild,
 }: {
   rows: PageListItem[];
   groupBy: string;
