@@ -371,10 +371,11 @@ export function EditableBody({
     const id = focusedIdRef.current;
     if (!id) return null;
     const el = refs.current[id];
-    if (!el || !("selectionStart" in el)) return null;
-    const off = (el as HTMLTextAreaElement).selectionStart;
-    if (typeof off !== "number") return null;
-    return { blockId: id, offset: off };
+    if (!el) return null;
+    const src = blocksRef.current.find((b) => b.id === id)?.text ?? "";
+    const car = readCaret(el, src);
+    if (!car) return null;
+    return { blockId: id, offset: car.start };
   }
 
   const commit = useCallback(
