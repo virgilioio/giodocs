@@ -89,6 +89,7 @@
   --animate-fadeIn: fadeIn 150ms ease-out;
   --animate-toastUp: toastUp 180ms ease-out;
   --animate-shake: shake 350ms ease-in-out;
+  --animate-skShimmer: skShimmer 1.5s linear infinite;
 }
 
 @keyframes popIn   { from { opacity:0; transform:translateY(-4px) scale(.985) } to { opacity:1; transform:none } }
@@ -97,6 +98,9 @@
 @keyframes fadeIn  { from { opacity:0 } to { opacity:1 } }
 @keyframes toastUp { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:none } }
 @keyframes shake   { 0%,100% { transform:translateX(0) } 25% { transform:translateX(-3px) } 75% { transform:translateX(3px) } }
+@keyframes skShimmer { from { background-position: 100% 0 } to { background-position: -100% 0 } }
+
+@media (prefers-reduced-motion: reduce) { .animate-skShimmer { animation: none } }
 
 @layer base {
   html { -webkit-font-smoothing: antialiased; }

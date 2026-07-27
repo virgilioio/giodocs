@@ -45,6 +45,8 @@ import {
   useDeleteView,
 } from "@/hooks/use-page-mutations";
 import { ExportViewDialog } from "./export-view-dialog";
+import { useDelayedPending } from "./sk";
+import { ViewSkeleton, BoardSkeleton } from "./skeletons";
 import { EmojiPicker } from "./emoji-picker";
 import type { ExportViewRow } from "@/lib/export";
 import type { PageListItem } from "@/lib/types";
@@ -1316,6 +1318,8 @@ export function MainView({ selection }: { selection: Selection }) {
   const ws = useWorkspaceId();
   const { user } = useAuth();
   const shell = useWorkspaceShell(ws);
+  const pagesPending = shell.pages.isPending && !shell.pages.data;
+  const showSkeleton = useDelayedPending(pagesPending);
   const navigate = useNavigate();
 
   const setProp = useSetPageProperty();
@@ -1728,6 +1732,13 @@ export function MainView({ selection }: { selection: Selection }) {
             scope: view.scope === "team" ? "team" : "personal",
           }
         : { kind: "search" };
+
+  if (pagesPending) {
+    if (!showSkeleton) return null;
+    if (layout === "board") return <BoardSkeleton />;
+    return <ViewSkeleton layout={layout === "list" ? "list" : "table"} />;
+  }
+
 
   return (
     <PageOriginContext.Provider value={originValue}>
