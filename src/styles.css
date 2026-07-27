@@ -135,3 +135,9 @@
   .gio-page[data-small="1"] .gio-page-body :where(h3) { font-size: 15.5px; }
   .gio-page[data-locked="1"] .gio-block-gutter { opacity: 0.4; pointer-events: none; }
 }
+
+@layer components {
+  /* Dark-surface button hover (e.g. selection bar on --color-noir). No
+     token added — bg is a fixed light overlay on any dark surface. */
+  .bar-btn:hover { background: rgba(255,255,255,.12); }
+}

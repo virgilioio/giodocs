@@ -861,7 +861,7 @@ export function EditableBody({
                 color: "var(--color-track)",
                 borderRadius: 14,
                 padding: "10px 12px 10px 16px",
-                boxShadow: "0 12px 40px rgba(13,13,9,.35)",
+                boxShadow: "var(--shadow-toast)",
                 display: "flex",
                 alignItems: "center",
                 gap: 12,
@@ -884,7 +884,7 @@ export function EditableBody({
                   clearSelection();
                   commit(next);
                 }}
-                className="rounded-md px-2 py-1 hover:bg-noirHover"
+                className="bar-btn rounded-md px-2 py-1"
                 style={{ color: "var(--color-track)", fontWeight: 600 }}
               >
                 Delete
@@ -893,7 +893,7 @@ export function EditableBody({
                 type="button"
                 aria-label="Dismiss selection"
                 onClick={clearSelection}
-                className="grid h-6 w-6 place-items-center rounded-md hover:bg-noirHover"
+                className="bar-btn grid h-6 w-6 place-items-center rounded-md"
                 style={{ color: "var(--color-track)" }}
               >
                 ×
