@@ -328,7 +328,7 @@ export function useUpdateView() {
     mutationFn: async (v: {
       id: string;
       patch: Partial<
-        Pick<ViewFull, "name" | "icon" | "filter" | "sort" | "layout" | "group_by">
+        Pick<ViewFull, "name" | "icon" | "filter" | "sort" | "layout" | "group_by" | "scope">
       >;
     }) => {
       const { error } = await supabase
