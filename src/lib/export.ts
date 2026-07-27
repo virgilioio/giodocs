@@ -670,17 +670,20 @@ export async function printPdf(
   const win = window.open("", "_blank");
   if (!win) throw new Error("popup-blocked");
   const zoom = Math.max(0.5, Math.min(2, scalePct / 100));
-  // @page owns the bottom margin (0.85in) — the paginator applies it to
-  // EVERY sheet, so the fixed footer band clears content on p2, p3, … not
-  // just p1. Top/left/right stay 0 so Chrome's default print chrome (URL,
-  // page numbers) is suppressed and our own header/body handle spacing.
-  // Body padding provides the top/left/right inset only — dropping the
-  // bottom padding is deliberate: @page now owns that space.
+  // @page carries all four margins now — 0.8in top/bottom, 0.75in left/right
+  // — applied to EVERY sheet by the paginator. No body padding: padding is a
+  // document-flow property that only insets the first page's content column,
+  // which is what caused pages 2+ to bleed to the paper edge. Injected AFTER
+  // the base stylesheet's @page so this rule wins the cascade for the
+  // user's selected paper size.
+  // Chrome MAY print its own header/footer (title, date, URL, page numbers)
+  // if "Headers and footers" is ticked in the print dialog — that is now
+  // the user's choice rather than something suppressed by breaking layout.
   const augmented = html.replace(
     "</style>",
-    `@page { size: ${paper}; margin: 0 0 0.85in 0; }
+    `@page { size: ${paper}; margin: 0.8in 0.75in; }
      html, body { background: #ffffff; }
-     body { padding: 0.6in 0.75in 0; max-width: none; zoom: ${zoom}; }
+     body { max-width: none; zoom: ${zoom}; }
      </style>`,
   );
   win.document.open();
