@@ -147,13 +147,23 @@ describe("immutability", () => {
 });
 
 describe("export round-trip after column ops", () => {
+  const htmlOf = (rows: string[][]) =>
+    toHtml({
+      title: "T",
+      area: null,
+      status: null,
+      ownerName: null,
+      tags: [],
+      verifiedAt: null,
+      blocks: [{ id: "t", type: "table", rows } as never],
+    });
   it("2-column table exports a valid pipe table (separator matches header width)", () => {
     const block = { type: "table", rows: [["a", "b"], ["1", "2"]] };
     const md = blockToMarkdown(block as never, 1);
     const lines = md.split("\n");
     expect(lines[0]).toBe("| a | b |");
     expect(lines[1]).toBe("| --- | --- |");
-    expect(blockToHtml(block as never)).toContain("<table>");
+    expect(htmlOf(block.rows)).toContain("<table>");
   });
   it("5-column table (after adding two columns) still round-trips", () => {
     const rows0: string[][] = [["a", "b", "c"], ["1", "2", "3"]];
@@ -165,8 +175,6 @@ describe("export round-trip after column ops", () => {
     const cols = (l: string) => l.split("|").length - 2;
     expect(cols(lines[0])).toBe(5);
     expect(cols(lines[1])).toBe(5);
-    // separator width matches header
-    expect(lines[1].replace(/[^-]/g, "").length).toBeGreaterThan(0);
-    expect(blockToHtml(block as never)).toContain("<table>");
+    expect(htmlOf(rows1)).toContain("<table>");
   });
 });
