@@ -198,4 +198,101 @@
   }
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   PAGE BODY VERTICAL RHYTHM
+   ─────────────────────────────────────────────────────────────────────────
+   One principle governs all of it: SPACE BELONGS ABOVE A HEADING, NOT BELOW.
+   A heading should sit far from what precedes it and close to what follows,
+   because that proximity is what makes it read as a heading rather than as
+   another line of text. Everything below is an expression of that.
 
+   All spacing is margin-based. The container's row-gap is zeroed first so
+   nothing is doubled — if you later add a gap back, these numbers all shift.
+   ───────────────────────────────────────────────────────────────────────── */
+
+@layer components {
+  .gio-page-body {
+    /* Between two ordinary blocks (paragraph → paragraph). */
+    --gio-block-gap: 10px;
+    /* Between consecutive items of the same list — tight, so a list reads
+       as one object rather than a stack of separate blocks. */
+    --gio-list-gap: 3px;
+    /* Air above each heading level. */
+    --gio-h1-above: 34px;
+    --gio-h2-above: 26px;
+    --gio-h3-above: 20px;
+    /* Air below a heading, before its first block. Deliberately small. */
+    --gio-head-below: 7px;
+    /* Set pieces that need room to read as distinct objects. */
+    --gio-block-y: 16px;
+    --gio-divider-y: 28px;
+
+    row-gap: 0;
+  }
+
+  /* Base rhythm. */
+  .gio-page-body [data-block-id] { margin-top: var(--gio-block-gap); }
+  .gio-page-body [data-block-id]:first-child { margin-top: 0; }
+
+  /* Lists tighten between siblings of the same type. Indented items inherit
+     this because an indented bullet is still a bullet. */
+  .gio-page-body [data-block-type="bullet"]   + [data-block-type="bullet"],
+  .gio-page-body [data-block-type="numbered"] + [data-block-type="numbered"],
+  .gio-page-body [data-block-type="todo"]     + [data-block-type="todo"] {
+    margin-top: var(--gio-list-gap);
+  }
+
+  /* Set pieces. */
+  .gio-page-body [data-block-type="quote"],
+  .gio-page-body [data-block-type="callout"],
+  .gio-page-body [data-block-type="code"],
+  .gio-page-body [data-block-type="table"],
+  .gio-page-body [data-block-type="columns"] {
+    margin-top: var(--gio-block-y);
+  }
+
+  /* A caption belongs to the thing above it — almost touching. */
+  .gio-page-body [data-block-type="caption"] { margin-top: 3px; }
+
+  /* Dividers get room on both sides; they exist to separate. */
+  .gio-page-body [data-block-type="divider"] { margin-top: var(--gio-divider-y); }
+  .gio-page-body [data-block-type="divider"] + [data-block-id] {
+    margin-top: var(--gio-divider-y);
+  }
+
+  /* Headings claim their air. */
+  .gio-page-body [data-block-type="h1"] { margin-top: var(--gio-h1-above); }
+  .gio-page-body [data-block-type="h2"] { margin-top: var(--gio-h2-above); }
+  .gio-page-body [data-block-type="h3"] { margin-top: var(--gio-h3-above); }
+
+  /* …and give it back to whatever follows them. This is the rule that makes
+     a heading look attached to its section. It must come AFTER the heading
+     rules above so it wins for the following sibling. */
+  .gio-page-body [data-block-type="h1"] + [data-block-id],
+  .gio-page-body [data-block-type="h2"] + [data-block-id],
+  .gio-page-body [data-block-type="h3"] + [data-block-id] {
+    margin-top: var(--gio-head-below);
+  }
+
+  /* A heading immediately after another heading (H1 → H2 → H3) needs less
+     than a full gap — the pair is one unit. Last, so it beats both rules. */
+  .gio-page-body [data-block-type^="h"] + [data-block-type^="h"] {
+    margin-top: 15px;
+  }
+
+  /* The first block of a column starts flush — the column track already
+     provides the offset. */
+  .gio-page-body .gio-cols [data-block-id]:first-child { margin-top: 0; }
+
+  /* Small-text mode scales the rhythm with the type, or the page reads
+     loose at a size chosen to be tighter. */
+  .gio-page[data-small="1"] .gio-page-body {
+    --gio-block-gap: 8px;
+    --gio-h1-above: 28px;
+    --gio-h2-above: 22px;
+    --gio-h3-above: 17px;
+    --gio-head-below: 6px;
+    --gio-block-y: 13px;
+    --gio-divider-y: 23px;
+  }
+}
