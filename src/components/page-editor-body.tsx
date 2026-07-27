@@ -549,6 +549,7 @@ export function EditableBody({
 function BlockRow({
   block,
   locked,
+  onBlur,
   registerRef,
   onChange,
   onInput,
@@ -558,6 +559,7 @@ function BlockRow({
 }: {
   block: Blk;
   locked: boolean;
+  onBlur?: () => void;
   registerRef: (el: HTMLTextAreaElement | HTMLInputElement | null) => void;
   onChange: (patch: Partial<Blk>) => void;
   onInput: (val: string) => void;
@@ -595,6 +597,7 @@ function BlockRow({
       <BlockContent
         block={block}
         locked={locked}
+        onBlur={onBlur}
         registerRef={registerRef}
         onChange={onChange}
         onInput={onInput}
