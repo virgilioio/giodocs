@@ -616,24 +616,31 @@ export function EditableBody({
   const handlePaste = useCallback(
     (blockId: string, e: React.ClipboardEvent<HTMLTextAreaElement>) => {
       if (locked) return;
-      // Prefer text/html when the source app (Notion, Google Docs) gave us
-      // one — convert to markdown and let the existing parser take it from
-      // there. Fall back to text/plain unchanged.
       const htmlSrc = e.clipboardData?.getData("text/html") ?? "";
       const plainSrc = e.clipboardData?.getData("text/plain") ?? "";
-      const raw = htmlSrc ? htmlToMarkdown(htmlSrc) : plainSrc;
-      if (!raw) return;
-      const hasNewline = /\r|\n/.test(raw);
-      const hasMdMarker = /(^|\n)\s*(#{1,6} |[-*+] |\d+\. |> |```|---|\*\*\*|\|)/.test(
-        raw,
-      );
-      // For text/plain: if there's no newline and no markdown marker, let
-      // the browser paste it as ordinary text (native undo intact). For
-      // text/html we always intercept — the source gave structure.
-      if (!htmlSrc && !hasNewline && !hasMdMarker) return;
-      e.preventDefault();
 
-      const parsed = parseMarkdown(raw) as unknown as Blk[];
+      // Structured Notion path: if the clipboard HTML contains a column_list,
+      // build a real columns block via htmlToBlocks and splice it in — the
+      // markdown round-trip cannot express columns and would flatten them.
+      let parsed: Blk[] | null = null;
+      if (htmlSrc) {
+        const structured = htmlToBlocks(htmlSrc) as Blk[] | null;
+        if (structured && structured.length > 0) parsed = structured;
+      }
+
+      if (!parsed) {
+        const raw = htmlSrc ? htmlToMarkdown(htmlSrc) : plainSrc;
+        if (!raw) return;
+        const hasNewline = /\r|\n/.test(raw);
+        const hasMdMarker = /(^|\n)\s*(#{1,6} |[-*+] |\d+\. |> |```|---|\*\*\*|\|)/.test(
+          raw,
+        );
+        if (!htmlSrc && !hasNewline && !hasMdMarker) return;
+        e.preventDefault();
+        parsed = parseMarkdown(raw) as unknown as Blk[];
+      } else {
+        e.preventDefault();
+      }
       if (parsed.length === 0) return;
 
       const idx = blocks.findIndex((b) => b.id === blockId);
@@ -671,8 +678,6 @@ export function EditableBody({
         const tail = [...blocks.slice(idx + 1)];
         const inserts: Blk[] = [...parsed];
 
-        // If current block is empty AND untouched, replace it — do not
-        // leave a blank above the pasted content.
         if (full === "") {
           next = [...head, ...inserts, ...tail];
         } else {
@@ -690,6 +695,8 @@ export function EditableBody({
     },
     [blocks, commit, locked, selectedIds, clearSelection, toast],
   );
+
+
 
 
   /* ────────── Marquee selection ──────────
