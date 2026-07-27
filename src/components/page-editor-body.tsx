@@ -69,8 +69,11 @@ import {
   duplicateBlock as opsDuplicate,
   parsePasteToBlocks,
   splicePasteAtCaret,
+  indentBlock as opsIndent,
+  reclampIndents,
 } from "@/lib/block-ops";
 import { resolveKey, type Op as KeyOp } from "@/lib/block-key-handler";
+import { ordinalLabel } from "@/lib/blocks";
 
 /** Module-local bridge: nested ColumnStack keystrokes set this before
  *  bubbling their new blocks up, so EditableBody.commit knows the
