@@ -953,7 +953,6 @@ export function PageEditor({ pageId }: { pageId: string }) {
   const archive = useArchivePage();
   const setPageIcon = useSetPageIcon();
 
-  const qc = useQueryClient();
   const { prefs } = usePrefs();
   const { app } = usePageAppearance(pageId);
   useEffect(() => {
