@@ -296,3 +296,50 @@
     --gio-divider-y: 23px;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   BLOCK LINE PARITY — click-to-edit must not shift text.
+
+   Each block renders as a formatted <div> when unfocused and a
+   <textarea> when focused. If the two are not metrically identical
+   the caret jumps by a pixel or two on every click. Historically
+   the culprits were:
+
+     • textarea default 1px border (Tailwind's `border-0` only
+       matches on a shared className — belt-and-braces reset here)
+     • textarea default 2px UA padding
+     • font/line-height/letter-spacing not inheriting into the
+       textarea in every browser
+     • box-sizing default differing between div (border-box under
+       preflight) and textarea (border-box, but form controls
+       historically content-box in some UAs)
+
+   Both branches carry the same `gio-line` class. This rule forces
+   the shared metrics from a single place so the two elements
+   CANNOT drift as class strings evolve. */
+.gio-line {
+  box-sizing: border-box;
+  border: 0 !important;
+  padding: 0 !important;
+  margin: 0;
+  font: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  background: transparent;
+  vertical-align: baseline;
+}
+textarea.gio-line {
+  overflow: hidden;
+  resize: none;
+  outline: none;
+}
+div.gio-line {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  min-height: 1em;
+}

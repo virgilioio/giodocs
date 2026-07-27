@@ -42,11 +42,20 @@ export type ExportContext = {
 // self-containment assertion in tests survives the inline.
 const GIO_DOCS_LOGO_DATA_URI = (() => {
   try {
+    // Recolour the wordmark to the footer meta tone (#767B89) so it reads
+    // as a mark, not a logo lockup, at footer scale. Source SVG fills the
+    // glyphs as #0d0d09 / #000000; we swap them in the raw string BEFORE
+    // encoding so the data URI itself carries the tinted colours (no CSS
+    // filter, no external ref). The self-containment invariant holds:
+    // still no http/https/script tokens outside the base64 blob.
+    const tinted = GIO_DOCS_LOGO_SVG
+      .replace(/#0d0d09/gi, "#767B89")
+      .replace(/#000000/gi, "#767B89");
     // deno-lint-ignore no-explicit-any
     const b64 = typeof btoa === "function"
-      ? btoa(unescape(encodeURIComponent(GIO_DOCS_LOGO_SVG)))
+      ? btoa(unescape(encodeURIComponent(tinted)))
       : (typeof Buffer !== "undefined"
-        ? Buffer.from(GIO_DOCS_LOGO_SVG, "utf8").toString("base64")
+        ? Buffer.from(tinted, "utf8").toString("base64")
         : "");
     return `data:image/svg+xml;base64,${b64}`;
   } catch {
@@ -541,10 +550,12 @@ const HTML_CSS = `
   dl.props dt { color: ${muted}; }
   header.meta { border-bottom: 1px solid ${line}; padding-bottom: 18px; margin-bottom: 22px; }
   /* Print footer — repeats on every printed page via position:fixed.
-     In screen HTML it also sits fixed at the bottom of the viewport; body's
-     bottom padding reserves the space so content never sits under it. */
+     The bottom band is reserved by @page { margin: 0 0 0.85in 0 } (applied
+     in printPdf), so every printed sheet clears the footer, not just p1.
+     Body padding NEVER reserves footer space — padding is a document-flow
+     property that only applies to the first page's content column. */
   footer.print-footer {
-    position: fixed; bottom: 0.35in; left: 0.75in; right: 0.75in;
+    position: fixed; bottom: 0.28in; left: 0.75in; right: 0.75in;
     display: flex; justify-content: space-between; align-items: center;
     gap: 24px; padding-top: 6px;
     border-top: 1px solid ${line};
@@ -552,7 +563,7 @@ const HTML_CSS = `
     font-size: 10px; color: ${muted}; letter-spacing: -0.01em;
   }
   footer.print-footer .mark { display: inline-flex; align-items: center; gap: 6px; }
-  footer.print-footer .mark img { height: 14px; width: auto; display: block; }
+  footer.print-footer .mark img { height: 18px; width: auto; display: block; }
   footer.print-footer .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; text-align: right; }
 `;
 
@@ -637,15 +648,17 @@ export async function printPdf(
   const win = window.open("", "_blank");
   if (!win) throw new Error("popup-blocked");
   const zoom = Math.max(0.5, Math.min(2, scalePct / 100));
-  // @page margin: 0 removes Chrome's print chrome (about:blank / page
-  // numbers) — the tradeoff explained in the export spec. Our own footer
-  // is fixed-positioned inside 0.35in from the bottom, and the body's
-  // 0.9in bottom padding reserves space so content never overlaps it.
+  // @page owns the bottom margin (0.85in) — the paginator applies it to
+  // EVERY sheet, so the fixed footer band clears content on p2, p3, … not
+  // just p1. Top/left/right stay 0 so Chrome's default print chrome (URL,
+  // page numbers) is suppressed and our own header/body handle spacing.
+  // Body padding provides the top/left/right inset only — dropping the
+  // bottom padding is deliberate: @page now owns that space.
   const augmented = html.replace(
     "</style>",
-    `@page { size: ${paper}; margin: 0; }
+    `@page { size: ${paper}; margin: 0 0 0.85in 0; }
      html, body { background: #ffffff; }
-     body { padding: 0.6in 0.75in 0.9in; max-width: none; zoom: ${zoom}; }
+     body { padding: 0.6in 0.75in 0; max-width: none; zoom: ${zoom}; }
      </style>`,
   );
   win.document.open();

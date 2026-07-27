@@ -2410,17 +2410,19 @@ function BlockContent({
     return Math.min(rawText.length, base + range.startOffset);
   }
 
-  // Returns the div-or-textarea for a given wrapping className. The div and
-  // the textarea share the exact same className so font/size/line-height/
-  // padding match — the caret does not jump when swapping.
+  // Returns the div-or-textarea for a given wrapping className. Both
+  // branches carry `gio-line` (see styles.css) — that shared class is the
+  // ONLY guarantee that the div and the textarea measure identically.
+  // Tailwind utilities in `className` may reset border/padding too, but a
+  // separate class in a single stylesheet cannot drift as this file grows.
   function renderSwap(className: string, extra?: string) {
-    const cls = className + (extra ? " " + extra : "");
+    const cls = "gio-line " + className + (extra ? " " + extra : "");
     if (!showFormatted) {
       return <GrowText {...textareaProps} className={cls} />;
     }
     return (
       <div
-        className={cls + " cursor-text whitespace-pre-wrap break-words"}
+        className={cls + " cursor-text"}
         onMouseDown={
           locked
             ? undefined
