@@ -29,6 +29,21 @@ import {
   isColumnsBlock,
   stripNestedColumns,
 } from "@/lib/columns";
+import {
+  createUndoState,
+  push as undoPush,
+  undo as undoDo,
+  redo as undoRedo,
+  shouldCoalesce,
+  type UndoState,
+  type UndoEntry,
+} from "@/lib/undo-stack";
+
+/** Module-local bridge: nested ColumnStack keystrokes set this before
+ *  bubbling their new blocks up, so EditableBody.commit knows the
+ *  incoming `{ cols }` patch is a typing burst on that inner block id
+ *  (and can coalesce it). Consumed synchronously by commit(). */
+const columnTypingHint: { key: string | null } = { key: null };
 
 
 
@@ -292,13 +307,171 @@ export function EditableBody({
     setFocusRequest(null);
   }, [focusRequest, blocks]);
 
+  /* ────────── Undo/redo ──────────
+   *
+   * A per-page snapshot stack held in refs (never state — we don't want
+   * component re-renders on every push). See src/lib/undo-stack.ts for the
+   * pure model + tests. The rule: PUSH BEFORE a change, not after. Typing
+   * is coalesced (one push per burst) via shouldCoalesce(). Structural ops
+   * always push. Restoring bypasses commit() so it can't push itself. */
+  const blocksRef = useRef<Blk[]>(blocks);
+  useEffect(() => {
+    blocksRef.current = blocks;
+  }, [blocks]);
+  const focusedIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    focusedIdRef.current = focusedId;
+  }, [focusedId]);
+  // (undo state below)
+  const undoStateRef = useRef<UndoState<Blk>>(createUndoState<Blk>());
+  const lastTypingAtRef = useRef<number | null>(null);
+  const lastTypingKeyRef = useRef<string | null>(null);
+  const isRestoringRef = useRef(false);
+  // Reset the stack when the page id changes (also handled in the resync
+  // effect above — kept here as a belt so a fresh EditableBody starts fresh).
+  useEffect(() => {
+    undoStateRef.current = createUndoState<Blk>();
+    lastTypingAtRef.current = null;
+    lastTypingKeyRef.current = null;
+  }, [pageId]);
+
+  function getCurrentCaret(): UndoEntry<Blk>["caret"] {
+    const id = focusedIdRef.current;
+    if (!id) return null;
+    const el = refs.current[id];
+    if (!el || !("selectionStart" in el)) return null;
+    const off = (el as HTMLTextAreaElement).selectionStart;
+    if (typeof off !== "number") return null;
+    return { blockId: id, offset: off };
+  }
+
   const commit = useCallback(
-    (next: Blk[]) => {
+    (next: Blk[], opts?: { typingKey?: string }) => {
+      // Consume the module-level column-typing bridge if the caller didn't
+      // pass its own hint. This is how a keystroke inside a ColumnStack
+      // reaches the outer coalesce logic without threading extra props.
+      const key = opts?.typingKey ?? columnTypingHint.key ?? null;
+      columnTypingHint.key = null;
+
+      if (!isRestoringRef.current) {
+        const prevEntry: UndoEntry<Blk> = {
+          blocks: blocksRef.current,
+          caret: getCurrentCaret(),
+        };
+        if (key) {
+          const now = Date.now();
+          const coalesce = shouldCoalesce(
+            lastTypingAtRef.current,
+            now,
+            lastTypingKeyRef.current,
+            key,
+          );
+          if (!coalesce) {
+            undoStateRef.current = undoPush(undoStateRef.current, prevEntry);
+          } else {
+            // Any new action clears future, even on coalesce.
+            undoStateRef.current = {
+              past: undoStateRef.current.past,
+              future: [],
+            };
+          }
+          lastTypingAtRef.current = now;
+          lastTypingKeyRef.current = key;
+        } else {
+          // Structural: push and end any in-flight typing burst.
+          undoStateRef.current = undoPush(undoStateRef.current, prevEntry);
+          lastTypingAtRef.current = null;
+          lastTypingKeyRef.current = null;
+        }
+      }
       setBlocks(next);
       onChange(next);
     },
     [onChange],
   );
+
+  const restoreEntry = useCallback(
+    (entry: UndoEntry<Blk>) => {
+      isRestoringRef.current = true;
+      lastTypingAtRef.current = null;
+      lastTypingKeyRef.current = null;
+      setBlocks(entry.blocks);
+      onChange(entry.blocks);
+      // Restore focus. If the caret block still exists, focus it with the
+      // stored offset; otherwise focus the nearest surviving block so we
+      // never leave focus nowhere.
+      const c = entry.caret;
+      const survivors = entry.blocks;
+      let targetId: string | null = null;
+      let targetOff: number | "start" | "end" = "start";
+      if (c && survivors.some((b) => b.id === c.blockId)) {
+        targetId = c.blockId;
+        targetOff = c.offset;
+      } else if (survivors.length > 0) {
+        targetId = survivors[0].id;
+        targetOff = "start";
+      }
+      if (targetId) setFocusRequest({ id: targetId, caret: targetOff });
+      // Release the guard on the next tick so re-render's effects don't push.
+      queueMicrotask(() => {
+        isRestoringRef.current = false;
+      });
+    },
+    [onChange],
+  );
+
+  const performUndo = useCallback(() => {
+    const cur: UndoEntry<Blk> = {
+      blocks: blocksRef.current,
+      caret: getCurrentCaret(),
+    };
+    const r = undoDo(undoStateRef.current, cur);
+    if (!r) return;
+    undoStateRef.current = r.state;
+    restoreEntry(r.entry);
+  }, [restoreEntry]);
+
+  const performRedo = useCallback(() => {
+    const cur: UndoEntry<Blk> = {
+      blocks: blocksRef.current,
+      caret: getCurrentCaret(),
+    };
+    const r = undoRedo(undoStateRef.current, cur);
+    if (!r) return;
+    undoStateRef.current = r.state;
+    restoreEntry(r.entry);
+  }, [restoreEntry]);
+
+  // Window-level ⌘Z / ⌘⇧Z / ⌘Y — deliberate EXCEPTION to isTypingTarget,
+  // alongside ⌘K and ⌘,. preventDefault always, so the browser's own
+  // (broken, per-input) undo stack never also fires.
+  useEffect(() => {
+    if (locked) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const k = e.key.toLowerCase();
+      if (k === "z") {
+        e.preventDefault();
+        if (e.shiftKey) performRedo();
+        else performUndo();
+        return;
+      }
+      if (k === "y" && !e.shiftKey) {
+        e.preventDefault();
+        performRedo();
+        return;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [locked, performUndo, performRedo]);
+
+  // Note on realtime: parent cache patching for THIS page while a local
+  // undo stack is non-empty is not merged — clear `future` and leave
+  // `past` alone. Correct multi-user undo needs OT/CRDT (out of scope).
+  // The current wiring never rewrites `blocks` from a remote patch mid-
+  // session; if that changes, wire the clear here.
+
 
   /* ────────── Selection & drag state ────────── */
 
@@ -1208,7 +1381,12 @@ export function EditableBody({
 
   function updateBlock(id: string, patch: Partial<Blk>) {
     const next = blocks.map((b) => (b.id === id ? { ...b, ...patch } : b));
-    commit(next);
+    // Text-only patch = a keystroke on this block → coalesce as typing.
+    // Every other patch shape (checked, open, icon, rows, cols, type…)
+    // is a structural op and always pushes a snapshot.
+    const keys = Object.keys(patch);
+    const isTyping = keys.length === 1 && keys[0] === "text";
+    commit(next, isTyping ? { typingKey: id } : undefined);
   }
 
   function insertAfter(id: string, type: BlockType = "text") {
@@ -2310,6 +2488,12 @@ function ColumnStack({
   }, [focusRequest, blocks]);
 
   function updateBlock(id: string, patch: Partial<Blk>) {
+    // Signal the outer commit (via the module-local bridge) that this
+    // propagating `{ cols: … }` patch represents a keystroke on the inner
+    // block `id`, so the outer undo stack coalesces the burst.
+    const keys = Object.keys(patch);
+    const isTyping = keys.length === 1 && keys[0] === "text";
+    if (isTyping) columnTypingHint.key = id;
     setBlocks(blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)));
   }
   function splitBlock(id: string, caret: number) {
