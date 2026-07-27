@@ -553,7 +553,7 @@ export function EditableBody({
       if (!hasNewline && !hasMdMarker) return; // plain word — let browser handle
       e.preventDefault();
 
-      const parsed = parseMarkdown(raw);
+      const parsed = parseMarkdown(raw) as unknown as Blk[];
       if (parsed.length === 0) return;
 
       const idx = blocks.findIndex((b) => b.id === blockId);
