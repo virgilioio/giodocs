@@ -21,7 +21,7 @@ const DEFAULT: PageAppearance = {
 };
 
 function keyFor(pageId: string): string {
-  return `gio.page-appearance.${pageId}`;
+  return `gio:pageui:${pageId}`;
 }
 
 function read(pageId: string): PageAppearance {
