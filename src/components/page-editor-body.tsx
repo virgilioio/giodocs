@@ -1022,16 +1022,27 @@ export function EditableBody({
         />
       ) : null}
 
-      {/* Trailing click zone */}
-      <div
-        aria-hidden
-        onMouseDown={(e) => {
-          if ((e.target as HTMLElement).closest("textarea, input")) return;
-          e.preventDefault();
-          onBelowClick();
-        }}
-        style={{ minHeight: 240 }}
-      />
+      {/* Trailing click zone — the container-level pointer session decides
+       * whether this was a click (append/focus a block) or a marquee. */}
+      <div aria-hidden data-trailing-zone style={{ minHeight: 240 }} />
+
+      {/* Marquee rectangle */}
+      {marquee
+        ? createPortal(
+            <div
+              aria-hidden
+              className="marquee-rect"
+              style={{
+                left: Math.min(marquee.x1, marquee.x2),
+                top: Math.min(marquee.y1, marquee.y2),
+                width: Math.abs(marquee.x2 - marquee.x1),
+                height: Math.abs(marquee.y2 - marquee.y1),
+              }}
+            />,
+            document.body,
+          )
+        : null}
+
 
       {slash ? (
         <SlashMenu
