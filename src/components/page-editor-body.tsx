@@ -1815,7 +1815,7 @@ export function EditableBody({
     <ColumnBridgeCtx.Provider value={columnBridge}>
     <div
       ref={containerRef}
-      className="gio-page-body relative space-y-1"
+      className="gio-page-body relative"
       onPointerDown={handleContainerPointerDown}
       onFocusCapture={(e) => {
         const t = e.target as HTMLElement;
@@ -2979,7 +2979,7 @@ function ColumnStack({
   const ordinalMap = useMemo(() => numberedOrdinals(blocks), [blocks]);
 
   return (
-    <div ref={trackRef} className="space-y-1">
+    <div ref={trackRef}>
       {blocks.map((b) => (
         <BlockRow
           key={b.id}
