@@ -270,10 +270,15 @@ export function EditableBody({
     [blocks],
   );
 
-  const handlePlainClick = useCallback(() => {
-    // Plain click on a handle without shift clears any selection.
-    clearSelection();
-  }, [clearSelection]);
+  const [handleMenu, setHandleMenu] = useState<{
+    blockId: string;
+    anchor: HTMLElement;
+  } | null>(null);
+
+  const handleClick = useCallback((id: string, anchor: HTMLElement) => {
+    setHandleMenu({ blockId: id, anchor });
+  }, []);
+
 
   /* ────────── Drag: pointer session on a handle ────────── */
 
