@@ -7,17 +7,13 @@
  * contenteditable. Every existing caller keeps its (text, start, end)
  * shape — start/end become RENDERED offsets and this layer converts.
  *
- * The tokenizer is intentionally aligned with the grammar of
- * inline-markdown.tsx (renderInline / inlineToHtml). See the ROUND-TRIP
- * and RENDERED-TEXT tests in ce-offsets.test.ts, which assert that
- * `renderedText` equals the visible text produced by inlineToHtml with
- * tags stripped — if that renderer's grammar changes, this file's
- * tests fail loudly instead of drifting silently.
+ * The grammar comes from exactly one place: tokenizeInline in
+ * inline-tokens.ts. inline-markdown.tsx (the renderer) consumes the
+ * same tokens, so this layer and what the user sees on screen cannot
+ * drift by construction.
  */
 
-import { safeUrl } from "./inline-markdown";
-
-const ESC_PUNCT = /[\\*_`~<>\[\]()]/;
+import { tokenizeInline, type InlineToken } from "./inline-tokens";
 
 export type OffsetMap = {
   toSource: (rendered: number) => number;
@@ -25,15 +21,14 @@ export type OffsetMap = {
   renderedText: string;
 };
 
-/* ------------------------------ scanner ------------------------------ *
- * Walks `source` and produces two monotonic arrays:
+/* Walks the token tree and produces two monotonic arrays:
  *   s2r[s]  — for s in 0..sourceLen, the rendered offset that a caret
  *             at source position s corresponds to. Positions strictly
  *             inside a delimiter or URL clamp to the nearest reachable
  *             boundary rather than throwing.
  *   r2s[r]  — for r in 0..renderedLen, the source offset that produced
- *             the r-th rendered character (or the source position AT
- *             renderedLen after everything is consumed).
+ *             the r-th rendered character (or source.length at the end
+ *             sentinel).
  * Both arrays are strictly non-decreasing, which makes clamping cheap.
  */
 function scan(source: string): {
@@ -46,172 +41,73 @@ function scan(source: string): {
   const rendered: string[] = [];
   let renderedLen = 0;
 
-  // Walk a slice [from, to) of `source`. The caller sets s2r[from] before
-  // entering; walk() sets s2r[from+1..to] and pushes into `rendered`.
-  function walk(from: number, to: number): void {
-    let i = from;
-    while (i < to) {
-      const c = source[i];
+  const fillClamp = (from: number, to: number, mapped: number) => {
+    for (let s = from; s <= to; s++) s2r[s] = mapped;
+  };
 
-      // Escape: \X  where X ∈ ESC_PUNCT. Two source chars → one rendered
-      // char (X). The rendered offset associated with both source i and
-      // source i+1 is the rendered position BEFORE X is emitted.
-      if (c === "\\" && i + 1 < to && ESC_PUNCT.test(source[i + 1])) {
-        // s2r[i] is already set by the caller (or a prior iteration).
-        s2r[i + 1] = renderedLen; // middle position clamps to X's rendered pos
-        rendered.push(source[i + 1]);
-        r2s.push(i + 1); // the rendered char came from the escaped char
-        renderedLen += 1;
-        s2r[i + 2] = renderedLen;
-        i += 2;
+  function walk(tokens: InlineToken[]): void {
+    for (const t of tokens) {
+      // The source position AT the start of this token maps to the
+      // current rendered position (nothing before it has emitted yet).
+      s2r[t.sourceStart] = renderedLen;
+
+      if (t.kind === "text") {
+        if (t.sourceEnd - t.sourceStart === 2) {
+          // Escape "\X" — 2 source chars → 1 rendered char.
+          // Middle position (between \ and X) clamps to the rendered
+          // slot the escaped char will occupy.
+          s2r[t.sourceStart + 1] = renderedLen;
+          rendered.push(t.text);
+          r2s.push(t.sourceStart + 1);
+          renderedLen += 1;
+          s2r[t.sourceEnd] = renderedLen;
+        } else {
+          // Plain literal — 1 source ↔ 1 rendered.
+          rendered.push(t.text);
+          r2s.push(t.sourceStart);
+          renderedLen += 1;
+          s2r[t.sourceEnd] = renderedLen;
+        }
         continue;
       }
 
-      // Code span `…`  — inner text is literal, delimiters are unreachable.
-      if (c === "`") {
-        const end = source.indexOf("`", i + 1);
-        if (end > i && end < to) {
-          // Opening ` is unreachable: s2r[i] already = renderedLen (before
-          // inner). Mark s2r[i+1] as inner-start = same renderedLen.
-          s2r[i + 1] = renderedLen;
-          // Emit inner chars as literal 1:1.
-          for (let k = i + 1; k < end; k++) {
-            rendered.push(source[k]);
-            r2s.push(k);
-            renderedLen += 1;
-            s2r[k + 1] = renderedLen;
-          }
-          // Closing ` — unreachable, clamp to renderedLen (end of inner).
-          s2r[end + 1] = renderedLen;
-          i = end + 1;
-          continue;
+      if (t.kind === "code") {
+        const innerStart = t.sourceStart + 1;
+        s2r[innerStart] = renderedLen; // just after the opening `
+        for (let k = 0; k < t.text.length; k++) {
+          rendered.push(t.text[k]);
+          r2s.push(innerStart + k);
+          renderedLen += 1;
+          s2r[innerStart + k + 1] = renderedLen;
         }
+        s2r[t.sourceEnd] = renderedLen; // after the closing `
+        continue;
       }
 
-      // Bold: **…**
-      if (c === "*" && source[i + 1] === "*") {
-        const end = source.indexOf("**", i + 2);
-        if (end > i + 1 && end + 1 < to + 0 /* end+2 <= source.length */) {
-          if (end + 2 <= to) {
-            s2r[i + 1] = renderedLen; // inside opening **
-            s2r[i + 2] = renderedLen; // start of inner
-            walk(i + 2, end);
-            // renderedLen has advanced; s2r[end] was set by walk's final step.
-            s2r[end + 1] = renderedLen; // between the two closing *
-            s2r[end + 2] = renderedLen;
-            i = end + 2;
-            continue;
-          }
-        }
-      }
-
-      // Strike: ~~…~~
-      if (c === "~" && source[i + 1] === "~") {
-        const end = source.indexOf("~~", i + 2);
-        if (end > i + 1 && end + 2 <= to) {
-          s2r[i + 1] = renderedLen;
-          s2r[i + 2] = renderedLen;
-          walk(i + 2, end);
-          s2r[end + 1] = renderedLen;
-          s2r[end + 2] = renderedLen;
-          i = end + 2;
-          continue;
-        }
-      }
-
-      // Highlight: ==…==
-      if (c === "=" && source[i + 1] === "=") {
-        const end = source.indexOf("==", i + 2);
-        if (end > i + 1 && end + 2 <= to) {
-          s2r[i + 1] = renderedLen;
-          s2r[i + 2] = renderedLen;
-          walk(i + 2, end);
-          s2r[end + 1] = renderedLen;
-          s2r[end + 2] = renderedLen;
-          i = end + 2;
-          continue;
-        }
-      }
-
-      // Italic: *…*   — bails out if it hits ** (that's a bold token).
-      if (c === "*") {
-        let j = i + 1;
-        while (j < to) {
-          if (source[j] === "\\") {
-            j += 2;
-            continue;
-          }
-          if (source[j] === "*") {
-            if (source[j + 1] === "*") {
-              j = -1;
-              break;
-            }
-            break;
-          }
-          j++;
-        }
-        if (j > i + 1 && j < to && source[j] === "*") {
-          s2r[i + 1] = renderedLen;
-          walk(i + 1, j);
-          s2r[j + 1] = renderedLen;
-          i = j + 1;
-          continue;
-        }
-      }
-
-      // Underline: <u>…</u>
-      if (c === "<" && source.slice(i, i + 3).toLowerCase() === "<u>") {
-        const lower = source.toLowerCase();
-        const end = lower.indexOf("</u>", i + 3);
-        if (end > i && end + 4 <= to) {
-          s2r[i + 1] = renderedLen;
-          s2r[i + 2] = renderedLen;
-          s2r[i + 3] = renderedLen;
-          walk(i + 3, end);
-          s2r[end + 1] = renderedLen;
-          s2r[end + 2] = renderedLen;
-          s2r[end + 3] = renderedLen;
-          s2r[end + 4] = renderedLen;
-          i = end + 4;
-          continue;
-        }
-      }
-
-      // Link: [label](url)
-      if (c === "[") {
-        const rb = source.indexOf("]", i + 1);
-        if (rb > i && rb < to && source[rb + 1] === "(") {
-          const rp = source.indexOf(")", rb + 2);
-          if (rp > rb && rp < to) {
-            const url = safeUrl(source.slice(rb + 2, rp));
-            if (url) {
-              // '[' delim
-              s2r[i + 1] = renderedLen;
-              // label chars are reachable
-              walk(i + 1, rb);
-              const labelEnd = renderedLen; // rendered position at end of label
-              // ']' '(' url ')'  — all unreachable, clamp to labelEnd.
-              for (let k = rb; k <= rp; k++) s2r[k + 1] = labelEnd;
-              i = rp + 1;
-              continue;
-            }
-          }
-        }
-      }
-
-      // Literal char.
-      rendered.push(c);
-      r2s.push(i);
-      renderedLen += 1;
-      s2r[i + 1] = renderedLen;
-      i += 1;
+      // Container-shaped tokens (bold, italic, strike, highlight,
+      // underline, link). All share the same offset shape: opening
+      // delimiter of `openLen` source chars (unreachable, clamp to
+      // renderedLen BEFORE children), then children, then closing
+      // delimiter of `closeLen` source chars (unreachable, clamp to
+      // renderedLen AFTER children). For a link the "closing delim"
+      // is `](url)` — every position inside it, including inside the
+      // URL, clamps to the end of the label's rendered range.
+      const innerStart = t.sourceStart + t.openLen;
+      const innerEnd = t.sourceEnd - t.closeLen;
+      fillClamp(t.sourceStart + 1, innerStart, renderedLen);
+      walk(t.children);
+      fillClamp(innerEnd, t.sourceEnd, renderedLen);
     }
   }
 
   s2r[0] = 0;
-  walk(0, source.length);
-  // r2s at renderedLen — end sentinel; source.length is the natural target.
+  walk(tokenizeInline(source));
+  // Sentinel: rendered position == renderedLen ↔ source position == source.length.
   r2s.push(source.length);
+  // Fill any positions that the walker didn't touch (e.g. an empty source).
+  for (let s = 0; s <= source.length; s++) {
+    if (s2r[s] === undefined) s2r[s] = renderedLen;
+  }
 
   return { renderedText: rendered.join(""), s2r, r2s };
 }
@@ -244,9 +140,7 @@ export function buildOffsetMap(source: string): OffsetMap {
  * inline elements (e.g. <strong><em>x</em></strong>) and setCaretOffset
  * clamps offsets past the end rather than throwing.
  *
- * These are tested behind a DOM-only guard in the accompanying spec.
- * If the vitest environment has no jsdom/happy-dom, the caret tests are
- * skipped — see the note in ce-offsets.test.ts.
+ * DOM tests live in ce-offsets.dom.test.ts (happy-dom environment).
  */
 export function getCaretOffset(
   el: HTMLElement,
@@ -256,7 +150,6 @@ export function getCaretOffset(
   const sel = win.getSelection?.();
   if (!sel || sel.rangeCount === 0) return null;
   const range = sel.getRangeAt(0);
-  // Only measure if the selection is inside `el`.
   if (
     !el.contains(range.startContainer) ||
     !el.contains(range.endContainer)
@@ -265,15 +158,11 @@ export function getCaretOffset(
   }
 
   const countTo = (node: Node, offset: number): number => {
-    // If `node` is an element, the DOM offset is a child index — the
-    // characters to the left are those in text descendants of the first
-    // `offset` children.
     let count = 0;
     const doc = el.ownerDocument;
     if (!doc) return 0;
 
     if (node.nodeType === 3 /* Text */) {
-      // count all text before `node`, then add `offset` characters.
       const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
       let cur = walker.nextNode();
       while (cur && cur !== node) {
@@ -294,6 +183,8 @@ export function getCaretOffset(
       }
       idx += 1;
     }
+    // If offset points past the last child of an element, keep walking
+    // outward: the caret sits at the end of that element's text.
     return count;
   };
 
@@ -328,7 +219,6 @@ export function setCaretOffset(
       last = cur as Text;
       cur = walker.nextNode();
     }
-    // No text nodes at all — anchor to the element itself.
     if (!last) return { node: el, offset: 0 };
     return { node: last, offset: (last.nodeValue ?? "").length };
   };

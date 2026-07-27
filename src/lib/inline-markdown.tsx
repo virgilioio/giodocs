@@ -10,6 +10,7 @@
  *   **bold** →  <strong>
  *   *italic*  →  <em>
  *   ~~strike~~ →  <s>
+ *   ==highlight==  →  <mark>
  *   <u>…</u>   →  <u>          (markdown has no underline; inline HTML is
  *                              the convention and passes through)
  *   [label](url) → <a target=_blank rel=noopener noreferrer>
@@ -30,40 +31,46 @@
  *  - Escaping: `\*` renders a literal asterisk.
  *  - Links with dangerous URL schemes (javascript:, data:, vbscript:) are
  *    rendered as literal text, never as <a href>.
+ *
+ * IMPLEMENTATION: this file is now a thin RENDERER that consumes the
+ * canonical token stream from inline-tokens.ts. There is exactly ONE
+ * tokenizer for the inline grammar in the entire codebase; the caret
+ * layer (ce-offsets.ts) consumes the same tokens so the two cannot drift.
  */
 
 import type { ReactNode } from "react";
 import { Fragment } from "react";
+import {
+  safeUrl,
+  tokenizeInline,
+  type InlineToken,
+} from "./inline-tokens";
 
-const ESC_PUNCT = /[\\*_`~<>\[\]()]/;
-
-export function safeUrl(url: string): string | null {
-  const trimmed = url.trim();
-  if (!trimmed) return null;
-  // Scheme test — case-insensitive, ignore surrounding whitespace.
-  if (/^\s*(javascript|data|vbscript)\s*:/i.test(trimmed)) return null;
-  return trimmed;
-}
+// Re-exported for existing callers (floating-toolbar, tests) so the
+// import surface of this module is unchanged.
+export { safeUrl };
 
 /* ─────────────────────────── ReactNode renderer ─────────────────────────── */
 
 type Ctx = { keyCounter: number };
 
-function parseNodes(
-  text: string,
-  base: number,
+function renderChildren(
+  tokens: InlineToken[],
   ctx: Ctx,
   withOffsets: boolean,
 ): ReactNode[] {
   const out: ReactNode[] = [];
+  // Buffer consecutive text tokens into a single Fragment/span so we
+  // produce exactly the same node shape the old inline parser emitted:
+  // one flushed literal run per interruption by a structural token.
   let buf = "";
   let bufStart = 0;
-  let i = 0;
+
   const flush = () => {
     if (!buf) return;
     if (withOffsets) {
       out.push(
-        <span key={ctx.keyCounter++} data-o={base + bufStart}>
+        <span key={ctx.keyCounter++} data-o={bufStart}>
           {buf}
         </span>,
       );
@@ -72,200 +79,112 @@ function parseNodes(
     }
     buf = "";
   };
-  const addLit = (ch: string) => {
-    if (!buf) bufStart = i;
-    buf += ch;
-  };
 
-  while (i < text.length) {
-    const c = text[i];
-
-    // Escape: backslash + punctuation → literal punct.
-    if (c === "\\" && i + 1 < text.length && ESC_PUNCT.test(text[i + 1])) {
-      // The rendered char is the punct; keep source offset at the backslash.
-      if (!buf) bufStart = i;
-      buf += text[i + 1];
-      i += 2;
+  for (const t of tokens) {
+    if (t.kind === "text") {
+      if (!buf) bufStart = t.sourceStart;
+      buf += t.text;
       continue;
     }
-
-    // Code span: `code`
-    if (c === "`") {
-      const end = text.indexOf("`", i + 1);
-      if (end > i) {
-        flush();
-        const inner = text.slice(i + 1, end);
-        out.push(
-          <code
-            key={ctx.keyCounter++}
-            data-o={withOffsets ? base + i : undefined}
-            className="rounded-[4px] bg-sunken px-[4px] py-[1px] font-mono"
-            style={{ fontSize: 13.5 }}
-          >
-            {inner}
-          </code>,
-        );
-        i = end + 1;
-        continue;
-      }
+    flush();
+    if (t.kind === "code") {
+      out.push(
+        <code
+          key={ctx.keyCounter++}
+          data-o={withOffsets ? t.sourceStart : undefined}
+          className="rounded-[4px] bg-sunken px-[4px] py-[1px] font-mono"
+          style={{ fontSize: 13.5 }}
+        >
+          {t.text}
+        </code>,
+      );
+      continue;
     }
-
-    // Bold: **...**
-    if (c === "*" && text[i + 1] === "*") {
-      const end = text.indexOf("**", i + 2);
-      if (end > i + 1) {
-        flush();
-        out.push(
-          <strong
-            key={ctx.keyCounter++}
-            data-o={withOffsets ? base + i : undefined}
-            className="font-bold"
-          >
-            {parseNodes(text.slice(i + 2, end), base + i + 2, ctx, withOffsets)}
-          </strong>,
-        );
-        i = end + 2;
-        continue;
-      }
+    if (t.kind === "bold") {
+      out.push(
+        <strong
+          key={ctx.keyCounter++}
+          data-o={withOffsets ? t.sourceStart : undefined}
+          className="font-bold"
+        >
+          {renderChildren(t.children, ctx, withOffsets)}
+        </strong>,
+      );
+      continue;
     }
-
-    // Strike: ~~...~~
-    if (c === "~" && text[i + 1] === "~") {
-      const end = text.indexOf("~~", i + 2);
-      if (end > i + 1) {
-        flush();
-        out.push(
-          <s
-            key={ctx.keyCounter++}
-            data-o={withOffsets ? base + i : undefined}
-            className="text-muted"
-          >
-            {parseNodes(text.slice(i + 2, end), base + i + 2, ctx, withOffsets)}
-          </s>,
-        );
-        i = end + 2;
-        continue;
-      }
+    if (t.kind === "strike") {
+      out.push(
+        <s
+          key={ctx.keyCounter++}
+          data-o={withOffsets ? t.sourceStart : undefined}
+          className="text-muted"
+        >
+          {renderChildren(t.children, ctx, withOffsets)}
+        </s>,
+      );
+      continue;
     }
-
-    // Highlight: ==...==   (after ** and ~~, before single *)
-    if (c === "=" && text[i + 1] === "=") {
-      const end = text.indexOf("==", i + 2);
-      if (end > i + 1) {
-        flush();
-        out.push(
-          <mark
-            key={ctx.keyCounter++}
-            data-o={withOffsets ? base + i : undefined}
-            style={{
-              background: "var(--color-highlight)",
-              color: "var(--color-noir)",
-              padding: "0 2px",
-              borderRadius: 2,
-            }}
-          >
-            {parseNodes(text.slice(i + 2, end), base + i + 2, ctx, withOffsets)}
-          </mark>,
-        );
-        i = end + 2;
-        continue;
-      }
+    if (t.kind === "highlight") {
+      out.push(
+        <mark
+          key={ctx.keyCounter++}
+          data-o={withOffsets ? t.sourceStart : undefined}
+          style={{
+            background: "var(--color-highlight)",
+            color: "var(--color-noir)",
+            padding: "0 2px",
+            borderRadius: 2,
+          }}
+        >
+          {renderChildren(t.children, ctx, withOffsets)}
+        </mark>,
+      );
+      continue;
     }
-
-    // Italic: *…*   — underscore is deliberately NOT supported here.
-    // See the header comment for why (legal-contract fill-in blanks).
-    if (c === "*") {
-      let j = i + 1;
-      while (j < text.length) {
-        if (text[j] === "\\") {
-          j += 2;
-          continue;
-        }
-        if (text[j] === "*") {
-          // Do not consume another opening ** by accident — bail out italic
-          // scan if we hit a bold delimiter.
-          if (text[j + 1] === "*") {
-            j = -1;
-            break;
-          }
-          break;
-        }
-        j++;
-      }
-      if (j > i + 1 && j < text.length && text[j] === "*") {
-        flush();
-        out.push(
-          <em
-            key={ctx.keyCounter++}
-            data-o={withOffsets ? base + i : undefined}
-          >
-            {parseNodes(text.slice(i + 1, j), base + i + 1, ctx, withOffsets)}
-          </em>,
-        );
-        i = j + 1;
-        continue;
-      }
+    if (t.kind === "italic") {
+      out.push(
+        <em
+          key={ctx.keyCounter++}
+          data-o={withOffsets ? t.sourceStart : undefined}
+        >
+          {renderChildren(t.children, ctx, withOffsets)}
+        </em>,
+      );
+      continue;
     }
-
-    // Underline: <u>…</u>  (case-insensitive tag names)
-    if (c === "<" && text.slice(i, i + 3).toLowerCase() === "<u>") {
-      const lower = text.toLowerCase();
-      const end = lower.indexOf("</u>", i + 3);
-      if (end > i) {
-        flush();
-        out.push(
-          <u
-            key={ctx.keyCounter++}
-            data-o={withOffsets ? base + i : undefined}
-          >
-            {parseNodes(text.slice(i + 3, end), base + i + 3, ctx, withOffsets)}
-          </u>,
-        );
-        i = end + 4;
-        continue;
-      }
+    if (t.kind === "underline") {
+      out.push(
+        <u
+          key={ctx.keyCounter++}
+          data-o={withOffsets ? t.sourceStart : undefined}
+        >
+          {renderChildren(t.children, ctx, withOffsets)}
+        </u>,
+      );
+      continue;
     }
-
-    // Link: [label](url)
-    if (c === "[") {
-      const rb = text.indexOf("]", i + 1);
-      if (rb > i && text[rb + 1] === "(") {
-        const rp = text.indexOf(")", rb + 2);
-        if (rp > rb) {
-          const label = text.slice(i + 1, rb);
-          const rawUrl = text.slice(rb + 2, rp);
-          const url = safeUrl(rawUrl);
-          if (url) {
-            flush();
-            out.push(
-              <a
-                key={ctx.keyCounter++}
-                data-o={withOffsets ? base + i : undefined}
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-accent hover:underline"
-              >
-                {parseNodes(label, base + i + 1, ctx, withOffsets)}
-              </a>,
-            );
-            i = rp + 1;
-            continue;
-          }
-        }
-      }
+    if (t.kind === "link") {
+      out.push(
+        <a
+          key={ctx.keyCounter++}
+          data-o={withOffsets ? t.sourceStart : undefined}
+          href={t.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-accent hover:underline"
+        >
+          {renderChildren(t.children, ctx, withOffsets)}
+        </a>,
+      );
+      continue;
     }
-
-    // Literal
-    addLit(c);
-    i++;
   }
   flush();
   return out;
 }
 
 export function renderInline(text: string): ReactNode[] {
-  return parseNodes(text ?? "", 0, { keyCounter: 0 }, false);
+  return renderChildren(tokenizeInline(text ?? ""), { keyCounter: 0 }, false);
 }
 
 /* renderInlineWithOffsets — same output but each rendered node carries a
@@ -273,7 +192,7 @@ export function renderInline(text: string): ReactNode[] {
  * character position in the original markdown string. Used by the editor
  * to place the caret at the clicked character when swapping div→textarea. */
 export function renderInlineWithOffsets(text: string): ReactNode[] {
-  return parseNodes(text ?? "", 0, { keyCounter: 0 }, true);
+  return renderChildren(tokenizeInline(text ?? ""), { keyCounter: 0 }, true);
 }
 
 /* ─────────────────────────── HTML string emitter ─────────────────────────── */
@@ -289,126 +208,57 @@ function escHtml(s: string): string {
 
 /* Convert inline markdown to a safe HTML string. User text is HTML-escaped
  * FIRST and only then wrapped in structural tags — escaping is never
- * bypassed. Kept next to renderInline so both stay in lockstep. */
-export function inlineToHtml(text: string): string {
-  const src = text ?? "";
+ * bypassed. Consumes the same tokenizer as renderInline. */
+function tokensToHtml(tokens: InlineToken[]): string {
   let out = "";
   let buf = "";
-  let i = 0;
   const flush = () => {
     if (buf) {
       out += escHtml(buf);
       buf = "";
     }
   };
-
-  while (i < src.length) {
-    const c = src[i];
-
-    if (c === "\\" && i + 1 < src.length && ESC_PUNCT.test(src[i + 1])) {
-      buf += src[i + 1];
-      i += 2;
+  for (const t of tokens) {
+    if (t.kind === "text") {
+      buf += t.text;
       continue;
     }
-
-    if (c === "`") {
-      const end = src.indexOf("`", i + 1);
-      if (end > i) {
-        flush();
-        out += `<code>${escHtml(src.slice(i + 1, end))}</code>`;
-        i = end + 1;
-        continue;
-      }
+    flush();
+    if (t.kind === "code") {
+      out += `<code>${escHtml(t.text)}</code>`;
+      continue;
     }
-
-    if (c === "*" && src[i + 1] === "*") {
-      const end = src.indexOf("**", i + 2);
-      if (end > i + 1) {
-        flush();
-        out += `<strong>${inlineToHtml(src.slice(i + 2, end))}</strong>`;
-        i = end + 2;
-        continue;
-      }
+    if (t.kind === "bold") {
+      out += `<strong>${tokensToHtml(t.children)}</strong>`;
+      continue;
     }
-
-    if (c === "~" && src[i + 1] === "~") {
-      const end = src.indexOf("~~", i + 2);
-      if (end > i + 1) {
-        flush();
-        out += `<s>${inlineToHtml(src.slice(i + 2, end))}</s>`;
-        i = end + 2;
-        continue;
-      }
+    if (t.kind === "strike") {
+      out += `<s>${tokensToHtml(t.children)}</s>`;
+      continue;
     }
-
-    // Highlight: ==...==  — escape-first: inner text is re-run through
-    // inlineToHtml (which HTML-escapes), never inserted as raw HTML.
-    if (c === "=" && src[i + 1] === "=") {
-      const end = src.indexOf("==", i + 2);
-      if (end > i + 1) {
-        flush();
-        out += `<mark>${inlineToHtml(src.slice(i + 2, end))}</mark>`;
-        i = end + 2;
-        continue;
-      }
+    if (t.kind === "highlight") {
+      out += `<mark>${tokensToHtml(t.children)}</mark>`;
+      continue;
     }
-
-    // Italic: *…* only — underscore is deliberately not a delimiter.
-    if (c === "*") {
-      let j = i + 1;
-      while (j < src.length) {
-        if (src[j] === "\\") {
-          j += 2;
-          continue;
-        }
-        if (src[j] === "*") {
-          if (src[j + 1] === "*") {
-            j = -1;
-            break;
-          }
-          break;
-        }
-        j++;
-      }
-      if (j > i + 1 && j < src.length && src[j] === "*") {
-        flush();
-        out += `<em>${inlineToHtml(src.slice(i + 1, j))}</em>`;
-        i = j + 1;
-        continue;
-      }
+    if (t.kind === "italic") {
+      out += `<em>${tokensToHtml(t.children)}</em>`;
+      continue;
     }
-
-    if (c === "<" && src.slice(i, i + 3).toLowerCase() === "<u>") {
-      const end = src.toLowerCase().indexOf("</u>", i + 3);
-      if (end > i) {
-        flush();
-        out += `<u>${inlineToHtml(src.slice(i + 3, end))}</u>`;
-        i = end + 4;
-        continue;
-      }
+    if (t.kind === "underline") {
+      out += `<u>${tokensToHtml(t.children)}</u>`;
+      continue;
     }
-
-    if (c === "[") {
-      const rb = src.indexOf("]", i + 1);
-      if (rb > i && src[rb + 1] === "(") {
-        const rp = src.indexOf(")", rb + 2);
-        if (rp > rb) {
-          const rawUrl = src.slice(rb + 2, rp);
-          const label = src.slice(i + 1, rb);
-          const url = safeUrl(rawUrl);
-          if (url) {
-            flush();
-            out += `<a href="${escHtml(url)}" target="_blank" rel="noopener noreferrer">${inlineToHtml(label)}</a>`;
-            i = rp + 1;
-            continue;
-          }
-        }
-      }
+    if (t.kind === "link") {
+      out += `<a href="${escHtml(t.url)}" target="_blank" rel="noopener noreferrer">${tokensToHtml(
+        t.children,
+      )}</a>`;
+      continue;
     }
-
-    buf += c;
-    i++;
   }
   flush();
   return out;
+}
+
+export function inlineToHtml(text: string): string {
+  return tokensToHtml(tokenizeInline(text ?? ""));
 }
