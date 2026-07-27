@@ -987,3 +987,113 @@ export function useCreatePageAndOpen() {
     [create, navigate],
   );
 }
+
+/* ────────────────────────── Icons: page + area ────────────────────────── */
+
+/**
+ * Set (or clear) `pages.icon`. Icons are always present on pages — the
+ * write happens with the standard dual-cache optimistic patch on
+ * qk.page(id) and qk.pages(ws), with a rollback on error. Because `icon`
+ * is in `touch_page`'s WHEN clause, edited_at correctly moves.
+ */
+export function useSetPageIcon() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (v: { pageId: string; icon: string }) => {
+      const { error } = await supabase
+        .from("pages")
+        .update({ icon: v.icon })
+        .eq("id", v.pageId);
+      if (error) throw error;
+    },
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: qk.pages(ws) });
+      await qc.cancelQueries({ queryKey: qk.page(v.pageId) });
+      const snapshot = qc.getQueryData<PageListItem[]>(qk.pages(ws)) ?? [];
+      const pageSnap = qc.getQueryData<PageFull | null>(qk.page(v.pageId)) ?? null;
+      const nowIso = new Date().toISOString();
+      qc.setQueryData<PageListItem[]>(
+        qk.pages(ws),
+        snapshot.map((p) =>
+          p.id === v.pageId ? { ...p, icon: v.icon, edited_at: nowIso } : p,
+        ),
+      );
+      qc.setQueryData<PageFull | null>(qk.page(v.pageId), (prev) =>
+        prev ? { ...prev, icon: v.icon, edited_at: nowIso } : prev,
+      );
+      return { snapshot, pageSnap };
+    },
+    onError: (err, v, ctx) => {
+      if (ctx?.snapshot) qc.setQueryData(qk.pages(ws), ctx.snapshot);
+      if (ctx?.pageSnap !== undefined)
+        qc.setQueryData(qk.page(v.pageId), ctx.pageSnap);
+      toast.push(`Couldn't change icon: ${(err as Error).message}`);
+    },
+  });
+}
+
+/**
+ * Set (or clear) the emoji on an area — stored inside the `area`
+ * property_def's `options` array (never a table). Uses the pure transform
+ * in `@/lib/area-icon` so its logic can be tested independently.
+ *
+ * Optimistic against qk.propDefs(ws); rolls back on error. RLS
+ * `propdefs_write` already permits workspace members.
+ */
+export function useSetAreaIcon() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (v: { area: string; emoji: string | null }) => {
+      const { applyAreaIcon } = await import("@/lib/area-icon");
+      const { data: def, error: readErr } = await supabase
+        .from("property_defs")
+        .select("id, options")
+        .eq("workspace_id", ws)
+        .eq("key", "area")
+        .single();
+      if (readErr) throw readErr;
+      const nextOptions = applyAreaIcon(
+        (def?.options ?? []) as never,
+        v.area,
+        v.emoji,
+      );
+      const { error: writeErr } = await supabase
+        .from("property_defs")
+        .update({ options: nextOptions as never })
+        .eq("id", def!.id);
+      if (writeErr) throw writeErr;
+      return nextOptions;
+    },
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: qk.propDefs(ws) });
+      const snap =
+        qc.getQueryData<Array<{ key: string; options: unknown }>>(qk.propDefs(ws)) ?? [];
+      const { applyAreaIcon } = await import("@/lib/area-icon");
+      qc.setQueryData<Array<{ key: string; options: unknown }>>(
+        qk.propDefs(ws),
+        snap.map((d) =>
+          d.key === "area"
+            ? {
+                ...d,
+                options: applyAreaIcon(
+                  (d.options ?? []) as never,
+                  v.area,
+                  v.emoji,
+                ) as unknown,
+              }
+            : d,
+        ),
+      );
+      return { snap };
+    },
+    onError: (err, _v, ctx) => {
+      if (ctx?.snap) qc.setQueryData(qk.propDefs(ws), ctx.snap);
+      toast.push(`Couldn't change emoji: ${(err as Error).message}`);
+    },
+  });
+}
+

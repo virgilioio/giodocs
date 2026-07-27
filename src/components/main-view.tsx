@@ -40,6 +40,7 @@ import {
   useDeleteView,
 } from "@/hooks/use-page-mutations";
 import { ExportViewDialog } from "./export-view-dialog";
+import { EmojiPicker } from "./emoji-picker";
 import type { ExportViewRow } from "@/lib/export";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
@@ -1679,6 +1680,9 @@ export function MainView({ selection }: { selection: Selection }) {
             workspaceName={workspace?.name ?? "the workspace"}
             memberCount={memberCount}
             onRename={() => setRenaming(true)}
+            onChangeIcon={(icon) => {
+              if (view) updateView.mutate({ id: view.id, patch: { icon } });
+            }}
             onDuplicatePersonal={doDuplicatePersonal}
             onDuplicateTeam={doDuplicateTeam}
             onPublish={doPublish}
@@ -1882,6 +1886,7 @@ function ViewHeaderMenu({
   workspaceName,
   memberCount,
   onRename,
+  onChangeIcon,
   onDuplicatePersonal,
   onDuplicateTeam,
   onPublish,
@@ -1898,6 +1903,7 @@ function ViewHeaderMenu({
   workspaceName: string;
   memberCount: number;
   onRename: () => void;
+  onChangeIcon: (icon: string | null) => void;
   onDuplicatePersonal: () => void;
   onDuplicateTeam: () => void;
   onPublish: () => void;
@@ -1906,7 +1912,7 @@ function ViewHeaderMenu({
   onDelete: () => void;
   onAreaSaveAsView: () => void;
 }) {
-  const [mode, setMode] = useState<"list" | "publish" | "delete">("list");
+  const [mode, setMode] = useState<"list" | "publish" | "delete" | "icon">("list");
 
   const name = view?.name ?? (selection.kind === "area" ? selection.area : "");
   const title =
@@ -1938,6 +1944,18 @@ function ViewHeaderMenu({
       />
     );
   }
+  if (mode === "icon") {
+    return (
+      <EmojiPicker
+        removable
+        onPick={(e) => {
+          onChangeIcon(e);
+          setMode("list");
+        }}
+      />
+    );
+  }
+
 
   type Item =
     | { kind: "divider" }
@@ -1971,6 +1989,13 @@ function ViewHeaderMenu({
       id: "rename",
       label: "Rename view",
       onSelect: onRename,
+    });
+    items.push({
+      id: "change-icon",
+      label: "Change icon",
+      submenu: true,
+      keepOpen: true,
+      onSelect: () => setMode("icon"),
     });
     items.push({
       id: "duplicate",

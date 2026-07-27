@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import {
@@ -9,15 +8,17 @@ import {
 } from "@/hooks/use-workspace-data";
 import {
   useRenamePage,
+  useSetPageIcon,
   useSetPageProperty,
   useUpdateBlocks,
   useVerifyPage,
   useArchivePage,
 } from "@/hooks/use-page-mutations";
-import { qk } from "@/lib/query-keys";
+
 import { usePrefs } from "@/lib/preferences";
 import { usePageAppearance } from "@/lib/page-appearance";
 import { Popover } from "./popover";
+import { EmojiPicker } from "./emoji-picker";
 import {
   AreaPicker,
   OwnerPicker,
@@ -950,8 +951,8 @@ export function PageEditor({ pageId }: { pageId: string }) {
   const rename = useRenamePage();
   const updateBlocks = useUpdateBlocks();
   const archive = useArchivePage();
+  const setPageIcon = useSetPageIcon();
 
-  const qc = useQueryClient();
   const { prefs } = usePrefs();
   const { app } = usePageAppearance(pageId);
   useEffect(() => {
@@ -1167,14 +1168,33 @@ export function PageEditor({ pageId }: { pageId: string }) {
       data-locked={app.locked ? "1" : "0"}
       style={{ maxWidth: 780, padding: "42px 44px" }}
     >
-      {/* 1. Emoji icon on its own line. */}
-      <div
-        className="select-none"
-        aria-hidden
-        style={{ fontSize: 44, lineHeight: 1 }}
+      {/* 1. Emoji icon on its own line — opens the shared emoji picker. */}
+      <Popover
+        width={264}
+        trigger={({ open, onClick, ref }) => (
+          <button
+            ref={ref}
+            type="button"
+            onClick={onClick}
+            aria-label="Change page icon"
+            aria-expanded={open}
+            className="grid select-none place-items-center rounded-md hover:bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            style={{ width: 56, height: 56, fontSize: 44, lineHeight: 1 }}
+          >
+            {page.icon || "📄"}
+          </button>
+        )}
       >
-        {page.icon || "📄"}
-      </div>
+        {(close) => (
+          <EmojiPicker
+            onPick={(e) => {
+              if (e) setPageIcon.mutate({ pageId: page.id, icon: e });
+              close();
+            }}
+          />
+        )}
+      </Popover>
+
 
       {/* 2. Editable title. */}
       <EditableTitle
@@ -1247,11 +1267,13 @@ export function PageEditor({ pageId }: { pageId: string }) {
           areas={areasList}
           onSet={(key, value) => {
             if (key === "icon") {
-              void updatePageIcon(page.id, value as string, qc);
+              if (typeof value === "string" && value)
+                setPageIcon.mutate({ pageId: page.id, icon: value });
               return;
             }
             setProp.mutate({ pageId: page.id, key, value });
           }}
+
         />
       </div>
 
@@ -1272,13 +1294,4 @@ export function PageEditor({ pageId }: { pageId: string }) {
   );
 }
 
-async function updatePageIcon(
-  pageId: string,
-  icon: string,
-  qc: ReturnType<typeof useQueryClient>,
-) {
-  const { supabase } = await import("@/integrations/supabase/client");
-  await supabase.from("pages").update({ icon }).eq("id", pageId);
-  qc.invalidateQueries({ queryKey: qk.page(pageId) });
-}
 
