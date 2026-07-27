@@ -1437,7 +1437,7 @@ function AreaEmojiSlot({
   hoverRow,
   onPick,
 }: {
-  icon: string | null;
+  icon: string | null | undefined;
   emojiOpen: boolean;
   setEmojiOpen: (v: boolean) => void;
   hoverRow: boolean;
