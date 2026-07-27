@@ -488,10 +488,20 @@ export function EditableBody({
   const rowEls = useRef<Map<string, HTMLElement>>(new Map());
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+  /* Drag state — cross-list (top-level ↔ columns).
+   *
+   * `sourceCol` is where the dragged run lives; null = top-level, otherwise
+   * `{blockId,colIndex}` names the source column. `targetCol` is where the
+   * pointer currently is; the indicator is rendered inside that list's
+   * bounding box (in container-space). `indicator` carries the full 2px
+   * rect so a drop into a column shows a bar spanning JUST that column,
+   * not the whole page width. */
   const [dragging, setDragging] = useState<{
-    ids: string[]; // in original order
-    gap: number | null; // 0..blocks.length or null while indicator hidden
-    indicatorY: number | null; // relative to container top
+    ids: string[]; // in original order (source-list order)
+    sourceCol: ColumnRef | null;
+    targetCol: ColumnRef | null;
+    gap: number | null; // 0..targetList.length or null while indicator hidden
+    indicator: { x: number; y: number; width: number } | null; // container-space
   } | null>(null);
   const draggingRef = useRef(dragging);
   useEffect(() => {
