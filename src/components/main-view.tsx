@@ -2509,7 +2509,7 @@ const TableRow = memo(function TableRow({
 }) {
   return (
     <RowGroup pageId={p.id} selected={selected}>
-      <Cell>
+      <Cell edge>
         <RowCheckbox
           checked={selected}
           alwaysVisible={anySelection}
@@ -2562,7 +2562,7 @@ const TableRow = memo(function TableRow({
       <Cell>
         <span className="text-meta text-muted">{relTime(p.edited_at)}</span>
       </Cell>
-      <Cell className="justify-self-end" data-row-more>
+      <Cell edge data-row-more>
         <SpecMenuTrigger
           build={buildMenu}
           size="sm"
@@ -2656,17 +2656,40 @@ function TableBody({
 
   return (
     <div className="overflow-x-auto">
+      {/*
+        SINGLE SOURCE OF TRUTH for the table grid. Header cells and row
+        cells share this via `display:contents` on RowGroup, so they can
+        never drift. The leading 16px checkbox track and the trailing
+        24px ⋯ menu track are FIXED-WIDTH and never shrink; every flexible
+        column uses minmax(0, …) so text ellipsises rather than forcing
+        the grid wider than its container.
+
+        RESPONSIVE DROPS: cells whose className hides them below xs/sm/md
+        are display:none'd. `display:none` on a grid child removes it from
+        auto-placement and shifts every following cell up one track
+        (chunk 1's rule). To keep the ⋯ locked to the right edge, the
+        grid-template DROPS the same tracks at the same breakpoints.
+        Order of drops: Verified (below md) → Tags (below sm) → Area
+        (below xs). Checkbox and ⋯ are the last two things to give up
+        space — they never squeeze.
+      */}
       <div
         role="table"
-        className="min-w-full text-row"
-        style={{
-          display: "grid",
-          gridTemplateColumns:
-            "16px minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr) minmax(0,0.9fr) minmax(0,0.9fr) 24px",
-        }}
+        className={[
+          "min-w-full text-row grid",
+          // base (< xs, 6 tracks): checkbox, page, owner, status, edited, menu
+          "[--gio-tbl-cols:16px_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.9fr)_24px]",
+          // xs+ (7 tracks): + area
+          "xs:[--gio-tbl-cols:16px_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.9fr)_24px]",
+          // sm+ (8 tracks): + tags
+          "sm:[--gio-tbl-cols:16px_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.9fr)_24px]",
+          // md+ (9 tracks): + verified
+          "md:[--gio-tbl-cols:16px_minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_24px]",
+        ].join(" ")}
+        style={{ gridTemplateColumns: "var(--gio-tbl-cols)" }}
         onClickCapture={onGridClickCapture}
       >
-        <HeaderCell>
+        <HeaderCell edge>
           <HeaderSelectAll
             state={selectAllState}
             count={rows.length}
@@ -2680,7 +2703,7 @@ function TableBody({
         <HeaderCell className="hidden sm:block">Tags</HeaderCell>
         <HeaderCell className="hidden md:block">Verified</HeaderCell>
         <HeaderCell>Edited</HeaderCell>
-        <HeaderCell> </HeaderCell>
+        <HeaderCell edge> </HeaderCell>
 
         {rows.map((p) => (
           <TableRow
@@ -3109,14 +3132,25 @@ function HeaderSelectAll({
 }
 
 
-function HeaderCell({ children, className }: { children: ReactNode; className?: string }) {
+function HeaderCell({
+  children,
+  className,
+  edge,
+}: {
+  children: ReactNode;
+  className?: string;
+  edge?: boolean;
+}) {
   return (
     <div
       className={
-        "flex items-center border-b border-line bg-canvas px-[11px] text-label uppercase text-faint " +
+        "flex items-center border-b border-line bg-canvas text-label uppercase text-faint " +
+        (edge
+          ? "justify-center px-0 "
+          : "px-[11px] overflow-hidden ") +
         (className ?? "")
       }
-      style={{ padding: "12px 11px 6px", lineHeight: "11px" }}
+      style={{ padding: edge ? "12px 0 6px" : "12px 11px 6px", lineHeight: "11px" }}
     >
       {children}
     </div>
@@ -3129,12 +3163,14 @@ function Cell({
   className,
   pageId,
   selected,
+  edge,
   ...rest
 }: {
   children: ReactNode;
   className?: string;
   pageId?: string;
   selected?: boolean;
+  edge?: boolean;
   [key: string]: unknown;
 }) {
   return (
@@ -3142,7 +3178,10 @@ function Cell({
       data-page-id={pageId}
       data-row-more={rest["data-row-more"] as string | undefined}
       className={
-        "min-w-0 border-b border-lineSoft px-[11px] gio-cell-pad flex items-center whitespace-nowrap overflow-hidden " +
+        "min-w-0 border-b border-lineSoft gio-cell-pad flex items-center whitespace-nowrap " +
+        (edge
+          ? "justify-center px-0 "
+          : "px-[11px] overflow-hidden ") +
         (selected ? "bg-blueTint group-hover:bg-blueWash " : "group-hover:bg-sunken ") +
         (className ?? "")
       }
