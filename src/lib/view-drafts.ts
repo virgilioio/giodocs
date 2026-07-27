@@ -36,3 +36,18 @@ export function areaBaseView(area: string): ViewBase {
     group_by: null,
   };
 }
+
+/**
+ * The single accessor for a view's effective layout. Reads from a draft
+ * first (session override) and falls back to the row's persisted value.
+ * Every writer (segmented switcher, toolbar ⋯, sidebar row menu) sets
+ * `drafts[view.id].layout` or `view.layout` — this is where they meet.
+ */
+export function layoutOf(
+  view: { id: string; layout?: ViewLayout | null } | null | undefined,
+  drafts: Record<string, ViewDraft>,
+): ViewLayout {
+  if (!view) return "table";
+  return drafts[view.id]?.layout ?? view.layout ?? "table";
+}
+
