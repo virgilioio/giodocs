@@ -12,7 +12,14 @@
  * touch every renderer, both serialisers, and the search vector, and is
  * out of scope for markdown import. The next person: please don't "fix"
  * this.
+ *
+ * NOTE — markdown cannot express `columns` blocks. Exported columns are
+ * flattened by blockToMarkdown into stacked blocks. This parser therefore
+ * never resurrects a columns block from text; the structured importer
+ * (htmlToBlocks in html-to-markdown.ts) is the only path that preserves
+ * columns, and it feeds Blk[] directly, bypassing markdown.
  */
+
 
 import { nanoid } from "nanoid";
 import type { Block } from "./types";

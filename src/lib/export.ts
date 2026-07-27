@@ -164,11 +164,29 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
       }
       return lines.join("\n");
     }
+    case "columns": {
+      // Markdown has no columns. Flatten deterministically — each column's
+      // blocks in order, blank line between blocks, blank line between
+      // columns. Round-trip is intentionally lossy: columns become stacked
+      // blocks. Do NOT invent a marker; parseMarkdown must not resurrect
+      // columns from plain text.
+      const cols = Array.isArray(b.cols) ? (b.cols as Block[][]) : [];
+      const perCol = cols.map((col) => {
+        if (!Array.isArray(col)) return "";
+        const ords = numberedOrdinals(col);
+        return col
+          .map((inner) => blockToMarkdown(inner, (inner.id && ords.get(inner.id)) || 1))
+          .filter((s) => s.length > 0)
+          .join("\n\n");
+      });
+      return perCol.filter((s) => s.length > 0).join("\n\n");
+    }
     default:
       warnUnknownBlock(t);
       return text;
   }
 }
+
 
 /* ─────────────────────────── toMarkdown ─────────────────────────── */
 
@@ -268,11 +286,31 @@ function blockHtml(b: Block, ordinal = 1): string {
         .join("");
       return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
     }
+    case "columns": {
+      // Real CSS grid. minmax(0,1fr) prevents long words from blowing the
+      // track out. Inner blocks serialise recursively with per-column
+      // numbered ordinals so `1.` starts fresh in each column.
+      const cols = Array.isArray(b.cols) ? (b.cols as Block[][]) : [];
+      const n = cols.length;
+      if (n === 0) return "";
+      const inner = cols
+        .map((col) => {
+          if (!Array.isArray(col)) return "<div></div>";
+          const ords = numberedOrdinals(col);
+          const html = col
+            .map((c) => blockHtml(c, (c.id && ords.get(c.id)) || 1))
+            .join("");
+          return `<div>${html}</div>`;
+        })
+        .join("");
+      return `<div class="cols" style="display:grid;grid-template-columns:repeat(${n},minmax(0,1fr));gap:20px">${inner}</div>`;
+    }
     default:
       warnUnknownBlock(t);
       return `<p>${esc(text)}</p>`;
   }
 }
+
 
 /* ─────────────────────────── Design tokens ───────────────────────────
  * These hex values are the design-system tokens serialized for exported

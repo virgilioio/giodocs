@@ -177,6 +177,49 @@ describe("blockToMarkdown", () => {
   });
 });
 
+describe("columns block serialisation", () => {
+  const cb = (n: number) => ({
+    id: "c1",
+    type: "columns",
+    cols: Array.from({ length: n }, (_, i) => [
+      { id: `a${i}`, type: "text", text: `alpha-${i}` },
+      { id: `b${i}`, type: "numbered", text: `beta-${i}` },
+    ]),
+  } as unknown as Block);
+
+  it("blockToMarkdown flattens both columns in order, blank line between", () => {
+    const md = blockToMarkdown(cb(2));
+    // Each column's blocks appear in order; 1. resets per column.
+    expect(md).toContain("alpha-0\n\n1. beta-0");
+    expect(md).toContain("alpha-1\n\n1. beta-1");
+    // Column 0 content appears before column 1 content
+    expect(md.indexOf("alpha-0")).toBeLessThan(md.indexOf("alpha-1"));
+    // No column marker in the output
+    expect(md).not.toMatch(/col2|columns|::col/i);
+  });
+
+  it("toHtml emits a real CSS grid with repeat(N,minmax(0,1fr))", () => {
+    const html = toHtml({ title: "T", blocks: [cb(3)] });
+    expect(html).toContain('grid-template-columns:repeat(3,minmax(0,1fr))');
+    expect(html).toContain("alpha-0");
+    expect(html).toContain("alpha-2");
+    // User text is escaped through the normal path
+    const dangerous = {
+      id: "c2",
+      type: "columns",
+      cols: [
+        [{ id: "x", type: "text", text: "<script>bad()</script>" }],
+        [{ id: "y", type: "text", text: "safe" }],
+      ],
+    } as unknown as Block;
+    const h2 = toHtml({ title: "T", blocks: [dangerous] });
+    expect(h2).not.toContain("<script>bad()</script>");
+    expect(h2).toContain("&lt;script&gt;bad()&lt;/script&gt;");
+  });
+});
+
+
+
 
 describe("toHtml", () => {
   it("escapes <script> in page content", () => {
