@@ -322,9 +322,7 @@ function SpecRow({ row, onClose }: { row: Extract<MenuRow, { kind: "row" }>; onC
 
       {row.checked && <CheckIcon />}
       {row.hint && <MenuHintView hint={row.hint} />}
-      {/* The `onClose` reference is captured so future submenu-style rows
-          can call it — most rows drive close via their own onPick. */}
-      <span aria-hidden data-close-ref={onClose ? "" : undefined} />
+
     </button>
   );
 }
