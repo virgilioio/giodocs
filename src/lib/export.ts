@@ -253,37 +253,51 @@ function blockHtml(b: Block): string {
   }
 }
 
+/* ─────────────────────────── Design tokens ───────────────────────────
+ * These hex values are the design-system tokens serialized for exported
+ * files. They MUST match src/styles.css @theme exactly. If you change a
+ * token there, change it here.
+ * See scripts/check-tokens.mjs — this file is the sole exemption.
+ */
+const canvas     = "#F6F5F1"; // --color-canvas   (body background)
+const ink        = "#2A2A24"; // --color-ink      (prose text)
+const noir       = "#0d0d09"; // --color-noir     (headings)
+const line       = "#E7E8EE"; // --color-line     (borders / rules)
+const muted      = "#767B89"; // --color-muted    (dt, muted text)
+const sunken     = "#F1F0EC"; // --color-sunken   (aside/pre/th surfaces)
+const lineStrong = "#DCDCE4"; // --color-lineStrong (blockquote border)
+
 const HTML_CSS = `
   :root { color-scheme: light; }
-  html, body { margin: 0; padding: 0; background: #F6F5F1; }
+  html, body { margin: 0; padding: 0; background: ${canvas}; }
   body {
     font-family: Lato, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    font-size: 17px; line-height: 1.6; color: #1A1915;
+    font-size: 17px; line-height: 1.6; color: ${ink};
     padding: 56px 44px; max-width: 780px; margin: 0 auto;
   }
-  h1, h2, h3 { font-family: Poppins, -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -0.02em; color: #0D0D09; }
+  h1, h2, h3 { font-family: Poppins, -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -0.02em; color: ${noir}; }
   h1.title { font-size: 34px; margin: 0 0 4px; letter-spacing: -0.035em; }
   h1 { font-size: 26px; margin: 28px 0 8px; }
   h2 { font-size: 20px; margin: 22px 0 6px; }
   p { margin: 0 0 10px; }
   ul, ol { margin: 0 0 10px; padding-left: 22px; }
   li { margin: 2px 0; }
-  hr { border: 0; border-top: 1px solid #D8D5CC; margin: 20px 0; }
-  blockquote { margin: 10px 0; padding: 4px 14px; border-left: 3px solid #C7C3B7; color: #4A4740; font-style: italic; }
-  aside { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; padding: 12px 14px; background: #EFEBDE; border-radius: 10px; }
+  hr { border: 0; border-top: 1px solid ${line}; margin: 20px 0; }
+  blockquote { margin: 10px 0; padding: 4px 14px; border-left: 3px solid ${lineStrong}; color: ${muted}; font-style: italic; }
+  aside { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; padding: 12px 14px; background: ${sunken}; border-radius: 10px; }
   aside .ico { flex: none; font-size: 18px; line-height: 1.3; }
-  pre { margin: 10px 0; padding: 12px 14px; background: #EEEBE1; border-radius: 8px; overflow: auto;
+  pre { margin: 10px 0; padding: 12px 14px; background: ${sunken}; border-radius: 8px; overflow: auto;
     font-family: "Spline Sans Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
   code { font-family: "Spline Sans Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
   table { border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 15px; }
-  th, td { border: 1px solid #D8D5CC; padding: 6px 10px; text-align: left; vertical-align: top; }
-  thead th { background: #EEEBE1; }
-  .todo .done { color: #7A776F; text-decoration: line-through; }
+  th, td { border: 1px solid ${line}; padding: 6px 10px; text-align: left; vertical-align: top; }
+  thead th { background: ${sunken}; }
+  .todo .done { color: ${muted}; text-decoration: line-through; }
   details { margin: 8px 0; }
   summary { cursor: default; font-weight: 700; }
-  dl.props { display: grid; grid-template-columns: 132px 1fr; gap: 4px 16px; margin: 0 0 24px; font-size: 14px; color: #4A4740; }
-  dl.props dt { color: #7A776F; }
-  header.meta { border-bottom: 1px solid #D8D5CC; padding-bottom: 18px; margin-bottom: 22px; }
+  dl.props { display: grid; grid-template-columns: 132px 1fr; gap: 4px 16px; margin: 0 0 24px; font-size: 14px; color: ${ink}; }
+  dl.props dt { color: ${muted}; }
+  header.meta { border-bottom: 1px solid ${line}; padding-bottom: 18px; margin-bottom: 22px; }
 `;
 
 export function toHtml(ctx: ExportContext): string {
