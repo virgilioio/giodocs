@@ -85,8 +85,10 @@ describe("toMarkdown", () => {
     expect(md).toContain("\n| A | B |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |\n");
   });
 
-  it("throws on unknown block types (no silent default)", () => {
-    expect(() => toMarkdown({ ...base, blocks: [B("mystery")] })).toThrow();
+  it("degrades unknown block types to plain text (no throw)", () => {
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(() => toMarkdown({ ...base, blocks: [B("mystery", { text: "x" })] })).not.toThrow();
+    spy.mockRestore();
   });
 
   it("emits true ordinals for a run of numbered blocks", () => {
