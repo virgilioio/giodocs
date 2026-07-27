@@ -362,9 +362,15 @@ export async function printPdf(
   paper: string,
   scalePct: number,
 ): Promise<void> {
-  const win = window.open("", "_blank", "noopener,noreferrer");
-  if (!win) throw new Error("popup-blocked");
+  // Serialise BEFORE opening the window: if toHtml throws we must not
+  // leave an orphaned about:blank tab behind.
   const html = toHtml(ctx);
+  // NOTE: do NOT pass "noopener,noreferrer" here. Per spec, window.open()
+  // returns null when noopener is set, so we would lose the handle we need
+  // to write our own document into the tab. This is safe: we are writing a
+  // string we generated ourselves, not navigating to an untrusted URL.
+  const win = window.open("", "_blank");
+  if (!win) throw new Error("popup-blocked");
   const zoom = Math.max(0.5, Math.min(2, scalePct / 100));
   const augmented = html.replace(
     "</style>",
