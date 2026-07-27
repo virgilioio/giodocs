@@ -172,8 +172,16 @@ function ViewHeader({
   return (
     <div className="mb-4 flex items-start justify-between gap-4">
       <div className="min-w-0">
-        <div className="text-label uppercase text-faint">{scopeLabel}</div>
-        <h1 className="mt-1 font-display text-title text-noir truncate">
+        <div
+          className="text-label uppercase text-faint"
+          style={{ height: 14, lineHeight: "14px" }}
+        >
+          {scopeLabel}
+        </div>
+        <h1
+          className="mt-1 font-display text-title text-noir truncate"
+          style={{ height: 34, lineHeight: "34px" }}
+        >
           {renaming ? (
             <input
               autoFocus
@@ -187,7 +195,7 @@ function ViewHeader({
                 }
               }}
               className="w-full min-w-0 bg-transparent font-display text-title text-noir focus:outline-none"
-              style={{ letterSpacing: "-0.035em" }}
+              style={{ letterSpacing: "-0.035em", height: 34, lineHeight: "34px" }}
             />
           ) : (
             <>
