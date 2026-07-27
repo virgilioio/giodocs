@@ -322,18 +322,60 @@ export function AppShell() {
   const loading =
     shell.pages.isLoading || shell.views.isLoading || shell.workspace.isLoading;
 
+  const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (collapsed) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = sidebarWidth;
+    const target = e.currentTarget;
+    target.setPointerCapture(e.pointerId);
+    setResizing(true);
+    if (typeof document !== "undefined") {
+      document.body.style.userSelect = "none";
+      document.body.style.cursor = "col-resize";
+    }
+    const onMove = (ev: PointerEvent) => {
+      const next = Math.min(
+        SIDEBAR_MAX,
+        Math.max(SIDEBAR_MIN, startW + (ev.clientX - startX)),
+      );
+      setSidebarWidth(next);
+    };
+    const onUp = (ev: PointerEvent) => {
+      try {
+        target.releasePointerCapture(ev.pointerId);
+      } catch {
+        /* ignore */
+      }
+      target.removeEventListener("pointermove", onMove);
+      target.removeEventListener("pointerup", onUp);
+      target.removeEventListener("pointercancel", onUp);
+      setResizing(false);
+      if (typeof document !== "undefined") {
+        document.body.style.userSelect = "";
+        document.body.style.cursor = "";
+      }
+    };
+    target.addEventListener("pointermove", onMove);
+    target.addEventListener("pointerup", onUp);
+    target.addEventListener("pointercancel", onUp);
+  };
+
   return (
     <RowMenuProvider>
-    <div className="flex h-screen overflow-hidden bg-canvas">
+    <div
+      className="flex h-screen overflow-hidden bg-canvas"
+      style={{ "--gio-sidebar-w": `${sidebarWidth}px` } as React.CSSProperties}
+    >
       <div
         style={{
-          width: collapsed ? 0 : "var(--spacing-sidebar)",
-          transition: "width 180ms ease",
+          width: collapsed ? 0 : "var(--gio-sidebar-w)",
+          transition: resizing ? "none" : "width 180ms ease",
         }}
-        className="shrink-0 overflow-hidden border-r border-line bg-rail"
+        className="relative shrink-0 overflow-hidden border-r border-line bg-rail"
       >
         <div
-          style={{ width: "var(--spacing-sidebar)" }}
+          style={{ width: "var(--gio-sidebar-w)" }}
           className="flex h-screen flex-col"
         >
           <SidebarBody
@@ -367,7 +409,35 @@ export function AppShell() {
             onCloseSidebarPopover={() => setSidebarPopover(null)}
           />
         </div>
+        {!collapsed && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize sidebar"
+            onPointerDown={startResize}
+            onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT)}
+            className="group absolute inset-y-0 z-20"
+            style={{
+              right: -2,
+              width: 5,
+              cursor: "col-resize",
+              touchAction: "none",
+            }}
+          >
+            <span
+              aria-hidden
+              className={
+                "absolute inset-y-0 left-1/2 -translate-x-1/2 " +
+                (resizing
+                  ? "bg-lineStrong"
+                  : "bg-transparent group-hover:bg-lineStrong")
+              }
+              style={{ width: 1 }}
+            />
+          </div>
+        )}
       </div>
+
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header
