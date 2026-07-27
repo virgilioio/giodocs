@@ -8,15 +8,25 @@
  * Precedence (longest delimiter first):
  *   `code`  →  <code>          (contents never re-parsed)
  *   **bold** →  <strong>
- *   *italic* / _italic_  →  <em>
+ *   *italic*  →  <em>
  *   ~~strike~~ →  <s>
  *   <u>…</u>   →  <u>          (markdown has no underline; inline HTML is
  *                              the convention and passes through)
  *   [label](url) → <a target=_blank rel=noopener noreferrer>
  *
+ * ⚠ DO NOT add _italic_ support. We deliberately support *italic* only.
+ * Real documents being migrated (legal contracts) contain long runs of
+ * underscores as fill-in blanks — "_____________________, sociedad …" and
+ * "Firma: ___________________________". Treating _ as an italic delimiter
+ * eats those runs and corrupts the document. Underscores must ALWAYS
+ * render as literal characters. This is safe because the other direction
+ * is fully controlled: html-to-markdown emits * for <em>/<i>, and
+ * blockToMarkdown emits * — nothing we generate ever uses _ for emphasis.
+ *
  * Rules:
  *  - Nesting at least two deep (**bold *italic* inside**) works.
- *  - Unmatched / malformed delimiters render as LITERAL characters.
+ *  - Unmatched / malformed ** ~~ * runs render as LITERAL characters and
+ *    never eat following text.
  *  - Escaping: `\*` renders a literal asterisk.
  *  - Links with dangerous URL schemes (javascript:, data:, vbscript:) are
  *    rendered as literal text, never as <a href>.
@@ -25,7 +35,7 @@
 import type { ReactNode } from "react";
 import { Fragment } from "react";
 
-const ESC_PUNCT = /[\\*_`~<>\[\]()]/;
+const ESC_PUNCT = /[\\*`~<>\[\]()]/;
 
 function safeUrl(url: string): string | null {
   const trimmed = url.trim();
