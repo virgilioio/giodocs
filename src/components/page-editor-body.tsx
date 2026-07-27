@@ -122,6 +122,7 @@ export function EditableTitle({
   onEnter,
   autoFocus,
   topMarginClass = "mt-3",
+  readOnly = false,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -129,6 +130,8 @@ export function EditableTitle({
   autoFocus?: boolean;
   /** Override the default `mt-3` when rendering in an already-spaced row. */
   topMarginClass?: string;
+  /** BUG 3: honour the page-appearance "Lock editing" toggle. */
+  readOnly?: boolean;
 }) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   useAutoGrow(ref, value);
@@ -145,8 +148,10 @@ export function EditableTitle({
       value={value}
       placeholder="Untitled"
       rows={1}
+      readOnly={readOnly}
       onChange={(e) => onChange(e.target.value.replace(/\n/g, ""))}
       onKeyDown={(e) => {
+        if (readOnly) return;
         if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
           e.preventDefault();
           onEnter();
@@ -154,7 +159,7 @@ export function EditableTitle({
       }}
       className={
         (topMarginClass ? topMarginClass + " " : "") +
-        "block w-full resize-none border-0 bg-transparent p-0 font-display text-display text-noir outline-none placeholder:text-faint"
+        "gio-title block w-full resize-none border-0 bg-transparent p-0 font-display text-display text-noir outline-none placeholder:text-faint"
       }
       style={{ overflow: "hidden", lineHeight: 1.15 }}
       aria-label="Page title"
