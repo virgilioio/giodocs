@@ -648,15 +648,17 @@ export async function printPdf(
   const win = window.open("", "_blank");
   if (!win) throw new Error("popup-blocked");
   const zoom = Math.max(0.5, Math.min(2, scalePct / 100));
-  // @page margin: 0 removes Chrome's print chrome (about:blank / page
-  // numbers) — the tradeoff explained in the export spec. Our own footer
-  // is fixed-positioned inside 0.35in from the bottom, and the body's
-  // 0.9in bottom padding reserves space so content never overlaps it.
+  // @page owns the bottom margin (0.85in) — the paginator applies it to
+  // EVERY sheet, so the fixed footer band clears content on p2, p3, … not
+  // just p1. Top/left/right stay 0 so Chrome's default print chrome (URL,
+  // page numbers) is suppressed and our own header/body handle spacing.
+  // Body padding provides the top/left/right inset only — dropping the
+  // bottom padding is deliberate: @page now owns that space.
   const augmented = html.replace(
     "</style>",
-    `@page { size: ${paper}; margin: 0; }
+    `@page { size: ${paper}; margin: 0 0 0.85in 0; }
      html, body { background: #ffffff; }
-     body { padding: 0.6in 0.75in 0.9in; max-width: none; zoom: ${zoom}; }
+     body { padding: 0.6in 0.75in 0; max-width: none; zoom: ${zoom}; }
      </style>`,
   );
   win.document.open();
