@@ -13,7 +13,7 @@ import type { Block } from "@/lib/types";
 import { moveBlock, moveRun, deleteIndices } from "@/lib/reorder";
 import { blockToMarkdown } from "@/lib/export";
 import { parseMarkdown } from "@/lib/markdown-import";
-import { htmlToMarkdown } from "@/lib/html-to-markdown";
+import { htmlToMarkdown, htmlToBlocks } from "@/lib/html-to-markdown";
 import { renderInlineWithOffsets } from "@/lib/inline-markdown";
 import { numberedOrdinals } from "@/lib/blocks";
 import { rowsInBand } from "@/lib/marquee";
@@ -22,6 +22,13 @@ import { useToast } from "@/lib/toast";
 import { RowMenu, type MenuSpec, type MenuRow } from "./row-menu";
 import { isTypingTarget, shouldSelectAllBlocks } from "@/lib/is-typing";
 import { nextEditableIndex } from "@/lib/block-nav";
+import {
+  MAX_COLS,
+  MIN_COLS,
+  emptyColumns,
+  isColumnsBlock,
+  stripNestedColumns,
+} from "@/lib/columns";
 
 
 
@@ -41,6 +48,9 @@ type Blk = Block & {
   icon?: string;
   rows?: string[][];
   language?: string;
+  /** Only meaningful when type === "columns". Never nested — public.page_search_text
+   * only recurses one level. Guards live in src/lib/columns.ts. */
+  cols?: Blk[][];
 };
 
 export type BlockType =
@@ -55,9 +65,19 @@ export type BlockType =
   | "callout"
   | "divider"
   | "code"
-  | "table";
+  | "table"
+  | "columns";
 
-const BLOCK_MENU: Array<{ type: BlockType; name: string; desc: string; icon: string }> = [
+type MenuItem = {
+  type: BlockType;
+  name: string;
+  desc: string;
+  icon: string;
+  /** For "columns" entries only: the column count to create. */
+  count?: number;
+};
+
+const BLOCK_MENU: MenuItem[] = [
   { type: "text", name: "Text", desc: "Plain writing. The default.", icon: "Aa" },
   { type: "h1", name: "Heading 1", desc: "Big section title.", icon: "H1" },
   { type: "h2", name: "Heading 2", desc: "Sub-section title.", icon: "H2" },
@@ -77,6 +97,14 @@ const BLOCK_MENU: Array<{ type: BlockType; name: string; desc: string; icon: str
   { type: "table", name: "Table", desc: "Simple rows and columns.", icon: "▦" },
 ];
 
+const COLUMNS_MENU: MenuItem[] = [
+  { type: "columns", name: "2 columns", desc: "Side by side.", icon: "▥", count: 2 },
+  { type: "columns", name: "3 columns", desc: "Three across.", icon: "▥", count: 3 },
+  { type: "columns", name: "4 columns", desc: "Four across.", icon: "▥", count: 4 },
+  { type: "columns", name: "5 columns", desc: "Five across.", icon: "▥", count: 5 },
+  { type: "columns", name: "6 columns", desc: "Six across.", icon: "▥", count: 6 },
+];
+
 const CALLOUT_ICONS = ["💡", "⚠️", "✅", "❌", "ℹ️", "📌", "🔥", "⭐", "🎯", "🧠", "🚧", "🧪"];
 
 function newBlock(type: BlockType = "text", text = ""): Blk {
@@ -87,6 +115,13 @@ function newBlock(type: BlockType = "text", text = ""): Blk {
   if (type === "table") base.rows = [["", "", ""], ["", "", ""]];
   return base;
 }
+
+/** Build a columns block seeded with `n` empty text-column columns. */
+function newColumnsBlock(n: number): Blk {
+  const cols = emptyColumns(n, () => newBlock("text")) as Blk[][];
+  return { id: nanoid(10), type: "columns", text: "", cols };
+}
+
 
 function normalize(raw: unknown[]): Blk[] {
   if (!Array.isArray(raw)) return [];
