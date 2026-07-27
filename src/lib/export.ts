@@ -12,6 +12,7 @@
  */
 
 import type { Block } from "./types";
+import { numberedOrdinals } from "./blocks";
 
 /* ─────────────────────────── Context ─────────────────────────── */
 
@@ -90,8 +91,12 @@ function blockText(b: Block): string {
  * copy path can reuse the exact same output the file exporter emits.
  * Return value is the block's content with NO trailing newline;
  * toMarkdown joins blocks with a blank line between them.
+ *
+ * `ordinal` is the true position in a run of consecutive numbered blocks
+ * (see numberedOrdinals). It only affects the "numbered" case; defaults
+ * to 1 for standalone callers.
  */
-export function blockToMarkdown(b: Block): string {
+export function blockToMarkdown(b: Block, ordinal = 1): string {
   const t = (b.type ?? "text") as string;
   const text = blockText(b);
   switch (t) {
@@ -104,7 +109,7 @@ export function blockToMarkdown(b: Block): string {
     case "bullet":
       return `- ${text}`;
     case "numbered":
-      return `1. ${text}`;
+      return `${ordinal}. ${text}`;
     case "todo":
       return `- [${b.checked ? "x" : " "}] ${text}`;
     case "toggle": {
@@ -167,7 +172,10 @@ export function toMarkdown(ctx: ExportContext): string {
   if (vd) front.push(`verified: ${vd}`);
   front.push("---", "");
 
-  const bodies = ctx.blocks.map(blockToMarkdown);
+  const ords = numberedOrdinals(ctx.blocks);
+  const bodies = ctx.blocks.map((b) =>
+    blockToMarkdown(b, (b.id && ords.get(b.id)) || 1),
+  );
   const body = bodies.map((s) => s + "\n").join("\n");
   return front.join("\n") + body;
 }
