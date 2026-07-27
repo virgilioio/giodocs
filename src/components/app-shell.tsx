@@ -726,6 +726,9 @@ function SidebarBody({
                     renderCount={renderCount}
                     wsName={workspaceName}
                     wsMembers={memberCount}
+                    isWorkspaceOwner={isWorkspaceOwner}
+                    pages={pages}
+                    ctx={ctx}
                   />
                 ))}
               </ul>
@@ -748,15 +751,34 @@ function SidebarBody({
                       count={countFor(v)}
                       renderCount={renderCount}
                       isOwner={v.owner_id === user?.id}
+                      isWorkspaceOwner={isWorkspaceOwner}
+                      memberCount={memberCount}
+                      pages={pages}
+                      ctx={ctx}
                       onHide={hideTeamView}
                     />
                   ))}
+                  {hiddenTeamCount > 0 && (
+                    <li>
+                      <button
+                        type="button"
+                        onClick={unhideAllTeamViews}
+                        style={{ height: "var(--spacing-rowTeam)" }}
+                        className="flex w-full items-center gap-2 rounded-md px-2 text-meta text-faint italic hover:bg-railHover"
+                      >
+                        <span className="min-w-0 flex-1 truncate text-left">
+                          {hiddenTeamCount} hidden
+                        </span>
+                      </button>
+                    </li>
+                  )}
                 </ul>
                 <p className="px-2 pt-1 text-caption italic text-faint">
                   Published from My views — open a view's ⋯ menu.
                 </p>
               </>
             )}
+
 
             {/* Areas */}
             <SectionHeader
