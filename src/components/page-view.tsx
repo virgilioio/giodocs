@@ -9,6 +9,7 @@ import {
 } from "@/hooks/use-workspace-data";
 import {
   useRenamePage,
+  useSetPageIcon,
   useSetPageProperty,
   useUpdateBlocks,
   useVerifyPage,
