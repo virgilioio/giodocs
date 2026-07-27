@@ -10,6 +10,7 @@ import {
 import { usePrefs } from "@/lib/preferences";
 import { formatTimestamp } from "@/lib/format";
 import { useToast } from "@/lib/toast";
+import { isTypingTarget } from "@/lib/is-typing";
 import { pageUrl } from "@/lib/slug";
 import { getPageOrigin } from "@/lib/page-origin";
 import { PageActionsMenu, PageMoreButton } from "./page-actions-menu";
