@@ -1204,6 +1204,15 @@ export function PageEditor({ pageId }: { pageId: string }) {
           propDefs={propDefs}
           members={members}
           meId={meId}
+          pages={(shell.pages.data ?? []) as PageListItem[]}
+          areas={useMemo(() => {
+            const s = new Set<string>();
+            for (const p of (shell.pages.data ?? []) as PageListItem[]) {
+              const a = propsOf(p)["area"];
+              if (typeof a === "string" && a) s.add(a);
+            }
+            return [...s].sort();
+          }, [shell.pages.data])}
           onSet={(key, value) => {
             if (key === "icon") {
               void updatePageIcon(page.id, value as string, qc);
