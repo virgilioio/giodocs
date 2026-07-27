@@ -32,6 +32,7 @@ import { useToast } from "@/lib/toast";
 import { RowMenu, type MenuSpec, type MenuRow } from "./row-menu";
 import { isTypingTarget, shouldSelectAllBlocks } from "@/lib/is-typing";
 import { nextEditableIndex } from "@/lib/block-nav";
+import { enterAction } from "@/lib/enter-behaviour";
 import {
   MAX_COLS,
   MIN_COLS,
