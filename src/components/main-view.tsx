@@ -147,6 +147,9 @@ function ViewHeader({
   layout,
   onChangeLayout,
   menuBuild,
+  renaming,
+  onRenameCommit,
+  onRenameCancel,
 }: {
   selection: Selection;
   view: ViewRow | null;
@@ -155,6 +158,9 @@ function ViewHeader({
   layout: Layout;
   onChangeLayout: (l: Layout) => void;
   menuBuild: () => ReactNode;
+  renaming: boolean;
+  onRenameCommit: (v: string) => void;
+  onRenameCancel: () => void;
 }) {
   let scopeLabel: ReactNode = "AREA";
   let name = "";
@@ -176,10 +182,29 @@ function ViewHeader({
       <div className="min-w-0">
         <div className="text-label uppercase text-faint">{scopeLabel}</div>
         <h1 className="mt-1 font-display text-title text-noir truncate">
-          {name}
-          <span className="ml-3 align-baseline text-ui text-faint font-normal tracking-normal">
-            {countLabel}
-          </span>
+          {renaming ? (
+            <input
+              autoFocus
+              defaultValue={name}
+              onBlur={(e) => onRenameCommit(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  onRenameCancel();
+                }
+              }}
+              className="w-full min-w-0 bg-transparent font-display text-title text-noir focus:outline-none"
+              style={{ letterSpacing: "-0.035em" }}
+            />
+          ) : (
+            <>
+              {name}
+              <span className="ml-3 align-baseline text-ui text-faint font-normal tracking-normal">
+                {countLabel}
+              </span>
+            </>
+          )}
         </h1>
       </div>
       <div className="flex shrink-0 items-center gap-2">
