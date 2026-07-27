@@ -387,6 +387,59 @@ export type Database = {
           },
         ]
       }
+      workspace_invites: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          email: string
+          email_error: string | null
+          email_status: string
+          expires_at: string
+          id: string
+          invited_at: string
+          invited_by: string | null
+          role: Database["public"]["Enums"]["member_role"]
+          token: string
+          workspace_id: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          email: string
+          email_error?: string | null
+          email_status?: string
+          expires_at?: string
+          id?: string
+          invited_at?: string
+          invited_by?: string | null
+          role?: Database["public"]["Enums"]["member_role"]
+          token?: string
+          workspace_id: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          email?: string
+          email_error?: string | null
+          email_status?: string
+          expires_at?: string
+          id?: string
+          invited_at?: string
+          invited_by?: string | null
+          role?: Database["public"]["Enums"]["member_role"]
+          token?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_invites_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workspace_members: {
         Row: {
           created_at: string
@@ -452,11 +505,86 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      workspace_invites_public: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          email: string | null
+          email_status: string | null
+          expires_at: string | null
+          id: string | null
+          invited_at: string | null
+          invited_by: string | null
+          role: Database["public"]["Enums"]["member_role"] | null
+          workspace_id: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          email?: string | null
+          email_status?: string | null
+          expires_at?: string | null
+          id?: string | null
+          invited_at?: string | null
+          invited_by?: string | null
+          role?: Database["public"]["Enums"]["member_role"] | null
+          workspace_id?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          email?: string | null
+          email_status?: string | null
+          expires_at?: string | null
+          id?: string | null
+          invited_at?: string | null
+          invited_by?: string | null
+          role?: Database["public"]["Enums"]["member_role"] | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_invites_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
+      accept_workspace_invite: { Args: { p_token: string }; Returns: string }
       can_manage_page_access: { Args: { p_page: string }; Returns: boolean }
       can_read_page: { Args: { p_page: string }; Returns: boolean }
+      create_workspace_invite: {
+        Args: {
+          p_email: string
+          p_invited_by: string
+          p_role: Database["public"]["Enums"]["member_role"]
+          p_workspace: string
+        }
+        Returns: {
+          accepted_at: string | null
+          accepted_by: string | null
+          email: string
+          email_error: string | null
+          email_status: string
+          expires_at: string
+          id: string
+          invited_at: string
+          invited_by: string | null
+          role: Database["public"]["Enums"]["member_role"]
+          token: string
+          workspace_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "workspace_invites"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       delete_page: { Args: { p_page: string }; Returns: undefined }
       domain_status: { Args: { p_email: string }; Returns: string }
       fork_view: {
