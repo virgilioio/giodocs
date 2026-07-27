@@ -1512,6 +1512,7 @@ function BlockRow({
   onKeyDown,
   onAddBelow,
   onSetIcon,
+  onPaste,
 }: {
   block: Blk;
   ordinal?: number;
@@ -1529,6 +1530,7 @@ function BlockRow({
   onKeyDown: (e: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
   onAddBelow: () => void;
   onSetIcon: (icon: string) => void;
+  onPaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
 }) {
   const noEditor = block.type === "divider";
   return (
