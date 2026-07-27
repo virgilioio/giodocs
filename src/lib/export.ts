@@ -286,11 +286,31 @@ function blockHtml(b: Block, ordinal = 1): string {
         .join("");
       return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
     }
+    case "columns": {
+      // Real CSS grid. minmax(0,1fr) prevents long words from blowing the
+      // track out. Inner blocks serialise recursively with per-column
+      // numbered ordinals so `1.` starts fresh in each column.
+      const cols = Array.isArray(b.cols) ? (b.cols as Block[][]) : [];
+      const n = cols.length;
+      if (n === 0) return "";
+      const inner = cols
+        .map((col) => {
+          if (!Array.isArray(col)) return "<div></div>";
+          const ords = numberedOrdinals(col);
+          const html = col
+            .map((c) => blockHtml(c, (c.id && ords.get(c.id)) || 1))
+            .join("");
+          return `<div>${html}</div>`;
+        })
+        .join("");
+      return `<div class="cols" style="display:grid;grid-template-columns:repeat(${n},minmax(0,1fr));gap:20px">${inner}</div>`;
+    }
     default:
       warnUnknownBlock(t);
       return `<p>${esc(text)}</p>`;
   }
 }
+
 
 /* ─────────────────────────── Design tokens ───────────────────────────
  * These hex values are the design-system tokens serialized for exported
