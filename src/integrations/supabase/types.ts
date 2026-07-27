@@ -231,6 +231,7 @@ export type Database = {
           is_system: boolean
           key: string
           label: string
+          open_values: boolean
           options: Json
           position: number
           type: Database["public"]["Enums"]["property_type"]
@@ -241,6 +242,7 @@ export type Database = {
           is_system?: boolean
           key: string
           label: string
+          open_values?: boolean
           options?: Json
           position?: number
           type: Database["public"]["Enums"]["property_type"]
@@ -251,6 +253,7 @@ export type Database = {
           is_system?: boolean
           key?: string
           label?: string
+          open_values?: boolean
           options?: Json
           position?: number
           type?: Database["public"]["Enums"]["property_type"]
