@@ -1983,6 +1983,16 @@ function BlockContent({
     );
   }
 
+  if (t === "columns" && Array.isArray(block.cols)) {
+    return (
+      <ColumnsBlock
+        block={block}
+        locked={locked}
+        onChange={onChange}
+      />
+    );
+  }
+
   if (t === "divider") {
     return (
       <div className="py-2" aria-label="Divider block">
@@ -1990,6 +2000,7 @@ function BlockContent({
       </div>
     );
   }
+
 
 
   if (t === "table") {
