@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import React, { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePrefs } from "@/lib/preferences";
 import { formatTimestamp } from "@/lib/format";
 import { useNavigate } from "@tanstack/react-router";
