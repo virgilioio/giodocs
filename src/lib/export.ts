@@ -42,11 +42,20 @@ export type ExportContext = {
 // self-containment assertion in tests survives the inline.
 const GIO_DOCS_LOGO_DATA_URI = (() => {
   try {
+    // Recolour the wordmark to the footer meta tone (#767B89) so it reads
+    // as a mark, not a logo lockup, at footer scale. Source SVG fills the
+    // glyphs as #0d0d09 / #000000; we swap them in the raw string BEFORE
+    // encoding so the data URI itself carries the tinted colours (no CSS
+    // filter, no external ref). The self-containment invariant holds:
+    // still no http/https/script tokens outside the base64 blob.
+    const tinted = GIO_DOCS_LOGO_SVG
+      .replace(/#0d0d09/gi, "#767B89")
+      .replace(/#000000/gi, "#767B89");
     // deno-lint-ignore no-explicit-any
     const b64 = typeof btoa === "function"
-      ? btoa(unescape(encodeURIComponent(GIO_DOCS_LOGO_SVG)))
+      ? btoa(unescape(encodeURIComponent(tinted)))
       : (typeof Buffer !== "undefined"
-        ? Buffer.from(GIO_DOCS_LOGO_SVG, "utf8").toString("base64")
+        ? Buffer.from(tinted, "utf8").toString("base64")
         : "");
     return `data:image/svg+xml;base64,${b64}`;
   } catch {
