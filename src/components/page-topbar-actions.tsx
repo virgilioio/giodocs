@@ -398,41 +398,6 @@ export function PageTopbarActions({
   const access = accessQ.data ?? [];
 
 
-  const buildMenu = (): ReactNode => {
-    if (!page) {
-      return (
-        <RowMenuList
-          title={listRow.title || "Untitled"}
-          items={[{ id: "wait", label: "Loading page…", disabled: true }]}
-        />
-      );
-    }
-    return (
-      <PageActionsMenu
-        page={page}
-        workspaceName={workspaceName}
-        memberCount={memberCount}
-        access={access}
-        areas={areas}
-        onCopyLink={doCopyLink}
-        onExport={() => setExportOpen(true)}
-        onDuplicate={doDuplicate}
-        onMoveArea={(area) =>
-          setProp.mutate({ pageId: page.id, key: "area", value: area })
-        }
-        onVerify={() => verify.mutate(page.id)}
-        isVerifiedToday={isVerifiedToday}
-        onArchive={() =>
-          archive.mutate({ pageId: page.id, archived: true })
-        }
-        onUnarchive={() =>
-          archive.mutate({ pageId: page.id, archived: false })
-        }
-        onDelete={doDelete}
-      />
-    );
-  };
-
   return (
     <>
       <EditedStamp
@@ -450,12 +415,63 @@ export function PageTopbarActions({
         <Glyph path={linkIcon} />
       </IconButton>
 
-      <RowMoreButton
-        size="md"
-        ariaLabel="Page actions"
-        build={buildMenu}
-        width={264}
+      <PageMoreButton
+        open={menuOpen}
+        onClick={() => {
+          const next = !menuOpen;
+          if (next) onMenuOpen(); else onMenuClose();
+        }}
       />
+
+      {page && (
+        <PageActionsMenu
+          open={menuOpen}
+          onClose={onMenuClose}
+          page={page}
+          workspaceName={workspaceName}
+          memberCount={memberCount}
+          access={access}
+          areas={areas}
+          appearance={app}
+          onAppearance={setAppearance}
+          handlers={{
+            onCopyLink: () => { void doCopyLink(); },
+            onExport: () => setExportOpen(true),
+            onDuplicate: () => { void doDuplicate(); },
+            onArchive: () => archive.mutate({ pageId: page.id, archived: true }),
+            onUnarchive: () => archive.mutate({ pageId: page.id, archived: false }),
+            onDelete: doDelete,
+            onVerify: () => {
+              verify.mutate(page.id);
+              toast.push("Verified just now — thanks for keeping this fresh.");
+            },
+            onOpenPermissions: () => {
+              // No standalone permissions popover exists yet; the on-page
+              // permissions chip is the surface. Focus it so the user sees
+              // where "who can see this" lives, without building a second
+              // popover.
+              const chip = document.querySelector<HTMLElement>(
+                "[data-permissions-chip]",
+              );
+              if (chip) {
+                chip.scrollIntoView({ block: "center", behavior: "smooth" });
+              }
+            },
+            onMoveArea: (area) => {
+              setProp.mutate({ pageId: page.id, key: "area", value: area });
+              const from =
+                page.props && typeof page.props === "object" && !Array.isArray(page.props)
+                  ? ((page.props as Record<string, unknown>).area as string | undefined)
+                  : undefined;
+              toast.push(
+                area
+                  ? `Moved to ${area}${from ? ` · was ${from}` : ""}`
+                  : `Cleared area${from ? ` · was ${from}` : ""}`,
+              );
+            },
+          }}
+        />
+      )}
 
       {exportOpen && exportCtx && (
         <ExportDialog ctx={exportCtx} onClose={() => setExportOpen(false)} />
@@ -463,3 +479,4 @@ export function PageTopbarActions({
     </>
   );
 }
+
