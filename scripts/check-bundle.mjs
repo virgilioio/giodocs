@@ -13,7 +13,12 @@ import { readdirSync, readFileSync, statSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const ROOT = process.cwd();
-const DIR = join(ROOT, ".output", "public");
+const CANDIDATES = ["dist/client", ".output/public", "dist"];
+let DIR = null;
+for (const c of CANDIDATES) {
+  const p = join(ROOT, ...c.split("/"));
+  if (existsSync(p)) { DIR = p; break; }
+}
 
 const STRING_NEEDLES = [
   { name: "SERVICE_ROLE",             re: /SERVICE_ROLE/g },
