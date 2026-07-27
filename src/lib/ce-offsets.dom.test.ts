@@ -4,7 +4,13 @@
  * is clean).
  */
 import { beforeEach, describe, expect, it } from "vitest";
-import { getCaretOffset, setCaretOffset } from "./ce-offsets";
+import {
+  getCaretOffset,
+  readCaretSource,
+  setCaretOffset,
+  writeCaretSource,
+} from "./ce-offsets";
+import { inlineToHtml } from "./inline-markdown";
 
 let el: HTMLElement;
 
