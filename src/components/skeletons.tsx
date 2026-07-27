@@ -35,6 +35,11 @@ const SK_ROWS: Array<{
   { w: "58%", area: 58, status: 66, tags: 84, ver: 44, edited: 50 },
 ];
 
+/* Property strip: 5 rows at min-height 32, label track 132px, ZERO gap
+ * between rows. Value bars share one width (they align) — only the
+ * label bar widths vary per row. The last row (row 5) stands in for
+ * "Last verified" and uses a plain 11px text bar (no pill). A 6th
+ * quieter row stands in for "+ Add a property". */
 const SK_PROPS: Array<{ l: number; v: number; h: number; r: number }> = [
   { l: 34, v: 132, h: 19, r: 999 },
   { l: 46, v: 132, h: 19, r: 999 },
