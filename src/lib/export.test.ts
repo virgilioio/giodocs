@@ -479,3 +479,40 @@ describe("includeDetails toggle", () => {
     }
   });
 });
+
+describe("nested list HTML — outline exports", () => {
+  it("nests <ul>/<ol> and closes parent <li> when ascending", () => {
+    const blocks = [
+      { id: "a", type: "bullet", text: "a", indent: 0 },
+      { id: "b", type: "bullet", text: "b", indent: 1 },
+      { id: "c", type: "bullet", text: "c", indent: 1 },
+      { id: "d", type: "bullet", text: "d", indent: 0 },
+    ] as unknown as Block[];
+    const html = toHtml({ title: "T", blocks, includeDetails: false });
+    expect(html).toContain(
+      "<ul><li>a<ul><li>b</li><li>c</li></ul></li><li>d</li></ul>",
+    );
+  });
+  it("switches list tag when a numbered follows a bullet at same depth", () => {
+    const blocks = [
+      { id: "a", type: "bullet", text: "a", indent: 0 },
+      { id: "b", type: "numbered", text: "b", indent: 0 },
+    ] as unknown as Block[];
+    const html = toHtml({ title: "T", blocks, includeDetails: false });
+    expect(html).toContain("<ul><li>a</li></ul>");
+    expect(html).toContain("<ol><li>b</li></ol>");
+  });
+});
+
+describe("blockToMarkdown — indent prefix", () => {
+  it("emits 2 spaces per indent level for bullet/numbered/todo", () => {
+    expect(blockToMarkdown({ type: "bullet", text: "x", indent: 2 } as never))
+      .toBe("    - x");
+    expect(
+      blockToMarkdown({ type: "numbered", text: "y", indent: 1 } as never, 3),
+    ).toBe("  3. y");
+    expect(
+      blockToMarkdown({ type: "todo", text: "z", indent: 1, checked: true } as never),
+    ).toBe("  - [x] z");
+  });
+});

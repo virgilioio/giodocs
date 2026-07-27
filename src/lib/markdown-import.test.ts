@@ -132,3 +132,34 @@ describe("parseMarkdown", () => {
     expect(stripIds(parsed as never)).toEqual(stripIds(fixture));
   });
 });
+
+describe("parseMarkdown — indented lists", () => {
+  it("2-space, 4-space, and tab all map to indent levels", () => {
+    const md = "- a\n  - b\n    - c\n\t- t";
+    const bs = parseMarkdown(md);
+    // a=0, b=1, c=2 (from 4 spaces → indent 2, clamped by parent+1 to 2), t=1
+    expect(bs.map((b) => (b as { indent?: number }).indent ?? 0)).toEqual([
+      0, 1, 2, 1,
+    ]);
+  });
+  it("clamps a 4-space jump from indent 0 down to 1 (parent+1)", () => {
+    const md = "- a\n    - deep";
+    const bs = parseMarkdown(md);
+    expect((bs[1] as { indent?: number }).indent).toBe(1);
+  });
+  it("blockToMarkdown → parseMarkdown round-trips a three-level outline", async () => {
+    const { blockToMarkdown } = await import("./export");
+    const outline = [
+      { id: "1", type: "bullet", text: "a", indent: 0 },
+      { id: "2", type: "bullet", text: "b", indent: 1 },
+      { id: "3", type: "bullet", text: "c", indent: 2 },
+      { id: "4", type: "bullet", text: "d", indent: 1 },
+    ];
+    const md = outline.map((b) => blockToMarkdown(b as never)).join("\n");
+    const back = parseMarkdown(md);
+    expect(back.map((b) => (b as { indent?: number }).indent ?? 0)).toEqual([
+      0, 1, 2, 1,
+    ]);
+    expect(back.map((b) => b.text)).toEqual(["a", "b", "c", "d"]);
+  });
+});

@@ -178,3 +178,17 @@ describe("moveRunAcross — no-op when the run spans different columns", () => {
     expect(next.map((b) => b.id)).toEqual(["cx", "t2"]);
   });
 });
+
+describe("reclampIndents — reorder must not leave orphan levels", () => {
+  it("dragging a deep block above a shallower neighbour re-clamps", async () => {
+    const { reclampIndents } = await import("./block-ops");
+    // Simulate a moved list: deep item ends up before its shallower parent.
+    const moved = [
+      { id: "b", type: "bullet", text: "b", indent: 2 },  // orphan (no parent)
+      { id: "a", type: "bullet", text: "a", indent: 0 },
+    ] as never[];
+    const out = reclampIndents(moved);
+    expect((out[0] as { indent?: number }).indent).toBeUndefined();
+    expect((out[1] as { indent?: number }).indent).toBeUndefined();
+  });
+});
