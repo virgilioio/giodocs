@@ -364,7 +364,7 @@ function EditableValue({
   onOpenChange: (open: boolean) => void;
 }) {
   const raw = propsOf(page)[propKey];
-  const missing = <span className="italic text-whisper">—</span>;
+  const empty = <EmptyValue propKey={propKey} defType={def?.type} />;
   const allTags = useMemo(() => {
     if (def?.type !== "multi_select") return [] as string[];
     const s = new Set<string>();
@@ -377,6 +377,7 @@ function EditableValue({
 
   /* ── Area ── */
   if (propKey === "area") {
+    const hasArea = typeof raw === "string" && raw;
     return (
       <AreaPicker
         value={typeof raw === "string" ? raw : null}
@@ -388,17 +389,15 @@ function EditableValue({
             ref={ref}
             type="button"
             onClick={onClick}
-            className="text-left"
+            className={VALUE_CELL_CLASS}
+            style={VALUE_CELL_STYLE}
           >
-            {typeof raw === "string" && raw ? (
-              <span
-                className="inline-flex items-center rounded-sm bg-sunken px-1.5 py-0.5 text-meta text-body"
-                style={{ paddingBlock: 2 }}
-              >
-                {raw}
+            {hasArea ? (
+              <span style={{ fontSize: 14, color: "var(--color-strong)" }}>
+                {raw as string}
               </span>
             ) : (
-              missing
+              empty
             )}
           </button>
         )}
@@ -420,17 +419,18 @@ function EditableValue({
             ref={ref}
             type="button"
             onClick={onClick}
-            className="flex min-w-0 items-center gap-2 text-left"
+            className={VALUE_CELL_CLASS + " min-w-0"}
+            style={{ ...VALUE_CELL_STYLE, gap: 7 }}
           >
             {m ? (
               <>
                 <MiniAvatar profile={m.profiles} />
-                <span className="text-meta text-body">
+                <span style={{ fontSize: 14, color: "var(--color-strong)" }}>
                   {m.profiles?.full_name ?? m.profiles?.email ?? "Unknown"}
                 </span>
               </>
             ) : (
-              missing
+              empty
             )}
           </button>
         )}
@@ -459,16 +459,18 @@ function EditableValue({
             ref={ref}
             type="button"
             onClick={onClick}
-            className="text-left"
+            className={VALUE_CELL_CLASS}
+            style={VALUE_CELL_STYLE}
           >
             {cur ? (
               <StatusChipInline
                 label={cur.label}
                 tint={cur.tint}
                 ink={cur.ink}
+                withDot={def.type === "status" || propKey === "stage"}
               />
             ) : (
-              missing
+              empty
             )}
           </button>
         )}
@@ -490,17 +492,22 @@ function EditableValue({
             ref={ref}
             type="button"
             onClick={onClick}
-            className="flex flex-wrap items-center gap-1"
+            className={VALUE_CELL_CLASS + " flex-wrap"}
+            style={{ ...VALUE_CELL_STYLE, gap: 5 }}
           >
             {tags.length === 0
-              ? missing
+              ? empty
               : tags.map((t) => {
                   const p = hashPair(t);
                   return (
                     <span
                       key={t}
-                      className="rounded-sm px-1.5 py-0.5 text-caption"
                       style={{
+                        padding: "2px 8px",
+                        borderRadius: 5,
+                        fontSize: 12.5,
+                        fontWeight: 400,
+                        lineHeight: 1.2,
                         background: `var(--color-${p.tint})`,
                         color: `var(--color-${p.ink})`,
                       }}
@@ -515,21 +522,29 @@ function EditableValue({
     );
   }
 
-  /* ── Checkbox ── (direct toggle, no popover) */
+  /* ── Checkbox ── (direct toggle, no popover). Uses a native input so
+   * accent-color themes the tick without a custom glyph. */
   if (def?.type === "checkbox") {
     const on = !!raw;
     return (
-      <button
-        type="button"
-        onClick={() => onSet(!on)}
-        className="grid h-5 w-5 place-items-center rounded-sm border border-line hover:bg-rail"
-        aria-pressed={on}
+      <label
+        className={VALUE_CELL_CLASS}
+        style={VALUE_CELL_STYLE}
         aria-label={def.label}
       >
-        {on ? (
-          <Glyph path="M5 12l5 5 9-11" className="h-3.5 w-3.5 text-accent" />
-        ) : null}
-      </button>
+        <input
+          type="checkbox"
+          checked={on}
+          onChange={(e) => onSet(e.currentTarget.checked)}
+          style={{
+            width: 15,
+            height: 15,
+            margin: 0,
+            accentColor: "var(--color-accent)",
+            cursor: "pointer",
+          }}
+        />
+      </label>
     );
   }
 
@@ -540,6 +555,8 @@ function EditableValue({
         value={typeof raw === "number" ? raw : null}
         onSet={onSet}
         onOpenChange={onOpenChange}
+        propKey={propKey}
+        defType={def?.type}
       />
     );
   }
@@ -551,6 +568,8 @@ function EditableValue({
         value={typeof raw === "string" ? raw : null}
         onSet={onSet}
         onOpenChange={onOpenChange}
+        propKey={propKey}
+        defType={def?.type}
       />
     );
   }
@@ -560,6 +579,8 @@ function EditableValue({
     <TextInline
       value={typeof raw === "string" ? raw : ""}
       onSet={onSet}
+      propKey={propKey}
+      defType={def?.type}
     />
   );
 }
@@ -568,23 +589,37 @@ function StatusChipInline({
   label,
   tint,
   ink,
+  withDot = true,
 }: {
   label: string;
   tint: string;
   ink: string;
+  withDot?: boolean;
 }) {
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-caption"
+      className="inline-flex items-center"
       style={{
+        padding: "2px 9px",
+        borderRadius: 999,
+        fontSize: 13.5,
+        fontWeight: 700,
+        lineHeight: 1.2,
+        gap: 6,
         background: `var(--color-${tint})`,
         color: `var(--color-${ink})`,
       }}
     >
-      <span
-        className="h-1.5 w-1.5 rounded-full"
-        style={{ background: `var(--color-${ink})` }}
-      />
+      {withDot ? (
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: 999,
+            background: `var(--color-${ink})`,
+          }}
+        />
+      ) : null}
       {label}
     </span>
   );
