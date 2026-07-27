@@ -102,3 +102,103 @@ describe("Round-trip: blocks → blockToMarkdown → parseMarkdown", () => {
     );
   });
 });
+
+/* ─────────────────── Notion callouts (styled div/figure) ─────────────────── */
+describe("Notion callouts → `> {emoji} {text}` → callout block", () => {
+  it("class='callout' with an emoji span converts and parses", () => {
+    const html = `
+      <div class="notion-callout callout">
+        <span>💡</span>
+        <div>Heads up — remember the client.</div>
+      </div>
+    `;
+    const md = htmlToMarkdown(html);
+    expect(md).toBe("> 💡 Heads up — remember the client.");
+    const blocks = parseMarkdown(md);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe("callout");
+    expect(blocks[0].icon).toBe("💡");
+    expect(blocks[0].text).toContain("Heads up");
+  });
+
+  it("preserves a non-💡 emoji", () => {
+    const html = `<figure class="callout"><span>⚠️</span><p>Beware</p></figure>`;
+    const md = htmlToMarkdown(html);
+    expect(md).toBe("> ⚠️ Beware");
+    const blocks = parseMarkdown(md);
+    expect(blocks[0].type).toBe("callout");
+    expect(blocks[0].icon).toBe("⚠️");
+  });
+
+  it("shape-based: div with leading emoji child, no class", () => {
+    const html = `<div><div>🔥</div><div>Hot take</div></div>`;
+    const md = htmlToMarkdown(html);
+    expect(md).toBe("> 🔥 Hot take");
+    expect(parseMarkdown(md)[0].type).toBe("callout");
+  });
+
+  it("class='callout' without any emoji defaults to 💡", () => {
+    const html = `<div class="callout"><p>Just text</p></div>`;
+    const md = htmlToMarkdown(html);
+    expect(md).toBe("> 💡 Just text");
+    const blocks = parseMarkdown(md);
+    expect(blocks[0].type).toBe("callout");
+    expect(blocks[0].icon).toBe("💡");
+  });
+
+  it("malformed callout still yields the text, never vanishes", () => {
+    // No class, no leading emoji — must fall back to a paragraph.
+    const html = `<div><span>plain container</span> some words</div>`;
+    const md = htmlToMarkdown(html);
+    expect(md).toContain("plain container");
+    expect(md).toContain("some words");
+    // And it must not be swallowed as a callout.
+    expect(md.startsWith(">")).toBe(false);
+  });
+});
+
+/* ─────────── Integration: full legal-contract shape round-trip ─────────── */
+describe("legal-contract fixture → block sequence", () => {
+  it("preserves heading levels, bold-in-heading, dividers, bullets, table", () => {
+    const fixture = `
+      <h2>Sección A</h2>
+      <p>Firma: ___________________________</p>
+      <hr />
+      <h3><strong>SEXTA. OBLIGACIONES DEL CLIENTE</strong></h3>
+      <p>El cliente <strong>deberá</strong> lo siguiente:</p>
+      <ul>
+        <li>pagar a tiempo</li>
+        <li>notificar cambios</li>
+      </ul>
+      <hr />
+      <h3>Datos</h3>
+      <table>
+        <tr><th>Campo</th><th>Valor</th><th>Fuente</th><th>Notas</th></tr>
+        <tr><td>Nombre</td><td>_________</td><td>—</td><td>—</td></tr>
+      </table>
+    `;
+    const md = htmlToMarkdown(fixture);
+    const blocks = parseMarkdown(md);
+    // Heading levels: our model collapses h3+ to h2.
+    expect(blocks.map((b) => b.type)).toEqual([
+      "h1", // <h2> → level-1 heading in our model (see renderBlock)
+      "text",
+      "divider",
+      "h2",
+      "text",
+      "bullet",
+      "bullet",
+      "divider",
+      "h2",
+      "table",
+    ]);
+    // The bold-wrapped heading must keep its ** so renderInline bolds it
+    // at render time — it must NOT arrive as a text block.
+    const boldedHeading = blocks[3];
+    expect(boldedHeading.type).toBe("h2");
+    expect(boldedHeading.text).toContain("**");
+    expect(boldedHeading.text).toContain("SEXTA");
+    // Underscore fill-in blanks survive untouched.
+    expect(blocks[1].text).toContain("___________________________");
+  });
+});
