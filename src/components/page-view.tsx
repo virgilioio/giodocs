@@ -1288,6 +1288,8 @@ export function PageEditor({ pageId }: { pageId: string }) {
           onChange={onBlocksChange}
           onBlur={onBodyBlur}
           locked={app.locked}
+          editedRel={page.edited_at ? relTime(page.edited_at) : null}
+          editorFirstName={editorName}
         />
       </div>
     </div>
