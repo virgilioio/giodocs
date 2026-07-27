@@ -3097,8 +3097,25 @@ function ColumnStack({
 
 /* ────────────── Table block ────────────── */
 
-
-
+/**
+ * TableBlock — rectangular string[][] with the first row as a positional
+ * header. On hover the block shows:
+ *   • a 4px column HANDLE above each column
+ *   • a 4px row    HANDLE left  of each row
+ *   • a full-height +column strip at the right edge
+ *   • a full-width  +row    strip at the bottom edge
+ *
+ * Clicking a handle SELECTS that row or column (every cell tints
+ * `bg-blueTint`, the handle itself goes `bg-blue`). Selection is local to
+ * this block — never touches page-level `selectedIds`. Clicking the same
+ * handle a second time opens the standard `RowMenu` with insert / clear /
+ * delete actions. Delete/Backspace with focus outside a cell CLEARS the
+ * selection's contents; Escape deselects.
+ *
+ * Every structural change (add/remove/clear) commits ONE `onChange` call,
+ * which reaches the outer undo stack via the existing commit path — so a
+ * single ⌘Z reverses a single table operation.
+ */
 function TableBlock({
   block,
   locked,
@@ -3110,44 +3127,220 @@ function TableBlock({
   onChange: (patch: Partial<Blk>) => void;
   onBlur?: () => void;
 }) {
-  const rows = block.rows ?? [["", "", ""], ["", "", ""]];
-  const nCols = Math.max(...rows.map((r) => r.length));
+  // Repair-on-load: any ragged import gets rectangularised here. When the
+  // stored shape differs from the normalised one we surface it as a patch
+  // so the persisted matrix converges to rectangular immediately.
+  const rows = useMemo(
+    () => normalizeTable(block.rows ?? [["", "", ""], ["", "", ""]]),
+    [block.rows],
+  );
+  useEffect(() => {
+    if (block.rows && JSON.stringify(block.rows) !== JSON.stringify(rows)) {
+      onChange({ rows });
+    }
+    // Only fire on mount / when the persisted shape needs repair.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  type Sel = { kind: "row" | "col"; index: number } | null;
+  const [sel, setSel] = useState<Sel>(null);
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [menuSpec, setMenuSpec] = useState<MenuSpec | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  const nCols = rows[0]?.length ?? 0;
+  const nRows = rows.length;
+
+  const commit = useCallback(
+    (next: string[][]) => {
+      onChange({ rows: next });
+    },
+    [onChange],
+  );
+
+  const closeMenu = useCallback(() => {
+    setMenuAnchor(null);
+    setMenuSpec(null);
+  }, []);
+
+  // Escape deselects; Delete/Backspace with focus outside a cell clears.
+  useEffect(() => {
+    if (!sel) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setSel(null);
+        closeMenu();
+        return;
+      }
+      if (e.key === "Delete" || e.key === "Backspace") {
+        const t = e.target as HTMLElement | null;
+        if (t && rootRef.current?.contains(t) && t.tagName === "INPUT") return;
+        e.preventDefault();
+        if (sel.kind === "row") commit(clearRow(rows, sel.index));
+        else commit(clearColumn(rows, sel.index));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sel, rows, commit, closeMenu]);
 
   function setCell(r: number, c: number, v: string) {
     const next = rows.map((row) => row.slice());
-    while (next[r].length < nCols) next[r].push("");
     next[r][c] = v;
-    onChange({ rows: next });
-  }
-  function addRow() {
-    onChange({ rows: [...rows, new Array(nCols).fill("")] });
-  }
-  function addCol() {
-    onChange({ rows: rows.map((r) => [...r, ""]) });
+    commit(next);
   }
 
+  function openColumnMenu(anchor: HTMLElement, index: number) {
+    const isOnlyCol = nCols <= 1;
+    const cellCount = nRows;
+    const spec: MenuSpec = {
+      title: `Column ${index + 1}`,
+      footer: `${cellCount} cell${cellCount === 1 ? "" : "s"}`,
+      rows: [
+        {
+          kind: "row",
+          label: "Insert left",
+          onPick: () => {
+            commit(addColumn(rows, index));
+            setSel({ kind: "col", index });
+          },
+        },
+        {
+          kind: "row",
+          label: "Insert right",
+          onPick: () => {
+            commit(addColumn(rows, index + 1));
+            setSel({ kind: "col", index: index + 1 });
+          },
+        },
+        {
+          kind: "row",
+          label: "Clear contents",
+          onPick: () => commit(clearColumn(rows, index)),
+        },
+        { kind: "sep" },
+        {
+          kind: "row",
+          label: "Delete column",
+          danger: true,
+          hint: isOnlyCol ? { text: "last column" } : undefined,
+          onPick: () => {
+            if (isOnlyCol) return;
+            commit(deleteColumn(rows, index));
+            setSel(null);
+          },
+        },
+      ],
+    };
+    setMenuSpec(spec);
+    setMenuAnchor(anchor);
+  }
+
+  function openRowMenu(anchor: HTMLElement, index: number) {
+    const isOnlyRow = nRows <= 1;
+    const isHeader = index === 0;
+    const cellCount = nCols;
+    const spec: MenuSpec = {
+      title: isHeader ? "Header row" : `Row ${index + 1}`,
+      footer: `${cellCount} cell${cellCount === 1 ? "" : "s"}`,
+      rows: [
+        {
+          kind: "row",
+          label: "Insert above",
+          onPick: () => {
+            commit(addRow(rows, index));
+            setSel({ kind: "row", index });
+          },
+        },
+        {
+          kind: "row",
+          label: "Insert below",
+          onPick: () => {
+            commit(addRow(rows, index + 1));
+            setSel({ kind: "row", index: index + 1 });
+          },
+        },
+        {
+          kind: "row",
+          label: "Clear contents",
+          onPick: () => commit(clearRow(rows, index)),
+        },
+        { kind: "sep" },
+        {
+          kind: "row",
+          label: "Delete row",
+          danger: true,
+          hint: isOnlyRow ? { text: "last row" } : undefined,
+          onPick: () => {
+            if (isOnlyRow) return;
+            commit(deleteRow(rows, index));
+            setSel(null);
+          },
+        },
+      ],
+    };
+    setMenuSpec(spec);
+    setMenuAnchor(anchor);
+  }
+
+  function onColumnHandleClick(e: React.MouseEvent<HTMLButtonElement>, index: number) {
+    e.stopPropagation();
+    if (locked) return;
+    if (sel && sel.kind === "col" && sel.index === index) {
+      openColumnMenu(e.currentTarget, index);
+    } else {
+      setSel({ kind: "col", index });
+      closeMenu();
+    }
+  }
+
+  function onRowHandleClick(e: React.MouseEvent<HTMLButtonElement>, index: number) {
+    e.stopPropagation();
+    if (locked) return;
+    if (sel && sel.kind === "row" && sel.index === index) {
+      openRowMenu(e.currentTarget, index);
+    } else {
+      setSel({ kind: "row", index });
+      closeMenu();
+    }
+  }
+
+  // Click into any cell deselects the row/column selection.
+  const clearSelIfBodyClick = () => {
+    if (sel) setSel(null);
+  };
+
   return (
-    <div className="group/table relative overflow-x-auto">
-      <table className="w-full border-collapse text-meta">
+    <div
+      ref={rootRef}
+      className="group/table relative"
+      style={{ paddingTop: 8, paddingLeft: 8, paddingRight: 20, paddingBottom: 20 }}
+      onMouseDown={clearSelIfBodyClick}
+    >
+      <table className="w-full border-collapse text-meta" style={{ tableLayout: "fixed" }}>
         <tbody>
           {rows.map((row, ri) => (
             <tr key={ri}>
               {row.map((cell, ci) => {
                 const Tag: "th" | "td" = ri === 0 ? "th" : "td";
+                const selected =
+                  (sel?.kind === "row" && sel.index === ri) ||
+                  (sel?.kind === "col" && sel.index === ci);
                 return (
                   <Tag
                     key={ci}
                     className={
                       "border border-line p-0 " +
-                      (ri === 0
-                        ? "text-label uppercase text-secondary"
-                        : "text-body")
+                      (ri === 0 ? "text-label uppercase text-secondary" : "text-body")
                     }
+                    style={selected ? { background: "var(--color-blueTint)" } : undefined}
                   >
                     <input
                       type="text"
                       value={cell ?? ""}
                       disabled={locked}
+                      data-table-cell={`${ri},${ci}`}
+                      onFocus={() => setSel(null)}
                       onChange={(e) => setCell(ri, ci, e.target.value)}
                       onBlur={onBlur}
                       className="w-full border-0 bg-transparent px-2 py-1 outline-none"
@@ -3159,29 +3352,129 @@ function TableBlock({
           ))}
         </tbody>
       </table>
-      {!locked ? (
+
+      {!locked && (
         <>
+          {/* Column handles — above each column, 4px tall, span col width. */}
+          <div
+            aria-hidden={sel?.kind !== "col"}
+            className="pointer-events-none absolute inset-x-2 opacity-0 transition-opacity group-hover/table:opacity-100"
+            style={{ top: 0, height: 8, right: 20 }}
+          >
+            <div className="pointer-events-auto flex h-full items-center gap-0">
+              {Array.from({ length: nCols }, (_, ci) => {
+                const active = sel?.kind === "col" && sel.index === ci;
+                return (
+                  <button
+                    key={ci}
+                    type="button"
+                    aria-label={active ? `Column ${ci + 1} actions` : "Select column"}
+                    title="Select column"
+                    onClick={(e) => onColumnHandleClick(e, ci)}
+                    className="grid place-items-center"
+                    style={{ flex: 1, height: 8, background: "transparent" }}
+                  >
+                    <span
+                      style={{
+                        display: "block",
+                        width: "calc(100% - 4px)",
+                        height: 4,
+                        borderRadius: 2,
+                        background: active
+                          ? "var(--color-blue)"
+                          : "var(--color-lineStrong)",
+                      }}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Row handles — left of each row, 4px wide, span row height. */}
+          <div
+            aria-hidden={sel?.kind !== "row"}
+            className="pointer-events-none absolute inset-y-2 opacity-0 transition-opacity group-hover/table:opacity-100"
+            style={{ left: 0, width: 8, bottom: 20 }}
+          >
+            <div className="pointer-events-auto flex h-full flex-col gap-0">
+              {rows.map((_, ri) => {
+                const active = sel?.kind === "row" && sel.index === ri;
+                return (
+                  <button
+                    key={ri}
+                    type="button"
+                    aria-label={active ? `Row ${ri + 1} actions` : "Select row"}
+                    title="Select row"
+                    onClick={(e) => onRowHandleClick(e, ri)}
+                    className="grid place-items-center"
+                    style={{ flex: 1, width: 8, background: "transparent" }}
+                  >
+                    <span
+                      style={{
+                        display: "block",
+                        height: "calc(100% - 4px)",
+                        width: 4,
+                        borderRadius: 2,
+                        background: active
+                          ? "var(--color-blue)"
+                          : "var(--color-lineStrong)",
+                      }}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* +column strip at right edge, full height, 20px wide. */}
           <button
             type="button"
-            onClick={addCol}
             aria-label="Add column"
-            className="absolute -right-6 top-0 hidden h-6 w-5 place-items-center rounded-md text-faint hover:bg-sunken hover:text-muted group-hover/table:grid"
+            title="Add column"
+            onClick={() => {
+              commit(addColumn(rows, nCols));
+              // Focus the new cell in the first row.
+              requestAnimationFrame(() => {
+                const el = rootRef.current?.querySelector<HTMLInputElement>(
+                  `input[data-table-cell="0,${nCols}"]`,
+                );
+                el?.focus();
+              });
+            }}
+            className="absolute hidden place-items-center rounded-md text-faint hover:bg-sunken hover:text-muted group-hover/table:grid"
+            style={{ right: 0, top: 8, bottom: 20, width: 20 }}
           >
             +
           </button>
+
+          {/* +row strip at bottom edge, full width, 20px tall. */}
           <button
             type="button"
-            onClick={addRow}
             aria-label="Add row"
-            className="mx-auto mt-1 hidden h-5 place-items-center rounded-md px-3 text-meta text-faint hover:bg-sunken hover:text-muted group-hover/table:grid"
+            title="Add row"
+            onClick={() => {
+              commit(addRow(rows, nRows));
+              requestAnimationFrame(() => {
+                const el = rootRef.current?.querySelector<HTMLInputElement>(
+                  `input[data-table-cell="${nRows},0"]`,
+                );
+                el?.focus();
+              });
+            }}
+            className="absolute hidden place-items-center rounded-md text-faint hover:bg-sunken hover:text-muted group-hover/table:grid"
+            style={{ left: 8, right: 20, bottom: 0, height: 20 }}
           >
-            + row
+            +
           </button>
         </>
-      ) : null}
+      )}
+
+      <RowMenu spec={menuSpec} anchor={menuAnchor} onClose={closeMenu} />
     </div>
   );
 }
+
 
 /* ────────────── Slash menu ────────────── */
 
