@@ -19,6 +19,7 @@ import { usePageAppearance } from "@/lib/page-appearance";
 import { Popover } from "./popover";
 import { formatTimestamp } from "@/lib/format";
 import { EditableBody, EditableTitle } from "./page-editor-body";
+import { createBlocksSaver } from "@/lib/blocks-saver";
 import type { Block, PageAccessRow, PageFull, PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
 
