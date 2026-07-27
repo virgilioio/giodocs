@@ -57,7 +57,7 @@ export function ExportDialog({
   const [paper, setPaper] = useState<Paper>(() => defaultPaper());
   const [scale, setScale] = useState<string>("100");
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState(false);
+  const [err, setErr] = useState<null | "popup-blocked" | "generic">(null);
   const menu = useRowMenu();
   const toast = useToast();
 
