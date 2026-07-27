@@ -25,6 +25,7 @@ const FORMATS: ExportFormat[] = ["PDF", "HTML", "Markdown"];
 const PAPERS: Paper[] = ["Letter", "A4", "Legal", "Tabloid", "A3"];
 
 const LS_KEY = "gio.exportFormat";
+const LS_DETAILS_KEY = "gio.exportDetails";
 
 function readSavedFormat(): ExportFormat {
   try {
@@ -34,6 +35,17 @@ function readSavedFormat(): ExportFormat {
     /* localStorage may be unavailable in embedded contexts. */
   }
   return "PDF";
+}
+
+function readSavedDetails(): boolean {
+  try {
+    const raw = window.localStorage.getItem(LS_DETAILS_KEY);
+    if (raw === "false") return false;
+    if (raw === "true") return true;
+  } catch {
+    /* ignore */
+  }
+  return true; // default ON
 }
 
 function defaultPaper(): Paper {
@@ -56,6 +68,7 @@ export function ExportDialog({
   const [fmt, setFmt] = useState<ExportFormat>(() => readSavedFormat());
   const [paper, setPaper] = useState<Paper>(() => defaultPaper());
   const [scale, setScale] = useState<string>("100");
+  const [includeDetails, setIncludeDetails] = useState<boolean>(() => readSavedDetails());
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<null | "popup-blocked" | "generic">(null);
   const menu = useRowMenu();
@@ -69,6 +82,16 @@ export function ExportDialog({
       /* ignore */
     }
   }, [fmt]);
+
+  // Persist the last chosen "include details" toggle. Applies to all three
+  // formats, not just PDF — so it must persist across format changes.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(LS_DETAILS_KEY, includeDetails ? "true" : "false");
+    } catch {
+      /* ignore */
+    }
+  }, [includeDetails]);
 
   // Dialog Escape closes the dialog — but only when no menu popover is open,
   // because RowMenu already handles Escape for its own popover.
@@ -131,21 +154,24 @@ export function ExportDialog({
     if (busy) return;
     setErr(null);
     setBusy(true);
+    // One flag threads through all three formats — do not branch by format
+    // to compute it. printPdf uses toHtml internally, so it inherits.
+    const exportCtx: ExportContext = { ...ctx, includeDetails };
     try {
       if (fmt === "Markdown") {
-        const text = toMarkdown(ctx);
+        const text = toMarkdown(exportCtx);
         download(filename, new Blob([text], { type: "text/markdown;charset=utf-8" }));
         toast.push(`Exported ${filename}`);
         onClose();
       } else if (fmt === "HTML") {
-        const html = toHtml(ctx);
+        const html = toHtml(exportCtx);
         download(filename, new Blob([html], { type: "text/html;charset=utf-8" }));
         toast.push(`Exported ${filename}`);
         onClose();
       } else {
         // PDF — clamp scale into 50..200 on the way in.
         const clamped = Math.max(50, Math.min(200, Number(scale) || 100));
-        await printPdf(ctx, paper, clamped);
+        await printPdf(exportCtx, paper, clamped);
         toast.push("Opening your print dialog");
         onClose();
       }
@@ -226,7 +252,7 @@ export function ExportDialog({
         </div>
 
         <div style={{ marginTop: 12 }}>
-          <Row label="Format" last={fmt !== "PDF"}>
+          <Row label="Format">
             <PickerButton
               ref={fmtBtn}
               value={fmt}
@@ -234,6 +260,11 @@ export function ExportDialog({
               width={160}
             />
           </Row>
+          <DetailsRow
+            value={includeDetails}
+            onChange={setIncludeDetails}
+            last={fmt !== "PDF"}
+          />
           {fmt === "PDF" && (
             <>
               <Row label="Paper size">
@@ -250,6 +281,7 @@ export function ExportDialog({
             </>
           )}
         </div>
+
 
         {err ? (
           <div
@@ -371,6 +403,82 @@ function Row({
     >
       <span style={{ fontSize: 14, color: "var(--color-body)" }}>{label}</span>
       {children}
+    </div>
+  );
+}
+
+/* Toggle row — sits with the format decision, above the note panel. Applies
+ * to all three formats (not PDF-only), so it renders regardless of `fmt`.
+ * The pill is the same control the page ⋯ menu uses. */
+function DetailsRow({
+  value,
+  onChange,
+  last,
+}: {
+  value: boolean;
+  onChange: (v: boolean) => void;
+  last?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "9px 0",
+        borderBottom: last ? "none" : "1px solid var(--color-lineSoft)",
+        gap: 16,
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 14, color: "var(--color-body)" }}>
+          Include page details
+        </div>
+        <div
+          style={{
+            marginTop: 2,
+            fontSize: 12.5,
+            color: "var(--color-secondary)",
+            lineHeight: 1.4,
+          }}
+        >
+          Area, owner, status, tags and last-verified
+        </div>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={value}
+        aria-label="Include page details"
+        onClick={() => onChange(!value)}
+        style={{
+          position: "relative",
+          width: 30,
+          height: 17,
+          borderRadius: 9,
+          border: "none",
+          padding: 0,
+          background: value ? "var(--color-accent)" : "var(--color-lineStrong)",
+          transition: "background 150ms ease",
+          cursor: "pointer",
+          flex: "none",
+        }}
+      >
+        <span
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: 2,
+            left: value ? 15 : 2,
+            width: 13,
+            height: 13,
+            borderRadius: 999,
+            background: "#ffffff",
+            transition: "left 150ms ease",
+            boxShadow: "0 1px 2px rgba(13,13,9,.22)",
+          }}
+        />
+      </button>
     </div>
   );
 }
