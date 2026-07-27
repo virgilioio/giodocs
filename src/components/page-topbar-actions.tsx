@@ -188,9 +188,9 @@ function propsOf(p: PageListItem | PageFull): Record<string, unknown> {
 
 export function PageTopbarActions({
   pageId,
-  menuOpen: _menuOpen,
-  onMenuOpen: _onMenuOpen,
-  onMenuClose: _onMenuClose,
+  menuOpen,
+  onMenuOpen,
+  onMenuClose,
 }: {
   pageId: string;
   menuOpen: boolean;
