@@ -252,7 +252,8 @@ function blockHtml(b: Block, ordinal = 1): string {
       return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
     }
     default:
-      throw new Error(`toHtml: unhandled block type "${t}"`);
+      warnUnknownBlock(t);
+      return `<p>${esc(text)}</p>`;
   }
 }
 
