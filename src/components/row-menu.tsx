@@ -590,7 +590,9 @@ export function SpecMenuTrigger({
         }}
         onMouseDown={(e) => e.stopPropagation()}
         className={
-          "grid place-items-center rounded-md text-whisper hover:bg-railHover hover:text-strong " +
+          "grid place-items-center rounded-md " +
+          hoverClass +
+          " " +
           (visible ? "" : "pointer-events-none opacity-0 ") +
           className
         }
