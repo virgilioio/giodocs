@@ -67,34 +67,55 @@ export function useSetPageProperty() {
     },
     onMutate: async (v) => {
       await qc.cancelQueries({ queryKey: qk.pages(ws) });
+      await qc.cancelQueries({ queryKey: qk.page(v.pageId) });
       const snapshot = qc.getQueryData<PageListItem[]>(qk.pages(ws)) ?? [];
+      const pageSnap =
+        qc.getQueryData<PageFull | null>(qk.page(v.pageId)) ?? null;
       const before = memberViewIds(snapshot, v.pageId, views, {
         me: user?.id ?? "",
         staleDays,
       });
-      const next = snapshot.map((p) => {
-        if (p.id !== v.pageId) return p;
+      const nowIso = new Date().toISOString();
+      const patchProps = (raw: unknown): Record<string, unknown> => {
         const props =
-          p.props && typeof p.props === "object" && !Array.isArray(p.props)
-            ? { ...(p.props as Record<string, unknown>) }
+          raw && typeof raw === "object" && !Array.isArray(raw)
+            ? { ...(raw as Record<string, unknown>) }
             : {};
         if (v.value === null || v.value === undefined) delete props[v.key];
         else props[v.key] = v.value;
+        return props;
+      };
+      const next = snapshot.map((p) => {
+        if (p.id !== v.pageId) return p;
         return {
           ...p,
-          props: props as PageListItem["props"],
-          edited_at: new Date().toISOString(),
+          props: patchProps(p.props) as PageListItem["props"],
+          edited_at: nowIso,
         };
       });
       qc.setQueryData<PageListItem[]>(qk.pages(ws), next);
+      // Page-detail cache must be patched too — otherwise navigating away
+      // from a view (which mutated the list) and back into the page reads
+      // stale props from qk.page(id). Same lesson as the chunk-1 rename fix.
+      qc.setQueryData<PageFull | null>(qk.page(v.pageId), (prev) =>
+        prev
+          ? ({
+              ...prev,
+              props: patchProps(prev.props) as PageFull["props"],
+              edited_at: nowIso,
+            } as PageFull)
+          : prev,
+      );
       const after = memberViewIds(next, v.pageId, views, {
         me: user?.id ?? "",
         staleDays,
       });
-      return { snapshot, before, after };
+      return { snapshot, pageSnap, before, after };
     },
-    onError: (err, _v, ctx) => {
+    onError: (err, v, ctx) => {
       if (ctx?.snapshot) qc.setQueryData(qk.pages(ws), ctx.snapshot);
+      if (ctx?.pageSnap !== undefined)
+        qc.setQueryData(qk.page(v.pageId), ctx.pageSnap);
       toast.push(`Couldn't save: ${(err as Error).message}`);
     },
     onSuccess: (_data, v, ctx) => {
