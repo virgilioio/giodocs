@@ -2321,7 +2321,7 @@ function NewAreaPopover({
   const [submitting, setSubmitting] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const createPage = useCreatePage();
+  const setAreaIcon = useSetAreaIcon();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -2349,32 +2349,24 @@ function NewAreaPopover({
     if (!valid || submitting) return;
     setSubmitting(true);
     try {
-      const created = await createPage.mutateAsync({
-        seedProps: { area: trimmed },
-        blocks: [
-          {
-            id: nanoid(10),
-            type: "paragraph",
-            text: "",
-          },
-        ],
-      });
-      try {
-        sessionStorage.setItem(
-          "gio.page-back",
-          JSON.stringify({ pageId: created.id, area: trimmed }),
-        );
-        sessionStorage.setItem("gio.focus-title", created.id);
-      } catch {
-        /* storage unavailable */
-      }
+      // Register the area in property_defs (no page is created — an area
+      // is a query over pages, not a container). applyAreaIcon(null)
+      // appends when the emoji is empty via the null-append fallback:
+      // we pass null and rely on the append case only when the value is
+      // new. Since the area is new by construction (duplicate check above),
+      // we call setAreaIcon with a placeholder emoji of null — but
+      // applyAreaIcon skips the append when emoji is null. To register
+      // with no emoji, write the options manually here rather than route
+      // through the icon transform.
+      await registerArea(trimmed);
       onClose();
-      navigate({ to: "/p/$pageId", params: { pageId: created.id } });
+      navigate({ to: "/a/$area", params: { area: trimmed } });
     } catch (err) {
       console.error(err);
       setSubmitting(false);
     }
   };
+
 
   return (
     <div
