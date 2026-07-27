@@ -25,6 +25,7 @@
 
 import { nanoid } from "nanoid";
 import type { Block } from "./types";
+import { clampIndent } from "./blocks";
 
 export type Blk = Block & { id: string; type: string };
 
@@ -231,5 +232,22 @@ export function parseMarkdown(text: string): Blk[] {
     i++;
   }
   flushParagraph();
+  // Apply the parent+1 clamp — malformed imports (e.g. a bullet that jumps
+  // from indent 0 to indent 2 with no parent between) must not produce
+  // orphan levels. Only bullet/numbered/todo carry indent from the parser;
+  // any other block resets prev to 0.
+  const INDENTABLE = new Set(["bullet", "numbered", "todo", "text"]);
+  let prev = 0;
+  for (let k = 0; k < out.length; k++) {
+    const b = out[k];
+    const canIndent = INDENTABLE.has(b.type);
+    const cur = typeof b.indent === "number" && b.indent > 0 ? b.indent : 0;
+    const target = canIndent ? clampIndent(prev, cur) : 0;
+    if (target !== cur) {
+      if (target === 0) delete (b as { indent?: number }).indent;
+      else (b as { indent?: number }).indent = target;
+    }
+    prev = target;
+  }
   return out;
 }
