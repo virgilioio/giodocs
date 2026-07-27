@@ -29,13 +29,41 @@ const DEFAULT: Prefs = {
 
 const STORAGE_KEY = "gio.prefs";
 
+/**
+ * Preferences schema version. Bumped when we need a one-time correction to
+ * every user's stored prefs (a merge over DEFAULT is not enough — stored
+ * values win). Migrations run once in readStored() and rewrite storage.
+ *
+ * v2 — force explainQuery to true. B1 shipped with default=false which
+ * persisted false into localStorage; B2 flipped the default to true, but
+ * stored values still hid the sentence toolbar for anyone who touched the
+ * app during that window.
+ */
+const PREFS_VERSION = 2;
+
 function readStored(): Prefs {
   if (typeof window === "undefined") return DEFAULT;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT;
-    const parsed = JSON.parse(raw) as Partial<Prefs>;
-    return { ...DEFAULT, ...parsed };
+    const parsed = JSON.parse(raw) as Partial<Prefs> & { prefsVersion?: number };
+    const merged: Prefs = { ...DEFAULT, ...parsed };
+    const version = typeof parsed.prefsVersion === "number" ? parsed.prefsVersion : 0;
+    if (version < 2) {
+      merged.explainQuery = true;
+      // Persist the migration so we only run it once per user. Writes are
+      // safe here — this is client-only code and the effect below would
+      // write the same object on the next render anyway.
+      try {
+        window.localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({ ...merged, prefsVersion: PREFS_VERSION }),
+        );
+      } catch {
+        /* quota / disabled storage — the in-memory value is still correct */
+      }
+    }
+    return merged;
   } catch {
     return DEFAULT;
   }
