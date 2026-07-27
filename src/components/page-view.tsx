@@ -972,45 +972,74 @@ function PropertyStrip({
     return m?.profiles?.full_name || m?.profiles?.email || "you";
   }, [members, page.verified_by, meId]);
 
+  /* Rhythm rule: rows ABUT (no gap between them) and each row is its own
+   * min-height 32 box. The strip owns its own top hairline (marginTop 22,
+   * borderTop 1px var(--color-line), paddingTop 8); the page container no
+   * longer wraps this with any additional spacing. */
   return (
-    <div>
+    <div
+      style={{
+        marginTop: 22,
+        borderTop: "1px solid var(--color-line)",
+        paddingTop: 8,
+      }}
+    >
       {rows.map((r) => {
         const def = propDefs.find((d) => d.key === r.key);
         const removable =
           def && def.is_system === false && present.has(r.key);
         const active = hoverKey === r.key || openKey === r.key;
         const showX = removable && active;
+        const label = labelFor(r.key, propDefs);
         return (
           <div
             key={r.key}
-            className={
-              "flex items-center rounded-md px-1 " +
-              (active ? "bg-sunken" : "")
-            }
-            style={{ height: 20, gap: 10 }}
+            className="gio-prop-row rounded-md"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "132px 1fr",
+              alignItems: "center",
+              minHeight: 32,
+              padding: "2px 6px",
+              background: active ? "var(--color-track)" : undefined,
+            }}
             onMouseEnter={() => setHoverKey(r.key)}
             onMouseLeave={() => setHoverKey(null)}
           >
             <div
-              className="flex shrink-0 items-center gap-1 text-meta text-muted"
-              style={{ width: 118, flex: "none" }}
+              className="flex items-center"
+              style={{
+                gap: 6,
+                fontSize: 14,
+                color: "var(--color-muted)",
+              }}
             >
-              <span>{labelFor(r.key, propDefs)}</span>
+              <span>{label}</span>
               {showX ? (
                 <button
                   type="button"
-                  aria-label={`Remove ${labelFor(r.key, propDefs)}`}
-                  className="grid h-4 w-4 place-items-center rounded-sm text-faint hover:bg-rail hover:text-muted"
+                  title="Remove property"
+                  aria-label={`Remove ${label}`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onSet(r.key, null);
+                  }}
+                  className="gio-prop-remove"
+                  style={{
+                    padding: 2,
+                    fontSize: 12,
+                    lineHeight: 1,
+                    color: "var(--color-rule)",
+                    background: "transparent",
+                    border: 0,
+                    cursor: "pointer",
                   }}
                 >
                   ×
                 </button>
               ) : null}
             </div>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0">
               <EditableValue
                 propKey={r.key}
                 page={page}
@@ -1030,25 +1059,37 @@ function PropertyStrip({
         );
       })}
 
+      {/* Last verified — the one non-clickable row. No hover, cursor
+       * default. The way to change it is the freshness banner above. */}
       <div
-        className="flex items-center rounded-md px-1"
-        style={{ height: 20, gap: 10 }}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "132px 1fr",
+          alignItems: "center",
+          minHeight: 32,
+          padding: "2px 6px",
+          cursor: "default",
+        }}
       >
-        <div className="shrink-0 text-meta text-muted" style={{ width: 118, flex: "none" }}>
+        <div
+          className="flex items-center"
+          style={{ gap: 6, fontSize: 14, color: "var(--color-muted)" }}
+        >
           Last verified
         </div>
-        <div className="min-w-0 flex-1 text-meta text-secondary">
+        <div
+          className="min-w-0"
+          style={{ fontSize: 14, color: "var(--color-strong)" }}
+        >
           {relTime(page.verified_at)} · {verifiedByName}
         </div>
       </div>
 
-      <div className="mt-1">
-        <AddPropertyPopover
-          propDefs={propDefs}
-          present={present}
-          onAdd={(key, seed) => onSet(key, seed)}
-        />
-      </div>
+      <AddPropertyPopover
+        propDefs={propDefs}
+        present={present}
+        onAdd={(key, seed) => onSet(key, seed)}
+      />
     </div>
   );
 }
