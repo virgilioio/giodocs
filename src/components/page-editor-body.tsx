@@ -987,27 +987,16 @@ export function EditableBody({
     [blocks, pageId, toast, getRunIndicesForBlock],
   );
 
-  // ⌘D duplicates the current block or the selection run.
+  // ⌘D duplicates the current block-selection run. Yields to text fields
+  // — inside a textarea the browser's native ⌘D (or nothing) wins.
   useEffect(() => {
     if (locked) return;
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key.toLowerCase() !== "d") return;
-      const target = e.target as HTMLElement | null;
-      const inField =
-        !!target &&
-        (target.tagName === "TEXTAREA" ||
-          target.tagName === "INPUT" ||
-          target.isContentEditable);
-      let anchorId: string | null = null;
-      if (selectedIds.size > 0) {
-        anchorId = blocks.find((b) => selectedIds.has(b.id))?.id ?? null;
-      } else if (inField) {
-        const row = (target as HTMLElement).closest(
-          "[data-block-id]",
-        ) as HTMLElement | null;
-        anchorId = row?.dataset.blockId ?? null;
-      }
+      if (isTypingTarget(e.target)) return;
+      if (selectedIds.size === 0) return;
+      const anchorId = blocks.find((b) => selectedIds.has(b.id))?.id ?? null;
       if (!anchorId) return;
       e.preventDefault();
       runDuplicate(anchorId);
