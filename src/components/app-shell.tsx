@@ -988,7 +988,7 @@ function MyViewRow({
     const filters = (v.filter ?? []) as Filter[];
     const sort = (v.sort as SortSpec | null) ?? { prop: "edited", dir: "desc" };
     const total = pages.length;
-    const matched = runView(pages, { filter: filters, sort, group_by: null }, ctx).rows.length;
+    const matched = runView(pages, { filter: filters, sort }, ctx).length;
     const footer = personalViewFooter({
       matchCount: matched,
       totalCount: total,
@@ -1238,7 +1238,7 @@ function TeamViewRow({
     const filters = (v.filter ?? []) as Filter[];
     const sort = (v.sort as SortSpec | null) ?? { prop: "edited", dir: "desc" };
     const total = pages.length;
-    const matched = runView(pages, { filter: filters, sort, group_by: null }, ctx).rows.length;
+    const matched = runView(pages, { filter: filters, sort }, ctx).length;
     const footer = personalViewFooter({
       matchCount: matched,
       totalCount: total,
@@ -1270,7 +1270,7 @@ function TeamViewRow({
                 filter: filters,
                 sort,
                 layout: v.layout,
-                group_by: v.group_by ?? null,
+                group_by: null,
               });
             }, mctx.close),
           ),
