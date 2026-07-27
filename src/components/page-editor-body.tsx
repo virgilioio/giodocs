@@ -2195,7 +2195,382 @@ function CalloutIconPicker({
   );
 }
 
+/* ────────────── Columns block ──────────────
+ *
+ * Renders a CSS-grid container with N inner ColumnStacks. Each ColumnStack
+ * is a self-contained mini-editor that reuses BlockRow for its rendering
+ * and supports typing / Enter split / Backspace merge / slash menu / type
+ * conversion within its column.
+ *
+ * DEFERRED (part 2 of 2): drag reordering blocks into or out of columns,
+ * marquee selection crossing column boundaries, and arrow-key navigation
+ * across columns. The drag handle inside a column is inert this pass.
+ *
+ * INVARIANT: columns must never nest. The slash menu here uses BLOCK_MENU
+ * only (COLUMNS_MENU is excluded).
+ */
+
+function ColumnsBlock({
+  block,
+  locked,
+  onChange,
+}: {
+  block: Blk;
+  locked: boolean;
+  onChange: (patch: Partial<Blk>) => void;
+}) {
+  const cols: Blk[][] = Array.isArray(block.cols) ? (block.cols as Blk[][]) : [];
+  const n = cols.length;
+
+  const setColumn = useCallback(
+    (i: number, next: Blk[]) => {
+      const nextCols = cols.map((c, ci) => (ci === i ? next : c));
+      onChange({ cols: nextCols });
+    },
+    [cols, onChange],
+  );
+
+  return (
+    <div
+      className="gio-cols"
+      style={{
+        display: "grid",
+        gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`,
+        gap: 20,
+      }}
+    >
+      {cols.map((col, i) => (
+        <ColumnStack
+          key={i}
+          blocks={col}
+          setBlocks={(next) => setColumn(i, next)}
+          locked={locked}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** Self-contained mini-editor for a single column. Duplicates the
+ * essential split / merge / insert / type-conversion / slash-menu logic
+ * from EditableBody rather than fully sharing state — part 2 of the
+ * columns task will unify these under a single BlockStack component. */
+function ColumnStack({
+  blocks,
+  setBlocks,
+  locked,
+}: {
+  blocks: Blk[];
+  setBlocks: (next: Blk[]) => void;
+  locked: boolean;
+}) {
+  const refs = useRef<Record<string, HTMLTextAreaElement | HTMLInputElement | null>>({});
+  const [focusRequest, setFocusRequest] = useState<{
+    id: string;
+    caret?: number | "end" | "start";
+  } | null>(null);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  const [slash, setSlash] = useState<{
+    blockId: string;
+    query: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [menuIdx, setMenuIdx] = useState(0);
+  useEffect(() => setMenuIdx(0), [slash?.query]);
+
+  const filteredMenu = useMemo(() => {
+    const q = (slash?.query ?? "").toLowerCase().trim();
+    if (!q) return BLOCK_MENU;
+    return BLOCK_MENU.filter(
+      (m) => m.name.toLowerCase().includes(q) || m.type.includes(q),
+    );
+  }, [slash]);
+
+  useEffect(() => {
+    if (!focusRequest) return;
+    const el = refs.current[focusRequest.id];
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    if ("setSelectionRange" in el) {
+      const v = (el as HTMLTextAreaElement).value;
+      const c =
+        focusRequest.caret === "end"
+          ? v.length
+          : focusRequest.caret === "start" || focusRequest.caret == null
+            ? 0
+            : Math.min(focusRequest.caret, v.length);
+      try {
+        (el as HTMLTextAreaElement).setSelectionRange(c, c);
+      } catch {
+        /* noop */
+      }
+    }
+    setFocusRequest(null);
+  }, [focusRequest, blocks]);
+
+  function updateBlock(id: string, patch: Partial<Blk>) {
+    setBlocks(blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)));
+  }
+  function splitBlock(id: string, caret: number) {
+    const idx = blocks.findIndex((b) => b.id === id);
+    if (idx === -1) return;
+    const cur = blocks[idx];
+    const t = cur.text ?? "";
+    const left = t.slice(0, caret);
+    const right = t.slice(caret);
+    const inheritTypes: BlockType[] = ["bullet", "numbered", "todo"];
+    const newType: BlockType = inheritTypes.includes(cur.type) ? cur.type : "text";
+    const spawn = newBlock(newType, right);
+    if (newType === "todo") spawn.checked = false;
+    const next = [...blocks];
+    next[idx] = { ...cur, text: left };
+    next.splice(idx + 1, 0, spawn);
+    setBlocks(next);
+    setFocusRequest({ id: spawn.id, caret: "start" });
+  }
+  function mergeIntoPrev(id: string) {
+    const idx = blocks.findIndex((b) => b.id === id);
+    if (idx <= 0) return; // First block in a column: do nothing (spec).
+    const prev = blocks[idx - 1];
+    const cur = blocks[idx];
+    const prevText = prev.text ?? "";
+    const merged = prevText + (cur.text ?? "");
+    const next = [...blocks];
+    next[idx - 1] = { ...prev, text: merged };
+    next.splice(idx, 1);
+    setBlocks(next);
+    setFocusRequest({ id: prev.id, caret: prevText.length });
+  }
+  function convertToText(id: string) {
+    const idx = blocks.findIndex((b) => b.id === id);
+    if (idx === -1) return;
+    const cur = blocks[idx];
+    const next = [...blocks];
+    next[idx] = { ...cur, type: "text", checked: undefined, open: undefined };
+    setBlocks(next);
+    setFocusRequest({ id, caret: "start" });
+  }
+  function removeBlock(id: string) {
+    const idx = blocks.findIndex((b) => b.id === id);
+    if (idx === -1) return;
+    if (blocks.length === 1) {
+      // Column must have at least one block; convert to empty text.
+      setBlocks([{ ...newBlock("text") }]);
+      return;
+    }
+    const next = blocks.filter((b) => b.id !== id);
+    setBlocks(next);
+    const target = blocks[Math.max(0, idx - 1)];
+    if (target) setFocusRequest({ id: target.id, caret: "end" });
+  }
+  function insertAfter(id: string) {
+    const idx = blocks.findIndex((b) => b.id === id);
+    if (idx === -1) return;
+    const spawn = newBlock("text");
+    const next = [...blocks];
+    next.splice(idx + 1, 0, spawn);
+    setBlocks(next);
+    setFocusRequest({ id: spawn.id, caret: "start" });
+  }
+  function tryMarkdown(id: string, val: string): boolean {
+    const map: Array<{ pat: RegExp; type: BlockType }> = [
+      { pat: /^# $/, type: "h1" },
+      { pat: /^## $/, type: "h2" },
+      { pat: /^- $/, type: "bullet" },
+      { pat: /^1\. $/, type: "numbered" },
+      { pat: /^\[\] $/, type: "todo" },
+      { pat: /^\[ \] $/, type: "todo" },
+      { pat: /^> $/, type: "quote" },
+      { pat: /^``` $/, type: "code" },
+    ];
+    const cur = blocks.find((b) => b.id === id);
+    if (!cur || cur.type !== "text") return false;
+    for (const m of map) {
+      if (m.pat.test(val)) {
+        const nb: Blk = { ...cur, type: m.type, text: "" };
+        if (m.type === "todo") nb.checked = false;
+        setBlocks(blocks.map((b) => (b.id === id ? nb : b)));
+        setFocusRequest({ id, caret: "start" });
+        return true;
+      }
+    }
+    return false;
+  }
+  function applyTypeLocal(blockId: string, type: BlockType) {
+    // COLUMNS_MENU is not offered inside a column — this only receives
+    // BLOCK_MENU types. Belt-and-braces: refuse "columns" to enforce the
+    // never-nest invariant.
+    if (type === "columns") return;
+    const idx = blocks.findIndex((b) => b.id === blockId);
+    if (idx === -1) return;
+    const prev = blocks[idx];
+    const t = prev.text ?? "";
+    const slashPos = t.lastIndexOf("/");
+    const stripped = slashPos >= 0 ? t.slice(0, slashPos) : t;
+    const nb: Blk = { ...prev, type, text: stripped };
+    if (type === "todo" && nb.checked == null) nb.checked = false;
+    if (type === "toggle" && nb.open == null) nb.open = false;
+    if (type === "callout" && !nb.icon) nb.icon = "💡";
+    if (type === "table" && !nb.rows) nb.rows = [["", "", ""], ["", "", ""]];
+    if (type === "divider") nb.text = "";
+    const next = [...blocks];
+    next[idx] = nb;
+    setBlocks(next);
+    setSlash(null);
+    setFocusRequest({ id: blockId, caret: stripped.length });
+  }
+
+  const ordinalMap = useMemo(() => numberedOrdinals(blocks), [blocks]);
+
+  return (
+    <div className="space-y-1">
+      {blocks.map((b) => (
+        <BlockRow
+          key={b.id}
+          block={b}
+          ordinal={b.type === "numbered" ? (ordinalMap.get(b.id) ?? 1) : undefined}
+          locked={locked}
+          selected={false}
+          dimmed={false}
+          focused={focusedId === b.id}
+          onRequestFocus={(caret) => {
+            setFocusedId(b.id);
+            setFocusRequest({ id: b.id, caret });
+          }}
+          onEditorFocus={() => setFocusedId(b.id)}
+          onEditorBlur={() =>
+            setFocusedId((cur) => (cur === b.id ? null : cur))
+          }
+          registerRowEl={() => {}}
+          onHandlePointerDown={() => {
+            /* Drag inside columns is deferred to part 2 of 2. */
+          }}
+          onHandleClick={() => {
+            /* Handle menu inside columns is deferred to part 2 of 2. */
+          }}
+          onHandleShiftClick={() => {}}
+          registerRef={(el) => {
+            if (el) refs.current[b.id] = el;
+            else delete refs.current[b.id];
+          }}
+          onChange={(patch) => updateBlock(b.id, patch)}
+          onInput={(val) => {
+            if (tryMarkdown(b.id, val)) return;
+            const el = refs.current[b.id] as HTMLTextAreaElement | undefined;
+            const caret = el?.selectionStart ?? val.length;
+            const before = val.slice(0, caret);
+            const slashPos = before.lastIndexOf("/");
+            const openable =
+              slashPos >= 0 && !/\s/.test(before.slice(slashPos + 1));
+            if (openable) {
+              const rect = el?.getBoundingClientRect();
+              setSlash({
+                blockId: b.id,
+                query: before.slice(slashPos + 1),
+                x: rect ? rect.left : 200,
+                y: rect ? rect.bottom + 4 : 200,
+              });
+            } else if (slash?.blockId === b.id) {
+              setSlash(null);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (locked) return;
+            const el = e.currentTarget as HTMLTextAreaElement;
+            const v = el.value;
+            const ss = el.selectionStart ?? 0;
+            const se = el.selectionEnd ?? 0;
+
+            if (slash?.blockId === b.id) {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setMenuIdx((i) => Math.min(filteredMenu.length - 1, i + 1));
+                return;
+              }
+              if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setMenuIdx((i) => Math.max(0, i - 1));
+                return;
+              }
+              if (e.key === "Enter") {
+                e.preventDefault();
+                const picked = filteredMenu[menuIdx];
+                if (picked) applyTypeLocal(b.id, picked.type);
+                return;
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setSlash(null);
+                return;
+              }
+            }
+
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              const isEmptyListLike =
+                (b.type === "bullet" ||
+                  b.type === "numbered" ||
+                  b.type === "todo") &&
+                (b.text ?? "") === "";
+              if (isEmptyListLike) {
+                convertToText(b.id);
+                return;
+              }
+              splitBlock(b.id, ss);
+              return;
+            }
+
+            if (e.key === "Backspace" && ss === 0 && se === 0) {
+              const idx = blocks.findIndex((x) => x.id === b.id);
+              if (b.type !== "text") {
+                e.preventDefault();
+                convertToText(b.id);
+                return;
+              }
+              if ((b.text ?? "") === "") {
+                if (idx === 0) {
+                  // First block in column: do nothing (spec).
+                  return;
+                }
+                e.preventDefault();
+                removeBlock(b.id);
+                return;
+              }
+              if (idx === 0) return; // Do NOT merge across column boundary.
+              e.preventDefault();
+              mergeIntoPrev(b.id);
+              return;
+            }
+          }}
+          onAddBelow={() => {
+            if (!locked) insertAfter(b.id);
+          }}
+          onSetIcon={(icon) => updateBlock(b.id, { icon })}
+          onPaste={() => {
+            /* Structured paste into a column is deferred; the browser's
+             * native text paste still works via textarea default. */
+          }}
+        />
+      ))}
+      {slash ? (
+        <SlashMenu
+          x={slash.x}
+          y={slash.y}
+          items={filteredMenu}
+          activeIdx={menuIdx}
+          onHover={setMenuIdx}
+          onPick={(t) => applyTypeLocal(slash.blockId, t)}
+          onClose={() => setSlash(null)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 /* ────────────── Table block ────────────── */
+
+
 
 function TableBlock({
   block,
