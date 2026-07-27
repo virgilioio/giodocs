@@ -49,7 +49,9 @@ import {
   useDeletePage,
   useMovePageToArea,
   useRestorePage,
+  useArchivePage,
 } from "@/hooks/use-page-mutations";
+import { BulkBar } from "./bulk-bar";
 import { ExportViewDialog } from "./export-view-dialog";
 import { useDelayedPending } from "./sk";
 import { ViewSkeleton, BoardSkeleton } from "./skeletons";
