@@ -1414,6 +1414,7 @@ export function EditableBody({
 
 function BlockRow({
   block,
+  ordinal,
   locked,
   selected,
   dimmed,
@@ -1430,6 +1431,7 @@ function BlockRow({
   onSetIcon,
 }: {
   block: Blk;
+  ordinal?: number;
   locked: boolean;
   selected: boolean;
   dimmed: boolean;
