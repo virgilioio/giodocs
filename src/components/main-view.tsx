@@ -1229,36 +1229,51 @@ function ModifiedBanner({
 function ViewHeaderMenu({
   view,
   selection,
-  canPublish,
-  canDelete,
-  canSaveAs,
+  isWorkspaceOwner,
+  isOwnerOfView,
+  isTeamView,
+  workspaceName,
+  memberCount,
+  onRename,
+  onDuplicatePersonal,
+  onDuplicateTeam,
   onPublish,
-  onSaveAs,
+  onUnpublish,
+  onExport,
   onDelete,
+  onAreaSaveAsView,
 }: {
   view: ViewRow | null;
   selection: Selection;
-  canPublish: boolean;
-  canDelete: boolean;
-  canSaveAs: boolean;
+  isWorkspaceOwner: boolean;
+  isOwnerOfView: boolean;
+  isTeamView: boolean;
+  workspaceName: string;
+  memberCount: number;
+  onRename: () => void;
+  onDuplicatePersonal: () => void;
+  onDuplicateTeam: () => void;
   onPublish: () => void;
-  onSaveAs: () => void;
+  onUnpublish: () => void;
+  onExport: () => void;
   onDelete: () => void;
+  onAreaSaveAsView: () => void;
 }) {
   const [mode, setMode] = useState<"list" | "publish" | "delete">("list");
-  const title =
-    selection.kind === "view" && view
-      ? view.scope === "team"
-        ? "Team view"
-        : "My view"
-      : "View";
+
   const name = view?.name ?? (selection.kind === "area" ? selection.area : "");
+  const title =
+    selection.kind === "area"
+      ? "Area"
+      : isTeamView
+        ? "Team view"
+        : "My view";
 
   if (mode === "publish") {
     return (
       <RowMenuConfirm
-        title={`Publish "${name}" to the team?`}
-        body="It moves out of My views into Team views for everyone in this workspace."
+        title="Publish to the whole team?"
+        body={`It moves out of My views into Team views for all ${memberCount} people at ${workspaceName}.`}
         confirmLabel="Publish"
         variant="publish"
         onConfirm={onPublish}
@@ -1276,35 +1291,103 @@ function ViewHeaderMenu({
       />
     );
   }
-  const items = [];
-  if (canSaveAs)
+
+  type Item =
+    | { kind: "divider" }
+    | {
+        id: string;
+        label: string;
+        hint?: ReactNode;
+        danger?: boolean;
+        submenu?: true;
+        keepOpen?: true;
+        disabled?: boolean;
+        onSelect?: () => void;
+      };
+  const items: Item[] = [];
+
+  if (selection.kind === "area") {
     items.push({
-      id: "save",
+      id: "save-as-view",
       label: "Save as my view",
       hint: <Val>personal</Val>,
-      onSelect: onSaveAs,
+      onSelect: onAreaSaveAsView,
     });
-  if (canPublish)
     items.push({
-      id: "publish",
-      label: "Publish to team",
-      hint: <Val>shared</Val>,
-      submenu: true as const,
-      keepOpen: true as const,
-      onSelect: () => setMode("publish"),
+      id: "export",
+      label: "Export view",
+      hint: <Val>CSV, Markdown</Val>,
+      onSelect: onExport,
     });
-  if (canDelete) {
-    if (items.length) items.push({ kind: "divider" as const });
+  } else if (isOwnerOfView) {
+    items.push({
+      id: "rename",
+      label: "Rename view",
+      onSelect: onRename,
+    });
+    items.push({
+      id: "duplicate",
+      label: "Duplicate",
+      hint: <Val>personal</Val>,
+      onSelect: onDuplicatePersonal,
+    });
+    if (isWorkspaceOwner) {
+      items.push({
+        id: "publish",
+        label: "Publish to team",
+        hint: <Val>shared</Val>,
+        submenu: true,
+        keepOpen: true,
+        onSelect: () => setMode("publish"),
+      });
+    }
+    items.push({
+      id: "export",
+      label: "Export view",
+      hint: <Val>CSV, Markdown</Val>,
+      onSelect: onExport,
+    });
+    items.push({ kind: "divider" });
     items.push({
       id: "delete",
       label: "Delete view",
       danger: true,
-      submenu: true as const,
-      keepOpen: true as const,
-      hint: <Sc>⌫</Sc>,
+      submenu: true,
+      keepOpen: true,
       onSelect: () => setMode("delete"),
     });
+  } else if (isTeamView) {
+    items.push({
+      id: "duplicate",
+      label: "Duplicate into My views",
+      hint: <Val>personal</Val>,
+      onSelect: onDuplicateTeam,
+    });
+    items.push({
+      id: "export",
+      label: "Export view",
+      hint: <Val>CSV, Markdown</Val>,
+      onSelect: onExport,
+    });
+    if (isWorkspaceOwner) {
+      items.push({ kind: "divider" });
+      items.push({
+        id: "unpublish",
+        label: "Unpublish to personal",
+        hint: <Val>personal</Val>,
+        onSelect: onUnpublish,
+      });
+      items.push({
+        id: "delete",
+        label: "Delete view",
+        danger: true,
+        submenu: true,
+        keepOpen: true,
+        onSelect: () => setMode("delete"),
+      });
+    }
   }
+
   if (!items.length)
     items.push({ id: "none", label: "No actions available", disabled: true });
   return <RowMenuList title={title} items={items} />;
