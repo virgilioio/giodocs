@@ -595,18 +595,148 @@ export function EditableBody({
         /* ignore */
       }
       document.body.style.userSelect = "none";
-      setDragging({ ids: dragIds, gap: null, indicatorY: null });
+  /* ────────── Drag: pointer session on a handle ──────────
+   *
+   * `sourceCol` identifies where the dragged run lives — null for the
+   * top-level block list, or a `{blockId, colIndex}` for a column. A drag
+   * started from inside a column carries its colRef so the source list
+   * is unambiguous at endDrag time, even when the pointer wanders across
+   * multiple columns during the drag. */
+
+  const beginDrag = useCallback(
+    (
+      id: string,
+      ev: React.PointerEvent<HTMLElement>,
+      sourceCol: ColumnRef | null = null,
+    ) => {
+      const sourceIsTopLevel = sourceCol === null;
+      let dragIds: string[] = [id];
+      if (sourceIsTopLevel) {
+        // Top-level multi-select: only drag the run when the handle
+        // belongs to a currently-selected top-level block.
+        const ids = blocks.map((b) => b.id);
+        if (ids.indexOf(id) < 0) return;
+        const isMulti = selectedIds.size > 1 && selectedIds.has(id);
+        if (isMulti) dragIds = ids.filter((x) => selectedIds.has(x));
+      }
+      if (dragIds.length === 1) {
+        setSelectedIds(new Set());
+        anchorId.current = null;
+      }
+      try {
+        ev.currentTarget.setPointerCapture(ev.pointerId);
+      } catch {
+        /* ignore */
+      }
+      document.body.style.userSelect = "none";
+      setDragging({
+        ids: dragIds,
+        sourceCol,
+        targetCol: sourceCol,
+        gap: null,
+        indicator: null,
+      });
     },
     [blocks, selectedIds],
   );
 
   const computeGap = useCallback(
-    (clientY: number): { gap: number; indicatorY: number } | null => {
+    (
+      clientX: number,
+      clientY: number,
+    ): {
+      targetCol: ColumnRef | null;
+      gap: number;
+      indicator: { x: number; y: number; width: number };
+    } | null => {
       const container = containerRef.current;
       if (!container) return null;
       const cRect = container.getBoundingClientRect();
+
+      // A dragged columns block itself may never land inside a column;
+      // force top-level hit-testing in that case (see reorder.ts guard).
+      const d = draggingRef.current;
+      const draggingColumnsBlock =
+        !!d &&
+        d.ids.some((x) => blocks.find((b) => b.id === x)?.type === "columns");
+
+      // Step 1: is the pointer inside any columns block's bounding box?
+      // If so, hit-test against its column tracks (unless we're dragging
+      // a columns block itself, in which case only top-level applies).
+      if (!draggingColumnsBlock) {
+        for (const b of blocks) {
+          if (b.type !== "columns" || !Array.isArray(b.cols)) continue;
+          const colsEl = rowEls.current.get(b.id);
+          if (!colsEl) continue;
+          const cb = colsEl.getBoundingClientRect();
+          if (
+            clientY < cb.top ||
+            clientY > cb.bottom ||
+            clientX < cb.left ||
+            clientX > cb.right
+          )
+            continue;
+          // Find which column track the pointer is over (by x).
+          let chosen: { colIndex: number; el: HTMLElement } | null = null;
+          for (let i = 0; i < b.cols.length; i++) {
+            const el = colTracks.current.get(trackKey({ blockId: b.id, colIndex: i }));
+            if (!el) continue;
+            const r = el.getBoundingClientRect();
+            if (clientX >= r.left && clientX <= r.right) {
+              chosen = { colIndex: i, el };
+              break;
+            }
+          }
+          if (!chosen) continue;
+          const colRef: ColumnRef = { blockId: b.id, colIndex: chosen.colIndex };
+          const colBlocks = b.cols[chosen.colIndex] as Blk[];
+          const rects: Array<{ id: string; top: number; bottom: number; mid: number }> = [];
+          for (const cb2 of colBlocks) {
+            const el = rowEls.current.get(cb2.id);
+            if (!el) continue;
+            const r = el.getBoundingClientRect();
+            rects.push({ id: cb2.id, top: r.top, bottom: r.bottom, mid: (r.top + r.bottom) / 2 });
+          }
+          const trackRect = chosen.el.getBoundingClientRect();
+          const width = trackRect.width;
+          const xInContainer = trackRect.left - cRect.left;
+          if (rects.length === 0) {
+            // Empty-looking column (shouldn't happen post-normalise).
+            return {
+              targetCol: colRef,
+              gap: 0,
+              indicator: { x: xInContainer, y: trackRect.top - cRect.top, width },
+            };
+          }
+          if (clientY < rects[0].mid) {
+            return {
+              targetCol: colRef,
+              gap: 0,
+              indicator: { x: xInContainer, y: rects[0].top - cRect.top - 2, width },
+            };
+          }
+          for (let i = 0; i < rects.length; i++) {
+            const rr = rects[i];
+            if (clientY < rr.mid) {
+              const y = ((rects[i - 1]?.bottom ?? rr.top) + rr.top) / 2;
+              return {
+                targetCol: colRef,
+                gap: i,
+                indicator: { x: xInContainer, y: y - cRect.top - 1, width },
+              };
+            }
+          }
+          const last = rects[rects.length - 1];
+          return {
+            targetCol: colRef,
+            gap: rects.length,
+            indicator: { x: xInContainer, y: last.bottom - cRect.top + 2, width },
+          };
+        }
+      }
+
+      // Step 2: top-level hit-test.
       const ids = blocks.map((b) => b.id);
-      // For each block, look up its row element rect.
       const rects: Array<{ id: string; top: number; bottom: number; mid: number }> = [];
       for (const id of ids) {
         const el = rowEls.current.get(id);
@@ -615,27 +745,32 @@ export function EditableBody({
         rects.push({ id, top: r.top, bottom: r.bottom, mid: (r.top + r.bottom) / 2 });
       }
       if (rects.length === 0) return null;
-      // Above the first row?
+      const width = cRect.width;
+      const x = 0;
       if (clientY < rects[0].mid) {
-        return { gap: 0, indicatorY: rects[0].top - cRect.top - 2 };
+        return {
+          targetCol: null,
+          gap: 0,
+          indicator: { x, y: rects[0].top - cRect.top - 2, width },
+        };
       }
       for (let i = 0; i < rects.length; i++) {
         const r = rects[i];
-        const nextTop = i + 1 < rects.length ? rects[i + 1].top : r.bottom;
         if (clientY < r.mid) {
-          // Between prev and this row → gap = i
           const y = ((rects[i - 1]?.bottom ?? r.top) + r.top) / 2;
-          return { gap: i, indicatorY: y - cRect.top - 1 };
+          return {
+            targetCol: null,
+            gap: i,
+            indicator: { x, y: y - cRect.top - 1, width },
+          };
         }
-        // pointer is past this row's mid
-        const isLast = i + 1 >= rects.length;
-        if (isLast) {
-          return { gap: rects.length, indicatorY: r.bottom - cRect.top + 2 };
-        }
-        // Fall through to check next row's mid
-        void nextTop;
       }
-      return { gap: rects.length, indicatorY: rects[rects.length - 1].bottom - cRect.top + 2 };
+      const last = rects[rects.length - 1];
+      return {
+        targetCol: null,
+        gap: rects.length,
+        indicator: { x, y: last.bottom - cRect.top + 2, width },
+      };
     },
     [blocks],
   );
@@ -655,10 +790,12 @@ export function EditableBody({
     scrollRafRef.current = requestAnimationFrame(tickScroll);
   }, []);
 
+  const dragLastClient = useRef<{ x: number; y: number } | null>(null);
+
   const onPointerMove = useCallback(
     (ev: PointerEvent) => {
       if (!draggingRef.current) return;
-      // Find scroll container lazily.
+      dragLastClient.current = { x: ev.clientX, y: ev.clientY };
       if (!scrollContainerRef.current) {
         const c = containerRef.current;
         scrollContainerRef.current = c?.closest("main") ?? null;
@@ -674,10 +811,12 @@ export function EditableBody({
           scrollRafRef.current = requestAnimationFrame(tickScroll);
         }
       }
-      const gap = computeGap(ev.clientY);
-      if (!gap) return;
+      const hit = computeGap(ev.clientX, ev.clientY);
+      if (!hit) return;
       setDragging((prev) =>
-        prev ? { ...prev, gap: gap.gap, indicatorY: gap.indicatorY } : prev,
+        prev
+          ? { ...prev, targetCol: hit.targetCol, gap: hit.gap, indicator: hit.indicator }
+          : prev,
       );
     },
     [computeGap, tickScroll],
@@ -694,24 +833,33 @@ export function EditableBody({
       }
       setDragging(null);
       if (!commitDrop || !d || d.gap == null) return;
-      const ids = blocks.map((b) => b.id);
-      if (d.ids.length === 1) {
-        const from = ids.indexOf(d.ids[0]);
-        if (from < 0) return;
-        const next = moveBlock(blocks, from, d.gap);
-        if (next === blocks || (next.length === blocks.length && next.every((x, i) => x === blocks[i]))) return;
-        commit(next);
-      } else {
-        const runIdxs = d.ids.map((x) => ids.indexOf(x)).filter((i) => i >= 0).sort((a, b) => a - b);
-        if (runIdxs.length === 0) return;
-        const runStart = runIdxs[0];
-        const runEnd = runIdxs[runIdxs.length - 1];
-        // Only handle contiguous runs; if selection got broken, bail.
-        if (runEnd - runStart + 1 !== runIdxs.length) return;
-        const next = moveRun(blocks, runStart, runEnd, d.gap);
-        if (next.length === blocks.length && next.every((x, i) => x === blocks[i])) return;
-        commit(next);
-      }
+      const froms: ReorderPath[] = d.ids.map((id) => {
+        // Discover this id's source list from the registry so cross-list
+        // drags remain correct even if `sourceCol` is stale.
+        const colRef = rowColRefById.current.get(id) ?? d.sourceCol;
+        // Compute index inside its list.
+        let index = -1;
+        if (colRef === null) {
+          index = blocks.findIndex((b) => b.id === id);
+        } else {
+          const b = blocks.find((x) => x.id === colRef.blockId);
+          if (b?.cols && Array.isArray(b.cols)) {
+            index = (b.cols[colRef.colIndex] as Blk[]).findIndex((x) => x.id === id);
+          }
+        }
+        return { col: colRef, index };
+      });
+      // Bail if any path failed to resolve.
+      if (froms.some((p) => p.index < 0)) return;
+      const to: ReorderPath = { col: d.targetCol, index: d.gap };
+      const makeEmpty = () => newBlock("text");
+      const next =
+        d.ids.length === 1
+          ? moveBlockAcross(blocks, froms[0], to, makeEmpty)
+          : moveRunAcross(blocks, froms, to, makeEmpty);
+      if (next === blocks) return;
+      if (next.length === blocks.length && next.every((x, i) => x === blocks[i])) return;
+      commit(next);
     },
     [blocks, commit],
   );
