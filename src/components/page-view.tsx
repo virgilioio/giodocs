@@ -1269,11 +1269,13 @@ export function PageEditor({ pageId }: { pageId: string }) {
           areas={areasList}
           onSet={(key, value) => {
             if (key === "icon") {
-              void updatePageIcon(page.id, value as string, qc);
+              if (typeof value === "string" && value)
+                setPageIcon.mutate({ pageId: page.id, icon: value });
               return;
             }
             setProp.mutate({ pageId: page.id, key, value });
           }}
+
         />
       </div>
 
