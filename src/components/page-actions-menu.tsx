@@ -55,19 +55,19 @@ export function PageMoreButton({ open, onClick, className }: {
       className={className}
       style={{
         width: 26, height: 26, borderRadius: 6, display: "grid", placeItems: "center",
-        background: open ? "#F1F0EC" : "transparent",
-        color: open ? "#3A3A33" : "#767B89",
+        background: open ? "var(--color-sunken)" : "transparent",
+        color: open ? "var(--color-strong)" : "var(--color-muted)",
         transition: "background .12s, color .12s",
       }}
       onMouseEnter={(e) => {
         if (open) return;
-        (e.currentTarget as HTMLButtonElement).style.background = "#F1F0EC";
-        (e.currentTarget as HTMLButtonElement).style.color = "#3A3A33";
+        (e.currentTarget as HTMLButtonElement).style.background = "var(--color-sunken)";
+        (e.currentTarget as HTMLButtonElement).style.color = "var(--color-strong)";
       }}
       onMouseLeave={(e) => {
         if (open) return;
         (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-        (e.currentTarget as HTMLButtonElement).style.color = "#767B89";
+        (e.currentTarget as HTMLButtonElement).style.color = "var(--color-muted)";
       }}
     >
       <Ic path={P.more} size={15} />
@@ -78,7 +78,7 @@ export function PageMoreButton({ open, onClick, className }: {
 /* ────────────── Row primitives ────────────── */
 
 function GroupSep() {
-  return <div style={{ borderBottom: "1px solid #F1F0EC", padding: "4px 0" }} />;
+  return <div style={{ borderBottom: "1px solid var(--color-sunken)", padding: "4px 0" }} />;
 }
 
 function ActionRow({
@@ -92,7 +92,7 @@ function ActionRow({
   danger?: boolean;
 }) {
   const [hover, setHover] = useState(false);
-  const bg = hover ? (danger ? "#FEE2E2" : "#F4F3EF") : "transparent";
+  const bg = hover ? (danger ? "var(--color-dangerTint)" : "var(--color-rail)") : "transparent";
   return (
     <button
       type="button"
@@ -102,13 +102,13 @@ function ActionRow({
       style={{
         display: "flex", alignItems: "center", gap: 10, width: "100%",
         padding: "6px 9px", borderRadius: 8, background: bg,
-        color: danger ? "#B91C1C" : "#2A2A24",
+        color: danger ? "var(--color-danger)" : "var(--color-body)",
         textAlign: "left", cursor: "pointer",
       }}
     >
       {icon != null && (
         <Ic path={icon} size={15} stroke={1.9}
-          color={danger ? "currentColor" : "#767B89"}
+          color={danger ? "currentColor" : "var(--color-muted)"}
           className="shrink-0" />
       )}
       <span style={{ flex: 1, fontSize: 14.5, lineHeight: 1.3 }}>{label}</span>
@@ -120,7 +120,7 @@ function ActionRow({
               ? "'Spline Sans Mono', ui-monospace, monospace"
               : "'Lato', system-ui, sans-serif",
             fontSize: hintKind === "shortcut" ? 11.5 : 12.5,
-            color: "#A8ACB8",
+            color: "var(--color-whisper)",
             maxWidth: 118,
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -144,7 +144,7 @@ function FontCard({
   letterSpacing?: string; onClick: () => void;
 }) {
   const [hover, setHover] = useState(false);
-  const bg = selected ? "#E7E8EE" : hover ? "#F4F3EF" : "transparent";
+  const bg = selected ? "var(--color-line)" : hover ? "var(--color-rail)" : "transparent";
   return (
     <button
       type="button"
@@ -159,10 +159,10 @@ function FontCard({
     >
       <span style={{
         fontFamily: family, fontSize: size, fontWeight: weight,
-        lineHeight: 1, color: "#2A2A24",
+        lineHeight: 1, color: "var(--color-body)",
         letterSpacing: letterSpacing ?? "normal",
       }}>{glyph}</span>
-      <span style={{ fontSize: 11.5, color: "#8B8F9E" }}>{label}</span>
+      <span style={{ fontSize: 11.5, color: "var(--color-faint)" }}>{label}</span>
     </button>
   );
 }
@@ -178,14 +178,14 @@ function TogglePill({ on, onChange }: { on: boolean; onChange: () => void }) {
       onClick={onChange}
       style={{
         position: "relative", width: 30, height: 17, borderRadius: 9,
-        background: on ? "#0B7A57" : "#DCDCE4",
+        background: on ? "var(--color-accent)" : "var(--color-lineStrong)",
         transition: "background .15s", flex: "none",
       }}
     >
       <span style={{
         position: "absolute", top: 2, left: on ? 15 : 2,
         width: 13, height: 13, borderRadius: "50%",
-        background: "#FFFFFF",
+        background: "var(--color-surface)",
         boxShadow: "0 1px 2px rgba(30,24,12,.28)",
         transition: "left .15s",
       }} />
@@ -205,11 +205,11 @@ function ToggleRow({ icon, label, on, onChange }: {
       style={{
         display: "flex", alignItems: "center", gap: 10,
         padding: "6px 9px", borderRadius: 8,
-        background: hover ? "#F4F3EF" : "transparent",
-        color: "#2A2A24", cursor: "pointer",
+        background: hover ? "var(--color-rail)" : "transparent",
+        color: "var(--color-body)", cursor: "pointer",
       }}
     >
-      <Ic path={icon} size={15} stroke={1.9} color="#767B89" className="shrink-0" />
+      <Ic path={icon} size={15} stroke={1.9} color="var(--color-muted)" className="shrink-0" />
       <span style={{ flex: 1, fontSize: 14.5 }}>{label}</span>
       <TogglePill on={on} onChange={onChange} />
     </div>
@@ -233,16 +233,16 @@ function DeleteConfirm({
         style={{
           position: "fixed", top: "50%", left: "50%",
           transform: "translate(-50%,-50%)", zIndex: 91,
-          width: 420, background: "#FFFFFF", borderRadius: 12,
-          border: "1px solid #E7E8EE",
+          width: 420, background: "var(--color-surface)", borderRadius: 12,
+          border: "1px solid var(--color-line)",
           boxShadow: "0 24px 64px rgba(13,13,9,.22)",
           padding: "20px 20px 16px",
         }}
       >
-        <div style={{ fontSize: 16, fontWeight: 600, color: "#2A2A24", marginBottom: 6 }}>
+        <div style={{ fontSize: 16, fontWeight: 600, color: "var(--color-body)", marginBottom: 6 }}>
           Delete "{title || "Untitled"}"?
         </div>
-        <div style={{ fontSize: 13.5, color: "#5A6072", lineHeight: 1.45 }}>
+        <div style={{ fontSize: 13.5, color: "var(--color-secondary)", lineHeight: 1.45 }}>
           It disappears from every view at once — there is no folder it stays in.
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
@@ -250,16 +250,16 @@ function DeleteConfirm({
             type="button" onClick={onCancel}
             style={{
               height: 32, padding: "0 14px", borderRadius: 8,
-              border: "1px solid #E7E8EE", background: "#FFFFFF",
-              fontSize: 13.5, color: "#2A2A24", cursor: "pointer",
+              border: "1px solid var(--color-line)", background: "var(--color-surface)",
+              fontSize: 13.5, color: "var(--color-body)", cursor: "pointer",
             }}
           >Cancel</button>
           <button
             type="button" onClick={onConfirm}
             style={{
               height: 32, padding: "0 14px", borderRadius: 8,
-              background: "#B91C1C", color: "#FFFFFF",
-              fontSize: 13.5, border: "1px solid #B91C1C", cursor: "pointer",
+              background: "var(--color-danger)", color: "var(--color-surface)",
+              fontSize: 13.5, border: "1px solid var(--color-danger)", cursor: "pointer",
             }}
           >Delete</button>
         </div>
@@ -285,16 +285,16 @@ function AreaScreen({
           display: "flex", alignItems: "center", gap: 8,
           padding: "6px 9px", borderRadius: 8, width: "100%",
           background: "transparent", cursor: "pointer",
-          color: "#5A6072", fontSize: 13,
+          color: "var(--color-secondary)", fontSize: 13,
         }}
       >
-        <Ic path="M15 6l-6 6 6 6" size={14} color="#767B89" />
+        <Ic path="M15 6l-6 6 6 6" size={14} color="var(--color-muted)" />
         <span>Change area</span>
       </button>
-      <div style={{ borderTop: "1px solid #F1F0EC", margin: "4px 0" }} />
+      <div style={{ borderTop: "1px solid var(--color-sunken)", margin: "4px 0" }} />
       <ActionRow
         label="No area"
-        hint={current == null ? <Ic path={P.check} size={14} color="#0B7A57" /> : undefined}
+        hint={current == null ? <Ic path={P.check} size={14} color="var(--color-accent)" /> : undefined}
         hintKind="value"
         onClick={() => onPick(null)}
       />
@@ -302,7 +302,7 @@ function AreaScreen({
         <ActionRow
           key={a}
           label={a}
-          hint={a === current ? <Ic path={P.check} size={14} color="#0B7A57" /> : undefined}
+          hint={a === current ? <Ic path={P.check} size={14} color="var(--color-accent)" /> : undefined}
           hintKind="value"
           onClick={() => onPick(a)}
         />
@@ -395,8 +395,8 @@ export function PageActionsMenu({
         onClick={(e) => e.stopPropagation()}
         style={{
           position: "fixed", top: 48, right: 12, zIndex: 81,
-          width: 302, background: "#FFFFFF",
-          border: "1px solid #E7E8EE", borderRadius: 12,
+          width: 302, background: "var(--color-surface)",
+          border: "1px solid var(--color-line)", borderRadius: 12,
           boxShadow: "0 18px 48px rgba(13,13,9,.16)",
           padding: 5, animation: "popIn .12s ease-out",
         }}
@@ -524,11 +524,11 @@ export function PageActionsMenu({
 
             {/* FOOTER — no-op search hint */}
             <div style={{
-              borderTop: "1px solid #F1F0EC", marginTop: 3,
+              borderTop: "1px solid var(--color-sunken)", marginTop: 3,
               padding: "8px 10px 5px", display: "flex", gap: 8,
-              alignItems: "center", fontSize: 13.5, color: "#A8ACB8",
+              alignItems: "center", fontSize: 13.5, color: "var(--color-whisper)",
             }}>
-              <Ic path={P.search} size={12} color="#A8ACB8" />
+              <Ic path={P.search} size={12} color="var(--color-whisper)" />
               <span>Search all actions…</span>
             </div>
           </>
