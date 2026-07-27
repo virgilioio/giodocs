@@ -1,1 +1,4 @@
 project_id = "fzbsautaxfuqnjkchske"
+
+[functions.send-workspace-invite]
+verify_jwt = true
