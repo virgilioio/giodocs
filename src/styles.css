@@ -213,19 +213,19 @@
 @layer components {
   .gio-page-body {
     /* Between two ordinary blocks (paragraph → paragraph). */
-    --gio-block-gap: 10px;
+    --gio-block-gap: 13px;
     /* Between consecutive items of the same list — tight, so a list reads
        as one object rather than a stack of separate blocks. */
-    --gio-list-gap: 3px;
+    --gio-list-gap: 4px;
     /* Air above each heading level. */
-    --gio-h1-above: 34px;
-    --gio-h2-above: 26px;
-    --gio-h3-above: 20px;
+    --gio-h1-above: 46px;
+    --gio-h2-above: 34px;
+    --gio-h3-above: 26px;
     /* Air below a heading, before its first block. Deliberately small. */
-    --gio-head-below: 7px;
+    --gio-head-below: 9px;
     /* Set pieces that need room to read as distinct objects. */
-    --gio-block-y: 16px;
-    --gio-divider-y: 28px;
+    --gio-block-y: 20px;
+    --gio-divider-y: 34px;
 
     row-gap: 0;
   }
@@ -287,13 +287,13 @@
   /* Small-text mode scales the rhythm with the type, or the page reads
      loose at a size chosen to be tighter. */
   .gio-page[data-small="1"] .gio-page-body {
-    --gio-block-gap: 8px;
-    --gio-h1-above: 28px;
-    --gio-h2-above: 22px;
-    --gio-h3-above: 17px;
-    --gio-head-below: 6px;
-    --gio-block-y: 13px;
-    --gio-divider-y: 23px;
+    --gio-block-gap: 11px;
+    --gio-h1-above: 38px;
+    --gio-h2-above: 28px;
+    --gio-h3-above: 22px;
+    --gio-head-below: 8px;
+    --gio-block-y: 17px;
+    --gio-divider-y: 28px;
   }
 }
 
