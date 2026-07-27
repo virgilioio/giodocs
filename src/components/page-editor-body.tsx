@@ -2517,9 +2517,22 @@ function BlockContent({
     );
   }
 
+  // Flat outline: indent shifts only the block CONTENT for the indentable
+  // types (bullet, numbered, todo, text). Gutter stays at the row's left
+  // edge. 24px per level. Bullet glyph and numbered label cycle every 3
+  // levels for legibility.
+  const indent = typeof block.indent === "number" && block.indent > 0
+    ? Math.min(6, Math.floor(block.indent))
+    : 0;
+  const BULLET_GLYPHS = ["•", "◦", "▪"] as const;
+  const contentWrap = (node: React.ReactNode) =>
+    indent > 0
+      ? <div style={{ paddingLeft: indent * 24 }}>{node}</div>
+      : node;
+
   if (t === "todo") {
     const done = !!block.checked;
-    return (
+    return contentWrap(
       <div className="flex items-start gap-2 text-prose text-body">
         <input
           type="checkbox"
@@ -2535,14 +2548,6 @@ function BlockContent({
       </div>
     );
   }
-
-  // Flat outline: indent shifts only the block CONTENT, not the gutter (+
-  // and drag handle stay at the row's left edge). 24px per level. Bullet
-  // glyph and numbered label cycle every 3 levels for legibility.
-  const indent = typeof block.indent === "number" && block.indent > 0
-    ? Math.min(6, Math.floor(block.indent))
-    : 0;
-  const BULLET_GLYPHS = ["•", "◦", "▪"] as const;
 
   const contentWrap = (node: React.ReactNode) =>
     indent > 0
@@ -2602,9 +2607,9 @@ function BlockContent({
   }
 
   // text (default)
-  return renderSwap(
+  return contentWrap(renderSwap(
     "w-full resize-none border-0 bg-transparent p-0 text-prose text-body outline-none placeholder:text-faint",
-  );
+  ));
 }
 
 const GrowText = function GrowText(
