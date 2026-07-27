@@ -588,11 +588,12 @@ export function PageTopbarActions({
       </IconButton>
 
       <RowMoreButton
-        size="sm"
+        size="md"
         ariaLabel="Page actions"
         build={buildMenu}
         width={264}
       />
+
     </>
   );
 }
