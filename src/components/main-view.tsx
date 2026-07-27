@@ -757,7 +757,7 @@ function TagsCell({
     }
     return [...s].sort();
   }, [pages, allOverride]);
-  const shown = tags.slice(0, 3);
+  const shown = tags.slice(0, 2);
   const extra = tags.length - shown.length;
   return (
     <TagsPicker
@@ -769,7 +769,7 @@ function TagsCell({
           ref={ref}
           type="button"
           onClick={onClick}
-          className="flex flex-wrap items-center gap-1"
+          className="flex flex-nowrap items-center gap-1 overflow-hidden"
         >
           {shown.map((t) => {
             const c = hashTag(t);
@@ -787,7 +787,9 @@ function TagsCell({
             );
           })}
           {extra > 0 && (
-            <span className="text-caption text-muted">+{extra}</span>
+            <span className="rounded-sm px-1.5 py-0.5 text-whisper text-muted">
+              +{extra}
+            </span>
           )}
           {tags.length === 0 && <span className="text-faint">—</span>}
         </button>
