@@ -1606,7 +1606,6 @@ function AreaLi({
               onVerify={onVerify}
               setPageProperty={setPageProperty}
               moveToArea={moveToArea}
-              duplicatePage={duplicatePage}
               deletePage={deletePage}
               navigate={navigate}
             />
