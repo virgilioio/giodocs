@@ -57,7 +57,7 @@ export function ExportDialog({
   const [paper, setPaper] = useState<Paper>(() => defaultPaper());
   const [scale, setScale] = useState<string>("100");
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState(false);
+  const [err, setErr] = useState<null | "popup-blocked" | "generic">(null);
   const menu = useRowMenu();
   const toast = useToast();
 
@@ -129,7 +129,7 @@ export function ExportDialog({
 
   async function onExport() {
     if (busy) return;
-    setErr(false);
+    setErr(null);
     setBusy(true);
     try {
       if (fmt === "Markdown") {
@@ -154,7 +154,8 @@ export function ExportDialog({
       // swallowed the real cause. Log the exception verbatim so the next
       // failure is diagnosable in the console.
       console.error("[export] failed", { format: fmt, error: e });
-      setErr(true);
+      const msg = e instanceof Error ? e.message : String(e);
+      setErr(msg === "popup-blocked" ? "popup-blocked" : "generic");
     } finally {
       setBusy(false);
     }
@@ -263,7 +264,9 @@ export function ExportDialog({
               lineHeight: 1.45,
             }}
           >
-            Export failed — nothing left your workspace. Try again?
+            {err === "popup-blocked"
+              ? "Your browser blocked the print window. Allow pop-ups for this site, or export HTML instead."
+              : "Export failed — nothing left your workspace. Try again?"}
           </div>
         ) : (
           <div

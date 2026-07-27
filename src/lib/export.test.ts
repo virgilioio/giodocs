@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   blockToMarkdown,
   slugOf,
@@ -85,8 +85,10 @@ describe("toMarkdown", () => {
     expect(md).toContain("\n| A | B |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |\n");
   });
 
-  it("throws on unknown block types (no silent default)", () => {
-    expect(() => toMarkdown({ ...base, blocks: [B("mystery")] })).toThrow();
+  it("degrades unknown block types to plain text (no throw)", () => {
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(() => toMarkdown({ ...base, blocks: [B("mystery", { text: "x" })] })).not.toThrow();
+    spy.mockRestore();
   });
 
   it("emits true ordinals for a run of numbered blocks", () => {
@@ -298,5 +300,33 @@ describe("toMarkdownTable", () => {
     expect(md).toContain("| Page | Area |");
     expect(md).not.toContain("Tags");
     expect(md).not.toContain("skip-me");
+  });
+});
+
+describe("unknown block types (graceful fallback)", () => {
+  it("blockToMarkdown returns plain text and does not throw", () => {
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const b = { type: "paragraph", text: "legacy content" } as unknown as Block;
+    expect(() => blockToMarkdown(b)).not.toThrow();
+    expect(blockToMarkdown(b)).toBe("legacy content");
+    spy.mockRestore();
+  });
+  it("toHtml emits <p>escaped</p> for unknown block and does not throw", () => {
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const html = toHtml({
+      title: "T",
+      blocks: [{ type: "paragraph", text: "<b>hi</b>" } as unknown as Block],
+    });
+    expect(html).toContain("<p>&lt;b&gt;hi&lt;/b&gt;</p>");
+    spy.mockRestore();
+  });
+  it("toMarkdown embeds unknown block as plain paragraph", () => {
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const md = toMarkdown({
+      title: "T",
+      blocks: [{ type: "paragraph", text: "hello world" } as unknown as Block],
+    });
+    expect(md).toContain("hello world");
+    spy.mockRestore();
   });
 });

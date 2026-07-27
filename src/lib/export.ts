@@ -85,6 +85,17 @@ function blockText(b: Block): string {
   return typeof b.text === "string" ? b.text : "";
 }
 
+/* Warn once per distinct unknown block type across both serialisers, so a
+ * 20-block page logs at most one line per type. Data outlives the code
+ * that wrote it — degrade rather than crash. */
+const _warnedUnknownBlocks = new Set<string>();
+function warnUnknownBlock(t: string): void {
+  if (_warnedUnknownBlocks.has(t)) return;
+  _warnedUnknownBlocks.add(t);
+  console.warn(`[export] unknown block type "${t}" — exported as plain text`);
+}
+
+
 /* ─────────────────────────── blockToMarkdown ───────────────────────────
  *
  * Per-block Markdown serialisation, extracted so the block-selection
@@ -153,7 +164,8 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
       return lines.join("\n");
     }
     default:
-      throw new Error(`blockToMarkdown: unhandled block type "${t}"`);
+      warnUnknownBlock(t);
+      return text;
   }
 }
 
@@ -251,7 +263,8 @@ function blockHtml(b: Block, ordinal = 1): string {
       return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
     }
     default:
-      throw new Error(`toHtml: unhandled block type "${t}"`);
+      warnUnknownBlock(t);
+      return `<p>${esc(text)}</p>`;
   }
 }
 
@@ -349,9 +362,15 @@ export async function printPdf(
   paper: string,
   scalePct: number,
 ): Promise<void> {
-  const win = window.open("", "_blank", "noopener,noreferrer");
-  if (!win) throw new Error("popup-blocked");
+  // Serialise BEFORE opening the window: if toHtml throws we must not
+  // leave an orphaned about:blank tab behind.
   const html = toHtml(ctx);
+  // NOTE: do NOT pass "noopener,noreferrer" here. Per spec, window.open()
+  // returns null when noopener is set, so we would lose the handle we need
+  // to write our own document into the tab. This is safe: we are writing a
+  // string we generated ourselves, not navigating to an untrusted URL.
+  const win = window.open("", "_blank");
+  if (!win) throw new Error("popup-blocked");
   const zoom = Math.max(0.5, Math.min(2, scalePct / 100));
   const augmented = html.replace(
     "</style>",
