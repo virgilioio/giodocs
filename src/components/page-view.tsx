@@ -1122,6 +1122,14 @@ export function PageEditor({ pageId }: { pageId: string }) {
     void saverRef.current?.flush();
   }, []);
 
+  const areasList = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of (shell.pages.data ?? []) as PageListItem[]) {
+      const a = propsOf(p)["area"];
+      if (typeof a === "string" && a) s.add(a);
+    }
+    return [...s].sort();
+  }, [shell.pages.data]);
 
   if (pageQ.isLoading) {
     return (
@@ -1236,14 +1244,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
           members={members}
           meId={meId}
           pages={(shell.pages.data ?? []) as PageListItem[]}
-          areas={useMemo(() => {
-            const s = new Set<string>();
-            for (const p of (shell.pages.data ?? []) as PageListItem[]) {
-              const a = propsOf(p)["area"];
-              if (typeof a === "string" && a) s.add(a);
-            }
-            return [...s].sort();
-          }, [shell.pages.data])}
+          areas={areasList}
           onSet={(key, value) => {
             if (key === "icon") {
               void updatePageIcon(page.id, value as string, qc);
