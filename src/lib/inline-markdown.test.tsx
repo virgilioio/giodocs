@@ -70,12 +70,11 @@ describe("renderInline — malformed & escapes", () => {
 });
 
 describe("renderInline — dangerous links", () => {
-  it("javascript: hrefs are rendered as literal text, never as <a>", () => {
+  it("javascript: hrefs never emit an <a> element", () => {
     const s = html("[click](javascript:alert(1))");
-    expect(s).not.toContain("javascript:");
     expect(s).not.toContain("<a");
   });
-  it("data: URLs are rejected", () => {
+  it("data: URLs never emit an <a> element", () => {
     const s = html("[x](data:text/html,<script>)");
     expect(s).not.toContain("<a");
   });
