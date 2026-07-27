@@ -1161,6 +1161,49 @@ export function EditableBody({
     [containerPoint],
   );
 
+  // The narrow `.gio-page-body` column is centred inside `<main>`, so a
+  // press in the lateral margin (outside the text column but still in
+  // the scroll container) never bubbles to `handleContainerPointerDown`.
+  // Attach the same session opener to `<main>` and gate it to the body's
+  // vertical span — that turns those margins into marquee-startable
+  // gutters without swallowing presses on the title / property strip above.
+  useEffect(() => {
+    const c = containerRef.current;
+    const main = c?.closest("main") as HTMLElement | null;
+    if (!c || !main) return;
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      if (marqueeRef.current?.active) return;
+      if (draggingRef.current) return;
+      // If the press already lands inside `.gio-page-body`, the React
+      // handler on containerRef takes it — don't double-start.
+      const t = e.target as HTMLElement;
+      if (c.contains(t)) return;
+      // Filter interactive targets that live outside the body too.
+      if (
+        t.closest(
+          "textarea, input, button, [data-slash-menu], [data-block-handle], [data-popover-root]",
+        )
+      )
+        return;
+      // Only start when the pointer is within the vertical band of the body.
+      const rect = c.getBoundingClientRect();
+      if (e.clientY < rect.top || e.clientY > rect.bottom) return;
+      const p = containerPoint(e.clientX, e.clientY);
+      marqueeRef.current = {
+        active: true,
+        originX: p.x,
+        originY: p.y,
+        originTarget: t,
+        moved: false,
+      };
+      marqueeLastClient.current = { x: e.clientX, y: e.clientY };
+    };
+    main.addEventListener("pointerdown", onDown);
+    return () => main.removeEventListener("pointerdown", onDown);
+  }, [containerPoint]);
+
+
   useEffect(() => {
     const onMove = (ev: PointerEvent) => {
       const m = marqueeRef.current;
