@@ -655,7 +655,7 @@ function BlockContent({
 
   if (t === "table") {
     return (
-      <TableBlock block={block} locked={locked} onChange={onChange} />
+      <TableBlock block={block} locked={locked} onChange={onChange} onBlur={onBlur} />
     );
   }
 
