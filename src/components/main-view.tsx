@@ -272,7 +272,7 @@ function QueryToolbar({
   pages,
   verbose,
   pill,
-  menuBuild,
+  menuSpec,
 }: {
   filters: Filter[];
   sort: SortSpec;
