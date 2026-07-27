@@ -1391,11 +1391,9 @@ export function EditableBody({
         : null}
       {handleMenu ? (
         <RowMenu
+          spec={handleMenu.spec}
           anchor={handleMenu.anchor}
-          onClose={() => setHandleMenu(null)}
-          build={(mctx) =>
-            buildBlockHandleSpec(handleMenu.blockId, mctx)
-          }
+          onClose={closeHandleMenu}
         />
       ) : null}
     </div>
