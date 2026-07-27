@@ -619,17 +619,21 @@ ${propsHtml}
   const ords = numberedOrdinals(ctx.blocks);
   const body = renderBlocksHtml(ctx.blocks, ords);
 
-  // Footer: logo (data URI) left, page title right. If the logo failed to
-  // inline (very unlikely — module init exception), fall back to a text
-  // wordmark so the mark still reads. Both branches keep the file
-  // self-contained.
+  // Masthead: renders ONCE at the top of the document (letterhead style).
+  // The old position:fixed footer fought pagination and repeatedly caused
+  // bottom-edge collisions — deleted. The browser's own print header/footer
+  // (URL, page numbers, date) is now a checkbox in the user's print dialog.
+  // If the logo failed to inline (very unlikely — module init exception),
+  // fall back to a text wordmark so the mark still reads. Both branches
+  // keep the file self-contained.
   const markHtml = GIO_DOCS_LOGO_DATA_URI
-    ? `<span class="mark"><img src="${GIO_DOCS_LOGO_DATA_URI}" alt="Gio Docs"/></span>`
-    : `<span class="mark" style="font-weight:700;letter-spacing:-0.02em;color:${noir};">Gio Docs</span>`;
-  const footerHtml = `<footer class="print-footer">
+    ? `<img src="${GIO_DOCS_LOGO_DATA_URI}" alt="Gio Docs"/>`
+    : `<span style="font-weight:700;letter-spacing:-0.02em;color:${muted};">Gio Docs</span>`;
+  const wsName = (ctx.workspaceName ?? "").trim();
+  const mastheadHtml = `<header class="masthead">
 ${markHtml}
-<span class="title">${titleEsc}</span>
-</footer>`;
+${wsName ? `<span class="ws">${esc(wsName)}</span>` : ""}
+</header>`;
 
   return `<!doctype html>
 <html lang="en">
@@ -640,11 +644,11 @@ ${markHtml}
 <style>${HTML_CSS}</style>
 </head>
 <body>
+${mastheadHtml}
 ${headerHtml}
 <main>
 ${body}
 </main>
-${footerHtml}
 </body>
 </html>`;
 }
