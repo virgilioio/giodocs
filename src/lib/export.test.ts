@@ -129,9 +129,9 @@ describe("toMarkdown", () => {
     expect(() => toMarkdown(ctx)).not.toThrow();
     expect(() => toHtml(ctx)).not.toThrow();
     const html = toHtml(ctx);
-    // Ordinal threaded into <ol start="N">
-    expect(html).toContain('<ol start="1"><li>one</li></ol>');
-    expect(html).toContain('<ol start="2"><li>two</li></ol>');
+    // Consecutive numbered blocks merge into ONE <ol> in the outline
+    // renderer; both list items live inside it in order.
+    expect(html).toContain('<ol><li>one</li><li>two</li></ol>');
   });
 });
 
