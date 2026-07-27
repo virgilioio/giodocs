@@ -38,10 +38,10 @@ describe("buildOffsetMap — grammar coverage", () => {
     expect(m.toSource(1)).toBe(3);
     expect(m.toSource(2)).toBe(4);
     expect(m.toSource(3)).toBe(5);
-    expect(m.toSource(4)).toBe(6); // end sentinel: end of source? No — end of rendered → after
-    // Note: end of rendered is treated as srcLen; here srcLen=8, but the natural
-    // "after last content char" is source 6. buildOffsetMap collapses end→srcLen.
-    // What we actually assert is round-trip and monotonic behaviour below.
+    // rendered 4 is the end sentinel — clamps to srcLen (8).
+    expect(m.toSource(4)).toBe(8);
+    // round-trip on interior indices
+    for (let r = 0; r < 4; r++) expect(m.toRendered(m.toSource(r))).toBe(r);
   });
 
   it("text before and after a delimiter maps on both sides", () => {
