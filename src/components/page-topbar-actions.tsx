@@ -333,25 +333,19 @@ export function PageTopbarActions({
     });
   }, [del, listRow, restore, toast, backAfterDelete]);
 
-  // ⌘⌥L (copy) and ⌘D (duplicate) shortcuts. Suppressed while focus is inside
-  // an editable field so text selection & shortcuts inside the editor win.
+  // ⌘⌥L (copy) and ⌘D (duplicate) shortcuts. Both yield to text fields —
+  // native copy/duplicate-selection inside a textarea must win.
   useEffect(() => {
     if (!listRow) return;
     const onKey = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
       const meta = e.metaKey || e.ctrlKey;
-      const tgt = e.target as HTMLElement | null;
-      const inField =
-        !!tgt &&
-        (tgt.tagName === "TEXTAREA" ||
-          tgt.tagName === "INPUT" ||
-          tgt.isContentEditable);
       if (meta && e.altKey && (e.key === "l" || e.key === "L")) {
         e.preventDefault();
         void doCopyLink();
         return;
       }
       if (meta && !e.altKey && !e.shiftKey && (e.key === "d" || e.key === "D")) {
-        if (inField) return;
         e.preventDefault();
         void doDuplicate();
       }
