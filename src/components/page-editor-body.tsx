@@ -2858,15 +2858,26 @@ function ColumnStack({
         BLOCK_MENU.find((m) => m.type === target?.type)?.name ?? target?.type ?? "Block";
       const atTop = idx <= 0;
       const atEnd = idx >= blocks.length - 1;
-      const turnIntoSub: MenuRow[] = BLOCK_MENU.map((m) => ({
-        kind: "row" as const,
-        label: m.name,
-        icon: "layout",
-        onPick: () => {
-          applyTypeLocal(bid, m.type);
-          mctx.close();
-        },
-      }));
+      const turnIntoSub: MenuRow[] = [
+        ...BLOCK_MENU.map((m) => ({
+          kind: "row" as const,
+          label: m.name,
+          icon: "layout" as const,
+          onPick: () => {
+            applyTypeLocal(bid, m.type);
+            mctx.close();
+          },
+        })),
+        ...([1, 2, 3] as const).map((n) => ({
+          kind: "row" as const,
+          label: `Toggle heading ${n}`,
+          icon: "layout" as const,
+          onPick: () => {
+            applyTypeLocal(bid, "toggle", { level: `h${n}` as ToggleLevel });
+            mctx.close();
+          },
+        })),
+      ];
       const move = (dir: -1 | 1) => {
         if (idx < 0) return;
         const j = idx + dir;
