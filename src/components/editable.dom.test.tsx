@@ -19,6 +19,8 @@ import { readCaretSource, setCaretOffset } from "@/lib/ce-offsets";
 import { htmlToInlineMarkdown } from "@/lib/inline-tokens";
 import { inlineToHtml } from "@/lib/inline-markdown";
 
+(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
 let host: HTMLDivElement;
 let root: Root;
 
