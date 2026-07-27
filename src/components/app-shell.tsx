@@ -1122,51 +1122,28 @@ function TeamViewRow({
 }) {
   const [hover, setHover] = useState(false);
   const fork = useForkView();
+  const unpublish = useUnpublishView();
   const navigate = useNavigate();
 
   const build = (): ReactNode => (
-    <RowMenuList
-      title="Team view"
-      items={[
-        {
-          id: "open",
-          label: "Open",
-          hint: <Sc>↵</Sc>,
-          onSelect: () =>
-            navigate({ to: "/v/$viewId", params: { viewId: v.id } }),
-        },
-        {
-          id: "dup",
-          label: "Duplicate into My views",
-          hint: <Val>personal</Val>,
-          onSelect: () =>
-            fork.mutate({
-              viewId: v.id,
-              name: `${v.name} copy`,
-              filter: (v.filter ?? []) as Filter[],
-              sort: (v.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
-              layout: v.layout,
-            }),
-        },
-        {
-          id: "hide",
-          label: "Hide from my sidebar",
-          onSelect: () => onHide(v.id),
-        },
-        ...(isOwner
-          ? ([
-              { kind: "divider" },
-              {
-                id: "unpublish",
-                label: "Unpublish",
-                hint: <Val>back to mine</Val>,
-                disabled: true,
-              },
-            ] satisfies RowMenuItem[])
-          : []),
-      ]}
+    <TeamViewMenu
+      v={v}
+      isOwner={isOwner}
+      onOpen={() => navigate({ to: "/v/$viewId", params: { viewId: v.id } })}
+      onFork={() =>
+        fork.mutate({
+          viewId: v.id,
+          name: `${v.name} copy`,
+          filter: (v.filter ?? []) as Filter[],
+          sort: (v.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
+          layout: v.layout,
+        })
+      }
+      onHide={() => onHide(v.id)}
+      onUnpublish={() => unpublish.mutate(v.id)}
     />
   );
+
 
   return (
     <li
