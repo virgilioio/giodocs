@@ -872,7 +872,7 @@ function AddPropertyPopover({
           <Glyph
             path="M12 5v14M5 12h14"
             className="h-[11px] w-[11px]"
-            style={{ strokeWidth: 2.4 }}
+            strokeWidth={2.4}
           />
           <span>Add a property</span>
         </button>
