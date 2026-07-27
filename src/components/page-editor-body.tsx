@@ -348,13 +348,6 @@ export function EditableBody({
     setFocusRequest({ id: target.id, caret });
   }
 
-  function ensureFirstBlock() {
-    if (blocks.length) return blocks[0].id;
-    const only = newBlock("text");
-    commit([only]);
-    setFocusRequest({ id: only.id, caret: "start" });
-    return only.id;
-  }
 
   /* ────────── Markdown shortcuts on input ────────── */
   function tryMarkdown(id: string, val: string): boolean {
