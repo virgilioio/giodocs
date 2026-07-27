@@ -12,6 +12,7 @@ import { createPortal } from "react-dom";
 import type { Block } from "@/lib/types";
 import { moveBlock, moveRun, deleteIndices } from "@/lib/reorder";
 import { blockToMarkdown } from "@/lib/export";
+import { numberedOrdinals } from "@/lib/blocks";
 import { blockHandleFooter } from "@/lib/block-handle-footer";
 import { useToast } from "@/lib/toast";
 import { RowMenu, type MenuSpec, type MenuRow } from "./row-menu";
@@ -121,6 +122,7 @@ export function EditableTitle({
   onEnter,
   autoFocus,
   topMarginClass = "mt-3",
+  readOnly = false,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -128,6 +130,8 @@ export function EditableTitle({
   autoFocus?: boolean;
   /** Override the default `mt-3` when rendering in an already-spaced row. */
   topMarginClass?: string;
+  /** BUG 3: honour the page-appearance "Lock editing" toggle. */
+  readOnly?: boolean;
 }) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   useAutoGrow(ref, value);
@@ -144,8 +148,10 @@ export function EditableTitle({
       value={value}
       placeholder="Untitled"
       rows={1}
+      readOnly={readOnly}
       onChange={(e) => onChange(e.target.value.replace(/\n/g, ""))}
       onKeyDown={(e) => {
+        if (readOnly) return;
         if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
           e.preventDefault();
           onEnter();
@@ -153,7 +159,7 @@ export function EditableTitle({
       }}
       className={
         (topMarginClass ? topMarginClass + " " : "") +
-        "block w-full resize-none border-0 bg-transparent p-0 font-display text-display text-noir outline-none placeholder:text-faint"
+        "gio-title block w-full resize-none border-0 bg-transparent p-0 font-display text-display text-noir outline-none placeholder:text-faint"
       }
       style={{ overflow: "hidden", lineHeight: 1.15 }}
       aria-label="Page title"
@@ -1144,10 +1150,12 @@ export function EditableBody({
           return from < 0 ? true : dragging.gap !== from && dragging.gap !== from + 1;
         })());
 
+  const ordinalMap = useMemo(() => numberedOrdinals(blocks), [blocks]);
+
   return (
     <div
       ref={containerRef}
-      className="relative space-y-1"
+      className="gio-page-body relative space-y-1"
       onPointerDown={handleContainerPointerDown}
       onFocusCapture={(e) => {
         const t = e.target as HTMLElement;
@@ -1159,6 +1167,7 @@ export function EditableBody({
         <BlockRow
           key={b.id}
           block={b}
+          ordinal={b.type === "numbered" ? (ordinalMap.get(b.id) ?? 1) : undefined}
           locked={!!locked}
           selected={selectedIds.has(b.id)}
           dimmed={draggingIdSet.has(b.id)}
@@ -1281,7 +1290,7 @@ export function EditableBody({
               return;
             }
           }}
-          onAddBelow={() => insertAfter(b.id)}
+          onAddBelow={() => { if (!locked) insertAfter(b.id); }}
           onSetIcon={(icon) => updateBlock(b.id, { icon })}
         />
       ))}
@@ -1410,6 +1419,7 @@ export function EditableBody({
 
 function BlockRow({
   block,
+  ordinal,
   locked,
   selected,
   dimmed,
@@ -1426,6 +1436,7 @@ function BlockRow({
   onSetIcon,
 }: {
   block: Blk;
+  ordinal?: number;
   locked: boolean;
   selected: boolean;
   dimmed: boolean;
@@ -1458,9 +1469,9 @@ function BlockRow({
       }}
     >
 
-      {!locked ? (
+      {(
         <div
-          className="pointer-events-none absolute top-0 flex select-none items-center gap-0.5 opacity-0 transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100"
+          className="gio-block-gutter pointer-events-none absolute top-0 flex select-none items-center gap-0.5 opacity-0 transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100"
           style={{
             left: 0,
             height: 32,
@@ -1509,10 +1520,11 @@ function BlockRow({
             ⋮⋮
           </button>
         </div>
-      ) : null}
+      )}
 
       <BlockContent
         block={block}
+        ordinal={ordinal}
         locked={locked}
         onBlur={onBlur}
         registerRef={registerRef}
@@ -1528,6 +1540,7 @@ function BlockRow({
 
 function BlockContent({
   block,
+  ordinal,
   locked,
   onBlur,
   registerRef,
@@ -1537,6 +1550,7 @@ function BlockContent({
   onSetIcon,
 }: {
   block: Blk;
+  ordinal?: number;
   locked: boolean;
   onBlur?: () => void;
   registerRef: (el: HTMLTextAreaElement | HTMLInputElement | null) => void;
@@ -1554,7 +1568,9 @@ function BlockContent({
     },
     onBlur: onBlur,
     onKeyDown,
-    disabled: locked,
+    // BUG 3: readOnly (not disabled) keeps focus/selection intact but blocks
+    // typing when the page is locked. Also prevents native re-focus loss.
+    readOnly: locked,
     rows: 1,
     className:
       "w-full resize-none border-0 bg-transparent p-0 outline-none placeholder:text-faint",
@@ -1682,7 +1698,7 @@ function BlockContent({
     return (
       <div className="flex items-start gap-2 text-prose text-body">
         <span aria-hidden className="mt-1 min-w-4 text-meta text-muted tnum">
-          1.
+          {ordinal ?? 1}.
         </span>
         <GrowText {...textareaProps} />
       </div>

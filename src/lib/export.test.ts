@@ -88,6 +88,49 @@ describe("toMarkdown", () => {
   it("throws on unknown block types (no silent default)", () => {
     expect(() => toMarkdown({ ...base, blocks: [B("mystery")] })).toThrow();
   });
+
+  it("emits true ordinals for a run of numbered blocks", () => {
+    // BUG 1: even though GFM renumbers, exported files should read the way
+    // the page reads. Three consecutive numbereds → 1., 2., 3.
+    const md = toMarkdown({
+      ...base,
+      blocks: [
+        B("numbered", { id: "n1", text: "first" }),
+        B("numbered", { id: "n2", text: "second" }),
+        B("numbered", { id: "n3", text: "third" }),
+      ],
+    });
+    expect(md).toContain("\n1. first\n");
+    expect(md).toContain("\n2. second\n");
+    expect(md).toContain("\n3. third\n");
+  });
+
+  it("survives realistic PageFull edge cases (null verified_by, empty tags, unresolved owner)", () => {
+    // BUG 2 regression fixture — these three shapes are the ones most likely
+    // to throw against real data. Neither toMarkdown nor toHtml may throw.
+    const blocks: Block[] = [
+      B("text", { text: "intro" }),
+      B("numbered", { id: "n1", text: "one" }),
+      B("numbered", { id: "n2", text: "two" }),
+      B("todo", { text: "check", checked: false }),
+      B("code", { text: "x = 1" }),
+    ];
+    const ctx = {
+      title: "Real page",
+      area: "Ops",
+      status: null,
+      ownerName: null, // owner id not present in members → no name resolved
+      tags: [], // empty tags array
+      verifiedAt: null, // verified_by null → verifiedAt null
+      blocks,
+    };
+    expect(() => toMarkdown(ctx)).not.toThrow();
+    expect(() => toHtml(ctx)).not.toThrow();
+    const html = toHtml(ctx);
+    // Ordinal threaded into <ol start="N">
+    expect(html).toContain('<ol start="1"><li>one</li></ol>');
+    expect(html).toContain('<ol start="2"><li>two</li></ol>');
+  });
 });
 
 describe("blockToMarkdown", () => {
