@@ -32,6 +32,9 @@ export type ExportContext = {
   /** When false, omit YAML front matter (Markdown) and the properties/header
    * block (HTML/PDF). Title always stays. Default: true. */
   includeDetails?: boolean;
+  /** Optional workspace name shown beside the Gio Docs mark in the HTML/PDF
+   * masthead. Omitted lines just render the mark. */
+  workspaceName?: string | null;
 };
 
 /* ─────────────────────────── Logo (inlined) ─────────────────────────── */
@@ -516,29 +519,39 @@ const lineStrong = "#DCDCE4"; // --color-lineStrong (blockquote border)
 
 const HTML_CSS = `
   :root { color-scheme: light; }
+  /* Real per-page margins. Applies to every sheet, not just the first —
+     that was the fixed-footer / body-padding trap. printPdf appends its
+     own @page with the user's selected paper size, and because it is
+     injected AFTER this block it wins the cascade for print. */
+  @page { size: Letter; margin: 0.8in 0.75in; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   html, body { margin: 0; padding: 0; background: ${canvas}; }
   body {
     font-family: Lato, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-size: 17px; line-height: 1.6; color: ${ink};
-    padding: 56px 44px; max-width: 780px; margin: 0 auto;
+    max-width: 780px; margin: 0 auto;
   }
+  /* Screen-only inset — on paper the @page margin does this job. */
+  @media screen { body { padding: 56px 44px; } }
   h1, h2, h3, h4 { font-family: Poppins, -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -0.02em; color: ${noir}; }
   h1.title { font-size: 34px; margin: 0 0 4px; letter-spacing: -0.035em; }
   h1 { font-size: 26px; margin: 28px 0 8px; }
   h2 { font-size: 20px; margin: 22px 0 6px; }
   h3 { font-size: 17px; margin: 18px 0 4px; font-weight: 600; }
   h4 { font-size: 17px; margin: 18px 0 4px; font-weight: 600; }
-  p { margin: 0 0 10px; }
+  p { margin: 0 0 10px; orphans: 3; widows: 3; }
   p.caption { font-size: 12.5px; color: ${muted}; margin: 4px 0 10px; }
   ul, ol { margin: 0 0 10px; padding-left: 22px; }
   li { margin: 2px 0; }
   hr { border: 0; border-top: 1px solid ${line}; margin: 20px 0; }
   blockquote { margin: 10px 0; padding: 4px 14px; border-left: 3px solid ${lineStrong}; color: ${muted}; font-style: italic; }
-  aside { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; padding: 12px 14px; background: ${sunken}; border-radius: 10px; }
+  aside, .callout { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; padding: 12px 14px; background: ${sunken}; border-radius: 10px; }
   aside .ico { flex: none; font-size: 18px; line-height: 1.3; }
-  pre { margin: 10px 0; padding: 12px 14px; background: ${sunken}; border-radius: 8px; overflow: auto;
-    font-family: "Spline Sans Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
+  pre { margin: 10px 0; padding: 12px 14px; background: ${sunken}; border-radius: 8px;
+    font-family: "Spline Sans Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px;
+    white-space: pre-wrap; word-break: break-word; }
   code { font-family: "Spline Sans Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+  img, table { max-width: 100%; }
   table { border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 15px; }
   th, td { border: 1px solid ${line}; padding: 6px 10px; text-align: left; vertical-align: top; }
   thead th { background: ${sunken}; }
@@ -549,22 +562,27 @@ const HTML_CSS = `
   dl.props { display: grid; grid-template-columns: 132px 1fr; gap: 4px 16px; margin: 0 0 24px; font-size: 14px; color: ${ink}; }
   dl.props dt { color: ${muted}; }
   header.meta { border-bottom: 1px solid ${line}; padding-bottom: 18px; margin-bottom: 22px; }
-  /* Print footer — repeats on every printed page via position:fixed.
-     The bottom band is reserved by @page { margin: 0 0 0.85in 0 } (applied
-     in printPdf), so every printed sheet clears the footer, not just p1.
-     Body padding NEVER reserves footer space — padding is a document-flow
-     property that only applies to the first page's content column. */
-  footer.print-footer {
-    position: fixed; bottom: 0.28in; left: 0.75in; right: 0.75in;
-    display: flex; justify-content: space-between; align-items: center;
-    gap: 24px; padding-top: 6px;
-    border-top: 1px solid ${line};
+  /* Masthead — a letterhead. Rendered once at the top of the document,
+     never repeated per sheet. Replaces the old fixed-position footer,
+     which fought pagination on every long export. */
+  header.masthead {
+    display: flex; align-items: center; gap: 10px;
+    padding-bottom: 12px; margin-bottom: 18px;
+    border-bottom: 1px solid ${line};
     font-family: Poppins, -apple-system, BlinkMacSystemFont, sans-serif;
-    font-size: 10px; color: ${muted}; letter-spacing: -0.01em;
+    font-size: 11px; color: ${muted}; letter-spacing: -0.01em;
   }
-  footer.print-footer .mark { display: inline-flex; align-items: center; gap: 6px; }
-  footer.print-footer .mark img { height: 18px; width: auto; display: block; }
-  footer.print-footer .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; text-align: right; }
+  header.masthead img { height: 20px; width: auto; display: block; flex: none; }
+  header.masthead .ws { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Page-break control — the difference between "printed a web page"
+     and "a document". Headings never strand at the bottom of a page;
+     structured blocks never split across a page boundary; table headers
+     repeat on split tables; paragraphs never leave 1–2 orphan/widow lines. */
+  h1, h2, h3 { break-after: avoid-page; page-break-after: avoid; break-inside: avoid; page-break-inside: avoid; }
+  blockquote, aside, pre, table, figure, li, .callout { break-inside: avoid; page-break-inside: avoid; }
+  tr { break-inside: avoid; page-break-inside: avoid; }
+  thead { display: table-header-group; }
+  hr { break-after: avoid; }
 `;
 
 export function toHtml(ctx: ExportContext): string {
@@ -601,17 +619,21 @@ ${propsHtml}
   const ords = numberedOrdinals(ctx.blocks);
   const body = renderBlocksHtml(ctx.blocks, ords);
 
-  // Footer: logo (data URI) left, page title right. If the logo failed to
-  // inline (very unlikely — module init exception), fall back to a text
-  // wordmark so the mark still reads. Both branches keep the file
-  // self-contained.
+  // Masthead: renders ONCE at the top of the document (letterhead style).
+  // The old fixed-position footer fought pagination and repeatedly caused
+  // bottom-edge collisions — deleted. The browser's own print header/footer
+  // (URL, page numbers, date) is now a checkbox in the user's print dialog.
+  // If the logo failed to inline (very unlikely — module init exception),
+  // fall back to a text wordmark so the mark still reads. Both branches
+  // keep the file self-contained.
   const markHtml = GIO_DOCS_LOGO_DATA_URI
-    ? `<span class="mark"><img src="${GIO_DOCS_LOGO_DATA_URI}" alt="Gio Docs"/></span>`
-    : `<span class="mark" style="font-weight:700;letter-spacing:-0.02em;color:${noir};">Gio Docs</span>`;
-  const footerHtml = `<footer class="print-footer">
+    ? `<img src="${GIO_DOCS_LOGO_DATA_URI}" alt="Gio Docs"/>`
+    : `<span style="font-weight:700;letter-spacing:-0.02em;color:${muted};">Gio Docs</span>`;
+  const wsName = (ctx.workspaceName ?? "").trim();
+  const mastheadHtml = `<header class="masthead">
 ${markHtml}
-<span class="title">${titleEsc}</span>
-</footer>`;
+${wsName ? `<span class="ws">${esc(wsName)}</span>` : ""}
+</header>`;
 
   return `<!doctype html>
 <html lang="en">
@@ -622,11 +644,11 @@ ${markHtml}
 <style>${HTML_CSS}</style>
 </head>
 <body>
+${mastheadHtml}
 ${headerHtml}
 <main>
 ${body}
 </main>
-${footerHtml}
 </body>
 </html>`;
 }
@@ -648,17 +670,20 @@ export async function printPdf(
   const win = window.open("", "_blank");
   if (!win) throw new Error("popup-blocked");
   const zoom = Math.max(0.5, Math.min(2, scalePct / 100));
-  // @page owns the bottom margin (0.85in) — the paginator applies it to
-  // EVERY sheet, so the fixed footer band clears content on p2, p3, … not
-  // just p1. Top/left/right stay 0 so Chrome's default print chrome (URL,
-  // page numbers) is suppressed and our own header/body handle spacing.
-  // Body padding provides the top/left/right inset only — dropping the
-  // bottom padding is deliberate: @page now owns that space.
+  // @page carries all four margins now — 0.8in top/bottom, 0.75in left/right
+  // — applied to EVERY sheet by the paginator. No body padding: padding is a
+  // document-flow property that only insets the first page's content column,
+  // which is what caused pages 2+ to bleed to the paper edge. Injected AFTER
+  // the base stylesheet's @page so this rule wins the cascade for the
+  // user's selected paper size.
+  // Chrome MAY print its own header/footer (title, date, URL, page numbers)
+  // if "Headers and footers" is ticked in the print dialog — that is now
+  // the user's choice rather than something suppressed by breaking layout.
   const augmented = html.replace(
     "</style>",
-    `@page { size: ${paper}; margin: 0 0 0.85in 0; }
+    `@page { size: ${paper}; margin: 0.8in 0.75in; }
      html, body { background: #ffffff; }
-     body { padding: 0.6in 0.75in 0; max-width: none; zoom: ${zoom}; }
+     body { max-width: none; zoom: ${zoom}; }
      </style>`,
   );
   win.document.open();

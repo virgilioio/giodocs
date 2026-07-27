@@ -459,12 +459,27 @@ describe("includeDetails toggle", () => {
     expect(html).toContain('<header class="meta"');
   });
 
-  it("toHtml always contains the print footer and the page title", () => {
+  it("toHtml always contains the masthead and the page title", () => {
     for (const inc of [true, false]) {
       const html = toHtml({ ...richCtx, includeDetails: inc });
-      expect(html).toContain('class="print-footer"');
+      expect(html).toContain('class="masthead"');
       expect(html).toContain("My Page");
     }
+  });
+
+  it("toHtml contains no fixed-position footer (deleted — fought pagination)", () => {
+    const html = toHtml(richCtx);
+    expect(html).not.toContain("print-footer");
+    expect(html).not.toMatch(/position:\s*fixed/);
+  });
+
+  it("toHtml declares real @page margins and page-break controls", () => {
+    const html = toHtml(richCtx);
+    expect(html).toMatch(/@page\s*{[^}]*margin:\s*0\.8in\s+0\.75in/);
+    expect(html).toContain("break-inside: avoid");
+    expect(html).toContain("orphans: 3");
+    expect(html).toContain("print-color-adjust: exact");
+    expect(html).toContain("display: table-header-group");
   });
 
   it("toHtml contains no external references (self-contained)", () => {
