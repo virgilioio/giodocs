@@ -1387,6 +1387,19 @@ export function EditableBody({
               return;
             }
 
+            // ⌘A two-stage. First press: shouldSelectAllBlocks() returns
+            // false → let the browser select the block's text natively.
+            // Second press (text already fully selected, or empty block) →
+            // preventDefault, blur, and select every block on the page.
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+              if (shouldSelectAllBlocks(ss, se, v.length)) {
+                e.preventDefault();
+                el.blur();
+                setSelectedIds(new Set(blocks.map((x) => x.id)));
+              }
+              return;
+            }
+
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
               const isEmptyListLike =
