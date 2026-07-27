@@ -1745,7 +1745,17 @@ export function EditableBody({
 
   const ordinalMap = useMemo(() => numberedOrdinals(blocks), [blocks]);
 
+  const columnBridge = useMemo<ColumnBridge>(
+    () => ({
+      registerRow: (colRef, id, el) => registerRowEl(id, el, colRef),
+      registerTrack: (colRef, el) => registerColTrack(colRef, el),
+      beginDrag: (id, ev, colRef) => beginDrag(id, ev, colRef),
+    }),
+    [registerRowEl, registerColTrack, beginDrag],
+  );
+
   return (
+    <ColumnBridgeCtx.Provider value={columnBridge}>
     <div
       ref={containerRef}
       className="gio-page-body relative space-y-1"
