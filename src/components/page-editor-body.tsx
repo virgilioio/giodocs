@@ -1839,14 +1839,19 @@ export function EditableBody({
     [blocks, commit],
   );
 
+  const selectAllTopLevel = useCallback(() => {
+    setSelectedIds(new Set(blocks.map((x) => x.id)));
+  }, [blocks]);
+
   const columnBridge = useMemo<ColumnBridge>(
     () => ({
       registerRow: (colRef, id, el) => registerRowEl(id, el, colRef),
       registerTrack: (colRef, el) => registerColTrack(colRef, el),
       beginDrag: (id, ev, colRef) => beginDrag(id, ev, colRef),
       escapeColumn,
+      selectAllTopLevel,
     }),
-    [registerRowEl, registerColTrack, beginDrag, escapeColumn],
+    [registerRowEl, registerColTrack, beginDrag, escapeColumn, selectAllTopLevel],
   );
 
 
