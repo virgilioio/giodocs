@@ -413,7 +413,7 @@ function SpecBody({ spec, onClose }: { spec: MenuSpec; onClose: () => void }) {
               }}
             />
           ) : (
-            <SpecRow key={`r-${i}`} row={r} onClose={onClose} />
+            <SpecRow key={`r-${i}`} row={r} />
           ),
         )}
       </div>
