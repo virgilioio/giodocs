@@ -1208,6 +1208,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
             onEnter={focusFirstBlock}
             autoFocus={titleAutoFocus}
             topMarginClass=""
+            readOnly={app.locked}
           />
         </div>
       </div>
