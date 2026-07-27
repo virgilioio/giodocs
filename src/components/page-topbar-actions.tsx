@@ -301,6 +301,12 @@ function PageActionsMenu({
       onSelect: onCopyLink,
     },
     {
+      id: "export",
+      label: "Export",
+      hint: <Val>PDF, HTML, MD</Val>,
+      onSelect: onExport,
+    },
+    {
       id: "dup",
       label: "Duplicate",
       hint: <Sc>⌘D</Sc>,
