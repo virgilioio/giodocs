@@ -2,20 +2,37 @@
  * Chunk 5 skeletons: view (table/list), page, board. See spec for geometry.
  * Widths are hand-authored — never Math.random(), never per-render jitter.
  * Every container is role="status" aria-busy with one sr-only announcement.
+ *
+ * Chunk 5b: geometry reconciled with the loaded surfaces so the two align
+ * to zero delta on mount. Notes:
+ *  - Table has 7 columns in the loaded view (Page/Area/Owner/Status/Tags/
+ *    Verified/Edited). Dropping to 5 (the earlier draft geometry) was a
+ *    real UX regression, so the skeleton now renders the same 7 columns.
+ *  - Table row padding follows the density preference (`--gio-cell-py`)
+ *    via the `.gio-cell-pad` utility, matching the loaded `Cell`.
+ *  - Column-header row uses padding 12px 11px 6px and lineHeight 11px,
+ *    matching the loaded HeaderCell.
  */
 import { Sk } from "./sk";
 
 const SR = <span className="sr-only">Loading…</span>;
 
-const SK_ROWS: Array<{ w: string; a: number; s: number; e: number }> = [
-  { w: "64%", a: 58, s: 72, e: 52 },
-  { w: "46%", a: 64, s: 64, e: 44 },
-  { w: "78%", a: 52, s: 78, e: 56 },
-  { w: "54%", a: 60, s: 68, e: 48 },
-  { w: "69%", a: 56, s: 74, e: 52 },
-  { w: "41%", a: 62, s: 60, e: 46 },
-  { w: "73%", a: 54, s: 80, e: 54 },
-  { w: "58%", a: 58, s: 66, e: 50 },
+const SK_ROWS: Array<{
+  w: string;
+  area: number;
+  status: number;
+  tags: number;
+  ver: number;
+  edited: number;
+}> = [
+  { w: "64%", area: 58, status: 72, tags: 92, ver: 42, edited: 52 },
+  { w: "46%", area: 64, status: 64, tags: 74, ver: 46, edited: 44 },
+  { w: "78%", area: 52, status: 78, tags: 108, ver: 40, edited: 56 },
+  { w: "54%", area: 60, status: 68, tags: 62, ver: 44, edited: 48 },
+  { w: "69%", area: 56, status: 74, tags: 82, ver: 48, edited: 52 },
+  { w: "41%", area: 62, status: 60, tags: 70, ver: 38, edited: 46 },
+  { w: "73%", area: 54, status: 80, tags: 96, ver: 42, edited: 54 },
+  { w: "58%", area: 58, status: 66, tags: 84, ver: 44, edited: 50 },
 ];
 
 const SK_PROPS: Array<{ l: number; v: number; h: number; r: number }> = [
@@ -26,7 +43,9 @@ const SK_PROPS: Array<{ l: number; v: number; h: number; r: number }> = [
   { l: 78, v: 132, h: 11, r: 5 },
 ];
 
-const ROW_GRID = "1fr 92px 30px 96px 88px";
+/* Matches the loaded table (see MainView TableBody). */
+const ROW_GRID =
+  "minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr) minmax(0,0.9fr) minmax(0,0.9fr)";
 
 /* ─────────────────────────── View skeleton ─────────────────────────── */
 
@@ -39,11 +58,11 @@ export function ViewSkeleton({ layout = "table" }: { layout?: "table" | "list" }
       style={{ maxWidth: "var(--container-view)", padding: "34px 40px" }}
     >
       {SR}
-      {/* Header: scope label + view title. */}
+      {/* Header: scope label 14/14, view title 34/34. */}
       <Sk tone="soft" w={70} h={14} r={5} />
       <Sk w={232} h={34} r={6} style={{ marginTop: 2 }} />
 
-      {/* Toolbar row — height 22. */}
+      {/* Toolbar row — height 22 to match QueryToolbar. */}
       <div
         style={{
           display: "flex",
@@ -59,65 +78,84 @@ export function ViewSkeleton({ layout = "table" }: { layout?: "table" | "list" }
         <Sk tone="soft" w={64} h={22} r={7} />
       </div>
 
-      {/* Column header. */}
+      {/* Column header — matches loaded HeaderCell padding 12/11/6 & lh 11. */}
       {layout === "table" && (
         <div
           style={{
             display: "grid",
             gridTemplateColumns: ROW_GRID,
-            gap: 11,
             alignItems: "center",
-            padding: "12px 0 6px",
-            borderBottom: "1px solid var(--color-line)",
-            lineHeight: "11px",
           }}
         >
-          <Sk tone="soft" w={38} h={11} r={5} />
-          <Sk tone="soft" w={32} h={11} r={5} />
-          <Sk tone="soft" w={26} h={11} r={5} />
-          <Sk tone="soft" w={42} h={11} r={5} />
-          <Sk tone="soft" w={40} h={11} r={5} />
+          {[38, 32, 40, 40, 32, 46, 40].map((w, i) => (
+            <div
+              key={i}
+              style={{
+                padding: "12px 11px 6px",
+                lineHeight: "11px",
+                borderBottom: "1px solid var(--color-line)",
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
+              <Sk tone="soft" w={w} h={11} r={5} />
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Eight rows. */}
-      {SK_ROWS.map((r, i) => (
-        <div
-          key={i}
-          style={
-            layout === "table"
-              ? {
-                  display: "grid",
-                  gridTemplateColumns: ROW_GRID,
-                  gap: 11,
-                  padding: "8px 0",
-                  borderBottom: "1px solid var(--color-sunken)",
-                  alignItems: "center",
-                }
-              : {
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 9,
-                  padding: "8px 0",
-                  borderBottom: "1px solid var(--color-sunken)",
-                }
-          }
-        >
-          {/* Page cell: icon + title. */}
-          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+      {/* Eight rows. Table rows use gio-cell-pad → density-aware padding
+       * (comfortable 10/10, compact 4/4), same as the loaded Cell. */}
+      {SK_ROWS.map((r, i) =>
+        layout === "table" ? (
+          <div
+            key={i}
+            style={{
+              display: "grid",
+              gridTemplateColumns: ROW_GRID,
+              alignItems: "center",
+            }}
+          >
+            <div className="gio-cell-pad flex items-center border-b border-lineSoft px-[11px]" style={{ gap: 9 }}>
+              <Sk w={15} h={15} r={5} />
+              <Sk h={11} w={r.w} r={5} />
+            </div>
+            <div className="gio-cell-pad flex items-center border-b border-lineSoft px-[11px]">
+              <Sk tone="soft" h={11} w={r.area} r={5} />
+            </div>
+            <div className="gio-cell-pad flex items-center border-b border-lineSoft px-[11px]">
+              <Sk w={21} h={21} r={999} />
+            </div>
+            <div className="gio-cell-pad flex items-center border-b border-lineSoft px-[11px]">
+              <Sk h={19} w={r.status} r={999} />
+            </div>
+            <div className="gio-cell-pad flex items-center border-b border-lineSoft px-[11px]" style={{ gap: 6 }}>
+              <Sk h={17} w={Math.max(28, r.tags / 2)} r={4} />
+              <Sk h={17} w={Math.max(24, r.tags / 3)} r={4} />
+            </div>
+            <div className="gio-cell-pad flex items-center border-b border-lineSoft px-[11px]">
+              <Sk tone="soft" h={10} w={r.ver} r={5} />
+            </div>
+            <div className="gio-cell-pad flex items-center border-b border-lineSoft px-[11px]">
+              <Sk tone="soft" h={10} w={r.edited} r={5} />
+            </div>
+          </div>
+        ) : (
+          <div
+            key={i}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 9,
+              padding: "8px 0",
+              borderBottom: "1px solid var(--color-sunken)",
+            }}
+          >
             <Sk w={15} h={15} r={5} />
             <Sk h={11} w={r.w} r={5} />
           </div>
-          {layout === "table" && (
-            <>
-              <Sk tone="soft" h={11} w={r.a} r={5} />
-              <Sk w={21} h={21} r={999} />
-              <Sk h={19} w={r.s} r={999} />
-              <Sk tone="soft" h={10} w={r.e} r={5} />
-            </>
-          )}
-        </div>
-      ))}
+        ),
+      )}
     </div>
   );
 }
@@ -133,19 +171,19 @@ export function PageSkeleton() {
       style={{ maxWidth: 780, padding: "42px 44px" }}
     >
       {SR}
-      {/* Title row — explicit 51px. */}
+      {/* Title row — explicit 51px, emoji 42x42, gap 13. */}
       <div style={{ display: "flex", alignItems: "center", gap: 13, height: 51 }}>
         <Sk tone="block" w={42} h={42} r={10} />
         <Sk h={36} r={6} className="flex-1" style={{ maxWidth: 360 }} />
       </div>
 
-      {/* Permissions chip. */}
-      <Sk tone="soft" w={250} h={27} r={999} style={{ marginTop: 15 }} />
+      {/* Permissions chip — height 27, box-sizing:border-box, padding 0 11. */}
+      <Sk tone="soft" w={250} h={27} r={999} style={{ marginTop: 16 }} />
 
       {/* Freshness row — real bordered container, skeletons inside. */}
       <div
         style={{
-          marginTop: 11,
+          marginTop: 14,
           border: "1px solid var(--color-line)",
           borderRadius: 10,
           background: "var(--color-track)",
@@ -160,10 +198,10 @@ export function PageSkeleton() {
         <Sk tone="soft" w={104} h={24} r={8} />
       </div>
 
-      {/* Properties strip. */}
+      {/* Properties strip — rows height 20, gap 10, label column 118. */}
       <div
         style={{
-          marginTop: 16,
+          marginTop: 18,
           display: "flex",
           flexDirection: "column",
           gap: 10,
@@ -172,7 +210,13 @@ export function PageSkeleton() {
         {SK_PROPS.map((p, i) => (
           <div
             key={i}
-            style={{ display: "flex", alignItems: "center", gap: 14, height: 20 }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              height: 20,
+              padding: "0 4px",
+            }}
           >
             <div style={{ width: 118, flex: "none" }}>
               <Sk tone="soft" w={p.l} h={11} r={5} />
@@ -187,7 +231,7 @@ export function PageSkeleton() {
         style={{
           height: 1,
           background: "var(--color-sunken)",
-          margin: "18px 0",
+          margin: "20px 0 26px",
         }}
       />
 
@@ -197,11 +241,7 @@ export function PageSkeleton() {
         <Sk tone="soft" w="96%" h={11} r={5} />
         <Sk tone="soft" w="88%" h={11} r={5} />
         <Sk tone="soft" w="72%" h={11} r={5} />
-        {[
-          { w: "64%" },
-          { w: "58%" },
-          { w: "69%" },
-        ].map((b, i) => (
+        {[{ w: "64%" }, { w: "58%" }, { w: "69%" }].map((b, i) => (
           <div
             key={i}
             style={{ display: "flex", alignItems: "center", gap: 10 }}
@@ -254,7 +294,7 @@ export function BoardSkeleton() {
         <Sk tone="soft" w={64} h={22} r={7} />
       </div>
 
-      {/* Columns. */}
+      {/* Columns — 264 wide, gap 14, radius 12, padding 10, bg rail. */}
       <div
         style={{
           position: "relative",
