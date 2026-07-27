@@ -12,6 +12,7 @@ import { createPortal } from "react-dom";
 import type { Block } from "@/lib/types";
 import { moveBlock, moveRun, deleteIndices } from "@/lib/reorder";
 import { blockToMarkdown } from "@/lib/export";
+import { parseMarkdown } from "@/lib/markdown-import";
 import { numberedOrdinals } from "@/lib/blocks";
 import { blockHandleFooter } from "@/lib/block-handle-footer";
 import { useToast } from "@/lib/toast";
