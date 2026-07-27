@@ -208,6 +208,10 @@ export function EditableBody({
     id: string;
     caret?: number | "end" | "start";
   } | null>(null);
+  // Which block currently owns focus. Drives the "formatted vs raw" swap:
+  // the focused block shows a textarea with raw markdown; every other
+  // block renders renderInline(text) inside a matching-geometry div.
+  const [focusedId, setFocusedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!focusRequest) return;
