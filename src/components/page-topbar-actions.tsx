@@ -534,16 +534,6 @@ export function PageTopbarActions({
     return () => window.removeEventListener("keydown", onKey);
   }, [listRow, doCopyLink, doDuplicate]);
 
-  if (!listRow) return null;
-
-  const linkIcon =
-    "M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.8 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7L12.3 19";
-
-  const isVerifiedToday = page
-    ? isSameLocalDay(page.verified_at, new Date())
-    : false;
-  const access = accessQ.data ?? [];
-
   const [exportOpen, setExportOpen] = useState(false);
 
   const exportCtx: ExportContext | null = useMemo(() => {
@@ -572,6 +562,17 @@ export function PageTopbarActions({
       blocks,
     };
   }, [page, members]);
+
+  if (!listRow) return null;
+
+  const linkIcon =
+    "M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.8 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7L12.3 19";
+
+  const isVerifiedToday = page
+    ? isSameLocalDay(page.verified_at, new Date())
+    : false;
+  const access = accessQ.data ?? [];
+
 
   const buildMenu = (): ReactNode => {
     if (!page) {
