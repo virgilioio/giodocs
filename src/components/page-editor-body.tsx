@@ -32,6 +32,7 @@ import { useToast } from "@/lib/toast";
 import { RowMenu, type MenuSpec, type MenuRow } from "./row-menu";
 import { isTypingTarget, shouldSelectAllBlocks } from "@/lib/is-typing";
 import { nextEditableIndex } from "@/lib/block-nav";
+import { enterAction } from "@/lib/enter-behaviour";
 import {
   MAX_COLS,
   MIN_COLS,
@@ -68,6 +69,11 @@ type ColumnBridge = {
     ev: React.PointerEvent<HTMLElement>,
     sourceCol: ColumnRef,
   ) => void;
+  /** Escape gesture: promote focus to a top-level text block after the
+   * parent `columns` block. When `removeBlockId` is non-null, remove that
+   * inner block from its column first — but never below the column's
+   * one-block minimum. */
+  escapeColumn: (parentBlockId: string, removeBlockId: string | null) => void;
 };
 const ColumnBridgeCtx = createContext<ColumnBridge | null>(null);
 
@@ -1788,14 +1794,56 @@ export function EditableBody({
 
   const ordinalMap = useMemo(() => numberedOrdinals(blocks), [blocks]);
 
+  /* Escape gesture from inside a column: promote focus to a top-level
+   * text block immediately after the parent `columns` block, optionally
+   * removing the now-empty inner block. Reuses an existing empty text
+   * neighbour if one is already there — never leaves a stray empty. */
+  const escapeColumn = useCallback(
+    (parentBlockId: string, removeBlockId: string | null) => {
+      const pi = blocks.findIndex((b) => b.id === parentBlockId);
+      if (pi === -1) return;
+      const parent = blocks[pi];
+      if (parent.type !== "columns" || !Array.isArray(parent.cols)) return;
+
+      let nextBlocks: Blk[] = blocks;
+      if (removeBlockId) {
+        const nextCols = (parent.cols as Blk[][]).map((col) => {
+          if (col.length <= 1) return col;
+          const stripped = col.filter((cb) => cb.id !== removeBlockId);
+          return stripped.length ? stripped : col;
+        });
+        nextBlocks = blocks.map((b, i) =>
+          i === pi ? { ...parent, cols: nextCols } : b,
+        );
+      }
+
+      const after = nextBlocks[pi + 1];
+      const isEmptyText =
+        after && after.type === "text" && (after.text ?? "") === "";
+      if (isEmptyText) {
+        if (nextBlocks !== blocks) commit(nextBlocks);
+        setFocusRequest({ id: after.id, caret: "start" });
+        return;
+      }
+      const spawn = newBlock("text");
+      const inserted = [...nextBlocks];
+      inserted.splice(pi + 1, 0, spawn);
+      commit(inserted);
+      setFocusRequest({ id: spawn.id, caret: "start" });
+    },
+    [blocks, commit],
+  );
+
   const columnBridge = useMemo<ColumnBridge>(
     () => ({
       registerRow: (colRef, id, el) => registerRowEl(id, el, colRef),
       registerTrack: (colRef, el) => registerColTrack(colRef, el),
       beginDrag: (id, ev, colRef) => beginDrag(id, ev, colRef),
+      escapeColumn,
     }),
-    [registerRowEl, registerColTrack, beginDrag],
+    [registerRowEl, registerColTrack, beginDrag, escapeColumn],
   );
+
 
   return (
     <ColumnBridgeCtx.Provider value={columnBridge}>
@@ -2964,13 +3012,15 @@ function ColumnStack({
 
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              const isEmptyListLike =
-                (b.type === "bullet" ||
-                  b.type === "numbered" ||
-                  b.type === "todo") &&
-                (b.text ?? "") === "";
-              if (isEmptyListLike) {
+              const idx = blocks.findIndex((x) => x.id === b.id);
+              const action = enterAction(blocks, idx, ss, v);
+              if (action.kind === "convert-to-text") {
                 convertToText(b.id);
+                return;
+              }
+              if (action.kind === "escape-column") {
+                if (bridge)
+                  bridge.escapeColumn(parentBlockId, action.removeEmpty ? b.id : null);
                 return;
               }
               splitBlock(b.id, ss);
