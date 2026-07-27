@@ -343,3 +343,12 @@ div.gio-line {
   word-break: break-word;
   min-height: 1em;
 }
+/* Empty contenteditable placeholder — mirrors textarea placeholder
+   colour (text-faint) and never intercepts pointer events so a click
+   still lands in the block. */
+div.gio-line[data-empty="true"][data-placeholder]::before {
+  content: attr(data-placeholder);
+  color: var(--color-faint);
+  pointer-events: none;
+}
+
