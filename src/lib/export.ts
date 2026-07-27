@@ -516,29 +516,39 @@ const lineStrong = "#DCDCE4"; // --color-lineStrong (blockquote border)
 
 const HTML_CSS = `
   :root { color-scheme: light; }
+  /* Real per-page margins. Applies to every sheet, not just the first —
+     that was the fixed-footer / body-padding trap. printPdf appends its
+     own @page with the user's selected paper size, and because it is
+     injected AFTER this block it wins the cascade for print. */
+  @page { size: Letter; margin: 0.8in 0.75in; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   html, body { margin: 0; padding: 0; background: ${canvas}; }
   body {
     font-family: Lato, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-size: 17px; line-height: 1.6; color: ${ink};
-    padding: 56px 44px; max-width: 780px; margin: 0 auto;
+    max-width: 780px; margin: 0 auto;
   }
+  /* Screen-only inset — on paper the @page margin does this job. */
+  @media screen { body { padding: 56px 44px; } }
   h1, h2, h3, h4 { font-family: Poppins, -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -0.02em; color: ${noir}; }
   h1.title { font-size: 34px; margin: 0 0 4px; letter-spacing: -0.035em; }
   h1 { font-size: 26px; margin: 28px 0 8px; }
   h2 { font-size: 20px; margin: 22px 0 6px; }
   h3 { font-size: 17px; margin: 18px 0 4px; font-weight: 600; }
   h4 { font-size: 17px; margin: 18px 0 4px; font-weight: 600; }
-  p { margin: 0 0 10px; }
+  p { margin: 0 0 10px; orphans: 3; widows: 3; }
   p.caption { font-size: 12.5px; color: ${muted}; margin: 4px 0 10px; }
   ul, ol { margin: 0 0 10px; padding-left: 22px; }
   li { margin: 2px 0; }
   hr { border: 0; border-top: 1px solid ${line}; margin: 20px 0; }
   blockquote { margin: 10px 0; padding: 4px 14px; border-left: 3px solid ${lineStrong}; color: ${muted}; font-style: italic; }
-  aside { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; padding: 12px 14px; background: ${sunken}; border-radius: 10px; }
+  aside, .callout { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; padding: 12px 14px; background: ${sunken}; border-radius: 10px; }
   aside .ico { flex: none; font-size: 18px; line-height: 1.3; }
-  pre { margin: 10px 0; padding: 12px 14px; background: ${sunken}; border-radius: 8px; overflow: auto;
-    font-family: "Spline Sans Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
+  pre { margin: 10px 0; padding: 12px 14px; background: ${sunken}; border-radius: 8px;
+    font-family: "Spline Sans Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px;
+    white-space: pre-wrap; word-break: break-word; }
   code { font-family: "Spline Sans Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+  img, table { max-width: 100%; }
   table { border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 15px; }
   th, td { border: 1px solid ${line}; padding: 6px 10px; text-align: left; vertical-align: top; }
   thead th { background: ${sunken}; }
@@ -549,22 +559,27 @@ const HTML_CSS = `
   dl.props { display: grid; grid-template-columns: 132px 1fr; gap: 4px 16px; margin: 0 0 24px; font-size: 14px; color: ${ink}; }
   dl.props dt { color: ${muted}; }
   header.meta { border-bottom: 1px solid ${line}; padding-bottom: 18px; margin-bottom: 22px; }
-  /* Print footer — repeats on every printed page via position:fixed.
-     The bottom band is reserved by @page { margin: 0 0 0.85in 0 } (applied
-     in printPdf), so every printed sheet clears the footer, not just p1.
-     Body padding NEVER reserves footer space — padding is a document-flow
-     property that only applies to the first page's content column. */
-  footer.print-footer {
-    position: fixed; bottom: 0.28in; left: 0.75in; right: 0.75in;
-    display: flex; justify-content: space-between; align-items: center;
-    gap: 24px; padding-top: 6px;
-    border-top: 1px solid ${line};
+  /* Masthead — a letterhead. Rendered once at the top of the document,
+     never repeated per sheet. Replaces the old position:fixed footer,
+     which fought pagination on every long export. */
+  header.masthead {
+    display: flex; align-items: center; gap: 10px;
+    padding-bottom: 12px; margin-bottom: 18px;
+    border-bottom: 1px solid ${line};
     font-family: Poppins, -apple-system, BlinkMacSystemFont, sans-serif;
-    font-size: 10px; color: ${muted}; letter-spacing: -0.01em;
+    font-size: 11px; color: ${muted}; letter-spacing: -0.01em;
   }
-  footer.print-footer .mark { display: inline-flex; align-items: center; gap: 6px; }
-  footer.print-footer .mark img { height: 18px; width: auto; display: block; }
-  footer.print-footer .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; text-align: right; }
+  header.masthead img { height: 20px; width: auto; display: block; flex: none; }
+  header.masthead .ws { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Page-break control — the difference between "printed a web page"
+     and "a document". Headings never strand at the bottom of a page;
+     structured blocks never split across a page boundary; table headers
+     repeat on split tables; paragraphs never leave 1–2 orphan/widow lines. */
+  h1, h2, h3 { break-after: avoid-page; page-break-after: avoid; break-inside: avoid; page-break-inside: avoid; }
+  blockquote, aside, pre, table, figure, li, .callout { break-inside: avoid; page-break-inside: avoid; }
+  tr { break-inside: avoid; page-break-inside: avoid; }
+  thead { display: table-header-group; }
+  hr { break-after: avoid; }
 `;
 
 export function toHtml(ctx: ExportContext): string {
