@@ -317,21 +317,24 @@ export function inlineToHtml(text: string): string {
       }
     }
 
-    if (c === "*" || c === "_") {
+    // Italic: *…* only — underscore is deliberately not a delimiter.
+    if (c === "*") {
       let j = i + 1;
       while (j < src.length) {
         if (src[j] === "\\") {
           j += 2;
           continue;
         }
-        if (src[j] === c) break;
-        if (c === "*" && src[j] === "*" && src[j + 1] === "*") {
-          j = -1;
+        if (src[j] === "*") {
+          if (src[j + 1] === "*") {
+            j = -1;
+            break;
+          }
           break;
         }
         j++;
       }
-      if (j > i + 1 && j < src.length) {
+      if (j > i + 1 && j < src.length && src[j] === "*") {
         flush();
         out += `<em>${inlineToHtml(src.slice(i + 1, j))}</em>`;
         i = j + 1;
