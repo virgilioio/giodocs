@@ -574,6 +574,39 @@ export function usePublishView() {
   });
 }
 
+/**
+ * Unpublish a team view — flips scope back to 'personal' with `owner_id`
+ * set to the caller so it returns to their My views. RLS restricts this
+ * update to workspace owners (see views_update policy).
+ */
+export function useUnpublishView() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const { user } = useAuth();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (viewId: string) => {
+      const { data, error } = await supabase
+        .from("views")
+        .update({ scope: "personal", owner_id: user!.id })
+        .eq("id", viewId)
+        .select("*")
+        .single();
+      if (error) throw error;
+      return data as unknown as ViewFull;
+    },
+    onSuccess: (row) => {
+      qc.setQueryData<ViewFull[]>(qk.views(ws), (prev) =>
+        prev ? prev.map((x) => (x.id === row.id ? row : x)) : [row],
+      );
+      toast.push(`Unpublished "${row.name}" — it's back in your My views.`);
+    },
+    onError: (err) => toast.push(`Couldn't unpublish: ${(err as Error).message}`),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.views(ws) }),
+  });
+}
+
+
 /* ────────────── Page-level actions used by the topbar menu ────────────── */
 
 // Move to area with menu-appropriate toast wording that names both
