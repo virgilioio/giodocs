@@ -73,6 +73,8 @@ import {
   reclampIndents,
 } from "@/lib/block-ops";
 import { resolveKey, type Op as KeyOp } from "@/lib/block-key-handler";
+import { toggleWrap } from "@/lib/toggle-wrap";
+import { FloatingToolbar } from "./floating-toolbar";
 import { ordinalLabel } from "@/lib/blocks";
 
 /** Module-local bridge: nested ColumnStack keystrokes set this before
@@ -1815,6 +1817,7 @@ export function EditableBody({
     <ColumnBridgeCtx.Provider value={columnBridge}>
     <div
       ref={containerRef}
+      data-gio-page-body
       className="gio-page-body relative"
       onPointerDown={handleContainerPointerDown}
       onFocusCapture={(e) => {
