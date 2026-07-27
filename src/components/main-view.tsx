@@ -1368,6 +1368,57 @@ export function MainView({ selection }: { selection: Selection }) {
       return rest;
     });
 
+  const rows = useMemo(
+    () => runView(pages, { filter: filters, sort }, { me: user?.id ?? "", staleDays }),
+    [pages, filters, sort, user?.id, staleDays],
+  );
+
+  const areas = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of pages) {
+      const a = propsOf(p)["area"];
+      if (typeof a === "string" && a) s.add(a);
+    }
+    return [...s].sort();
+  }, [pages]);
+
+  const people = useMemo(
+    () =>
+      members.map((m) => ({
+        id: m.user_id,
+        full_name: m.profiles?.full_name ?? null,
+      })),
+    [members],
+  );
+
+  const unfilteredCount = useMemo(
+    () => pages.filter((p) => !p.archived_at).length,
+    [pages],
+  );
+
+  const staleThreshold = Date.now() - staleDays * 24 * 60 * 60 * 1000;
+
+  // Personal-owned views persist directly; everything else (team + area)
+  // writes to the per-view draft.
+  const persistOrDraft = (patch: ViewDraft) => {
+    if (!base) return;
+    if (isOwnerOfView && view) {
+      clearDraft(base.id);
+      const dbPatch: Parameters<typeof updateView.mutate>[0]["patch"] = {};
+      if ("filter" in patch) dbPatch.filter = patch.filter ?? [];
+      if ("sort" in patch) dbPatch.sort = patch.sort ?? { prop: "edited", dir: "desc" };
+      if ("layout" in patch) dbPatch.layout = patch.layout as ViewBase["layout"];
+      if ("group_by" in patch) dbPatch.group_by = patch.group_by ?? null;
+      updateView.mutate({ id: view.id, patch: dbPatch });
+    } else {
+      patchDraft(base.id, patch);
+    }
+  };
+
+  const onChangeFilters = (next: Filter[]) => persistOrDraft({ filter: next });
+  const onChangeSort = (s: SortSpec) => persistOrDraft({ sort: s });
+  const onChangeLayout = (l: Layout) => persistOrDraft({ layout: l });
+  const onChangeGroupBy = (g: string) => persistOrDraft({ group_by: g });
 
   const statusDef = propDefs.find((d) => d.key === "status");
 
@@ -1377,7 +1428,7 @@ export function MainView({ selection }: { selection: Selection }) {
 
   const onNewPage = () => {
     const seed: Record<string, unknown> = {};
-    for (const f of baseFilters) {
+    for (const f of (base?.filter ?? [])) {
       if (f.op === "eq" && f.prop && f.value !== undefined) seed[f.prop] = f.value;
       if (f.op === "is_me" && f.prop && user?.id) seed[f.prop] = user.id;
     }
@@ -1385,15 +1436,23 @@ export function MainView({ selection }: { selection: Selection }) {
     void createAndOpen({ seedProps: seed });
   };
 
+  // Team and area toolbars are editable (edits flow to the draft).
+  // Personal-owned views are also editable (edits persist directly).
+  const editable = !!base;
 
-  const editable = selection.kind === "area" || isOwnerOfView;
+  const isModified =
+    !!current && current._modified && current.scope !== "personal";
+
+  const toast = useToast();
 
   const doSaveAsMyView = () => {
-    if (!view) return;
-    forkView.mutate(
+    if (!base || !isModified) return;
+    const baseName = base.name;
+    const isAreaBase = base.scope === "area";
+    createView.mutate(
       {
-        viewId: view.id,
-        name: `${view.name} (my copy)`,
+        name: `${baseName} (mine)`,
+        icon: null,
         filter: filters,
         sort,
         layout,
@@ -1401,20 +1460,19 @@ export function MainView({ selection }: { selection: Selection }) {
       },
       {
         onSuccess: (row) => {
-          setLocalFilters(null);
-          setLocalSort(null);
-          setLocalLayout(null);
-          setLocalGroupBy(undefined);
+          clearDraft(base.id);
           navigate({ to: "/v/$viewId", params: { viewId: row.id } });
+          toast.push(
+            isAreaBase
+              ? `Saved to My views — "${baseName}" is unchanged for everyone.`
+              : `Saved to My views — "${baseName}" is unchanged for the team.`,
+          );
         },
       },
     );
   };
   const doDiscard = () => {
-    setLocalFilters(null);
-    setLocalSort(null);
-    setLocalLayout(null);
-    setLocalGroupBy(undefined);
+    if (base) clearDraft(base.id);
   };
   const doPublish = () => {
     if (!view) return;
