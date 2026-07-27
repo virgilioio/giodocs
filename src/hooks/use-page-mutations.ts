@@ -129,19 +129,31 @@ export function useRenamePage() {
     },
     onMutate: async (v) => {
       await qc.cancelQueries({ queryKey: qk.pages(ws) });
+      await qc.cancelQueries({ queryKey: qk.page(v.pageId) });
       const snapshot = qc.getQueryData<PageListItem[]>(qk.pages(ws)) ?? [];
+      const pageSnap =
+        qc.getQueryData<PageFull | null>(qk.page(v.pageId)) ?? null;
+      const nowIso = new Date().toISOString();
       qc.setQueryData<PageListItem[]>(
         qk.pages(ws),
         snapshot.map((p) =>
-          p.id === v.pageId
-            ? { ...p, title: v.title, edited_at: new Date().toISOString() }
-            : p,
+          p.id === v.pageId ? { ...p, title: v.title, edited_at: nowIso } : p,
         ),
       );
-      return { snapshot };
+      // Also patch the page-detail cache. Without this, useCreatePage seeds
+      // qk.page(id) with title="" at creation time; navigating away and
+      // back within staleTime resurrects that empty-title row and the
+      // component (freshly remounted via key={pageId}) has no local draft
+      // to fall back on, so the title disappears in the editor.
+      qc.setQueryData<PageFull | null>(qk.page(v.pageId), (prev) =>
+        prev ? { ...prev, title: v.title, edited_at: nowIso } : prev,
+      );
+      return { snapshot, pageSnap };
     },
-    onError: (err, _v, ctx) => {
+    onError: (err, v, ctx) => {
       if (ctx?.snapshot) qc.setQueryData(qk.pages(ws), ctx.snapshot);
+      if (ctx?.pageSnap !== undefined)
+        qc.setQueryData(qk.page(v.pageId), ctx.pageSnap);
       toast.push(`Couldn't rename: ${(err as Error).message}`);
     },
     // Optimistic patch is authoritative; realtime handles teammates.
