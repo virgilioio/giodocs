@@ -884,7 +884,7 @@ export function EditableBody({
                   clearSelection();
                   commit(next);
                 }}
-                className="rounded-md px-2 py-1 hover:bg-noirHover"
+                className="bar-btn rounded-md px-2 py-1"
                 style={{ color: "var(--color-track)", fontWeight: 600 }}
               >
                 Delete
