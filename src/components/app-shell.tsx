@@ -1464,10 +1464,11 @@ function AreaLi({
             style={{ height: 17, minWidth: 17 }}
           >
             {hover ? (
-              <RowMoreButton size="sm" build={buildAreaMenu} />
+              <SpecMenuTrigger size="sm" build={buildAreaSpec} />
             ) : (
               <span className="tnum text-row text-whisper">{count}</span>
             )}
+
           </span>
         </Link>
       </div>
