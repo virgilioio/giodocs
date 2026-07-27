@@ -397,6 +397,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_manage_page_access: { Args: { p_page: string }; Returns: boolean }
       can_read_page: { Args: { p_page: string }; Returns: boolean }
       delete_page: { Args: { p_page: string }; Returns: undefined }
       domain_status: { Args: { p_email: string }; Returns: string }
