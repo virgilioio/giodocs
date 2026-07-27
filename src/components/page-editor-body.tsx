@@ -2209,6 +2209,7 @@ function BlockRow({
     <div
       ref={(el) => registerRowEl(block.id, el)}
       data-block-id={block.id}
+      data-block-type={block.type}
       data-block-no-editor={noEditor ? "true" : undefined}
       className="group relative -ml-[42px] pl-[42px]"
       style={{
