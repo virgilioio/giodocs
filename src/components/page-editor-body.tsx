@@ -135,7 +135,7 @@ export function EditableTitle({
       rows={1}
       onChange={(e) => onChange(e.target.value.replace(/\n/g, ""))}
       onKeyDown={(e) => {
-        if (e.key === "Enter") {
+        if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
           e.preventDefault();
           onEnter();
         }
