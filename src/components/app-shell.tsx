@@ -563,13 +563,25 @@ function SidebarBody({
       return next;
     });
   };
+  const unhideAllTeamViews = () => {
+    setHiddenTeamViews(new Set());
+    if (hideKey && typeof window !== "undefined")
+      window.localStorage.removeItem(hideKey);
+  };
+
+  const isWorkspaceOwner = !!user?.id && members.some(
+    (m) => m.user_id === user.id && m.role === "owner",
+  );
 
   const personal = views
     .filter((v) => v.scope === "personal")
     .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
-  const team = views
-    .filter((v) => v.scope === "team" && !hiddenTeamViews.has(v.id))
+  const teamAll = views.filter((v) => v.scope === "team");
+  const team = teamAll
+    .filter((v) => !hiddenTeamViews.has(v.id))
     .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
+  const hiddenTeamCount = teamAll.filter((v) => hiddenTeamViews.has(v.id)).length;
+
 
   const areas = useMemo(() => {
     const counts = new Map<string, number>();
