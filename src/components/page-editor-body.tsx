@@ -1381,6 +1381,15 @@ export function EditableBody({
             document.body,
           )
         : null}
+      {handleMenu ? (
+        <RowMenu
+          anchor={handleMenu.anchor}
+          onClose={() => setHandleMenu(null)}
+          build={(mctx) =>
+            buildBlockHandleSpec(handleMenu.blockId, mctx)
+          }
+        />
+      ) : null}
     </div>
   );
 }
