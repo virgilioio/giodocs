@@ -140,4 +140,18 @@
   /* Dark-surface button hover (e.g. selection bar on --color-noir). No
      token added — bg is a fixed light overlay on any dark surface. */
   .bar-btn:hover { background: rgba(255,255,255,.12); }
+
+  /* Marquee rectangle for block multi-select. Uses design tokens; the
+     opacity split (bg ~35%, border ~40%) is achieved via color-mix so
+     the border and fill can carry different alphas from the same
+     token pair. */
+  .marquee-rect {
+    position: fixed;
+    pointer-events: none;
+    z-index: 60;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--color-blueTint) 35%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-blueInk) 40%, transparent);
+  }
 }
+
