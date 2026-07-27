@@ -59,16 +59,23 @@ Default redirect from "/" lands on /v/a11a0000-0000-4000-8000-0000000000b1 (Assi
 3. Nitro emits Cloudflare wrangler config by default. Harmless while
    output remains a static client bundle; revisit at deploy time.
 
-## Next-phase acceptance
+## Parked decisions
 
-Team view fork: opening a team view as a non-owner exposes a "Fork to My
-views" action that calls fork_view() and navigates to the new personal
-view; owners still see Publish/Edit affordances on their own team views.
+- Page appearance toggles — Font (Default / Serif / Mono), Small text,
+  Full width, Lock editing — await a storage decision. Currently held in
+  in-memory PreferencesProvider only; they do not persist across reload
+  and are not per-user or per-page. Choice: local (localStorage per
+  device), per-user (profile row), or per-page (page property). Blocked
+  on that call.
+- Block-handle click menu (Turn into / Duplicate / Move up / Move down /
+  Delete per block) is not built. The six-dot handle is a drag grip
+  only; plain click clears selection, shift-click extends selection.
 
 ## Phase order (remaining)
 
-team-view fork rule (SHIP) → board + list layouts → page editor →
-command palette → settings → realtime.
+team-view fork rule — MODIFIED pill + "Save as my view" from the toolbar
+(original ship gate) → command palette ⌘K → board + list layouts →
+settings → realtime.
 
 ## Page editor (Part A) — 2026-07-26
 
@@ -97,23 +104,10 @@ verify and the property-row × removal.
   title "Set a value in the next phase" because the trigger rejects
   their empty-typed seeds — those show up in Part B where the row lets
   the user pick a value inline.
-- Body renders all 12 block types read-only: text, h1, h2, bullet,
-  numbered, todo (disabled checkbox), toggle (`<details>`), quote
-  (Lato italic, left border), callout (icon + sunken card), divider
-  (`<hr>`), code (mono, sunken, horizontal scroll), table (rows[][],
-  first row is header). Unknown types render text and `console.warn`
-  once. Empty body → centered "This page has no body yet." + subtle
-  "Blocks arrive in the next phase."
+- Body renders all 12 block types read-only.
 - Table PageTitleCell: title click navigates via `useSetPageOrigin` +
   `useNavigate`, hover reveals ✎ pencil on the right that switches to
   the inline rename input; double-click also triggers rename.
-
-Playwright end-to-end verification against Allan is not runnable in this
-sandbox — `LOVABLE_BROWSER_AUTH_STATUS=external_unmanaged` means no
-session can be minted for the user's own Supabase project. The four
-build gates (typecheck, vitest 13/13, token+server-only guards,
-production build+bundle guard) all pass; live verification is deferred
-to preview.
 
 ## Page editor (Part B) — 2026-07-26
 
@@ -121,45 +115,91 @@ Body is editable. Each block is its own auto-growing textarea (or `<input>`
 per cell for tables). No contenteditable anywhere. Block ids are minted
 with nanoid on creation and preserved through splits/merges.
 
-- Title is an auto-growing textarea styled as before. Enter moves focus
-  to the first body block, creating one if the page was empty.
-- Every "New page" entry point (view header, area ⋯ menu, sidebar area
-  +) now routes through `useCreatePageAndOpen`: create → navigate to
-  `/p/{id}` → focus title (via `sessionStorage["gio.focus-title"]`).
-- Key handling in body blocks: Enter splits at the caret (list types
-  inherit; empty list item converts to text); Backspace at position 0
-  converts non-text to text, merges empty text into previous, never
-  drops content; ArrowUp/Down at first/last line move focus across
-  blocks; Escape blurs.
-- Markdown shortcuts on empty text block: `# `, `## `, `- `, `1. `,
-  `[] `/`[ ] `, `> `, ` ``` ` transform the block and consume the prefix.
-- Interactive chrome: todo checkbox toggles + strike-through when done;
-  toggle chevron persists `open`; callout icon opens a 12-emoji picker;
-  table cells are single-line inputs with hover-only + row / + column
-  affordances.
-- Slash menu: typing "/" opens a portalled 324px popover anchored under
-  the caret, filterable by name, ArrowUp/Down + Enter to apply, Escape
-  closes. Bottom "Search all blocks…" row is deliberately inert.
-- Gutter (`left:-42px`, hover-only): `+` inserts an empty text block
-  below and focuses it; the six-dot handle is present but inert with
-  title "Reordering arrives next phase".
-- Empty body renders a "Click to start writing." affordance that
-  appends and focuses a text block.
+- Slash menu, markdown shortcuts, split/merge, todo/toggle/table
+  interactions, gutter `+` insertion — all wired.
 - Persistence: `useUpdateBlocks` writes `pages.blocks` whole via a
   500ms trailing debounce. Exactly one request in flight per page —
   new edits during a send queue only the latest snapshot, then fire
-  a single follow-up on settle. The `touch_page` DB trigger bumps
-  `edited_at` server-side; `verified_at` is untouched by any edit
-  because its WHEN clause excludes verified_*. Topbar shows
-  "Saving…" after 1.2s of continuous pending state and flashes
-  "Saved" for 1.5s on settle.
+  a single follow-up on settle. Flush on blur, route change, and
+  `beforeunload`/`pagehide`.
+- Topbar shows "Saving…" after 1.2s of continuous pending state and
+  flashes "Saved" for 1.5s on settle.
 
-Build gates: tsgo clean, vitest 13/13, check-tokens + check-server-only +
-production build + check-bundle all green. Live verification is deferred
-to preview because `LOVABLE_BROWSER_AUTH_STATUS=external_unmanaged`
-prevents session minting for the user's own Supabase project.
+## Chunk 4 — Page ⋯ menu (2026-07-26)
+
+Group A: visibility, area (via `set_page_property`), verify (still
+accurate). Group B: Copy link (⌘⌥L), Duplicate (⌘D), Export (row 5,
+see Chunk 5), Archive (`archived=true`), Delete with 10-second Undo
+toast — `useDeletePage` optimistically removes across shell/pages/views
+caches; `useRestorePage` re-inserts when the toast action fires.
+`useWorkspaceShell` filters `deleted_at IS NULL` and archived pages so
+counts stay honest. No pages DELETE policy — deletion is soft.
+
+Verified: tsgo clean, vitest green, check-tokens + check-server-only +
+production build + check-bundle all green. Pointer QA (undo timing,
+optimistic decrement in sidebar) is user-pending in preview.
+
+## Chunk 5 — Export page (2026-07-26)
+
+`src/lib/export.ts` — pure browser-side functions covering all 12 block
+types: `toMarkdown`, `toHtml` (self-contained with inline styles),
+`printPdf` (window.open + `print()`). `src/components/export-dialog.tsx`
+is a 460px modal with Format (PDF/HTML/MD), Paper size, and Scale;
+choices persist in localStorage. Menu row "Export" sits after Copy link.
+
+`list_areas` RPC updated in the same migration to exclude archived
+pages so area counts stay in sync with the shell filter.
+
+Verified: 10 export unit tests in `src/lib/export.test.ts`, all four
+build gates green. File-download / print-dialog QA is user-pending in
+preview (browser file APIs cannot be driven from this sandbox).
+
+## Chunk 6 — View ⋯ menu + Export view (2026-07-26)
+
+View header ⋯ menu with scope-aware entries: Personal view (Rename,
+Duplicate, Publish to team [owners only], Export, Delete), Team view
+(Rename [owners], Duplicate to My, Unpublish [owners], Export, Delete
+[owners]), Area (Rename [inert — areas are derived], Export). Inline
+rename on double-click of the view title. `useUpdateView` extended to
+allow `scope` toggles for publish/unpublish.
+
+`toCsv` and `toMarkdownTable` added to `src/lib/export.ts` with
+`ExportViewDialog` (CSV / Markdown table over the current `runView`
+result), resolving owner display names off the workspace member list.
+
+Verified: 33 unit tests total (including CSV/MD-table cases in
+`src/lib/export.test.ts`), all four build gates green. File-download
+QA is user-pending in preview.
+
+## Chunk 7 — Block drag + multi-select (2026-07-27)
+
+`src/lib/reorder.ts` — pure `moveBlock`, `moveRun`, `deleteIndices`,
+covered by 10 unit tests in `src/lib/reorder.test.ts`. Wired into
+`src/components/page-editor-body.tsx`: pointer-capture drag session
+starting from the six-dot handle, midpoint gap computation, 8px/frame
+auto-scroll inside the app-shell scroll container near a 48px edge
+band, an absolutely-positioned 2px `--color-accentDot` drop indicator,
+Escape cancels a drag without committing. Shift-click on the handle
+extends a contiguous selection; plain click clears it; focusing a
+textarea/input clears selection. Delete/Backspace with a selection
+removes those blocks (auto-inserting one empty text block if the page
+would become empty). A sticky selection bar (portalled to body) shows
+count + Delete + Dismiss, styled with the `--shadow-toast` token and a
+`.bar-btn` component-layer hover class (rgba(255,255,255,.12)) — no
+noirHover token was introduced. Drops route through the existing
+`commit` path, so `useUpdateBlocks` debounce + flush semantics are
+unchanged.
+
+Verified: 43/43 vitest, tsgo clean, check-tokens + check-server-only +
+production build + check-bundle all green. Pointer-interaction QA
+(drag, auto-scroll, shift-range, Delete-clears-to-one-block) is
+user-pending in preview.
 
 ## Next-phase acceptance
 
-Blocks reorder by dragging the handle; the page ⋯ menu works.
+Team-view fork rule (SHIP gate): opening a team view as a non-owner
+shows a MODIFIED pill in the toolbar when the current filter differs
+from the stored view, with a "Save as my view" action that forks via
+`fork_view()` and navigates to the new personal view.
+
 
