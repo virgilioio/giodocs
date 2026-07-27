@@ -1612,6 +1612,7 @@ function BlockRow({
         onInput={onInput}
         onKeyDown={onKeyDown}
         onSetIcon={onSetIcon}
+        onPaste={onPaste}
       />
     </div>
   );
@@ -1628,6 +1629,7 @@ function BlockContent({
   onInput,
   onKeyDown,
   onSetIcon,
+  onPaste,
 }: {
   block: Blk;
   ordinal?: number;
@@ -1638,6 +1640,7 @@ function BlockContent({
   onInput: (val: string) => void;
   onKeyDown: (e: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
   onSetIcon: (icon: string) => void;
+  onPaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
 }) {
   const textareaProps = {
     ref: (el: HTMLTextAreaElement | null) => registerRef(el),
@@ -1648,6 +1651,7 @@ function BlockContent({
     },
     onBlur: onBlur,
     onKeyDown,
+    onPaste,
     // BUG 3: readOnly (not disabled) keeps focus/selection intact but blocks
     // typing when the page is locked. Also prevents native re-focus loss.
     readOnly: locked,
