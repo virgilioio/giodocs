@@ -20,16 +20,23 @@ export type BlockType =
   | "text"
   | "h1"
   | "h2"
+  | "h3"
   | "bullet"
   | "numbered"
   | "todo"
   | "toggle"
   | "quote"
+  | "caption"
   | "callout"
   | "divider"
   | "code"
   | "table"
   | "columns";
+
+/** Optional heading level for `toggle` blocks. Absent = plain toggle (today's
+ *  rendering). Present = the summary renders at the given heading level, and
+ *  export serialises the summary at that depth. */
+export type ToggleLevel = "text" | "h1" | "h2" | "h3";
 
 export type Blk = {
   id: string;
