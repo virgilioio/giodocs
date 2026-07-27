@@ -135,7 +135,7 @@ export function EditableTitle({
       rows={1}
       onChange={(e) => onChange(e.target.value.replace(/\n/g, ""))}
       onKeyDown={(e) => {
-        if (e.key === "Enter") {
+        if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
           e.preventDefault();
           onEnter();
         }
@@ -162,13 +162,17 @@ export function EditableBody({
   onBlur?: () => void;
   locked?: boolean;
 }) {
-  const [blocks, setBlocks] = useState<Blk[]>(() => normalize(initialBlocks));
+  const [blocks, setBlocks] = useState<Blk[]>(() => {
+    const n = normalize(initialBlocks);
+    return n.length ? n : [newBlock("text")];
+  });
   // If the incoming server data changes for a different page, resync.
   const lastPage = useRef(pageId);
   useEffect(() => {
     if (lastPage.current !== pageId) {
       lastPage.current = pageId;
-      setBlocks(normalize(initialBlocks));
+      const n = normalize(initialBlocks);
+      setBlocks(n.length ? n : [newBlock("text")]);
     }
   }, [pageId, initialBlocks]);
 
@@ -344,13 +348,6 @@ export function EditableBody({
     setFocusRequest({ id: target.id, caret });
   }
 
-  function ensureFirstBlock() {
-    if (blocks.length) return blocks[0].id;
-    const only = newBlock("text");
-    commit([only]);
-    setFocusRequest({ id: only.id, caret: "start" });
-    return only.id;
-  }
 
   /* ────────── Markdown shortcuts on input ────────── */
   function tryMarkdown(id: string, val: string): boolean {
@@ -379,30 +376,23 @@ export function EditableBody({
     return false;
   }
 
-  /* ────────── Empty-body click adds a text block ────────── */
-  function onEmptyClick() {
+  /* ────────── Click below last block: focus it, or append a new one ────────── */
+  function onBelowClick() {
     if (locked) return;
-    ensureFirstBlock();
-  }
-
-  if (!blocks.length) {
-    return (
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={onEmptyClick}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onEmptyClick();
-          }
-        }}
-        className="cursor-text py-16 text-center"
-      >
-        <p className="font-display text-subhead text-body">This page has no body yet.</p>
-        <p className="mt-1 text-meta text-faint">Click to start writing.</p>
-      </div>
-    );
+    const last = blocks[blocks.length - 1];
+    if (!last) {
+      const only = newBlock("text");
+      commit([only]);
+      setFocusRequest({ id: only.id, caret: "end" });
+      return;
+    }
+    if ((last.text ?? "") === "" && last.type === "text") {
+      setFocusRequest({ id: last.id, caret: "end" });
+      return;
+    }
+    const spawn = newBlock("text");
+    commit([...blocks, spawn]);
+    setFocusRequest({ id: spawn.id, caret: "start" });
   }
 
   return (
@@ -528,6 +518,21 @@ export function EditableBody({
           onSetIcon={(icon) => updateBlock(b.id, { icon })}
         />
       ))}
+
+      {/* Trailing click zone: any click below the last block focuses it,
+       * or appends a new empty text block. Keeps the body directly
+       * clickable without any "Enter to start" ritual. */}
+      <div
+        aria-hidden
+        onMouseDown={(e) => {
+          // Prefer default focus behaviour when clicking an actual block.
+          if ((e.target as HTMLElement).closest("textarea, input")) return;
+          e.preventDefault();
+          onBelowClick();
+        }}
+        style={{ minHeight: 240 }}
+      />
+
 
       {slash ? (
         <SlashMenu
