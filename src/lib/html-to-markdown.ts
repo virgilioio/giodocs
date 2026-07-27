@@ -367,8 +367,12 @@ function renderBlock(n: Node, ctx: WalkCtx): string {
   if (t === "br") return "";
 
   if (/^h[1-6]$/.test(t)) {
-    const level = t === "h1" ? 1 : 2; // our model only supports h1/h2
-    const hash = level === 1 ? "#" : "##";
+    // Our model supports h1, h2, h3. Any deeper heading collapses to h3
+    // (never below), so external HTML that uses <h4>…<h6> lands on the
+    // deepest we have rather than becoming plain text.
+    const raw = Number(t.slice(1));
+    const level = raw <= 1 ? 1 : raw === 2 ? 2 : 3;
+    const hash = level === 1 ? "#" : level === 2 ? "##" : "###";
     return `${hash} ${renderInlineChildren(el.children).trim()}`;
   }
 

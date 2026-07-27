@@ -145,6 +145,15 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
       return `# ${text}`;
     case "h2":
       return `## ${text}`;
+    case "h3":
+      return `### ${text}`;
+    case "caption":
+      // Markdown has no "caption" form. Emit as a plain paragraph. This is
+      // deliberately LOSSY on round-trip: a caption becomes a `text` block
+      // coming back through parseMarkdown. Do NOT invent a marker; the
+      // structured HTML importer is the only path that preserves it.
+      // Same pragma as the `columns` case below — don't "fix" it later.
+      return text;
     case "bullet":
       return `- ${text}`;
     case "numbered":
@@ -153,6 +162,14 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
       return `- [${b.checked ? "x" : " "}] ${text}`;
     case "toggle": {
       const body = typeof b.body === "string" ? b.body : "";
+      // Levelled toggle: emit summary at heading depth then body. Plain
+      // toggle: keep today's `**text**` + indented body output.
+      const level = typeof b.level === "string" ? (b.level as string) : "text";
+      if (level === "h1" || level === "h2" || level === "h3") {
+        const hash = level === "h1" ? "#" : level === "h2" ? "##" : "###";
+        if (!body) return `${hash} ${text}`;
+        return `${hash} ${text}\n\n${body}`;
+      }
       if (!body) return `**${text}**`;
       const indented = body.split("\n").map((line) => `  ${line}`).join("\n");
       return `**${text}**\n${indented}`;
@@ -259,10 +276,17 @@ function blockHtml(b: Block, ordinal = 1): string {
   switch (t) {
     case "text":
       return `<p>${inline(text)}</p>`;
+    case "caption":
+      // Muted styling comes from the `.caption` rule in HTML_CSS below.
+      return `<p class="caption">${inline(text)}</p>`;
     case "h1":
-      return `<h1>${inline(text)}</h1>`;
-    case "h2":
+      // Demote by one level so the exported page keeps a single <h1>
+      // (the page title). h1 → h2, h2 → h3, h3 → h4.
       return `<h2>${inline(text)}</h2>`;
+    case "h2":
+      return `<h3>${inline(text)}</h3>`;
+    case "h3":
+      return `<h4>${inline(text)}</h4>`;
     case "bullet":
       return `<ul><li>${inline(text)}</li></ul>`;
     case "numbered":
@@ -275,9 +299,20 @@ function blockHtml(b: Block, ordinal = 1): string {
       }/> <span${b.checked ? ' class="done"' : ""}>${inline(text)}</span></p>`;
     case "toggle": {
       const body = typeof b.body === "string" ? b.body : "";
-      return `<details${b.open ? " open" : ""}><summary>${inline(
-        text,
-      )}</summary>${body ? `<p>${inline(body)}</p>` : ""}</details>`;
+      const level = typeof b.level === "string" ? (b.level as string) : "text";
+      // Levelled toggle: wrap the summary in the demoted heading tag,
+      // matching the one-level demotion applied to standalone headings.
+      const summaryInner =
+        level === "h1"
+          ? `<h2>${inline(text)}</h2>`
+          : level === "h2"
+            ? `<h3>${inline(text)}</h3>`
+            : level === "h3"
+              ? `<h4>${inline(text)}</h4>`
+              : inline(text);
+      return `<details${b.open ? " open" : ""}><summary>${summaryInner}</summary>${
+        body ? `<p>${inline(body)}</p>` : ""
+      }</details>`;
     }
     case "quote":
       return `<blockquote>${inline(text)}</blockquote>`;
@@ -369,11 +404,14 @@ const HTML_CSS = `
     font-size: 17px; line-height: 1.6; color: ${ink};
     padding: 56px 44px; max-width: 780px; margin: 0 auto;
   }
-  h1, h2, h3 { font-family: Poppins, -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -0.02em; color: ${noir}; }
+  h1, h2, h3, h4 { font-family: Poppins, -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -0.02em; color: ${noir}; }
   h1.title { font-size: 34px; margin: 0 0 4px; letter-spacing: -0.035em; }
   h1 { font-size: 26px; margin: 28px 0 8px; }
   h2 { font-size: 20px; margin: 22px 0 6px; }
+  h3 { font-size: 17px; margin: 18px 0 4px; font-weight: 600; }
+  h4 { font-size: 17px; margin: 18px 0 4px; font-weight: 600; }
   p { margin: 0 0 10px; }
+  p.caption { font-size: 12.5px; color: ${muted}; margin: 4px 0 10px; }
   ul, ol { margin: 0 0 10px; padding-left: 22px; }
   li { margin: 2px 0; }
   hr { border: 0; border-top: 1px solid ${line}; margin: 20px 0; }

@@ -180,23 +180,23 @@ describe("legal-contract fixture → block sequence", () => {
     `;
     const md = htmlToMarkdown(fixture);
     const blocks = parseMarkdown(md);
-    // Heading levels: our model collapses h3+ to h2.
+    // Heading levels: h1 stays h1, h2 stays h2, h3+ → h3.
     expect(blocks.map((b) => b.type)).toEqual([
-      "h2", // <h2> → ## (our model collapses to h1/h2 only; h1 stays h1)
+      "h2",
       "text",
       "divider",
-      "h2",
+      "h3",
       "text",
       "bullet",
       "bullet",
       "divider",
-      "h2",
+      "h3",
       "table",
     ]);
     // The bold-wrapped heading must keep its ** so renderInline bolds it
     // at render time — it must NOT arrive as a text block.
     const boldedHeading = blocks[3];
-    expect(boldedHeading.type).toBe("h2");
+    expect(boldedHeading.type).toBe("h3");
     expect(boldedHeading.text).toContain("**");
     expect(boldedHeading.text).toContain("SEXTA");
     // Underscore fill-in blanks survive untouched.

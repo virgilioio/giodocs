@@ -55,6 +55,7 @@ import {
 import {
   type Blk,
   type BlockType,
+  type ToggleLevel,
   type FocusReq,
   type OpResult,
   newBlock,
@@ -136,11 +137,13 @@ const BLOCK_MENU: MenuItem[] = [
   { type: "text", name: "Text", desc: "Plain writing. The default.", icon: "Aa" },
   { type: "h1", name: "Heading 1", desc: "Big section title.", icon: "H1" },
   { type: "h2", name: "Heading 2", desc: "Sub-section title.", icon: "H2" },
+  { type: "h3", name: "Heading 3", desc: "Smaller section title.", icon: "H3" },
   { type: "bullet", name: "Bullet list", desc: "Unordered points.", icon: "•" },
   { type: "numbered", name: "Numbered list", desc: "Steps, in order.", icon: "1." },
   { type: "todo", name: "To-do", desc: "A checkbox that means it.", icon: "☑" },
   { type: "toggle", name: "Toggle", desc: "Details, tucked away.", icon: "▸" },
   { type: "quote", name: "Quote", desc: "Someone said it better.", icon: "\u201D" },
+  { type: "caption", name: "Caption", desc: "A quiet note.", icon: "c" },
   {
     type: "callout",
     name: "Callout",
@@ -1400,18 +1403,23 @@ export function EditableBody({
   );
 
   const runTurnInto = useCallback(
-    (blockId: string, type: BlockType) => {
+    (blockId: string, type: BlockType, extra?: Partial<Blk>) => {
       const run = getRunIndicesForBlock(blockId);
       if (!run.length) return;
       const next = [...blocks];
       for (const i of run) {
         const prev = next[i];
-        const nb: Blk = { ...prev, type };
+        const nb: Blk = { ...prev, type, ...(extra ?? {}) };
         if (type === "todo" && nb.checked == null) nb.checked = false;
         if (type === "toggle" && nb.open == null) nb.open = false;
         if (type === "callout" && !nb.icon) nb.icon = "💡";
         if (type === "table" && !nb.rows) nb.rows = [["", "", ""], ["", "", ""]];
         if (type === "divider") nb.text = "";
+        // Clear a stale toggle level unless we're explicitly setting one.
+        if (type !== "toggle" || !("level" in (extra ?? {}))) {
+          if (type !== "toggle") delete nb.level;
+          else if (!extra?.level) delete nb.level;
+        }
         next[i] = nb;
       }
       commit(next);
@@ -1469,15 +1477,29 @@ export function EditableBody({
       const atTop = runStart === 0;
       const atEnd = runEnd >= blocks.length - 1;
 
-      const turnIntoSub: MenuRow[] = BLOCK_MENU.map((m) => ({
-        kind: "row",
-        label: m.name,
-        icon: "layout",
-        onPick: () => {
-          runTurnInto(blockId, m.type);
-          mctx.close();
-        },
-      }));
+      const turnIntoSub: MenuRow[] = [
+        ...BLOCK_MENU.map((m) => ({
+          kind: "row" as const,
+          label: m.name,
+          icon: "layout" as const,
+          onPick: () => {
+            runTurnInto(blockId, m.type);
+            mctx.close();
+          },
+        })),
+        // Toggle heading levels — sit next to the plain "Toggle" entry as
+        // additional Turn-into options. Preserves text/body/open by
+        // relying on runTurnInto's default patch behaviour.
+        ...([1, 2, 3] as const).map((n) => ({
+          kind: "row" as const,
+          label: `Toggle heading ${n}`,
+          icon: "layout" as const,
+          onPick: () => {
+            runTurnInto(blockId, "toggle", { level: `h${n}` as ToggleLevel });
+            mctx.close();
+          },
+        })),
+      ];
 
       const rows: MenuRow[] = [
         {
@@ -2442,6 +2464,17 @@ function BlockContent({
   }
 
   if (t === "toggle") {
+    // Optional heading level: 'h1' | 'h2' | 'h3' promotes the SUMMARY to
+    // heading typography. Absent = today's plain-toggle rendering (Lato).
+    const level = (block as { level?: string }).level;
+    const summaryCls =
+      level === "h1"
+        ? "w-full resize-none border-0 bg-transparent p-0 font-display text-title text-noir outline-none placeholder:text-faint"
+        : level === "h2"
+          ? "w-full resize-none border-0 bg-transparent p-0 font-display text-heading text-noir outline-none placeholder:text-faint"
+          : level === "h3"
+            ? "w-full resize-none border-0 bg-transparent p-0 font-display text-subhead text-noir outline-none placeholder:text-faint"
+            : textareaProps.className;
     return (
       <div className="text-prose text-body">
         <div className="flex items-start gap-1">
@@ -2458,7 +2491,7 @@ function BlockContent({
               ›
             </span>
           </button>
-          {renderSwap(textareaProps.className)}
+          {renderSwap(summaryCls)}
         </div>
         {block.open ? (
           <div className="ml-5 mt-1 text-meta text-muted">
@@ -2519,6 +2552,22 @@ function BlockContent({
   if (t === "h2") {
     return renderSwap(
       "w-full resize-none border-0 bg-transparent p-0 font-display text-heading text-noir outline-none placeholder:text-faint",
+    );
+  }
+
+  if (t === "h3") {
+    // Poppins 600 at 17px — text-subhead pairs with font-display. Distinct
+    // from body prose (Lato 17/400) by family and weight, so no new token.
+    return renderSwap(
+      "w-full resize-none border-0 bg-transparent p-0 font-display text-subhead text-noir outline-none placeholder:text-faint",
+    );
+  }
+
+  if (t === "caption") {
+    // A small muted line. No other chrome. See notes in blockToMarkdown:
+    // markdown round-trip is lossy (comes back as `text`).
+    return renderSwap(
+      "w-full resize-none border-0 bg-transparent p-0 text-caption text-muted outline-none placeholder:text-faint",
     );
   }
 
@@ -2740,7 +2789,7 @@ function ColumnStack({
     setBlocks(blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)));
   }
 
-  function applyTypeLocal(blockId: string, type: BlockType) {
+  function applyTypeLocal(blockId: string, type: BlockType, extra?: Partial<Blk>) {
     // Columns never nest — refuse the "columns" type even though the
     // in-column slash menu doesn't offer it.
     if (type === "columns") return;
@@ -2750,12 +2799,14 @@ function ColumnStack({
     const t = prev.text ?? "";
     const slashPos = t.lastIndexOf("/");
     const stripped = slashPos >= 0 ? t.slice(0, slashPos) : t;
-    const nb: Blk = { ...prev, type, text: stripped };
+    const nb: Blk = { ...prev, type, text: stripped, ...(extra ?? {}) };
     if (type === "todo" && nb.checked == null) nb.checked = false;
     if (type === "toggle" && nb.open == null) nb.open = false;
     if (type === "callout" && !nb.icon) nb.icon = "💡";
     if (type === "table" && !nb.rows) nb.rows = [["", "", ""], ["", "", ""]];
     if (type === "divider") nb.text = "";
+    if (type !== "toggle") delete nb.level;
+    else if (!extra?.level && !("level" in (extra ?? {}))) delete nb.level;
     const next = [...blocks];
     next[idx] = nb;
     setBlocks(next);
@@ -2807,15 +2858,26 @@ function ColumnStack({
         BLOCK_MENU.find((m) => m.type === target?.type)?.name ?? target?.type ?? "Block";
       const atTop = idx <= 0;
       const atEnd = idx >= blocks.length - 1;
-      const turnIntoSub: MenuRow[] = BLOCK_MENU.map((m) => ({
-        kind: "row" as const,
-        label: m.name,
-        icon: "layout",
-        onPick: () => {
-          applyTypeLocal(bid, m.type);
-          mctx.close();
-        },
-      }));
+      const turnIntoSub: MenuRow[] = [
+        ...BLOCK_MENU.map((m) => ({
+          kind: "row" as const,
+          label: m.name,
+          icon: "layout" as const,
+          onPick: () => {
+            applyTypeLocal(bid, m.type);
+            mctx.close();
+          },
+        })),
+        ...([1, 2, 3] as const).map((n) => ({
+          kind: "row" as const,
+          label: `Toggle heading ${n}`,
+          icon: "layout" as const,
+          onPick: () => {
+            applyTypeLocal(bid, "toggle", { level: `h${n}` as ToggleLevel });
+            mctx.close();
+          },
+        })),
+      ];
       const move = (dir: -1 | 1) => {
         if (idx < 0) return;
         const j = idx + dir;

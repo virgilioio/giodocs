@@ -20,16 +20,23 @@ export type BlockType =
   | "text"
   | "h1"
   | "h2"
+  | "h3"
   | "bullet"
   | "numbered"
   | "todo"
   | "toggle"
   | "quote"
+  | "caption"
   | "callout"
   | "divider"
   | "code"
   | "table"
   | "columns";
+
+/** Optional heading level for `toggle` blocks. Absent = plain toggle (today's
+ *  rendering). Present = the summary renders at the given heading level, and
+ *  export serialises the summary at that depth. */
+export type ToggleLevel = "text" | "h1" | "h2" | "h3";
 
 export type Blk = {
   id: string;
@@ -41,6 +48,8 @@ export type Blk = {
   icon?: string;
   rows?: string[][];
   language?: string;
+  /** Only meaningful when type === "toggle". Absent = today's plain toggle. */
+  level?: ToggleLevel;
   /** Only meaningful when type === "columns". Never nested. */
   cols?: Blk[][];
 };
@@ -68,11 +77,10 @@ export function newColumnsBlock(n: number): Blk {
 
 /** ONE source of truth for typing-shortcut → block-type conversion. Used
  *  by both the top-level and column input handlers so they cannot drift.
- *  `###`/`####` map to h2 because we have no h3/h4. `!> ` opens a callout
- *  (matches the export inverse for callouts). */
+ *  `# ` → h1, `## ` → h2, `### `+ → h3 (we have exactly three levels; any
+ *  deeper input lands on the deepest we have). `!> ` opens a callout. */
 export const MARKDOWN_SHORTCUTS: ReadonlyArray<{ pat: RegExp; type: BlockType }> = [
-  { pat: /^#### $/, type: "h2" },
-  { pat: /^### $/, type: "h2" },
+  { pat: /^#{3,6} $/, type: "h3" },
   { pat: /^## $/, type: "h2" },
   { pat: /^# $/, type: "h1" },
   { pat: /^- $/, type: "bullet" },

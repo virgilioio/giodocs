@@ -17,10 +17,10 @@ describe("parseMarkdown", () => {
     expect(b.text).toBe("Title");
   });
 
-  it("parses h2 (and collapses ### into h2)", () => {
+  it("parses h2, and h3 for ### and deeper", () => {
     expect(parseMarkdown("## Two")[0].type).toBe("h2");
-    expect(parseMarkdown("### Three")[0].type).toBe("h2");
-    expect(parseMarkdown("### Three")[0].text).toBe("Three");
+    expect(parseMarkdown("### Three")[0].type).toBe("h3");
+    expect(parseMarkdown("##### Five")[0]).toMatchObject({ type: "h3", text: "Five" });
   });
 
   it("parses bullet with `-`, `*`, `+`", () => {
