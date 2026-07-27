@@ -1765,27 +1765,36 @@ function PageRowLi({
       ? (p.props as Record<string, unknown>)
       : {};
 
-  const build = (): ReactNode => (
-    <PageMenu
-      p={p}
-      isStale={isStale}
-      propDefs={propDefs}
-      members={members}
-      me={me}
-      onOpen={() => navigate({ to: "/p/$pageId", params: { pageId: p.id } })}
-      onVerify={() => onVerify(p.id)}
-      onSetStatus={(v) =>
-        setPageProperty.mutate({ pageId: p.id, key: "status", value: v })
-      }
-      onSetOwner={(uid) =>
-        setPageProperty.mutate({ pageId: p.id, key: "owner", value: uid })
-      }
-      onMoveArea={(a) => moveToArea.mutate({ pageId: p.id, area: a })}
-      onDuplicate={() => duplicatePage.mutate(p.id)}
-      onDelete={() => onDeleteWithUndo(p)}
-    />
-
+  const editedByFirstName = firstNameOf(
+    members.find((m) => m.user_id === p.edited_by),
   );
+
+  const build = (mctx: {
+    setSpec: (s: MenuSpec) => void;
+    close: () => void;
+  }): MenuSpec =>
+    buildPageRowSpec(
+      {
+        p,
+        isStale,
+        propDefs,
+        members,
+        editedByFirstName,
+        onOpen: () =>
+          navigate({ to: "/p/$pageId", params: { pageId: p.id } }),
+        onVerify: () => onVerify(p.id),
+        onSetStatus: (v) =>
+          setPageProperty.mutate({ pageId: p.id, key: "status", value: v }),
+        onSetOwner: (uid) =>
+          setPageProperty.mutate({ pageId: p.id, key: "owner", value: uid }),
+        onMoveArea: (a) => moveToArea.mutate({ pageId: p.id, area: a }),
+        onDelete: () => onDeleteWithUndo(p),
+      },
+      mctx,
+    );
+  void duplicatePage; // Sidebar page menu no longer offers Duplicate (CHUNK 3a).
+  void me;
+  void props;
   return (
     <li
       onMouseEnter={() => setHover(true)}
@@ -1810,46 +1819,56 @@ function PageRowLi({
           className="relative flex items-center justify-end"
           style={{ height: 17, minWidth: 17 }}
         >
-          {hover ? <RowMoreButton size="sm" build={build} /> : null}
+          {hover ? (
+            <SpecMenuTrigger
+              size="sm"
+              ariaLabel="Page actions"
+              build={build}
+            />
+          ) : null}
         </span>
       </Link>
-      {/* Debug: props reference so noUnusedLocals doesn't fire — actually used below. */}
-      {false && JSON.stringify(props)}
     </li>
   );
 }
 
-/** Page-row menu with in-place submenus for status / owner / area. */
-function PageMenu({
-  p,
-  isStale,
-  propDefs,
-  members,
-  me,
-  onOpen,
-  onVerify,
-  onSetStatus,
-  onSetOwner,
-  onMoveArea,
-  onDuplicate,
-  onDelete,
-}: {
-  p: PageListItem;
-  isStale: boolean;
-  propDefs: Array<{ key: string; label: string; options: unknown }>;
-  members: MemberLite[];
-  me: string;
-  onOpen: () => void;
-  onVerify: () => void;
-  onSetStatus: (v: string) => void;
-  onSetOwner: (uid: string) => void;
-  onMoveArea: (area: string | null) => void;
-  onDuplicate: () => void;
-  onDelete: () => void;
-}) {
-  const [mode, setMode] = useState<
-    "list" | "status" | "owner" | "area" | "delete"
-  >("list");
+/**
+ * Pure builder for the sidebar page-row ⋯ menu. Submenus (status / owner /
+ * area) and the delete confirm all swap in place via `mctx.setSpec`; the
+ * anchor never moves. Layout mirrors the CHUNK 3a spec — icon slot is
+ * dot/avatar/icon (never two), the footer is the ONE place where the edit
+ * and verify timestamps sit together, carrying different verbs.
+ */
+function buildPageRowSpec(
+  args: {
+    p: PageListItem;
+    isStale: boolean;
+    propDefs: Array<{ key: string; label: string; options: unknown }>;
+    members: MemberLite[];
+    editedByFirstName: string;
+    onOpen: () => void;
+    onVerify: () => void;
+    onSetStatus: (v: string) => void;
+    onSetOwner: (uid: string) => void;
+    onMoveArea: (area: string | null) => void;
+    onDelete: () => void;
+  },
+  mctx: { setSpec: (s: MenuSpec) => void; close: () => void },
+): MenuSpec {
+  const {
+    p,
+    isStale,
+    propDefs,
+    members,
+    editedByFirstName,
+    onOpen,
+    onVerify,
+    onSetStatus,
+    onSetOwner,
+    onMoveArea,
+    onDelete,
+  } = args;
+
   const props =
     p.props && typeof p.props === "object" && !Array.isArray(p.props)
       ? (p.props as Record<string, unknown>)
@@ -1859,161 +1878,150 @@ function PageMenu({
   const currentArea = typeof props.area === "string" ? props.area : "";
 
   const statusDef = propDefs.find((d) => d.key === "status");
-  const statusOptions = ((statusDef?.options as Array<{ value: string; color?: string }>) ??
-    []).filter(Boolean);
+  const statusOptions = (
+    (statusDef?.options as Array<{ value: string; color?: string }>) ?? []
+  ).filter(Boolean);
   const areaDef = propDefs.find((d) => d.key === "area");
   const areaOptions = ((areaDef?.options as Array<{ value: string }>) ?? [])
     .map((o) => o.value)
     .filter(Boolean);
 
-  if (mode === "status") {
-    return (
-      <RowMenuList
-        title="Set status"
-        onBack={() => setMode("list")}
-        items={statusOptions.map((o) => ({
-          id: o.value,
-          label: o.value,
-          dot: o.color || "var(--color-muted)",
-          check: o.value === currentStatus,
-          onSelect: () => {
-            onSetStatus(o.value);
-            setMode("list");
-          },
-        }))}
-      />
-    );
-  }
-  if (mode === "owner") {
-    return (
-      <RowMenuList
-        title="Set owner"
-        onBack={() => setMode("list")}
-        items={members.map((m) => ({
-          id: m.user_id,
-          label: m.profiles?.full_name || m.profiles?.email || "Unknown",
-          avatar: {
-            tint: m.profiles?.avatar_tint || "var(--color-sunken)",
-            ink: m.profiles?.avatar_ink || "var(--color-noir)",
-            initials: initialsOf(m),
-          },
-          check: m.user_id === currentOwner,
-          onSelect: () => {
-            onSetOwner(m.user_id);
-            setMode("list");
-          },
-        }))}
-      />
-    );
-  }
-  if (mode === "area") {
-    return (
-      <RowMenuList
-        title="Move to area"
-        onBack={() => setMode("list")}
-        items={[
-          {
-            id: "__none",
-            label: "No area",
-            hint: currentArea ? undefined : <Val>current</Val>,
-            check: !currentArea,
-            onSelect: () => {
-              onMoveArea(null);
-              setMode("list");
-            },
-          },
-          { kind: "divider" },
-          ...areaOptions.map((a) => ({
-            id: a,
-            label: a,
-            check: a === currentArea,
-            onSelect: () => {
-              onMoveArea(a);
-              setMode("list");
-            },
-          })),
-        ]}
-      />
-    );
-  }
-  if (mode === "delete") {
-    return (
-      <RowMenuConfirm
-        title={`Delete "${p.title || "Untitled"}"?`}
-        body="It disappears from every view at once — there is no folder it stays in."
-        confirmLabel="Delete page"
-        variant="danger"
-        onConfirm={onDelete}
-      />
-    );
-  }
-
   const ownerMember = members.find((m) => m.user_id === currentOwner);
-  const items: RowMenuItem[] = [
-    {
-      id: "open",
-      label: "Open",
-      hint: <Sc>↵</Sc>,
-      onSelect: onOpen,
-    },
-    {
-      id: "verify",
-      label: isStale ? "Mark verified now" : "Re-verify",
-      hint: <Val>{relTime(p.verified_at)}</Val>,
-      onSelect: onVerify,
-    },
-    {
-      id: "status",
-      label: "Set status",
-      hint: currentStatus ? <Val>{currentStatus}</Val> : <Val>empty</Val>,
-      submenu: true,
-      keepOpen: true,
-      onSelect: () => setMode("status"),
-    },
-    {
-      id: "owner",
-      label: "Set owner",
-      hint: currentOwner ? (
-        <Val>{firstNameOf(ownerMember) || "…"}</Val>
-      ) : (
-        <Val>none</Val>
-      ),
-      submenu: true,
-      keepOpen: true,
-      onSelect: () => setMode("owner"),
-    },
-    {
-      id: "area",
-      label: "Move to area",
-      hint: currentArea ? <Val>{currentArea}</Val> : <Val>none</Val>,
-      submenu: true,
-      keepOpen: true,
-      onSelect: () => setMode("area"),
-    },
-    { kind: "divider" },
-    {
-      id: "dup",
-      label: "Duplicate",
-      hint: <Sc>⌘D</Sc>,
-      onSelect: onDuplicate,
-    },
-    {
-      id: "delete",
-      label: "Delete page",
-      danger: true,
-      submenu: true,
-      keepOpen: true,
-      onSelect: () => setMode("delete"),
-    },
-  ];
-  return (
-    <RowMenuList
-      title={p.title || "Untitled"}
-      items={items.map((it) =>
-        it.kind === "divider" || me ? it : it,
-      )}
-    />
-  );
+  const ownerFirst = firstNameOf(ownerMember);
+  const currentStatusColor =
+    statusOptions.find((o) => o.value === currentStatus)?.color ??
+    "var(--color-muted)";
+  const title = p.title || "Untitled";
+
+  const footer = pageRowFooter({
+    editedRel: p.edited_at ? relTime(p.edited_at) : null,
+    firstName: editedByFirstName || null,
+    verifiedRel: p.verified_at ? relTime(p.verified_at) : null,
+  });
+
+  const listSpec: MenuSpec = {
+    title,
+    footer: footer || undefined,
+    rows: [
+      {
+        kind: "row",
+        label: "Open page",
+        icon: "open",
+        hint: { text: "↵", mono: true },
+        onPick: () => {
+          onOpen();
+          mctx.close();
+        },
+      },
+      { kind: "sep" },
+      {
+        kind: "row",
+        label: isStale ? "Mark verified now" : "Re-verify",
+        icon: "shield",
+        hint: { text: p.verified_at ? relTime(p.verified_at) : "never" },
+        onPick: () => {
+          onVerify();
+          mctx.close();
+        },
+      },
+      {
+        kind: "row",
+        label: "Set status",
+        dot: currentStatusColor,
+        hint: { text: currentStatus || "empty" },
+        onPick: () =>
+          mctx.setSpec({
+            title: "Set status",
+            rows: statusOptions.map((o) => ({
+              kind: "row" as const,
+              label: o.value,
+              dot: o.color || "var(--color-muted)",
+              checked: o.value === currentStatus,
+              onPick: () => {
+                onSetStatus(o.value);
+                mctx.close();
+              },
+            })),
+          }),
+      },
+      {
+        kind: "row",
+        label: "Set owner",
+        icon: "person",
+        hint: { text: ownerFirst || "none" },
+        onPick: () =>
+          mctx.setSpec({
+            title: "Set owner",
+            rows: members.map((m) => ({
+              kind: "row" as const,
+              label:
+                m.profiles?.full_name || m.profiles?.email || "Unknown",
+              person: {
+                tint: m.profiles?.avatar_tint || "var(--color-sunken)",
+                ink: m.profiles?.avatar_ink || "var(--color-noir)",
+                initials: initialsOf(m),
+              },
+              checked: m.user_id === currentOwner,
+              onPick: () => {
+                onSetOwner(m.user_id);
+                mctx.close();
+              },
+            })),
+          }),
+      },
+      {
+        kind: "row",
+        label: "Move to area",
+        icon: "arrow",
+        hint: { text: currentArea || "none" },
+        onPick: () =>
+          mctx.setSpec({
+            title: "Move to area",
+            rows: [
+              {
+                kind: "row" as const,
+                label: "No area",
+                checked: !currentArea,
+                onPick: () => {
+                  onMoveArea(null);
+                  mctx.close();
+                },
+              },
+              { kind: "sep" as const },
+              ...areaOptions.map((a) => ({
+                kind: "row" as const,
+                label: a,
+                checked: a === currentArea,
+                onPick: () => {
+                  onMoveArea(a);
+                  mctx.close();
+                },
+              })),
+            ],
+          }),
+      },
+      { kind: "sep" },
+      {
+        kind: "row",
+        label: "Delete page",
+        icon: "trash",
+        danger: true,
+        onPick: () =>
+          mctx.setSpec({
+            title,
+            rows: [],
+            confirm: {
+              title: `Delete "${title}"?`,
+              body: "It disappears from every view at once — there is no folder it stays in.",
+              cta: "Delete page",
+              danger: true,
+              onConfirm: onDelete,
+            },
+          }),
+      },
+    ],
+  };
+  return listSpec;
 }
 
 /* ─────────────────── Footer + account dropdown ─────────────────── */
