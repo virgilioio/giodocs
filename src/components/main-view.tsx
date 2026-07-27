@@ -810,6 +810,7 @@ export function MainView({ selection }: { selection: Selection }) {
   const create = useCreatePage();
   const createAndOpen = useCreatePageAndOpen();
   const updateView = useUpdateView();
+  const createView = useCreateView();
   const forkView = useForkView();
   const publishView = usePublishView();
   const deleteView = useDeleteView();
@@ -825,12 +826,17 @@ export function MainView({ selection }: { selection: Selection }) {
   const view = selection.kind === "view" ? views.find((v) => v.id === selection.id) ?? null : null;
   const isOwnerOfView = !!view && view.owner_id === user?.id && view.scope === "personal";
   const isTeamView = !!view && view.scope === "team";
+  const isWorkspaceOwner = !!user?.id && members.some(
+    (m) => m.user_id === user.id && m.role === "owner",
+  );
 
   // Local session-only overrides layered on top of the view/area base.
   const [localFilters, setLocalFilters] = useState<Filter[] | null>(null);
   const [localSort, setLocalSort] = useState<SortSpec | null>(null);
   const [localLayout, setLocalLayout] = useState<Layout | null>(null);
   const [localGroupBy, setLocalGroupBy] = useState<string | null | undefined>(undefined);
+  const [renaming, setRenaming] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   // Header ⋯ menu is now handled by the unified RowMenu popover; no local anchor state.
 
   const baseFilters: Filter[] = useMemo(() => {
