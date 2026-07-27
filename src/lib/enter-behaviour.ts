@@ -44,13 +44,13 @@ export function enterAction(
 
   // Empty list-like block: consume the Enter by converting to text.
   // The user's next Enter, on the now-empty text block, is what actually
-  // escapes.
+  // escapes. This matches the top-level Enter handler byte-for-byte —
+  // only bullet / numbered / todo behave this way.
   if (LIST_TYPES.has(b.type)) return { kind: "convert-to-text" };
 
-  // Empty non-text, non-list block (e.g. heading, quote, callout): treat
-  // like the list case — convert to text so the next Enter escapes with
-  // the same three-press shape the user learns for lists.
-  if (b.type !== "text") return { kind: "convert-to-text" };
+  // Any other empty non-text block (h1, quote, callout, code, table, …)
+  // splits, exactly as at top level.
+  if (b.type !== "text") return { kind: "split" };
 
   // Empty text block. Escape only from the LAST position.
   const isLast = index === col.length - 1;
