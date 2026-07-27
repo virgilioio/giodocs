@@ -112,6 +112,64 @@ export type Database = {
           },
         ]
       }
+      page_versions: {
+        Row: {
+          blocks: Json
+          created_at: string
+          edited_by: string | null
+          icon: string | null
+          id: string
+          page_id: string
+          props: Json
+          title: string
+          workspace_id: string
+        }
+        Insert: {
+          blocks: Json
+          created_at?: string
+          edited_by?: string | null
+          icon?: string | null
+          id?: string
+          page_id: string
+          props: Json
+          title: string
+          workspace_id: string
+        }
+        Update: {
+          blocks?: Json
+          created_at?: string
+          edited_by?: string | null
+          icon?: string | null
+          id?: string
+          page_id?: string
+          props?: Json
+          title?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "page_versions_edited_by_fkey"
+            columns: ["edited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "page_versions_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "page_versions_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pages: {
         Row: {
           access_type: string
@@ -467,6 +525,7 @@ export type Database = {
         }
       }
       restore_page: { Args: { p_page: string }; Returns: undefined }
+      restore_page_version: { Args: { p_version: string }; Returns: undefined }
       search_pages: {
         Args: { p_limit?: number; p_q: string; p_workspace: string }
         Returns: {
