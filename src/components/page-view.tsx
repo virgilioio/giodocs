@@ -1170,14 +1170,33 @@ export function PageEditor({ pageId }: { pageId: string }) {
       data-locked={app.locked ? "1" : "0"}
       style={{ maxWidth: 780, padding: "42px 44px" }}
     >
-      {/* 1. Emoji icon on its own line. */}
-      <div
-        className="select-none"
-        aria-hidden
-        style={{ fontSize: 44, lineHeight: 1 }}
+      {/* 1. Emoji icon on its own line — opens the shared emoji picker. */}
+      <Popover
+        width={264}
+        trigger={({ open, onClick, ref }) => (
+          <button
+            ref={ref}
+            type="button"
+            onClick={onClick}
+            aria-label="Change page icon"
+            aria-expanded={open}
+            className="grid select-none place-items-center rounded-md hover:bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            style={{ width: 56, height: 56, fontSize: 44, lineHeight: 1 }}
+          >
+            {page.icon || "📄"}
+          </button>
+        )}
       >
-        {page.icon || "📄"}
-      </div>
+        {(close) => (
+          <EmojiPicker
+            onPick={(e) => {
+              if (e) setPageIcon.mutate({ pageId: page.id, icon: e });
+              close();
+            }}
+          />
+        )}
+      </Popover>
+
 
       {/* 2. Editable title. */}
       <EditableTitle
