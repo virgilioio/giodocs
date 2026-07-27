@@ -138,9 +138,18 @@ function warnUnknownBlock(t: string): void {
 export function blockToMarkdown(b: Block, ordinal = 1): string {
   const t = (b.type ?? "text") as string;
   const text = blockText(b);
+  // Leading whitespace to emit for a list-like block at its indent level.
+  // 2 spaces per level is what parseMarkdown reads back, so this round-trips.
+  const indent = typeof (b as { indent?: unknown }).indent === "number"
+    ? Math.max(0, Math.min(6, Math.floor((b as { indent?: number }).indent as number)))
+    : 0;
+  const pad = "  ".repeat(indent);
   switch (t) {
     case "text":
-      return text;
+      // Indent on `text` is only meaningful when a text block is embedded
+      // inside a list (e.g. wrapped-paragraph continuation). We prefix pad
+      // for consistency; a bare paragraph with no indent has pad === "".
+      return pad + text;
     case "h1":
       return `# ${text}`;
     case "h2":
@@ -155,11 +164,11 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
       // Same pragma as the `columns` case below — don't "fix" it later.
       return text;
     case "bullet":
-      return `- ${text}`;
+      return `${pad}- ${text}`;
     case "numbered":
-      return `${ordinal}. ${text}`;
+      return `${pad}${ordinal}. ${text}`;
     case "todo":
-      return `- [${b.checked ? "x" : " "}] ${text}`;
+      return `${pad}- [${b.checked ? "x" : " "}] ${text}`;
     case "toggle": {
       const body = typeof b.body === "string" ? b.body : "";
       // Levelled toggle: emit summary at heading depth then body. Plain
