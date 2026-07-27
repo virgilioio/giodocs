@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  blockToMarkdown,
   slugOf,
   toCsv,
   toHtml,
@@ -8,6 +9,7 @@ import {
   type ExportViewRow,
 } from "./export";
 import type { Block } from "./types";
+
 
 const B = (type: string, extra: Record<string, unknown> = {}): Block =>
   ({ type, ...extra } as Block);
@@ -87,6 +89,49 @@ describe("toMarkdown", () => {
     expect(() => toMarkdown({ ...base, blocks: [B("mystery")] })).toThrow();
   });
 });
+
+describe("blockToMarkdown", () => {
+  it("divider serialises to '---' with no trailing newline", () => {
+    expect(blockToMarkdown(B("divider"))).toBe("---");
+  });
+  it("todo checked serialises to '- [x] text'", () => {
+    expect(blockToMarkdown(B("todo", { text: "ship it", checked: true }))).toBe(
+      "- [x] ship it",
+    );
+    expect(blockToMarkdown(B("todo", { text: "later", checked: false }))).toBe(
+      "- [ ] later",
+    );
+  });
+  it("table serialises to a GFM pipe table with a --- separator row", () => {
+    const md = blockToMarkdown(
+      B("table", { rows: [["A", "B"], ["1", "2"], ["3", "4"]] }),
+    );
+    expect(md).toBe("| A | B |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |");
+  });
+  it("toMarkdown output for each block matches blockToMarkdown for that block", () => {
+    // Prove the extraction didn't change per-block output: for every kind,
+    // running the full pipeline should embed blockToMarkdown(b) verbatim.
+    const cases: Block[] = [
+      B("text", { text: "hi" }),
+      B("h1", { text: "H" }),
+      B("h2", { text: "H2" }),
+      B("bullet", { text: "b" }),
+      B("numbered", { text: "n" }),
+      B("todo", { text: "t", checked: true }),
+      B("toggle", { text: "top", body: "inner" }),
+      B("quote", { text: "q" }),
+      B("callout", { text: "note", icon: "⚠️" }),
+      B("divider"),
+      B("code", { text: "x = 1", lang: "py" }),
+      B("table", { rows: [["A"], ["1"]] }),
+    ];
+    for (const c of cases) {
+      const md = toMarkdown({ title: "Sample", blocks: [c] });
+      expect(md).toContain(blockToMarkdown(c));
+    }
+  });
+});
+
 
 describe("toHtml", () => {
   it("escapes <script> in page content", () => {

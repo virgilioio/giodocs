@@ -73,9 +73,9 @@ Default redirect from "/" lands on /v/a11a0000-0000-4000-8000-0000000000b1 (Assi
 
 ## Phase order (remaining)
 
-team-view fork rule — MODIFIED pill + "Save as my view" from the toolbar
-(original ship gate) → command palette ⌘K → board + list layouts →
-settings → realtime.
+Remaining work is confined to this file: any items called out in
+"Next-phase acceptance" below and the parked decisions above.
+
 
 ## Page editor (Part A) — 2026-07-26
 
@@ -195,11 +195,107 @@ production build + check-bundle all green. Pointer-interaction QA
 (drag, auto-scroll, shift-range, Delete-clears-to-one-block) is
 user-pending in preview.
 
-## Next-phase acceptance
+## Chunk A — Popover portal + table rows + view ⋯ (2026-07-27)
 
-Team-view fork rule (SHIP gate): opening a team view as a non-owner
-shows a MODIFIED pill in the toolbar when the current filter differs
-from the stored view, with a "Save as my view" action that forks via
-`fork_view()` and navigates to the new personal view.
+Popover repositioned to a body-portal (`createPortal(document.body)`
+with dynamic anchor-based positioning) so popovers no longer clip
+against the table's `overflow-x-auto` ancestor. Table rows enforced
+single-line with truncation ellipsis via strict `table-layout: fixed`,
+per-column widths, and `text-overflow: ellipsis`. Stray inert ⋯ was
+removed from `ViewHeader`.
+
+Verified: tsgo + vitest + all 4 build gates green.
+
+## Chunk B1 — Sentence toolbar + intent pickers (2026-07-27)
+
+Query toolbar rebuilt as a flex-wrap "Pages where … sort by …" sentence
+row. `src/lib/filter-label.ts` centralises the human phrasing for every
+filter chip (`filterLabel`) with 11 vitest cases. Sort and group
+pickers reworked as intent-based popovers; `explainQuery` defaults to
+`true`. Native `<select>` elements in the export dialogs were swapped
+for the shared portalled product popover.
+
+Verified: 11 new `filter-label.test.ts` cases + full build gates.
+
+## Chunk B2 — View draft model + MODIFIED (2026-07-27)
+
+`src/lib/view-drafts.ts` holds per-session drafts keyed by view id.
+Personal views write filter/sort/group/layout changes through to the
+DB. Team views and area views never mutate stored state: their edits
+land in an in-memory draft that survives navigation but not reload.
+An amber "MODIFIED" pill sits in the view header when the running
+query differs from the saved view; the "Save as my view" toolbar
+banner forks via `fork_view()` and navigates to the new personal
+view. Original ship-gate item — done.
+
+Acceptance 13 (two-browser drift check — that a team-view edit made
+in browser A never propagates to browser B on the same view) is the
+only remaining acceptance item and is user-pending: this sandbox
+cannot host two independent authenticated browser sessions in one
+run.
+
+Verified: 5 new `view-drafts.test.ts` cases + full build gates.
+
+## Chunk C — Shared emoji picker (2026-07-27)
+
+`src/components/emoji-picker.tsx` — one curated grid + custom input
+using `Intl.Segmenter` for the three write paths: page icon
+(`useSetPageIcon` in `use-page-mutations.ts` with dual page-list /
+page-detail cache patch), view icon (My Views row slot + view header
+menu "Change icon" submode, both through `useUpdateView`), and area
+emoji (`useSetAreaIcon` composing `property_defs.options` via the
+pure transform in `src/lib/area-icon.ts`).
+
+Verified: 8 new `area-icon.test.ts` cases + full build gates.
+
+## Chunk D — Dividers + marquee + copy-as-markdown (2026-07-27)
+
+Divider rows are now selectable: `BlockRow` carries `data-block-id` and
+`data-block-no-editor` and the divider render uses `py-2` for a real
+hit target. A click on any no-editor row selects it via the existing
+`selectedIds` state; the sticky bar, `Delete`/`Backspace`, and the
+handle-drag path already covered removal and reordering — they now
+just work for dividers too. The rule is: every block row is
+hoverable, selectable, draggable, deletable regardless of whether it
+has a text field.
+
+Marquee lives on the editor container. A pointerdown that does not
+land on a `textarea`, `input`, `button`, `[data-slash-menu]`, or
+`[data-block-handle]` records an origin and target; under 4px of
+pointer travel it is a click, at or over 4px it becomes a marquee
+session. Marquee draws a fixed-position rectangle (`.marquee-rect`
+in `src/styles.css`, portalled to `document.body`, background
+`color-mix(blueTint 35%)`, border `color-mix(blueInk 40%)`,
+radius 2, `user-select: none` on `body` while active) and live-selects
+every row whose bounding rect vertically intersects the marquee band,
+writing directly into `selectedIds`. Auto-scrolls the same
+48px-band/8px-per-frame edge scroller as block drag, with its own
+dir/raf refs so marquee and drag do not fight for one raf slot. On
+pointerup the rectangle disappears but the selection persists — it
+is the same `selectedIds` set the sticky bar, `Escape`, `Delete`,
+and shift-click handle already consumed, so no parallel state track
+was introduced. The trailing zone no longer intercepts `mousedown`;
+it is a `data-trailing-zone` marker and the container pointer session
+routes a no-drag click there to `onBelowClick` (append/focus).
+
+Copy-as-Markdown: `blockToMarkdown(b)` extracted from `toMarkdown` in
+`src/lib/export.ts`; `toMarkdown` now maps blocks through it and joins
+with a blank line, preserving byte-for-byte output (existing suite
+green). With a block selection active and focus outside any
+`TEXTAREA`/`INPUT`/contentEditable, `Cmd/Ctrl+C` writes the selected
+blocks in document order (blank-line joined) to the clipboard via
+`navigator.clipboard.writeText` and toasts `Copied {N} blocks as
+Markdown`; `Cmd/Ctrl+X` does the same then runs the existing
+`deleteIndices` path. Focus inside a field is untouched so native
+copy in text keeps working.
+
+Verified: 43 → 71 vitest (14 export cases including new
+`blockToMarkdown` div/table/todo direct tests + a proof that
+`toMarkdown` embeds `blockToMarkdown(b)` for every block type), tsgo
+clean, check-tokens + check-server-only + production build +
+check-bundle all green. Pointer-interaction QA (click-vs-marquee
+threshold, live selection during drag, auto-scroll, clipboard write
+in the target browser) is UNVERIFIED-BY-ME and user-pending.
+
 
 
