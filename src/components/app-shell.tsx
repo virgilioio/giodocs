@@ -57,10 +57,15 @@ import {
   MoreButton as RowMoreButton,
   RowMenuList,
   RowMenuConfirm,
+  SpecMenuTrigger,
   Sc,
   Val,
   type RowMenuItem,
+  type MenuSpec,
+  type MenuRow,
 } from "./row-menu";
+import { areaMenuFooter } from "@/lib/area-menu-footer";
+
 import { useAllowedDomains, useMembers, usePropDefs } from "@/hooks/use-workspace-data";
 import { usePrefs } from "@/lib/preferences";
 
@@ -1283,33 +1288,137 @@ function AreaLi({
   navigate: ReturnType<typeof useNavigate>;
 }) {
   const [hover, setHover] = useState(false);
-  
+  const toast = useToast();
   const createAndOpen = useCreatePageAndOpen();
   const createView = useCreateView();
   const renameArea = useRenameArea();
   const setAreaIcon = useSetAreaIcon();
+  const clearArea = useClearArea();
   const [emojiOpen, setEmojiOpen] = useState(false);
 
-  const buildAreaMenu = (): ReactNode => (
-    <AreaMenu
-      area={area}
-      count={count}
-      open={open}
-      onToggle={onToggle}
-      onOpen={() => navigate({ to: "/a/$area", params: { area } })}
-      onNewPage={() => void createAndOpen({ seedProps: { area } })}
-      onRename={(to) => renameArea.mutate({ from: area, to })}
-      onChangeEmoji={() => setEmojiOpen(true)}
-      onSaveAsView={() =>
-        createView.mutate({
-          name: area,
-          filter: [{ op: "eq", prop: "area", value: area }],
-          sort: { prop: "edited", dir: "desc" },
-          layout: "table",
-        })
-      }
-    />
-  );
+  const staleCount = items.reduce((n, p) => n + (isStale(p) ? 1 : 0), 0);
+  const footer = areaMenuFooter({
+    pages: items.map((p) => ({ edited_at: p.edited_at, edited_by: p.edited_by })),
+    members: members.map((m) => ({
+      user_id: m.user_id,
+      full_name: m.profiles?.full_name ?? null,
+      email: m.profiles?.email ?? null,
+    })),
+    needsReverify: staleCount,
+  });
+
+  const buildAreaSpec = (ctx: { setSpec: (s: MenuSpec) => void; close: () => void }): MenuSpec => {
+    const listSpec: MenuSpec = {
+      title: `${area} · ${count} ${count === 1 ? "page" : "pages"}`,
+      footer: footer || undefined,
+      rows: [
+        {
+          kind: "row",
+          label: "Open area",
+          icon: "open",
+          hint: { text: "↵", mono: true },
+          onPick: () => {
+            navigate({ to: "/a/$area", params: { area } });
+            ctx.close();
+          },
+        },
+        {
+          kind: "row",
+          label: open ? "Collapse pages" : "Show pages",
+          icon: open ? "chevUp" : "chevDown",
+          hint: { text: String(count) },
+          onPick: () => {
+            onToggle();
+            ctx.close();
+          },
+        },
+        { kind: "sep" },
+        {
+          kind: "row",
+          label: "New page here",
+          icon: "plus",
+          hint: { text: "area preset" },
+          onPick: () => {
+            void createAndOpen({ seedProps: { area } });
+            ctx.close();
+          },
+        },
+        {
+          kind: "row",
+          label: "Rename area",
+          icon: "pencil",
+          hint: { text: `${count} ${count === 1 ? "page" : "pages"} follow` },
+          onPick: () =>
+            ctx.setSpec({
+              title: `Rename "${area}"`,
+              rows: [],
+              input: {
+                placeholder: "Area name",
+                initial: area,
+                selectOnFocus: true,
+                onCommit: (v) => {
+                  if (v && v !== area) renameArea.mutate({ from: area, to: v });
+                },
+              },
+              footer: "Every page with this area follows.",
+            }),
+        },
+        {
+          kind: "row",
+          label: "Save as my view",
+          icon: "bookmark",
+          hint: { text: "personal" },
+          onPick: () => {
+            createView.mutate({
+              name: area,
+              filter: [{ op: "eq", prop: "area", value: area }],
+              sort: { prop: "edited", dir: "desc" },
+              layout: "table",
+            });
+            ctx.close();
+          },
+        },
+        {
+          kind: "row",
+          label: "Copy link",
+          icon: "link",
+          hint: { text: "⌘⌥L", mono: true },
+          onPick: () => {
+            const origin =
+              typeof window !== "undefined" && window.location ? window.location.origin : "";
+            const url = `${origin}/a/${encodeURIComponent(area)}`;
+            void navigator.clipboard?.writeText?.(url);
+            toast.push(`Copied link to "${area}"`);
+            ctx.close();
+          },
+        },
+        { kind: "sep" },
+        {
+          kind: "row",
+          label: `Clear area on ${count} ${count === 1 ? "page" : "pages"}`,
+          icon: "clear",
+          danger: true,
+          onPick: () =>
+            ctx.setSpec({
+              title: listSpec.title,
+              rows: [],
+              confirm: {
+                title: `Clear "${area}"?`,
+                body:
+                  count === 0
+                    ? "The area has no pages — it will just disappear from your sidebar."
+                    : `The area is removed from ${count} ${count === 1 ? "page" : "pages"}. The pages themselves are kept.`,
+                cta: "Clear area",
+                danger: true,
+                onConfirm: () => clearArea.mutate(area),
+              },
+            }),
+        },
+      ],
+    };
+    return listSpec;
+  };
+
 
 
   return (
@@ -1355,10 +1464,11 @@ function AreaLi({
             style={{ height: 17, minWidth: 17 }}
           >
             {hover ? (
-              <RowMoreButton size="sm" build={buildAreaMenu} />
+              <SpecMenuTrigger size="sm" build={buildAreaSpec} />
             ) : (
               <span className="tnum text-row text-whisper">{count}</span>
             )}
+
           </span>
         </Link>
       </div>
@@ -1397,110 +1507,8 @@ function AreaLi({
   );
 }
 
-/** Stateful content for the area menu — rename and clear swap in place. */
-function AreaMenu({
-  area,
-  count,
-  open,
-  onToggle,
-  onOpen,
-  onNewPage,
-  onRename,
-  onChangeEmoji,
-  onSaveAsView,
-}: {
-  area: string;
-  count: number;
-  open: boolean;
-  onToggle: () => void;
-  onOpen: () => void;
-  onNewPage: () => void;
-  onRename: (to: string) => void;
-  onChangeEmoji: () => void;
-  onSaveAsView: () => void;
-}) {
-  const [mode, setMode] = useState<"list" | "rename" | "clear">("list");
-  const clearArea = useClearArea();
-  if (mode === "rename") {
-    return (
-      <RowMenuList
-        title={`Rename "${area}"`}
-        items={[]}
-        onBack={() => setMode("list")}
-        input={{
-          initialValue: area,
-          placeholder: "Area name",
-          autoSelect: true,
-          onSubmit: (v) => {
-            if (v && v !== area) onRename(v);
-          },
-        }}
-        footer="Every page with this area follows."
-      />
-    );
-  }
-  if (mode === "clear") {
-    return (
-      <RowMenuConfirm
-        title={`Clear "${area}"?`}
-        body={
-          count === 0 ? (
-            <>The area has no pages — it will just disappear from your sidebar.</>
-          ) : (
-            <>
-              The area is removed from <b>{count}</b>{" "}
-              {count === 1 ? "page" : "pages"}. The pages themselves are kept.
-            </>
-          )
-        }
-        confirmLabel="Clear area"
-        variant="danger"
-        onConfirm={() => clearArea.mutate(area)}
-      />
-    );
-  }
-  const title = `${area} · ${count} ${count === 1 ? "page" : "pages"}`;
-  const items: RowMenuItem[] = [
-    { id: "open", label: "Open area", hint: <Sc>↵</Sc>, onSelect: onOpen },
-    {
-      id: "toggle",
-      label: open ? "Collapse pages" : "Show pages",
-      onSelect: onToggle,
-    },
-    { id: "new", label: "New page here", onSelect: onNewPage },
-    {
-      id: "rename",
-      label: "Rename area",
-      hint: <Val>{count} {count === 1 ? "page" : "pages"}</Val>,
-      submenu: true,
-      keepOpen: true,
-      onSelect: () => setMode("rename"),
-    },
-    {
-      id: "emoji",
-      label: "Change emoji",
-      onSelect: onChangeEmoji,
-    },
-    { kind: "divider" },
-    {
-      id: "save",
-      label: "Save as my view",
-      hint: <Val>personal</Val>,
-      onSelect: onSaveAsView,
-    },
-    { kind: "divider" },
-    {
-      id: "clear",
-      label: "Clear area",
-      hint: <Val>{count === 0 ? "unused" : `${count} ${count === 1 ? "page" : "pages"}`}</Val>,
-      submenu: true,
-      keepOpen: true,
-      danger: true,
-      onSelect: () => setMode("clear"),
-    },
-  ];
-  return <RowMenuList title={title} items={items} />;
-}
+// AreaMenu now lives inline as `buildAreaSpec` inside AreaLi (chunk 2a).
+
 
 
 /**
