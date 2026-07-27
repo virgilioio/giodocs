@@ -1535,6 +1535,7 @@ function BlockRow({
 
 function BlockContent({
   block,
+  ordinal,
   locked,
   onBlur,
   registerRef,
@@ -1544,6 +1545,7 @@ function BlockContent({
   onSetIcon,
 }: {
   block: Blk;
+  ordinal?: number;
   locked: boolean;
   onBlur?: () => void;
   registerRef: (el: HTMLTextAreaElement | HTMLInputElement | null) => void;
@@ -1561,7 +1563,9 @@ function BlockContent({
     },
     onBlur: onBlur,
     onKeyDown,
-    disabled: locked,
+    // BUG 3: readOnly (not disabled) keeps focus/selection intact but blocks
+    // typing when the page is locked. Also prevents native re-focus loss.
+    readOnly: locked,
     rows: 1,
     className:
       "w-full resize-none border-0 bg-transparent p-0 outline-none placeholder:text-faint",
