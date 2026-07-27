@@ -2812,11 +2812,19 @@ function ListBody({
   members,
   propDefs,
   staleThreshold,
+  selectedSet,
+  anySelection,
+  onCheckboxClick,
+  getPageMenuBuild,
 }: {
   rows: PageListItem[];
   members: MemberRow[];
   propDefs: PropDef[];
   staleThreshold: number;
+  selectedSet: Set<string>;
+  anySelection: boolean;
+  onCheckboxClick: (id: string, shift: boolean) => void;
+  getPageMenuBuild: (p: PageListItem) => (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
 }) {
   const navigate = useNavigate();
   const setOrigin = useSetPageOrigin();
@@ -2840,22 +2848,48 @@ function ListBody({
         const ownerName = owner?.full_name ?? owner?.email ?? null;
         const parts = [area, ownerName, status].filter(Boolean) as string[];
         const isLast = idx === rows.length - 1;
+        const isSelected = selectedSet.has(p.id);
         return (
-          <button
+          <div
             key={p.id}
-            type="button"
-            onClick={() => { setOrigin(p.id); navigate({ to: "/p/$pageId", params: { pageId: p.id } }); }}
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              const t = e.target as HTMLElement;
+              if (
+                t.closest("[data-row-checkbox]") ||
+                t.closest("[data-row-more]") ||
+                t.closest('[aria-label="Page actions"]')
+              ) return;
+              if (anySelection) {
+                onCheckboxClick(p.id, e.shiftKey);
+                return;
+              }
+              setOrigin(p.id);
+              navigate({ to: "/p/$pageId", params: { pageId: p.id } });
+            }}
             className={
-              "grid w-full items-center gap-[11px] rounded-lg text-left hover:bg-sunken " +
+              "group grid w-full items-center gap-[11px] rounded-lg text-left cursor-pointer " +
+              (isSelected ? "bg-blueTint hover:bg-blueWash " : "hover:bg-sunken ") +
               (isLast ? "" : "border-b border-lineSoft ")
             }
             style={{
-              gridTemplateColumns: "20px minmax(0,1fr) auto",
+              gridTemplateColumns: "20px minmax(0,1fr) auto 24px",
               minHeight: "var(--gio-list-row, 44px)",
               padding: "7px 10px",
             }}
           >
-            <span className="text-row leading-none">{p.icon ?? "📄"}</span>
+            {(anySelection || isSelected) ? (
+              <span data-row-checkbox>
+                <RowCheckbox
+                  checked={isSelected}
+                  alwaysVisible
+                  onClick={(shift) => onCheckboxClick(p.id, shift)}
+                />
+              </span>
+            ) : (
+              <span className="text-row leading-none">{p.icon ?? "📄"}</span>
+            )}
             <div className="min-w-0">
               <div className="truncate text-row font-bold text-noir">
                 {p.title || "Untitled"}
@@ -2880,14 +2914,126 @@ function ListBody({
                 {relTime(p.edited_at)}
               </span>
             )}
-          </button>
+            <span
+              data-row-more
+              className="justify-self-end opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+            >
+              <SpecMenuTrigger
+                build={getPageMenuBuild(p)}
+                size="sm"
+                ariaLabel="Page actions"
+              />
+            </span>
+          </div>
         );
       })}
     </div>
   );
 }
 
+/* ─────────────────────────── Selection primitives ─────────────────────────── */
 
+function RowCheckbox({
+  checked,
+  alwaysVisible,
+  onClick,
+}: {
+  checked: boolean;
+  alwaysVisible: boolean;
+  onClick: (shift: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-row-checkbox
+      aria-checked={checked}
+      role="checkbox"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick(e.shiftKey);
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      className={
+        "grid place-items-center rounded-[4px] " +
+        (alwaysVisible || checked ? "visible " : "invisible group-hover:visible ")
+      }
+      style={{
+        width: 16,
+        height: 16,
+        border: "1.6px solid var(--color-rule)",
+        background: checked ? "var(--color-accent)" : "var(--color-surface)",
+        borderColor: checked ? "var(--color-accent)" : "var(--color-rule)",
+      }}
+    >
+      {checked && (
+        <svg viewBox="0 0 24 24" width={10} height={10} aria-hidden fill="none">
+          <path
+            d="M20 6 9 17l-5-5"
+            stroke="white"
+            strokeWidth={3.4}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+function HeaderSelectAll({
+  state,
+  count,
+  onClick,
+}: {
+  state: "none" | "some" | "all";
+  count: number;
+  onClick: () => void;
+}) {
+  const filled = state !== "none";
+  return (
+    <button
+      type="button"
+      title={
+        state === "none"
+          ? `Select all ${count}`
+          : state === "all"
+            ? "Clear selection"
+            : "Clear selection"
+      }
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick();
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      className="grid place-items-center rounded-[4px]"
+      style={{
+        width: 16,
+        height: 16,
+        border: "1.6px solid " + (filled ? "var(--color-accent)" : "var(--color-rule)"),
+        background: filled ? "var(--color-accent)" : "var(--color-surface)",
+      }}
+    >
+      {state === "some" && (
+        <svg viewBox="0 0 24 24" width={10} height={10} aria-hidden fill="none">
+          <path d="M6 12h12" stroke="white" strokeWidth={3.4} strokeLinecap="round" />
+        </svg>
+      )}
+      {state === "all" && (
+        <svg viewBox="0 0 24 24" width={10} height={10} aria-hidden fill="none">
+          <path
+            d="M20 6 9 17l-5-5"
+            stroke="white"
+            strokeWidth={3.4}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+    </button>
+  );
+}
 
 
 function HeaderCell({ children, className }: { children: ReactNode; className?: string }) {
@@ -2905,11 +3051,26 @@ function HeaderCell({ children, className }: { children: ReactNode; className?: 
 }
 
 
-function Cell({ children, className }: { children: ReactNode; className?: string }) {
+function Cell({
+  children,
+  className,
+  pageId,
+  selected,
+  ...rest
+}: {
+  children: ReactNode;
+  className?: string;
+  pageId?: string;
+  selected?: boolean;
+  [key: string]: unknown;
+}) {
   return (
     <div
+      data-page-id={pageId}
+      data-row-more={rest["data-row-more"] as string | undefined}
       className={
         "min-w-0 border-b border-lineSoft px-[11px] gio-cell-pad flex items-center whitespace-nowrap overflow-hidden " +
+        (selected ? "bg-blueTint group-hover:bg-blueWash " : "group-hover:bg-sunken ") +
         (className ?? "")
       }
     >
@@ -2918,7 +3079,35 @@ function Cell({ children, className }: { children: ReactNode; className?: string
   );
 }
 
-function RowGroup({ children }: { children: ReactNode }) {
-  // grid subrow container that highlights on hover across its 7 cells.
-  return <div className="contents group hover:[&>div]:bg-sunken">{children}</div>;
+function RowGroup({
+  children,
+  pageId,
+  selected,
+}: {
+  children: ReactNode;
+  pageId: string;
+  selected: boolean;
+}) {
+  // grid subrow — contents so cells become direct grid children. Pass
+  // pageId+selected down to each Cell so the row can carry click delegation
+  // and the selected background without a wrapper element (a wrapper would
+  // break the grid).
+  const injected = (
+    (Array.isArray(children) ? children : [children]) as Array<React.ReactNode>
+  ).map((child, i) => {
+    if (
+      typeof child === "object" &&
+      child !== null &&
+      "type" in (child as object) &&
+      (child as React.ReactElement).type === Cell
+    ) {
+      return React.cloneElement(child as React.ReactElement, {
+        pageId,
+        selected,
+        key: (child as React.ReactElement).key ?? i,
+      });
+    }
+    return child;
+  });
+  return <div className="contents group">{injected}</div>;
 }
