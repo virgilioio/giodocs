@@ -1276,11 +1276,12 @@ function BlockContent({
 
   if (t === "divider") {
     return (
-      <div className="my-2">
+      <div className="py-2" aria-label="Divider block">
         <hr className="border-line" />
       </div>
     );
   }
+
 
   if (t === "table") {
     return (
