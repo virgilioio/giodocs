@@ -3012,13 +3012,15 @@ function ColumnStack({
 
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              const isEmptyListLike =
-                (b.type === "bullet" ||
-                  b.type === "numbered" ||
-                  b.type === "todo") &&
-                (b.text ?? "") === "";
-              if (isEmptyListLike) {
+              const idx = blocks.findIndex((x) => x.id === b.id);
+              const action = enterAction(blocks, idx, ss, v);
+              if (action.kind === "convert-to-text") {
                 convertToText(b.id);
+                return;
+              }
+              if (action.kind === "escape-column") {
+                if (bridge)
+                  bridge.escapeColumn(parentBlockId, action.removeEmpty ? b.id : null);
                 return;
               }
               splitBlock(b.id, ss);
