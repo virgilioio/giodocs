@@ -132,6 +132,25 @@ export function AppShell() {
     }
   }, [collapsed]);
 
+  // Resizable sidebar. Width lives in ONE CSS variable (--gio-sidebar-w) that
+  // both the pane and the main column read; clamp to [MIN,MAX] during the
+  // drag so the user feels the limit; persist under gio.sidebarWidth; an
+  // out-of-range stored value is clamped rather than trusted. Collapse-to-0
+  // preserves the chosen width — expanding restores it, not the default.
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    if (typeof window === "undefined") return 240;
+    const raw = window.localStorage.getItem(SIDEBAR_W_KEY);
+    const n = raw ? Number.parseInt(raw, 10) : NaN;
+    if (!Number.isFinite(n)) return 240;
+    return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, n));
+  });
+  const [resizing, setResizing] = useState(false);
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(SIDEBAR_W_KEY, String(sidebarWidth));
+    }
+  }, [sidebarWidth]);
+
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsPane, setSettingsPane] = useState<SettingsPane>("preferences");
