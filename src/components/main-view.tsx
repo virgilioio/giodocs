@@ -310,7 +310,7 @@ function QueryToolbar({
   return (
     <div
       className="flex flex-wrap items-center"
-      style={{ marginTop: 14, gap: 7 }}
+      style={{ marginTop: 14, gap: 7, height: 22 }}
     >
       {verbose && (
         <>
@@ -2644,9 +2644,10 @@ function HeaderCell({ children, className }: { children: ReactNode; className?: 
   return (
     <div
       className={
-        "border-b border-line bg-canvas px-[11px] py-1 text-label uppercase text-faint " +
+        "flex items-center border-b border-line bg-canvas px-[11px] text-label uppercase text-faint " +
         (className ?? "")
       }
+      style={{ padding: "12px 11px 6px", lineHeight: "11px" }}
     >
       {children}
     </div>

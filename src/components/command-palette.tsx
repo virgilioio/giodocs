@@ -325,7 +325,13 @@ export function CommandPalette({
           />
         </div>
 
-        <div className="max-h-[60vh] overflow-y-auto py-1.5">
+        <div
+          className="max-h-[60vh] overflow-y-auto py-1.5"
+          style={{
+            opacity: searchQ.isFetching && flatCount > 0 ? 0.6 : 1,
+            transition: "opacity 120ms linear",
+          }}
+        >
           {flatCount === 0 && (
             <div className="px-4 py-6 text-meta text-muted">
               {searchQ.isFetching ? "Searching…" : "No matches."}
