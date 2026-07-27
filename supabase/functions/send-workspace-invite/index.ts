@@ -150,7 +150,9 @@ serve(async (req) => {
       }
 
       // 1) Create or refresh the invite row via SECURITY DEFINER RPC.
-      const { data: inv, error: rpcErr } = await asService.rpc("create_workspace_invite", {
+      //    Must run as the caller — the RPC reads auth.uid() to record the inviter
+      //    and to enforce the owner check. Service-role has no auth.uid().
+      const { data: inv, error: rpcErr } = await asUser.rpc("create_workspace_invite", {
         p_workspace: workspaceId,
         p_email: email,
         p_role: role,
