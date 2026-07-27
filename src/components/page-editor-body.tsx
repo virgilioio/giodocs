@@ -1464,9 +1464,9 @@ function BlockRow({
       }}
     >
 
-      {!locked ? (
+      {(
         <div
-          className="pointer-events-none absolute top-0 flex select-none items-center gap-0.5 opacity-0 transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100"
+          className="gio-block-gutter pointer-events-none absolute top-0 flex select-none items-center gap-0.5 opacity-0 transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100"
           style={{
             left: 0,
             height: 32,
