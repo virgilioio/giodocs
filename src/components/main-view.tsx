@@ -2562,7 +2562,7 @@ const TableRow = memo(function TableRow({
       <Cell>
         <span className="text-meta text-muted">{relTime(p.edited_at)}</span>
       </Cell>
-      <Cell className="justify-self-end" data-row-more>
+      <Cell edge data-row-more>
         <SpecMenuTrigger
           build={buildMenu}
           size="sm"
