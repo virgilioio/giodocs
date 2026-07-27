@@ -2477,7 +2477,7 @@ function BoardBody({
   }, [rows, opts, groupBy]);
 
   return (
-    <div className="flex gap-3 overflow-x-auto pb-2">
+    <div className="flex gap-[14px] overflow-x-auto pb-2">
       {columns.map((col) => (
         <div
           key={col.value}
