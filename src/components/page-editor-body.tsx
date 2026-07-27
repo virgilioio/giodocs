@@ -16,6 +16,7 @@ import { parseMarkdown } from "@/lib/markdown-import";
 import { htmlToMarkdown } from "@/lib/html-to-markdown";
 import { renderInlineWithOffsets } from "@/lib/inline-markdown";
 import { numberedOrdinals } from "@/lib/blocks";
+import { rowsInBand } from "@/lib/marquee";
 import { blockHandleFooter } from "@/lib/block-handle-footer";
 import { useToast } from "@/lib/toast";
 import { RowMenu, type MenuSpec, type MenuRow } from "./row-menu";
