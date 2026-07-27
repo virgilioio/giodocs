@@ -544,10 +544,37 @@ export function PageTopbarActions({
     : false;
   const access = accessQ.data ?? [];
 
+  const [exportOpen, setExportOpen] = useState(false);
+
+  const exportCtx: ExportContext | null = useMemo(() => {
+    if (!page) return null;
+    const props = propsOf(page);
+    const areaV = typeof props.area === "string" ? (props.area as string) : null;
+    const statusV = typeof props.status === "string" ? (props.status as string) : null;
+    const tagsV = Array.isArray(props.tags)
+      ? (props.tags as unknown[]).filter((v): v is string => typeof v === "string")
+      : [];
+    const ownerMember = members.find((m) => m.user_id === page.edited_by);
+    const ownerName =
+      ownerMember?.profiles?.full_name || ownerMember?.profiles?.email || null;
+    const blocks: Block[] = Array.isArray(page.blocks)
+      ? (page.blocks as unknown[]).filter(
+          (b): b is Block => !!b && typeof b === "object",
+        )
+      : [];
+    return {
+      title: page.title || "Untitled",
+      area: areaV,
+      status: statusV,
+      ownerName,
+      tags: tagsV,
+      verifiedAt: page.verified_at,
+      blocks,
+    };
+  }, [page, members]);
+
   const buildMenu = (): ReactNode => {
     if (!page) {
-      // Page detail hasn't hydrated yet — a tiny placeholder is friendlier
-      // than nothing, and this window is only a few frames.
       return (
         <RowMenuList
           title={listRow.title || "Untitled"}
@@ -563,6 +590,7 @@ export function PageTopbarActions({
         access={access}
         areas={areas}
         onCopyLink={doCopyLink}
+        onExport={() => setExportOpen(true)}
         onDuplicate={doDuplicate}
         onMoveArea={(area) =>
           setProp.mutate({ pageId: page.id, key: "area", value: area })
@@ -604,6 +632,9 @@ export function PageTopbarActions({
         width={264}
       />
 
+      {exportOpen && exportCtx && (
+        <ExportDialog ctx={exportCtx} onClose={() => setExportOpen(false)} />
+      )}
     </>
   );
 }
