@@ -893,7 +893,7 @@ export function EditableBody({
                 type="button"
                 aria-label="Dismiss selection"
                 onClick={clearSelection}
-                className="grid h-6 w-6 place-items-center rounded-md hover:bg-noirHover"
+                className="bar-btn grid h-6 w-6 place-items-center rounded-md"
                 style={{ color: "var(--color-track)" }}
               >
                 ×
