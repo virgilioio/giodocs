@@ -1693,7 +1693,7 @@ function BlockContent({
     return (
       <div className="flex items-start gap-2 text-prose text-body">
         <span aria-hidden className="mt-1 min-w-4 text-meta text-muted tnum">
-          1.
+          {ordinal ?? 1}.
         </span>
         <GrowText {...textareaProps} />
       </div>
