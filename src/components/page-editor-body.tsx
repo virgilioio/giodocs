@@ -1524,6 +1524,10 @@ function BlockRow({
   locked,
   selected,
   dimmed,
+  focused,
+  onRequestFocus,
+  onEditorFocus,
+  onEditorBlur,
   registerRowEl,
   onHandlePointerDown,
   onHandleClick,
@@ -1542,6 +1546,10 @@ function BlockRow({
   locked: boolean;
   selected: boolean;
   dimmed: boolean;
+  focused: boolean;
+  onRequestFocus: (caret: number | "end") => void;
+  onEditorFocus: () => void;
+  onEditorBlur: () => void;
   registerRowEl: (id: string, el: HTMLElement | null) => void;
   onHandlePointerDown: (ev: React.PointerEvent<HTMLElement>) => void;
   onHandleClick: (anchor: HTMLElement) => void;
