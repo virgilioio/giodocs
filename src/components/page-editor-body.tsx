@@ -861,7 +861,7 @@ export function EditableBody({
                 color: "var(--color-track)",
                 borderRadius: 14,
                 padding: "10px 12px 10px 16px",
-                boxShadow: "0 12px 40px rgba(13,13,9,.35)",
+                boxShadow: "var(--shadow-toast)",
                 display: "flex",
                 alignItems: "center",
                 gap: 12,
