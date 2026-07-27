@@ -9,7 +9,7 @@ import { corsHeaders, handleCorsPreflight } from "../_shared/cors.ts";
 import { renderMemberInviteEmail } from "../_shared/memberInviteEmail.ts";
 
 const RESEND_KEY = Deno.env.get("RESEND_API_KEY");
-const EMAIL_FROM = Deno.env.get("EMAIL_FROM") || "Gio Docs <noreply@app.gogio.io>";
+const EMAIL_FROM = Deno.env.get("EMAIL_FROM") || "Gio Docs <noreply@docs.gogio.io>";
 const APP_URL = (Deno.env.get("APP_URL") || "https://docs.gogio.io").replace(/\/+$/, "");
 
 const AVATAR_PALETTE = ["#6F3FF5", "#12B886", "#E8590C", "#1C7ED6", "#D6336C", "#4C6EF5", "#F59F00", "#0CA678"];
