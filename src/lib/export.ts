@@ -13,6 +13,7 @@
 
 import type { Block } from "./types";
 import { numberedOrdinals } from "./blocks";
+import { inlineToHtml } from "./inline-markdown";
 
 /* ─────────────────────────── Context ─────────────────────────── */
 
