@@ -161,7 +161,7 @@ serve(async (req) => {
         continue;
       }
       const invite = inv as { id: string; token: string; expires_at: string };
-      const inviteUrl = `${APP_URL}/accept-invite/${invite.token}`;
+      const inviteUrl = `${APP_URL}/invite/${invite.token}`;
       const expiryDate = new Date(invite.expires_at).toLocaleDateString("en-US", {
         weekday: "long",
         year: "numeric",
