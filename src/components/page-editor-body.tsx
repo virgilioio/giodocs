@@ -1451,7 +1451,7 @@ export function EditableBody({
               if (e.key === "Enter") {
                 e.preventDefault();
                 const picked = filteredMenu[menuIdx];
-                if (picked) applyType(b.id, picked.type);
+                if (picked) applyType(b.id, picked.type, picked.count);
                 return;
               }
               if (e.key === "Escape") {
@@ -1653,7 +1653,7 @@ export function EditableBody({
           items={filteredMenu}
           activeIdx={menuIdx}
           onHover={setMenuIdx}
-          onPick={(t) => applyType(slash.blockId, t)}
+          onPick={(t, count) => applyType(slash.blockId, t, count)}
           onClose={closeSlash}
         />
       ) : null}
