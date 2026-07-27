@@ -75,6 +75,8 @@ import {
 import { resolveKey, type Op as KeyOp } from "@/lib/block-key-handler";
 import { toggleWrap } from "@/lib/toggle-wrap";
 import { FloatingToolbar } from "./floating-toolbar";
+import { Editable } from "./editable";
+import { readCaret, writeCaret } from "@/lib/caret-shim";
 import { ordinalLabel } from "@/lib/blocks";
 
 /** Module-local bridge: nested ColumnStack keystrokes set this before
