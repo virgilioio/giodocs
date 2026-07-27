@@ -579,12 +579,6 @@ export function EditableBody({
    * started from inside a column carries its colRef so the source list
    * is unambiguous at endDrag time, even when the pointer wanders across
    * multiple columns during the drag. */
-   *
-   * `sourceCol` identifies where the dragged run lives — null for the
-   * top-level block list, or a `{blockId, colIndex}` for a column. A drag
-   * started from inside a column carries its colRef so the source list
-   * is unambiguous at endDrag time, even when the pointer wanders across
-   * multiple columns during the drag. */
 
   const beginDrag = useCallback(
     (
