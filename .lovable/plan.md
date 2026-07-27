@@ -1,92 +1,118 @@
 
-# Unify the two block-editor implementations
+## Answer to the direct question
 
-## Deliverable
+The current invite flow **does not work**. `AddMembersModal.onSend` only appends the emails to a local `pendingInvites` array in `app-shell.tsx` and shows a "Invite sent" toast — no DB row is written, no auth invite is issued, no email is sent. The Owner role toggle is also cosmetic today.
 
-One shared hook `src/lib/use-block-editor.tsx` that owns every interaction on a linear list of blocks. Both `EditableBody` (page scope) and `ColumnStack` (column scope) become thin renderers over it. The three second copies of `splitBlock`, `mergeIntoPrev`, `convertToText`, `removeBlock`, `insertAfter`, `tryMarkdown`, `applyType`, the slash-menu state, the focus-request effect, and the ordinal map are deleted from `ColumnStack`. No new features — only closing your audit's divergences.
+## What we'll build
+
+A real invite system modelled on Gio ATS's `send-invitation` function, adapted to Gio Docs' one-workspace, `allowed_domains`-based model.
+
+### 1. Migration — `workspace_invites` + accept RPC
+
+New table `public.workspace_invites`:
+
+- `id uuid pk`
+- `workspace_id uuid not null` (fk → workspaces)
+- `email text not null` (lowercased)
+- `role member_role not null` (`owner` | `member`)
+- `token uuid not null unique` (server-generated; never surfaced to non-owners)
+- `invited_by uuid` (auth.users)
+- `invited_at timestamptz default now()`
+- `expires_at timestamptz not null` (invited_at + 7 days)
+- `accepted_at timestamptz`
+- `accepted_by uuid`
+- `email_status text` (`pending` | `sent` | `failed`)
+- `email_error text`
+- `unique (workspace_id, email) where accepted_at is null`
+
+Grants + RLS:
+
+- `grant select, insert, update on ... to authenticated; grant all to service_role`
+- SELECT policy: `is_member(workspace_id)` — members can see pending invites, but the `token` column is stripped by the API in a view (see next point).
+- INSERT policy: `is_owner(workspace_id) and invited_by = auth.uid()` — only owners can invite (matches existing `views_update`/`members_write` pattern).
+- UPDATE/DELETE: owners only.
+
+Because tokens must not leak to non-owners, add a `workspace_invites_public` view exposing every column except `token`, and switch the sidebar's "pending" list to read from that view. The base table is used only by the edge function (service role) and by owners' management UI (if any).
+
+Two SECURITY DEFINER RPCs:
+
+- `create_workspace_invite(p_workspace uuid, p_email text, p_role member_role) returns workspace_invites` — verifies `is_owner`, upserts an invite, generates a new `token` and `expires_at`. Called by the edge function after it checks the caller.
+- `accept_workspace_invite(p_token uuid) returns uuid` — validates token, not expired, not accepted, and `auth.uid()`'s email matches `email` (case-insensitive). Inserts into `workspace_members (workspace_id, user_id, role)` on conflict do nothing, marks the invite accepted. Returns `workspace_id`.
+
+We deliberately do **not** modify `handle_new_user`'s existing domain auto-join behavior. Domain-matched invitees already get `workspace_members` on signup via that trigger, so for them the invite email is a "come sign up" nudge; when they click the link and are signed in with the matching email, `accept_workspace_invite` is a no-op (they're already a member) and simply marks the invite accepted. Out-of-domain invitees rely entirely on the token flow — they land in `workspace_members` only via `accept_workspace_invite`.
+
+### 2. Edge function — `supabase/functions/send-workspace-invite`
+
+Ported from Gio ATS `send-invitation`, simplified to Gio Docs' model. Uses:
+
+- `RESEND_API_KEY`, `EMAIL_FROM` (secrets)
+- `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (already present)
+- Standing rule 3 (only `client.ts` imports `@supabase/supabase-js`) applies to `src/` — edge functions run in Deno and are exempt; Gio ATS follows the same pattern.
+
+Request body: `{ workspaceId, invites: [{ email, role }], message? }`.
+
+Flow, per invite:
+
+1. Auth the caller with the bearer token → `auth.getUser()`. Reject if not signed in.
+2. Verify caller `is_owner(workspaceId)` via the anon-key client (RLS enforces).
+3. Use the service-role client to call `create_workspace_invite` RPC → returns row with fresh `token` + `expires_at`.
+4. Render email with a small helper `memberInviteEmail.ts` in `supabase/functions/_shared/` (a stripped-down port of Gio ATS's template — cream card, workspace name, inviter name, role, CTA, expiry). Absolute-URL only, HTML-escaped merge vars.
+5. `resend.emails.send(...)` with 3 retries and exponential backoff, same as Gio ATS.
+6. Update `email_status` = `sent` / `failed` on the invite row.
+
+Accept URL: `https://<published-domain>/accept-invite/{token}`. Domain is derived from an `APP_URL` env var (falls back to `https://docs.gogio.io`).
+
+CORS: reuse the `_shared/cors.ts` pattern (needs to be created; small file).
+
+### 3. Client wiring
+
+- `src/hooks/use-workspace-mutations.ts`: add `useSendInvites(workspaceId)` that calls the edge function via `supabase.functions.invoke("send-workspace-invite", { body })` (uses `client.ts` — rule 3 respected) and returns per-email success/failure. On success, invalidates a new `["workspace_invites", ws]` query.
+- `src/components/add-members-modal.tsx`: replace the local-toast `onSend` with the mutation. Show a spinner while sending; report per-email failures inline instead of the current unconditional success toast. Respect the Owner/Member toggle by passing `role` per invite.
+- `src/components/app-shell.tsx`: drop the local `pendingInvites` array; the sidebar's pending list (if any) reads from the `workspace_invites_public` view via a new hook.
+
+### 4. Accept route
+
+New public route `src/routes/accept-invite.$token.tsx` (top-level, not under `_authenticated/`):
+
+- If signed out: redirect to `/login` with `?next=/accept-invite/{token}`, preserving the token.
+- If signed in: call `accept_workspace_invite` RPC. On success, toast "Joined {workspace.name}" and navigate to `/`. On failure, show a plain error card (expired / already accepted / wrong email).
+
+`login.tsx` already respects a post-login redirect target only implicitly — we'll extend the existing `navigate({ to: "/", replace: true })` to honor a `next` query param when present.
+
+### 5. Secrets
+
+Two new Supabase secrets to set (via `add_secret`):
+
+- `RESEND_API_KEY` — user pastes their Resend API key.
+- `EMAIL_FROM` — e.g. `Gio Docs <noreply@app.gogio.io>` (must be on a verified Resend domain).
+
+`APP_URL` will be added as a plain env var on the edge function (not a secret) with a default fallback in code.
+
+## Technical notes
+
+- Edge function file layout matches Gio ATS (`_shared/cors.ts`, `_shared/memberInviteEmail.ts`, per-function `index.ts` + implicit Deno). No `deno.json` per-function beyond what's already there.
+- All schema changes go through the migration tool per standing rules.
+- The `workspace_invites_public` view avoids leaking tokens without needing column-level security.
+- `handle_new_user` is left alone — the existing domain auto-join is a feature and the accept RPC is idempotent when the user is already a member.
+- Role granting via invite is allowed (per the user's answer), but `role='owner'` requires the caller to already be an owner, so no privilege escalation surface is added beyond what RLS already permits.
+- No changes to standing rules: only `client.ts` uses `@supabase/supabase-js` in `src/`; the edge function's Deno import is out of scope for the guard scripts.
 
 ## Files touched
 
-- `src/lib/use-block-editor.tsx` — NEW. The hook.
-- `src/lib/block-editor-decisions.ts` — NEW. Pure decision helpers (`resolveArrowNav`, `resolveBackspace`, `resolvePasteAt`, `applyMarkdownShortcut`) so the parity test can run one input through both scopes.
-- `src/lib/block-editor-decisions.test.ts` — NEW. Table-driven parity test: same input, page and column scope, identical output except the four intended differences.
-- `src/components/page-editor-body.tsx` — MAJOR. `EditableBody` and `ColumnStack` both call `useBlockEditor`. Everything drag/marquee/selection/undo-orchestration/keyboard-global stays where it is (top level only, unchanged). Second implementations deleted, not commented out.
-- `src/lib/enter-behaviour.ts` — untouched (already pure; consumed by the hook at both scopes).
-- `src/lib/block-nav.ts` — untouched (consumed by the hook at both scopes).
-- Existing tests: unchanged, all must stay green.
+Created:
+- `supabase/migrations/<timestamp>_workspace_invites.sql`
+- `supabase/functions/send-workspace-invite/index.ts`
+- `supabase/functions/_shared/cors.ts` (if not present)
+- `supabase/functions/_shared/memberInviteEmail.ts`
+- `src/routes/accept-invite.$token.tsx`
 
-Nothing outside the page body changes. No route, no query, no schema, no CSS.
+Modified:
+- `src/components/add-members-modal.tsx` (real send)
+- `src/components/app-shell.tsx` (drop local pending state)
+- `src/hooks/use-workspace-mutations.ts` (add `useSendInvites`)
+- `src/routes/login.tsx` (honor `?next=`)
 
-## Hook shape
+## What I need from you before implementing
 
-```ts
-type Scope =
-  | { kind: 'page' }
-  | { kind: 'column'; parentBlockId: string; colIndex: number };
-
-useBlockEditor({
-  blocks, setBlocks,      // list ops write here; parent decides how to commit/undo
-  locked,
-  scope,
-  bridge,                 // ColumnBridge | null; only consulted at column scope
-  onCommitStructural,     // page: pushes an undo snapshot; column: parent handles via propagated { cols } patch
-  onFocusExit,            // page: focus title; column: focus block-before-columns (or title if first)
-}) => {
-  refs,                   // Record<blockId, HTMLTextAreaElement | HTMLInputElement | null>
-  focusedId, setFocusedId,
-  slash, menuIdx, filteredMenu, openSlash, closeSlash, moveSlash, pickSlash,
-  onKeyDown(block, e),    // full behaviour surface
-  onInput(block, val),
-  onPaste(block, e),
-  onChange(block, patch),
-  splitBlock, mergeIntoPrev, convertToText, removeBlock, insertAfter,
-  ordinalMap,
-  duplicateFocused,       // ⌘D
-}
-```
-
-## The four INTENDED differences, parameterised
-
-1. **Slash menu contents** — `scope.kind === 'page'` shows `BLOCK_MENU + COLUMNS_MENU`; column shows `BLOCK_MENU` only. `applyType('columns')` is refused unconditionally.
-2. **Backspace at index 0** — page: `mergeIntoPrev` if non-empty; column: no-op (never crosses a column).
-3. **Enter on empty last block** — page: `splitBlock` behaviour; column: `enterAction` → `escape-column` (unchanged from today).
-4. **ArrowUp from first block / boundary crossings** — page: `onFocusExit` focuses title. Column: `onFocusExit` focuses the top-level block immediately before the parent columns block (or the title, if the columns block is first). Both use `nextEditableIndex` internally.
-
-Every other row in the divergence table converges by construction — same code, one call site.
-
-## Divergences closed by this refactor
-
-- **⌘V multi-line/markdown paste inside a column** (highest priority; unblocks the Notion migration). `onPaste` runs `htmlToBlocks` / `parseMarkdown` and splices the resulting blocks into the column at the caret, exactly as at page scope. If the parsed run contains a `columns` block, it is skipped (never nest).
-- **ArrowUp / ArrowDown wrap-aware nav** in columns, including boundary crossing to top level via `bridge.exitColumn(direction)`.
-- **ArrowLeft at offset 0 / ArrowRight at end** — same crossing rules.
-- **Escape** — blurs at both scopes.
-- **⌘D duplicate focused block** — works inside columns, scoped to that column's list.
-- **Markdown shortcuts** — full set at both scopes: `# `, `## `, `### ` → h2, `#### ` → h2, `- `, `1. `, `[] `, `[ ] `, `> `, ` ``` `, callout shortcut.
-- **Block-handle click menu** — opens inside columns too, operating on that column's list.
-- **Undo snapshots for column structural ops** — the hook calls `onCommitStructural` at column scope, which routes through the same `commit` → `pushUndo` path used at page scope. Typing coalesces on the existing 600ms/different-block rule via the `columnTypingHint` bridge, unchanged.
-
-## What deliberately stays unchanged
-
-- Drag/marquee registry, `ColumnBridge`, `columnTypingHint`, top-level `selectedIds` set, bulk bar, ⌘A stage-2 promoting to whole document from a column, global keyboard shortcuts, geometry, styles, focus-request effect semantics, `newBlock` defaults, `normalize`, `stripNestedColumns`, undo store, real-time patching. Column-scoped block selection remains unsupported.
-
-## Parity test
-
-`block-editor-decisions.test.ts` builds one fixture list and runs a table of `(key, scope, blockIndex, caret, text) → expected op`. Every row must produce identical output at both scopes, except four rows explicitly tagged `intended-diff` for the four cases above. This is what stops the two implementations drifting again.
-
-## Staging inside the single response
-
-1. Write the two new lib files and their test. Run `bunx vitest run` on them alone — must pass before touching the component.
-2. Rewrite `EditableBody`'s onKeyDown/onInput/onPaste to call the hook; keep top-level-only responsibilities (drag, marquee, selection, undo commit, global shortcuts, title focus) inline. Run full build + full vitest.
-3. Rewrite `ColumnStack` as a thin renderer. Delete the second copies. Run full build + full vitest.
-4. Verify the eight-row divergence table now reads SAME/INTENDED end-to-end.
-
-## Risk and honest caveats
-
-- This is a large edit to a load-bearing file. I will preserve behaviour by keeping the hook's `onKeyDown` structurally identical to today's page-scope handler, then parameterising only the four intended differences — not by rewriting from spec.
-- If any row cannot be unified cleanly (e.g. undo coalescence at column scope depends on parent-owned commit boundaries in a way the hook cannot express without leaking), I will leave it DIFFERENT with a written reason rather than fake it, per your instruction.
-- Column-scoped multi-block selection stays out of scope.
-- The file will shrink materially (rough estimate 3273 → ~2500 lines) but I will not target a line count; I will target zero duplication.
-
-## Approval question
-
-Confirm: proceed as written, or adjust the hook boundary / staging first. I want your sign-off on the shape before I touch `page-editor-body.tsx`, because unwinding a bad extraction is more expensive than agreeing on it now.
+- Confirm you'll add `RESEND_API_KEY` and `EMAIL_FROM` when I prompt (I can't set them for you), and that the sender domain is verified in your Resend account.
+- Confirm accept-URL base: `https://docs.gogio.io/accept-invite/{token}` (custom domain) vs `https://giodocs.lovable.app/accept-invite/{token}`.
