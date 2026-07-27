@@ -383,30 +383,23 @@ export function EditableBody({
     return false;
   }
 
-  /* ────────── Empty-body click adds a text block ────────── */
-  function onEmptyClick() {
+  /* ────────── Click below last block: focus it, or append a new one ────────── */
+  function onBelowClick() {
     if (locked) return;
-    ensureFirstBlock();
-  }
-
-  if (!blocks.length) {
-    return (
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={onEmptyClick}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onEmptyClick();
-          }
-        }}
-        className="cursor-text py-16 text-center"
-      >
-        <p className="font-display text-subhead text-body">This page has no body yet.</p>
-        <p className="mt-1 text-meta text-faint">Click to start writing.</p>
-      </div>
-    );
+    const last = blocks[blocks.length - 1];
+    if (!last) {
+      const only = newBlock("text");
+      commit([only]);
+      setFocusRequest({ id: only.id, caret: "end" });
+      return;
+    }
+    if ((last.text ?? "") === "" && last.type === "text") {
+      setFocusRequest({ id: last.id, caret: "end" });
+      return;
+    }
+    const spawn = newBlock("text");
+    commit([...blocks, spawn]);
+    setFocusRequest({ id: spawn.id, caret: "start" });
   }
 
   return (
