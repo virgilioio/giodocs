@@ -4,7 +4,13 @@
  * is clean).
  */
 import { beforeEach, describe, expect, it } from "vitest";
-import { getCaretOffset, setCaretOffset } from "./ce-offsets";
+import {
+  getCaretOffset,
+  readCaretSource,
+  setCaretOffset,
+  writeCaretSource,
+} from "./ce-offsets";
+import { inlineToHtml } from "./inline-markdown";
 
 let el: HTMLElement;
 
@@ -103,5 +109,93 @@ describe("setCaretOffset — selection length", () => {
     expect(getCaretOffset(el)).toEqual({ start: 1, end: 4 });
     const sel = window.getSelection()!;
     expect(sel.toString()).toBe("bcd");
+  });
+});
+
+/* ─── readCaretSource / writeCaretSource — the ONLY sanctioned
+ * rendered↔source conversion helpers. Round-trip over a fixture
+ * with nested inlines: place a source offset, read it back,
+ * get the same number.
+ */
+describe("readCaretSource / writeCaretSource — source-offset round trip", () => {
+  const mountRendered = (source: string): HTMLElement => {
+    const div = document.createElement("div");
+    div.contentEditable = "true";
+    div.innerHTML = inlineToHtml(source);
+    document.body.appendChild(div);
+    return div;
+  };
+
+  it("plain text — every source offset round-trips", () => {
+    const src = "hello world";
+    const host = mountRendered(src);
+    for (let s = 0; s <= src.length; s++) {
+      writeCaretSource(host, src, s);
+      const read = readCaretSource(host, src);
+      expect(read).toEqual({ start: s, end: s });
+    }
+  });
+
+  it("nested inlines — reachable source offsets round-trip", () => {
+    const src = "a **bold *and italic* end** z";
+    const host = mountRendered(src);
+    // Test a selection of offsets that fall in rendered-reachable
+    // territory (outside delimiter runs). Delimiter interiors are
+    // deliberately unreachable and clamp — that's covered by the
+    // buildOffsetMap unit tests.
+    // Pick positions unambiguously INSIDE literal text — not on a
+    // delimiter boundary (delimiter positions are unreachable by
+    // design and clamp to the nearest rendered slot; that's covered
+    // by the buildOffsetMap unit tests).
+    //   "a **bold *and italic* end** z"
+    //    0 1 234567 8 9012345678901234567890
+    //    0         1         2
+    // Renderable literals: 0 (a), 1 (space), 5-7 (old, ld inside "bold"),
+    // 11-12 (nd inside "and"), 15-19 (talic inside "italic"),
+    // 23-24 (nd inside "end"), 27 (space), 28 (z), 29 (end sentinel).
+    const positions = [0, 1, 5, 6, 7, 11, 12, 15, 18, 19, 23, 24, 27, 28, src.length];
+    for (const s of positions) {
+      writeCaretSource(host, src, s);
+      const read = readCaretSource(host, src);
+      expect(read).not.toBeNull();
+      // The written source offset must land on a rendered position
+      // that maps back to the same source offset; if it doesn't
+      // round-trip, the caret is at the wrong index and ⌘B would
+      // insert delimiters in the wrong place.
+      expect(read!.start).toBe(s);
+      expect(read!.end).toBe(s);
+    }
+  });
+
+  it("non-collapsed selection round-trips both ends", () => {
+    const src = "a **bold** end";
+    const host = mountRendered(src);
+    writeCaretSource(host, src, 0, src.length);
+    const read = readCaretSource(host, src);
+    expect(read).toEqual({ start: 0, end: src.length });
+  });
+
+  it("readCaretSource returns null when there's no selection in el", () => {
+    const src = "hello";
+    const host = mountRendered(src);
+    // Selection deliberately outside `host`.
+    const other = document.createElement("div");
+    other.textContent = "elsewhere";
+    document.body.appendChild(other);
+    const range = document.createRange();
+    range.setStart(other.firstChild!, 0);
+    range.setEnd(other.firstChild!, 0);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    expect(readCaretSource(host, src)).toBeNull();
+  });
+
+  it("writeCaretSource clamps past-end offsets", () => {
+    const src = "hi";
+    const host = mountRendered(src);
+    expect(() => writeCaretSource(host, src, 999)).not.toThrow();
+    const read = readCaretSource(host, src);
+    expect(read).toEqual({ start: 2, end: 2 });
   });
 });

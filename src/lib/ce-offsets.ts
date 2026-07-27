@@ -233,3 +233,47 @@ export function setCaretOffset(
   sel.removeAllRanges();
   sel.addRange(range);
 }
+
+/* ─── The ONLY sanctioned rendered ↔ source conversion helpers ────────
+ *
+ * Phase-2 rule: every call site that reads or writes a caret on a
+ * contenteditable block goes through THESE. No component and no
+ * key-handler is allowed to combine getCaretOffset with
+ * buildOffsetMap by hand — a missed conversion is the corruption
+ * bug the offset map exists to prevent, and one uncovered site is
+ * enough to produce it. If a new place needs the mapping, add a
+ * helper here rather than inlining it.
+ *
+ *   readCaretSource(el, source)
+ *     → { start, end } in SOURCE (markdown) coordinates, or null when
+ *       there's no selection inside `el`.
+ *
+ *   writeCaretSource(el, source, start, end?)
+ *     → places the caret / selection at the given SOURCE offsets.
+ *       Clamps rather than throws when offsets exceed the source or
+ *       the rendered content is shorter (delimiters, escapes).
+ */
+export function readCaretSource(
+  el: HTMLElement,
+  source: string,
+): { start: number; end: number } | null {
+  const rendered = getCaretOffset(el);
+  if (!rendered) return null;
+  const map = buildOffsetMap(source);
+  return {
+    start: map.toSource(rendered.start),
+    end: map.toSource(rendered.end),
+  };
+}
+
+export function writeCaretSource(
+  el: HTMLElement,
+  source: string,
+  start: number,
+  end?: number,
+): void {
+  const map = buildOffsetMap(source);
+  const rStart = map.toRendered(start);
+  const rEnd = end === undefined ? undefined : map.toRendered(end);
+  setCaretOffset(el, rStart, rEnd);
+}

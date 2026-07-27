@@ -250,3 +250,73 @@ function tokenizeRange(
   }
   return out;
 }
+
+/* ─── htmlToInlineMarkdown ─────────────────────────────────────────────
+ * Total inverse of tokensToHtml over the exact tag set we emit:
+ *   strong / em / s / code / mark / u / a
+ * plus text nodes. Anything the browser injects is normalised rather
+ * than trusted:
+ *   <br>          → "\n"
+ *   <div>…</div>  → "\n" + (walked inner)   (per spec: newline BEFORE)
+ *   &nbsp;        → " "
+ *   comments / script / style   → ""
+ *   any other wrapper           → its text content only (formatting
+ *                                 inside an unknown tag is dropped)
+ * Never throws. A browser will eventually produce something unexpected
+ * and the editor must degrade, not crash.
+ *
+ * `input` may be an HTMLElement (walked directly) or a string (parsed
+ * into a detached <div>). String parsing requires a DOM at runtime —
+ * fine in the browser and in happy-dom tests.
+ */
+export function htmlToInlineMarkdown(input: HTMLElement | string): string {
+  let root: Node | null = null;
+  if (typeof input === "string") {
+    if (typeof document === "undefined") return "";
+    const tmp = document.createElement("div");
+    tmp.innerHTML = input;
+    root = tmp;
+  } else {
+    root = input;
+  }
+  if (!root) return "";
+  return walkChildren(root);
+}
+
+function walkChildren(node: Node): string {
+  let out = "";
+  const kids = node.childNodes;
+  for (let i = 0; i < kids.length; i++) out += walkNode(kids[i]);
+  return out;
+}
+
+function walkNode(node: Node): string {
+  // Text
+  if (node.nodeType === 3) {
+    return (node.nodeValue ?? "").replace(/\u00a0/g, " ");
+  }
+  // Comment / anything non-element
+  if (node.nodeType !== 1) return "";
+  const el = node as Element;
+  const tag = el.tagName ? el.tagName.toLowerCase() : "";
+  if (tag === "script" || tag === "style") return "";
+  if (tag === "br") return "\n";
+  if (tag === "div") return "\n" + walkChildren(el);
+  if (tag === "strong" || tag === "b") return "**" + walkChildren(el) + "**";
+  if (tag === "em" || tag === "i") return "*" + walkChildren(el) + "*";
+  if (tag === "s" || tag === "del" || tag === "strike")
+    return "~~" + walkChildren(el) + "~~";
+  if (tag === "mark") return "==" + walkChildren(el) + "==";
+  if (tag === "u") return "<u>" + walkChildren(el) + "</u>";
+  if (tag === "code") {
+    // Inner is literal — never re-tokenise. textContent flattens any
+    // nested markup the browser may have introduced.
+    return "`" + (el.textContent ?? "") + "`";
+  }
+  if (tag === "a") {
+    const href = (el.getAttribute("href") ?? "").trim();
+    return "[" + walkChildren(el) + "](" + href + ")";
+  }
+  // Unknown wrapper: contribute its text content only.
+  return (el.textContent ?? "").replace(/\u00a0/g, " ");
+}
