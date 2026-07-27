@@ -858,9 +858,20 @@ function AddPropertyPopover({
           ref={ref}
           type="button"
           onClick={onClick}
-          className="inline-flex items-center gap-1 rounded-md px-1 py-1 text-meta text-muted hover:bg-sunken"
+          className="gio-prop-add flex w-full items-center rounded-md text-left"
+          style={{
+            gap: 6,
+            padding: "2px 6px",
+            minHeight: 32,
+            fontSize: 14,
+            color: "var(--color-faint)",
+          }}
         >
-          <Glyph path="M12 5v14M5 12h14" className="h-3.5 w-3.5" />
+          <Glyph
+            path="M12 5v14M5 12h14"
+            className="h-[11px] w-[11px]"
+            style={{ strokeWidth: 2.4 }}
+          />
           <span>Add a property</span>
         </button>
       )}
