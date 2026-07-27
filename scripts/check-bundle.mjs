@@ -33,10 +33,11 @@ function b64urlDecode(s) {
   return Buffer.from(s, "base64").toString("utf8");
 }
 
-if (!existsSync(DIR)) {
-  console.error(`check-bundle: ${relative(ROOT, DIR)} does not exist — did the build run?`);
+if (!DIR) {
+  console.error(`check-bundle: no client bundle found — tried ${CANDIDATES.join(", ")}`);
   process.exit(1);
 }
+console.log(`check-bundle: scanning ${relative(ROOT, DIR) || DIR}`);
 
 const hits = [];
 
