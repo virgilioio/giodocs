@@ -32,6 +32,7 @@ import {
   useUpdateView,
   usePublishView,
   useVerifyPage,
+  useSetAreaIcon,
 } from "@/hooks/use-page-mutations";
 
 import { useToast } from "@/lib/toast";
@@ -43,6 +44,8 @@ import { PageTopbarActions } from "./page-topbar-actions";
 import { CommandPalette } from "./command-palette";
 import { SettingsModal, type SettingsPane } from "./settings-modal";
 import { AddMembersModal, type PendingInvite } from "./add-members-modal";
+import { Popover } from "./popover";
+import { EmojiPicker } from "./emoji-picker";
 import {
   RowMenuProvider,
   MoreButton as RowMoreButton,
