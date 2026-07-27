@@ -897,8 +897,8 @@ function PropertyStrip({
                 areas={areas}
                 onSet={(v) => onSet(r.key, v)}
                 onOpenChange={(open) =>
-                  setOpenKey(open ? r.key : (prev) =>
-                    prev === r.key ? null : prev,
+                  setOpenKey((prev) =>
+                    open ? r.key : prev === r.key ? null : prev,
                   )
                 }
               />
