@@ -25,6 +25,7 @@
 
 import { nanoid } from "nanoid";
 import type { Block } from "./types";
+import { clampIndent } from "./blocks";
 
 export type Blk = Block & { id: string; type: string };
 
@@ -126,34 +127,59 @@ export function parseMarkdown(text: string): Blk[] {
       continue;
     }
 
+    // Todo / bullet / numbered — the leading whitespace becomes an indent
+    // level. Accept spaces or tabs; every 2 spaces (or every tab) counts
+    // as one level. The parent+1 clamp is applied after the whole parse
+    // completes (see the tail of this function).
+    const indentOf = (raw: string): number => {
+      let spaces = 0;
+      for (const ch of raw) {
+        if (ch === " ") spaces += 1;
+        else if (ch === "\t") spaces += 2;
+        else break;
+      }
+      // 2-space and 4-space nesting both map to one level per two spaces,
+      // which matches emitters that write "  " or "    " per depth.
+      return Math.max(0, Math.floor(spaces / 2));
+    };
+
     // Todo — MUST be checked before bullet, or `- [ ] x` becomes a bullet.
-    const todo = line.match(/^[-*+] \[([ xX])\] (.*)$/);
+    const todo = line.match(/^([ \t]*)[-*+] \[([ xX])\] (.*)$/);
     if (todo) {
       flushParagraph();
-      out.push({
+      const ind = indentOf(todo[1]);
+      const b: Blk = {
         id: nanoid(10),
         type: "todo",
-        text: todo[2],
-        checked: todo[1].toLowerCase() === "x",
-      });
+        text: todo[3],
+        checked: todo[2].toLowerCase() === "x",
+      };
+      if (ind > 0) (b as { indent?: number }).indent = ind;
+      out.push(b);
       i++;
       continue;
     }
 
     // Bullet
-    const bullet = line.match(/^[-*+] (.*)$/);
+    const bullet = line.match(/^([ \t]*)[-*+] (.*)$/);
     if (bullet) {
       flushParagraph();
-      out.push({ id: nanoid(10), type: "bullet", text: bullet[1] });
+      const ind = indentOf(bullet[1]);
+      const b: Blk = { id: nanoid(10), type: "bullet", text: bullet[2] };
+      if (ind > 0) (b as { indent?: number }).indent = ind;
+      out.push(b);
       i++;
       continue;
     }
 
     // Numbered — any digit run before ". ".
-    const num = line.match(/^\d+\. (.*)$/);
+    const num = line.match(/^([ \t]*)\d+\. (.*)$/);
     if (num) {
       flushParagraph();
-      out.push({ id: nanoid(10), type: "numbered", text: num[1] });
+      const ind = indentOf(num[1]);
+      const b: Blk = { id: nanoid(10), type: "numbered", text: num[2] };
+      if (ind > 0) (b as { indent?: number }).indent = ind;
+      out.push(b);
       i++;
       continue;
     }
@@ -204,5 +230,22 @@ export function parseMarkdown(text: string): Blk[] {
     i++;
   }
   flushParagraph();
+  // Apply the parent+1 clamp — malformed imports (e.g. a bullet that jumps
+  // from indent 0 to indent 2 with no parent between) must not produce
+  // orphan levels. Only bullet/numbered/todo carry indent from the parser;
+  // any other block resets prev to 0.
+  const INDENTABLE = new Set(["bullet", "numbered", "todo", "text"]);
+  let prev = 0;
+  for (let k = 0; k < out.length; k++) {
+    const b = out[k];
+    const canIndent = INDENTABLE.has(b.type);
+    const cur = typeof b.indent === "number" && b.indent > 0 ? b.indent : 0;
+    const target = canIndent ? clampIndent(prev, cur) : 0;
+    if (target !== cur) {
+      if (target === 0) delete (b as { indent?: number }).indent;
+      else (b as { indent?: number }).indent = target;
+    }
+    prev = target;
+  }
   return out;
 }

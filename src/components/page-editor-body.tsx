@@ -69,8 +69,11 @@ import {
   duplicateBlock as opsDuplicate,
   parsePasteToBlocks,
   splicePasteAtCaret,
+  indentBlock as opsIndent,
+  reclampIndents,
 } from "@/lib/block-ops";
 import { resolveKey, type Op as KeyOp } from "@/lib/block-key-handler";
+import { ordinalLabel } from "@/lib/blocks";
 
 /** Module-local bridge: nested ColumnStack keystrokes set this before
  *  bubbling their new blocks up, so EditableBody.commit knows the
@@ -850,12 +853,16 @@ export function EditableBody({
       if (froms.some((p) => p.index < 0)) return;
       const to: ReorderPath = { col: d.targetCol, index: d.gap };
       const makeEmpty = () => newBlock("text");
-      const next =
+      const next0 =
         d.ids.length === 1
           ? moveBlockAcross(blocks, froms[0], to, makeEmpty)
           : moveRunAcross(blocks, froms, to, makeEmpty);
-      if (next === blocks) return;
-      if (next.length === blocks.length && next.every((x, i) => x === blocks[i])) return;
+      if (next0 === blocks) return;
+      if (next0.length === blocks.length && next0.every((x, i) => x === blocks[i])) return;
+      // Re-clamp: a block dragged above a shallower neighbour must not
+      // remain at an orphan level. reclampIndents walks the flat list
+      // once and applies the parent+1 rule.
+      const next = reclampIndents(next0);
       commit(next);
     },
     [blocks, commit],
@@ -1353,11 +1360,11 @@ export function EditableBody({
       if (!run.length || run[0] === 0) return;
       const runStart = run[0];
       const runEnd = run[run.length - 1];
-      const next =
+      const raw =
         run.length === 1
           ? moveBlock(blocks, runStart, runStart - 1)
           : moveRun(blocks, runStart, runEnd, runStart - 1);
-      commit(next);
+      commit(reclampIndents(raw));
     },
     [blocks, commit, getRunIndicesForBlock],
   );
@@ -1369,11 +1376,11 @@ export function EditableBody({
       const runStart = run[0];
       const runEnd = run[run.length - 1];
       if (runEnd >= blocks.length - 1) return;
-      const next =
+      const raw =
         run.length === 1
           ? moveBlock(blocks, runStart, runStart + 1)
           : moveRun(blocks, runStart, runEnd, runEnd + 2);
-      commit(next);
+      commit(reclampIndents(raw));
     },
     [blocks, commit, getRunIndicesForBlock],
   );
@@ -2012,6 +2019,14 @@ export function EditableBody({
               // the resolver is broken. Fail loudly rather than swallow.
               case "escape-column":
                 return;
+              case "indent":
+                e.preventDefault();
+                applyOp(opsIndent(blocks, b.id, 1));
+                return;
+              case "outdent":
+                e.preventDefault();
+                applyOp(opsIndent(blocks, b.id, -1));
+                return;
             }
           }}
           onAddBelow={() => { if (!locked) insertAfter(b.id); }}
@@ -2502,9 +2517,22 @@ function BlockContent({
     );
   }
 
+  // Flat outline: indent shifts only the block CONTENT for the indentable
+  // types (bullet, numbered, todo, text). Gutter stays at the row's left
+  // edge. 24px per level. Bullet glyph and numbered label cycle every 3
+  // levels for legibility.
+  const indent = typeof block.indent === "number" && block.indent > 0
+    ? Math.min(6, Math.floor(block.indent))
+    : 0;
+  const BULLET_GLYPHS = ["•", "◦", "▪"] as const;
+  const contentWrap = (node: React.ReactNode) =>
+    indent > 0
+      ? <div style={{ paddingLeft: indent * 24 }}>{node}</div>
+      : node;
+
   if (t === "todo") {
     const done = !!block.checked;
-    return (
+    return contentWrap(
       <div className="flex items-start gap-2 text-prose text-body">
         <input
           type="checkbox"
@@ -2521,11 +2549,14 @@ function BlockContent({
     );
   }
 
+
+
   if (t === "bullet") {
-    return (
+    const glyph = BULLET_GLYPHS[indent % 3];
+    return contentWrap(
       <div className="flex items-start gap-2 text-prose text-body">
         <span aria-hidden className="mt-2 leading-none text-muted">
-          •
+          {glyph}
         </span>
         {renderSwap(textareaProps.className)}
       </div>
@@ -2533,10 +2564,11 @@ function BlockContent({
   }
 
   if (t === "numbered") {
-    return (
+    const label = ordinalLabel(ordinal ?? 1, indent);
+    return contentWrap(
       <div className="flex items-start gap-2 text-prose text-body">
         <span aria-hidden className="mt-1 min-w-4 text-meta text-muted tnum">
-          {ordinal ?? 1}.
+          {label}
         </span>
         {renderSwap(textareaProps.className)}
       </div>
@@ -2572,9 +2604,9 @@ function BlockContent({
   }
 
   // text (default)
-  return renderSwap(
+  return contentWrap(renderSwap(
     "w-full resize-none border-0 bg-transparent p-0 text-prose text-body outline-none placeholder:text-faint",
-  );
+  ));
 }
 
 const GrowText = function GrowText(
@@ -3134,6 +3166,14 @@ function ColumnStack({
               }
               case "exit-to-title":
                 // Not emitted for column scope; safeguard.
+                return;
+              case "indent":
+                e.preventDefault();
+                applyOp(opsIndent(blocks, b.id, 1));
+                return;
+              case "outdent":
+                e.preventDefault();
+                applyOp(opsIndent(blocks, b.id, -1));
                 return;
             }
           }}

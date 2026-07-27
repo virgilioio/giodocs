@@ -15,6 +15,12 @@ import { nanoid } from "nanoid";
 import { parseMarkdown } from "@/lib/markdown-import";
 import { htmlToMarkdown, htmlToBlocks } from "@/lib/html-to-markdown";
 import { emptyColumns } from "@/lib/columns";
+import { clampIndent } from "@/lib/blocks";
+
+/** Block types that participate in list indentation. Headings, quotes,
+ *  callouts, code, tables, dividers, columns, captions, and toggles do
+ *  NOT — indenting them has no meaning in this flat model. */
+const INDENTABLE = new Set<BlockType>(["bullet", "numbered", "todo", "text"]);
 
 export type BlockType =
   | "text"
@@ -52,6 +58,11 @@ export type Blk = {
   level?: ToggleLevel;
   /** Only meaningful when type === "columns". Never nested. */
   cols?: Blk[][];
+  /** Flat outline level for list-like blocks (bullet, numbered, todo, text).
+   *  Absent or 0 means top level. NOT a tree — blocks stay in a flat array;
+   *  this is only a rendering / label / export hint. Clamped 0..6 with the
+   *  parent+1 rule. */
+  indent?: number;
 };
 
 export type FocusReq = { id: string; caret?: number | "start" | "end" };
@@ -259,5 +270,59 @@ export function splicePasteAtCaret(
     next = [...head, currentPatched, ...parsed, ...trailing, ...tail];
   }
   const focusId = parsed[parsed.length - 1].id;
-  return { next, focus: { id: focusId, caret: "end" } };
+  return { next: reclampIndents(next), focus: { id: focusId, caret: "end" } };
 }
+
+/* ────────── Indent ops ────────── */
+
+/**
+ * Walk `list` and enforce the parent+1 rule on every block's indent.
+ * A block of a non-indentable type is treated as indent 0 for the
+ * purpose of the NEXT block's clamp. Returns a fresh array only when a
+ * change was required; otherwise returns a shallow copy of the input.
+ */
+export function reclampIndents(list: readonly Blk[]): Blk[] {
+  const out: Blk[] = list.slice();
+  let prev = 0;
+  for (let i = 0; i < out.length; i++) {
+    const b = out[i];
+    const canIndent = INDENTABLE.has(b.type);
+    const current = typeof b.indent === "number" && b.indent > 0 ? b.indent : 0;
+    const target = canIndent ? clampIndent(prev, current) : 0;
+    if (target !== current || (!canIndent && b.indent !== undefined)) {
+      const patched: Blk = { ...b };
+      if (target === 0) delete patched.indent;
+      else patched.indent = target;
+      out[i] = patched;
+    }
+    prev = target;
+  }
+  return out;
+}
+
+/**
+ * Change block `id`'s indent by `delta` (+1 or -1). Clamped by the
+ * previous block's indent (parent+1 rule) and by [0, 6]. Following
+ * blocks are re-clamped so no orphan level survives.
+ */
+export function indentBlock(
+  list: Blk[],
+  id: string,
+  delta: 1 | -1,
+): OpResult | null {
+  const idx = list.findIndex((b) => b.id === id);
+  if (idx === -1) return null;
+  const b = list[idx];
+  if (!INDENTABLE.has(b.type)) return null;
+  const prevIndent = idx > 0 ? (list[idx - 1].indent ?? 0) : 0;
+  const cur = b.indent ?? 0;
+  const target = clampIndent(prevIndent, cur + delta);
+  if (target === cur) return null;
+  const next = list.slice();
+  const patched: Blk = { ...b };
+  if (target === 0) delete patched.indent;
+  else patched.indent = target;
+  next[idx] = patched;
+  return { next: reclampIndents(next) };
+}
+

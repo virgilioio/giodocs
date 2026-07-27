@@ -75,9 +75,14 @@ export type Op =
    *  (dir=1), promote to the neighbouring block. Never preventDefault. */
   | { kind: "arrow-vertical-probe"; dir: 1 | -1 }
   /** Page-scope only: ArrowUp / ArrowLeft on the first block, caret 0. */
-  | { kind: "exit-to-title" };
+  | { kind: "exit-to-title" }
+  /** Tab on an indentable list-type block. Caller applies indentBlock(+1). */
+  | { kind: "indent" }
+  /** Shift-Tab, OR Backspace at caret 0 of an already-indented block. */
+  | { kind: "outdent" };
 
 const LIST_TYPES = new Set(["bullet", "numbered", "todo"]);
+const INDENTABLE = new Set(["bullet", "numbered", "todo", "text"]);
 
 export function resolveKey(
   scope: Scope,
@@ -107,6 +112,13 @@ export function resolveKey(
     return { kind: "duplicate" };
   }
 
+  // Tab / Shift-Tab — indent/outdent, only on list-like types. Always
+  // preventDefault on those types so the textarea doesn't lose focus.
+  if (key === "Tab") {
+    if (!b || !INDENTABLE.has(b.type)) return { kind: "none" };
+    return shift ? { kind: "outdent" } : { kind: "indent" };
+  }
+
   // Enter (no shift)
   if (key === "Enter" && !shift) {
     if (!b) return { kind: "split", caret: selStart };
@@ -126,6 +138,11 @@ export function resolveKey(
   // Backspace at caret 0
   if (key === "Backspace" && collapsed && selStart === 0) {
     if (!b) return { kind: "none" };
+    // Indented list-like block: Backspace at position 0 outdents by one
+    // level BEFORE any merge/convert logic. Only when indent has reached
+    // 0 do the existing conversions run.
+    const curIndent = (b as { indent?: number }).indent ?? 0;
+    if (curIndent > 0 && INDENTABLE.has(b.type)) return { kind: "outdent" };
     if (b.type !== "text") return { kind: "convert-to-text" };
     if ((b.text ?? "") === "") {
       if (scope === "column" && index === 0) return { kind: "none" };
