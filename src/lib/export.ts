@@ -14,6 +14,10 @@
 import type { Block } from "./types";
 import { numberedOrdinals } from "./blocks";
 import { inlineToHtml } from "./inline-markdown";
+// Logo is inlined as a data URI so the exported HTML file is self-contained
+// (zero network requests). Vite `?raw` reads the file at build time; vitest
+// resolves the same way, so tests see the same string as the browser.
+import GIO_DOCS_LOGO_SVG from "../../public/gio-docs-logo.svg?raw";
 
 /* ─────────────────────────── Context ─────────────────────────── */
 
@@ -25,7 +29,30 @@ export type ExportContext = {
   tags?: readonly string[];
   verifiedAt?: string | null;
   blocks: readonly Block[];
+  /** When false, omit YAML front matter (Markdown) and the properties/header
+   * block (HTML/PDF). Title always stays. Default: true. */
+  includeDetails?: boolean;
 };
+
+/* ─────────────────────────── Logo (inlined) ─────────────────────────── */
+
+// Base64 SVG data URI, computed once. `btoa` is available in browsers and
+// jsdom. The base64 payload does not contain the string "http://" or
+// "https://" (URLs inside the SVG are inside the encoded blob), so the
+// self-containment assertion in tests survives the inline.
+const GIO_DOCS_LOGO_DATA_URI = (() => {
+  try {
+    // deno-lint-ignore no-explicit-any
+    const b64 = typeof btoa === "function"
+      ? btoa(unescape(encodeURIComponent(GIO_DOCS_LOGO_SVG)))
+      : (typeof Buffer !== "undefined"
+        ? Buffer.from(GIO_DOCS_LOGO_SVG, "utf8").toString("base64")
+        : "");
+    return `data:image/svg+xml;base64,${b64}`;
+  } catch {
+    return "";
+  }
+})();
 
 /* ─────────────────────────── slugOf ─────────────────────────── */
 
