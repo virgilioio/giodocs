@@ -179,7 +179,9 @@
      the border and fill can carry different alphas from the same
      token pair. */
   .marquee-rect {
-    position: fixed;
+    /* Positioned via inline `position: absolute` inside the scrolling
+     * page body — content space, not viewport space, so the rect follows
+     * the content when the container auto-scrolls. */
     pointer-events: none;
     z-index: 60;
     border-radius: 2px;
