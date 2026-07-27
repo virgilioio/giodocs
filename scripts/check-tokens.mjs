@@ -13,7 +13,11 @@ import { join, relative, sep } from "node:path";
 
 const CWD = process.cwd();
 const ROOT = join(CWD, "src");
-const EXEMPT = new Set(["src/styles.css"]);
+// export.ts is exempt: it generates SELF-CONTAINED files (HTML/PDF) that
+// cannot reference Tailwind tokens. Its hex values ARE the design tokens,
+// serialized for the outside world — they must match src/styles.css @theme
+// exactly. If you change a token there, change it here.
+const EXEMPT = new Set(["src/styles.css", "src/lib/export.ts"]);
 const EXT = /\.(?:tsx?|jsx?|mjs|cjs|css)$/;
 
 const CHECKS = [
