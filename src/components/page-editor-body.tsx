@@ -1145,10 +1145,12 @@ export function EditableBody({
           return from < 0 ? true : dragging.gap !== from && dragging.gap !== from + 1;
         })());
 
+  const ordinalMap = useMemo(() => numberedOrdinals(blocks), [blocks]);
+
   return (
     <div
       ref={containerRef}
-      className="relative space-y-1"
+      className="gio-page-body relative space-y-1"
       onPointerDown={handleContainerPointerDown}
       onFocusCapture={(e) => {
         const t = e.target as HTMLElement;
@@ -1160,6 +1162,7 @@ export function EditableBody({
         <BlockRow
           key={b.id}
           block={b}
+          ordinal={b.type === "numbered" ? (ordinalMap.get(b.id) ?? 1) : undefined}
           locked={!!locked}
           selected={selectedIds.has(b.id)}
           dimmed={draggingIdSet.has(b.id)}
