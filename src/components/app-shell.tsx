@@ -84,6 +84,10 @@ type Selection =
 
 const COLLAPSE_KEY = "gio.sidebar.collapsed";
 const SECTION_KEY = "gio.sidebar.sections"; // JSON { my:boolean, team:boolean, areas:boolean }
+const SIDEBAR_W_KEY = "gio.sidebarWidth";
+const SIDEBAR_MIN = 200;
+const SIDEBAR_MAX = 460;
+const SIDEBAR_DEFAULT = 240;
 
 function useSelection(): Selection {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -131,6 +135,25 @@ export function AppShell() {
       window.localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
     }
   }, [collapsed]);
+
+  // Resizable sidebar. Width lives in ONE CSS variable (--gio-sidebar-w) that
+  // both the pane and the main column read; clamp to [MIN,MAX] during the
+  // drag so the user feels the limit; persist under gio.sidebarWidth; an
+  // out-of-range stored value is clamped rather than trusted. Collapse-to-0
+  // preserves the chosen width — expanding restores it, not the default.
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    if (typeof window === "undefined") return 240;
+    const raw = window.localStorage.getItem(SIDEBAR_W_KEY);
+    const n = raw ? Number.parseInt(raw, 10) : NaN;
+    if (!Number.isFinite(n)) return 240;
+    return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, n));
+  });
+  const [resizing, setResizing] = useState(false);
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(SIDEBAR_W_KEY, String(sidebarWidth));
+    }
+  }, [sidebarWidth]);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -299,18 +322,60 @@ export function AppShell() {
   const loading =
     shell.pages.isLoading || shell.views.isLoading || shell.workspace.isLoading;
 
+  const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (collapsed) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = sidebarWidth;
+    const target = e.currentTarget;
+    target.setPointerCapture(e.pointerId);
+    setResizing(true);
+    if (typeof document !== "undefined") {
+      document.body.style.userSelect = "none";
+      document.body.style.cursor = "col-resize";
+    }
+    const onMove = (ev: PointerEvent) => {
+      const next = Math.min(
+        SIDEBAR_MAX,
+        Math.max(SIDEBAR_MIN, startW + (ev.clientX - startX)),
+      );
+      setSidebarWidth(next);
+    };
+    const onUp = (ev: PointerEvent) => {
+      try {
+        target.releasePointerCapture(ev.pointerId);
+      } catch {
+        /* ignore */
+      }
+      target.removeEventListener("pointermove", onMove);
+      target.removeEventListener("pointerup", onUp);
+      target.removeEventListener("pointercancel", onUp);
+      setResizing(false);
+      if (typeof document !== "undefined") {
+        document.body.style.userSelect = "";
+        document.body.style.cursor = "";
+      }
+    };
+    target.addEventListener("pointermove", onMove);
+    target.addEventListener("pointerup", onUp);
+    target.addEventListener("pointercancel", onUp);
+  };
+
   return (
     <RowMenuProvider>
-    <div className="flex h-screen overflow-hidden bg-canvas">
+    <div
+      className="flex h-screen overflow-hidden bg-canvas"
+      style={{ "--gio-sidebar-w": `${sidebarWidth}px` } as React.CSSProperties}
+    >
       <div
         style={{
-          width: collapsed ? 0 : "var(--spacing-sidebar)",
-          transition: "width 180ms ease",
+          width: collapsed ? 0 : "var(--gio-sidebar-w)",
+          transition: resizing ? "none" : "width 180ms ease",
         }}
-        className="shrink-0 overflow-hidden border-r border-line bg-rail"
+        className="relative shrink-0 overflow-hidden border-r border-line bg-rail"
       >
         <div
-          style={{ width: "var(--spacing-sidebar)" }}
+          style={{ width: "var(--gio-sidebar-w)" }}
           className="flex h-screen flex-col"
         >
           <SidebarBody
@@ -344,7 +409,35 @@ export function AppShell() {
             onCloseSidebarPopover={() => setSidebarPopover(null)}
           />
         </div>
+        {!collapsed && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize sidebar"
+            onPointerDown={startResize}
+            onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT)}
+            className="group absolute inset-y-0 z-20"
+            style={{
+              right: -2,
+              width: 5,
+              cursor: "col-resize",
+              touchAction: "none",
+            }}
+          >
+            <span
+              aria-hidden
+              className={
+                "absolute inset-y-0 left-1/2 -translate-x-1/2 " +
+                (resizing
+                  ? "bg-lineStrong"
+                  : "bg-transparent group-hover:bg-lineStrong")
+              }
+              style={{ width: 1 }}
+            />
+          </div>
+        )}
       </div>
+
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header
@@ -1095,17 +1188,23 @@ function MyViewRow({
         to="/v/$viewId"
         params={{ viewId: v.id }}
         style={{ height: "var(--spacing-rowMy)" }}
-        className={rowClass(active)}
+        className={rowClass(active) + " min-w-0"}
       >
         <ViewIconSlot
           view={v}
           effectiveLayout={effectiveLayout}
           onSet={(icon) => updateView.mutate({ id: v.id, patch: { icon } })}
         />
-        <span className="min-w-0 flex-1 truncate text-row">{v.name}</span>
         <span
-          className="relative flex items-center justify-end"
-          style={{ height: 17, minWidth: 17 }}
+          className="min-w-0 flex-1 truncate text-row"
+          style={{ flex: "1 1 auto" }}
+          title={v.name}
+        >
+          {v.name}
+        </span>
+        <span
+          className="relative flex shrink-0 items-center justify-end"
+          style={{ height: 17, minWidth: 17, flex: "none" }}
         >
           {hover ? (
             <SpecMenuTrigger size="sm" build={build} />
@@ -1114,6 +1213,7 @@ function MyViewRow({
           )}
         </span>
       </Link>
+
     </li>
   );
 }
@@ -1134,6 +1234,8 @@ function ViewIconSlot({
 }) {
   return (
     <span
+      className="shrink-0"
+      style={{ flex: "none" }}
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
     >
@@ -1324,20 +1426,24 @@ function TeamViewRow({
         to="/v/$viewId"
         params={{ viewId: v.id }}
         style={{ height: "var(--spacing-rowTeam)" }}
-        className={rowClass(active)}
+        className={rowClass(active) + " min-w-0"}
       >
         <span
-          className="grid place-items-center"
-          style={{ width: 18, height: 18 }}
+          className="grid shrink-0 place-items-center"
+          style={{ width: 18, height: 18, flex: "none" }}
         >
           <LayoutGlyph layout={effectiveLayout} />
         </span>
-        <span className="min-w-0 flex-1 truncate text-meta text-secondary">
+        <span
+          className="min-w-0 flex-1 truncate text-meta text-secondary"
+          style={{ flex: "1 1 auto" }}
+          title={v.name}
+        >
           {v.name}
         </span>
         <span
-          className="relative flex items-center justify-end"
-          style={{ height: 17, minWidth: 17 }}
+          className="relative flex shrink-0 items-center justify-end"
+          style={{ height: 17, minWidth: 17, flex: "none" }}
         >
           {hover ? (
             <SpecMenuTrigger size="sm" build={build} />
@@ -1346,6 +1452,7 @@ function TeamViewRow({
           )}
         </span>
       </Link>
+
     </li>
   );
 }
@@ -1527,12 +1634,12 @@ function AreaLi({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <div className="relative flex items-center">
+      <div className="relative flex min-w-0 items-center">
         <button
           type="button"
           onClick={onToggle}
           aria-label={open ? `Collapse ${area}` : `Expand ${area}`}
-          className="grid h-6 w-6 place-items-center rounded-sm text-muted hover:bg-railHover"
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-sm text-muted hover:bg-railHover"
         >
           <Glyph
             path="M9 6l6 6-6 6"
@@ -1545,7 +1652,7 @@ function AreaLi({
           params={{ area }}
           style={{ height: "var(--spacing-rowArea)" }}
           className={
-            "flex flex-1 items-center gap-2 rounded-md px-1 " +
+            "flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 " +
             (active
               ? "bg-selected font-bold text-noir"
               : "text-body hover:bg-railHover")
@@ -1559,10 +1666,16 @@ function AreaLi({
             onPick={(e) => setAreaIcon.mutate({ area, emoji: e })}
           />
 
-          <span className="min-w-0 flex-1 truncate text-row">{area}</span>
           <span
-            className="relative flex items-center justify-end"
-            style={{ height: 17, minWidth: 17 }}
+            className="min-w-0 flex-1 truncate text-row"
+            style={{ flex: "1 1 auto" }}
+            title={area}
+          >
+            {area}
+          </span>
+          <span
+            className="relative flex shrink-0 items-center justify-end"
+            style={{ height: 17, minWidth: 17, flex: "none" }}
           >
             {hover ? (
               <SpecMenuTrigger size="sm" build={buildAreaSpec} />
@@ -1573,6 +1686,7 @@ function AreaLi({
           </span>
         </Link>
       </div>
+
       {open && (
         <ul className="ml-6">
           {items.map((p) => (
@@ -1633,6 +1747,8 @@ function AreaEmojiSlot({
 }) {
   return (
     <span
+      className="shrink-0"
+      style={{ flex: "none" }}
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -1770,7 +1886,7 @@ function PageRowLi({
         to="/p/$pageId"
         params={{ pageId: p.id }}
         style={{ height: "var(--spacing-rowPage)" }}
-        className="flex cursor-pointer items-center gap-2 rounded-md px-2 text-meta text-secondary hover:bg-railHover"
+        className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 text-meta text-secondary hover:bg-railHover"
       >
         {isStale && (
           <span
@@ -1778,13 +1894,18 @@ function PageRowLi({
             className="h-1.5 w-1.5 shrink-0 rounded-full bg-amberDot"
           />
         )}
-        <span className="min-w-0 flex-1 truncate">
+        <span
+          className="min-w-0 flex-1 truncate"
+          style={{ flex: "1 1 auto" }}
+          title={p.title || "Untitled"}
+        >
           {p.title || "Untitled"}
         </span>
         <span
-          className="relative flex items-center justify-end"
-          style={{ height: 17, minWidth: 17 }}
+          className="relative flex shrink-0 items-center justify-end"
+          style={{ height: 17, minWidth: 17, flex: "none" }}
         >
+
           {hover ? (
             <SpecMenuTrigger
               size="sm"
@@ -1858,14 +1979,23 @@ function FooterAccount({
           {initials}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-body" style={{ fontSize: 14, fontWeight: 700 }}>
+          <div
+            className="truncate text-body"
+            style={{ fontSize: 14, fontWeight: 700 }}
+            title={displayName}
+          >
             {displayName}
           </div>
-          <div className="truncate text-muted" style={{ fontSize: 12.5 }}>
+          <div
+            className="truncate text-muted"
+            style={{ fontSize: 12.5 }}
+            title={`${workspaceName}${memberCount ? ` · ${memberCount} people` : ""}`}
+          >
             {workspaceName}
             {memberCount ? ` · ${memberCount} people` : ""}
           </div>
         </div>
+
         <span className="shrink-0 text-whisper">
           <svg width={14} height={14} viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth={2} strokeLinecap="round"
