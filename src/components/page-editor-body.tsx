@@ -3122,13 +3122,16 @@ function ColumnStack({
                 const bid = b.id;
                 const dir = op.dir;
                 requestAnimationFrame(() => {
-                  const cur = refs.current[bid] as HTMLTextAreaElement | undefined;
+                  const cur = refs.current[bid];
                   if (!cur || document.activeElement !== cur) return;
+                  const curBlk = blocks.find((x) => x.id === bid);
+                  const src = curBlk?.text ?? "";
+                  const c2 = readCaret(cur, src);
+                  if (!c2) return;
                   const atBoundary =
                     dir === -1
-                      ? cur.selectionStart === 0 && cur.selectionEnd === 0
-                      : cur.selectionStart === cur.value.length &&
-                        cur.selectionEnd === cur.value.length;
+                      ? c2.start === 0 && c2.end === 0
+                      : c2.start === src.length && c2.end === src.length;
                   if (!atBoundary) return;
                   const j = blocks.findIndex((x) => x.id === bid);
                   const target = nextEditableIndex(blocks, j, dir);
