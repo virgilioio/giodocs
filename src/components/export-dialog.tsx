@@ -68,6 +68,7 @@ export function ExportDialog({
   const [fmt, setFmt] = useState<ExportFormat>(() => readSavedFormat());
   const [paper, setPaper] = useState<Paper>(() => defaultPaper());
   const [scale, setScale] = useState<string>("100");
+  const [includeDetails, setIncludeDetails] = useState<boolean>(() => readSavedDetails());
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<null | "popup-blocked" | "generic">(null);
   const menu = useRowMenu();
@@ -81,6 +82,16 @@ export function ExportDialog({
       /* ignore */
     }
   }, [fmt]);
+
+  // Persist the last chosen "include details" toggle. Applies to all three
+  // formats, not just PDF — so it must persist across format changes.
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(LS_DETAILS_KEY, includeDetails ? "true" : "false");
+    } catch {
+      /* ignore */
+    }
+  }, [includeDetails]);
 
   // Dialog Escape closes the dialog — but only when no menu popover is open,
   // because RowMenu already handles Escape for its own popover.
