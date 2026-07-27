@@ -2509,7 +2509,7 @@ const TableRow = memo(function TableRow({
 }) {
   return (
     <RowGroup pageId={p.id} selected={selected}>
-      <Cell>
+      <Cell edge>
         <RowCheckbox
           checked={selected}
           alwaysVisible={anySelection}
