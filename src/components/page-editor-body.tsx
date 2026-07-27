@@ -1474,15 +1474,29 @@ export function EditableBody({
       const atTop = runStart === 0;
       const atEnd = runEnd >= blocks.length - 1;
 
-      const turnIntoSub: MenuRow[] = BLOCK_MENU.map((m) => ({
-        kind: "row",
-        label: m.name,
-        icon: "layout",
-        onPick: () => {
-          runTurnInto(blockId, m.type);
-          mctx.close();
-        },
-      }));
+      const turnIntoSub: MenuRow[] = [
+        ...BLOCK_MENU.map((m) => ({
+          kind: "row" as const,
+          label: m.name,
+          icon: "layout" as const,
+          onPick: () => {
+            runTurnInto(blockId, m.type);
+            mctx.close();
+          },
+        })),
+        // Toggle heading levels — sit next to the plain "Toggle" entry as
+        // additional Turn-into options. Preserves text/body/open by
+        // relying on runTurnInto's default patch behaviour.
+        ...([1, 2, 3] as const).map((n) => ({
+          kind: "row" as const,
+          label: `Toggle heading ${n}`,
+          icon: "layout" as const,
+          onPick: () => {
+            runTurnInto(blockId, "toggle", { level: `h${n}` as ToggleLevel });
+            mctx.close();
+          },
+        })),
+      ];
 
       const rows: MenuRow[] = [
         {
