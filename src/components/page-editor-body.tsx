@@ -29,6 +29,21 @@ import {
   isColumnsBlock,
   stripNestedColumns,
 } from "@/lib/columns";
+import {
+  createUndoState,
+  push as undoPush,
+  undo as undoDo,
+  redo as undoRedo,
+  shouldCoalesce,
+  type UndoState,
+  type UndoEntry,
+} from "@/lib/undo-stack";
+
+/** Module-local bridge: nested ColumnStack keystrokes set this before
+ *  bubbling their new blocks up, so EditableBody.commit knows the
+ *  incoming `{ cols }` patch is a typing burst on that inner block id
+ *  (and can coalesce it). Consumed synchronously by commit(). */
+const columnTypingHint: { key: string | null } = { key: null };
 
 
 
