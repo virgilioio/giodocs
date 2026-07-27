@@ -1,87 +1,92 @@
-# Columns — part 1 of 2
 
-Scope from the task: data model, rendering, editing, /col2–/col6, serializers, Notion column_list importer.
-Deferred to part 2 (documented as such in "What I did NOT do"): dragging blocks into/out of columns, marquee selection crossing columns, arrow-key navigation between columns.
+# Unify the two block-editor implementations
 
-## 1. Data model
+## Deliverable
 
-`src/lib/types.ts` — no shape change; `Block` already accepts arbitrary keys. Add a `/** @see public.page_search_text — DB search recurses one level into cols; NEVER nest columns inside columns. */` note.
+One shared hook `src/lib/use-block-editor.tsx` that owns every interaction on a linear list of blocks. Both `EditableBody` (page scope) and `ColumnStack` (column scope) become thin renderers over it. The three second copies of `splitBlock`, `mergeIntoPrev`, `convertToText`, `removeBlock`, `insertAfter`, `tryMarkdown`, `applyType`, the slash-menu state, the focus-request effect, and the ordinal map are deleted from `ColumnStack`. No new features — only closing your audit's divergences.
 
-`src/lib/columns.ts` (new, pure) — helpers:
-- `MIN_COLS = 2`, `MAX_COLS = 6`
-- `isColumnsBlock(b): boolean`
-- `validateColumnsCols(cols): boolean` — length 2–6, every entry is an array, no entry contains a columns block (single level).
-- `stripNestedColumns(cols)` — for defensive normalization: filter out any nested columns block within any column, replacing it with its flattened contents.
-- `emptyColumns(n)` — returns `Blk[][]` with n columns, each seeded `[newBlock("text")]` (caller supplies newBlock via param to avoid cross-file dep).
+## Files touched
 
-Wire `normalize()` in the editor to call `stripNestedColumns` on the cols array of any incoming columns block, and to normalize the inner blocks recursively (one level).
+- `src/lib/use-block-editor.tsx` — NEW. The hook.
+- `src/lib/block-editor-decisions.ts` — NEW. Pure decision helpers (`resolveArrowNav`, `resolveBackspace`, `resolvePasteAt`, `applyMarkdownShortcut`) so the parity test can run one input through both scopes.
+- `src/lib/block-editor-decisions.test.ts` — NEW. Table-driven parity test: same input, page and column scope, identical output except the four intended differences.
+- `src/components/page-editor-body.tsx` — MAJOR. `EditableBody` and `ColumnStack` both call `useBlockEditor`. Everything drag/marquee/selection/undo-orchestration/keyboard-global stays where it is (top level only, unchanged). Second implementations deleted, not commented out.
+- `src/lib/enter-behaviour.ts` — untouched (already pure; consumed by the hook at both scopes).
+- `src/lib/block-nav.ts` — untouched (consumed by the hook at both scopes).
+- Existing tests: unchanged, all must stay green.
 
-## 2. Serializers
+Nothing outside the page body changes. No route, no query, no schema, no CSS.
 
-`src/lib/export.ts`
-- `blockToMarkdown` — case `"columns"`: for each `cols[i]`, run `blockToMarkdown` per inner block with per-column `numberedOrdinals`; join blocks in one column with `\n\n`; join columns with `\n\n`. No marker. Round-trip is lossy (comment).
-- `blockHtml` — case `"columns"`: `<div style="display:grid;grid-template-columns:repeat(N,minmax(0,1fr));gap:20px">` with N `<div>` children, each concatenating `blockHtml` of inner blocks with per-column ordinals. All user text escaped via existing `inline`/`esc`.
+## Hook shape
 
-`src/lib/markdown-import.ts` — no change; add the "markdown cannot express columns" comment at the top.
+```ts
+type Scope =
+  | { kind: 'page' }
+  | { kind: 'column'; parentBlockId: string; colIndex: number };
 
-`src/lib/html-to-markdown.ts`
-- Existing `htmlToMarkdown(html)` unchanged for non-column input.
-- New optional structured export: `htmlToBlocks(html): Blk[] | null`. Walks the tree; when it sees an element whose class contains `column_list` (Notion), it collects children whose class contains `column` and builds a `columns` block whose inner content is produced by re-running `htmlToMarkdown` on each column's inner HTML → `parseMarkdown` → Blk[]. If N is outside 2–6, clamp to 6 and flatten the rest into the last column (never lose content). Returns `null` when no `column_list` shape is found.
-- Paste handler (see §4) prefers `htmlToBlocks` when non-null; otherwise falls back to `htmlToMarkdown` + `parseMarkdown` (current behavior). Malformed → text still arrives as stacked blocks.
-
-## 3. Rendering / editing — the refactor
-
-Refactor `src/components/page-editor-body.tsx` so per-block editing machinery is reusable inside a column.
-
-Extract a `<BlockStack>` component defined in the same file (no new file — this keeps the "one renderer" invariant):
-- Props: `blocks: Blk[]`, `setBlocks(next: Blk[]): void`, `locked: boolean`, `insideColumn: boolean`, `focusRegistry` (refs), plus optional hooks the top level uses (drag, marquee, multi-select). When `insideColumn` is true these hooks are disabled and the drag handle is inert with `title="Reordering inside columns arrives next"`.
-- Renders the existing `<BlockRow>` per block. Handles Enter/split, Backspace/merge, slash menu, markdown shortcuts, per-block type changes, todo toggle, toggle-block open — all the current logic, moved from `EditableBody` into `BlockStack`.
-- Backspace at column-first-block offset 0 → does nothing (early return when `insideColumn`).
-- Enter at end of last block → appends within its own array.
-
-`EditableBody` becomes: state owner (blocks, selection, drag), renders one top-level `<BlockStack insideColumn={false}>`. The columns block is rendered by `BlockContent` (via BlockRow) as:
+useBlockEditor({
+  blocks, setBlocks,      // list ops write here; parent decides how to commit/undo
+  locked,
+  scope,
+  bridge,                 // ColumnBridge | null; only consulted at column scope
+  onCommitStructural,     // page: pushes an undo snapshot; column: parent handles via propagated { cols } patch
+  onFocusExit,            // page: focus title; column: focus block-before-columns (or title if first)
+}) => {
+  refs,                   // Record<blockId, HTMLTextAreaElement | HTMLInputElement | null>
+  focusedId, setFocusedId,
+  slash, menuIdx, filteredMenu, openSlash, closeSlash, moveSlash, pickSlash,
+  onKeyDown(block, e),    // full behaviour surface
+  onInput(block, val),
+  onPaste(block, e),
+  onChange(block, patch),
+  splitBlock, mergeIntoPrev, convertToText, removeBlock, insertAfter,
+  ordinalMap,
+  duplicateFocused,       // ⌘D
+}
 ```
-<div class="cols" style="display:grid;grid-template-columns:repeat(N,minmax(0,1fr));gap:20px">
-  {cols.map((col, i) =>
-    <BlockStack key={i} blocks={col} setBlocks={next => onColumnChange(i, next)} insideColumn locked={locked} />
-  )}
-</div>
-```
-plus a `@media (max-width: 900px)` rule (added to `styles.css`) that collapses `.cols` to a single column.
 
-`onColumnChange(i, nextBlks)` mutates the enclosing columns block's cols array and commits via the existing debounced writer. No second write path.
+## The four INTENDED differences, parameterised
 
-## 4. Slash menu
+1. **Slash menu contents** — `scope.kind === 'page'` shows `BLOCK_MENU + COLUMNS_MENU`; column shows `BLOCK_MENU` only. `applyType('columns')` is refused unconditionally.
+2. **Backspace at index 0** — page: `mergeIntoPrev` if non-empty; column: no-op (never crosses a column).
+3. **Enter on empty last block** — page: `splitBlock` behaviour; column: `enterAction` → `escape-column` (unchanged from today).
+4. **ArrowUp from first block / boundary crossings** — page: `onFocusExit` focuses title. Column: `onFocusExit` focuses the top-level block immediately before the parent columns block (or the title, if the columns block is first). Both use `nextEditableIndex` internally.
 
-Extend `BLOCK_MENU`? No — the col entries are a separate array `COLUMNS_MENU` (five entries `/col2`…`/col6`, icon glyph `▥`, description "N columns"). The slash menu filter concatenates `BLOCK_MENU + COLUMNS_MENU` at top level only. When `insideColumn`, only `BLOCK_MENU` is used.
+Every other row in the divergence table converges by construction — same code, one call site.
 
-Selecting a `/colN` entry replaces the current block with a `columns` block whose cols are N seeded columns of one empty text block; focus moves to `cols[0][0]`.
+## Divergences closed by this refactor
 
-Turn-into path (block handle menu) also excludes columns entries inside a column.
+- **⌘V multi-line/markdown paste inside a column** (highest priority; unblocks the Notion migration). `onPaste` runs `htmlToBlocks` / `parseMarkdown` and splices the resulting blocks into the column at the caret, exactly as at page scope. If the parsed run contains a `columns` block, it is skipped (never nest).
+- **ArrowUp / ArrowDown wrap-aware nav** in columns, including boundary crossing to top level via `bridge.exitColumn(direction)`.
+- **ArrowLeft at offset 0 / ArrowRight at end** — same crossing rules.
+- **Escape** — blurs at both scopes.
+- **⌘D duplicate focused block** — works inside columns, scoped to that column's list.
+- **Markdown shortcuts** — full set at both scopes: `# `, `## `, `### ` → h2, `#### ` → h2, `- `, `1. `, `[] `, `[ ] `, `> `, ` ``` `, callout shortcut.
+- **Block-handle click menu** — opens inside columns too, operating on that column's list.
+- **Undo snapshots for column structural ops** — the hook calls `onCommitStructural` at column scope, which routes through the same `commit` → `pushUndo` path used at page scope. Typing coalesces on the existing 600ms/different-block rule via the `columnTypingHint` bridge, unchanged.
 
-Paste handler: if the top-level paste yields blocks containing a columns block AND the target block is inside a column, flatten those into stacked blocks before inserting (never nest).
+## What deliberately stays unchanged
 
-## 5. Tests
+- Drag/marquee registry, `ColumnBridge`, `columnTypingHint`, top-level `selectedIds` set, bulk bar, ⌘A stage-2 promoting to whole document from a column, global keyboard shortcuts, geometry, styles, focus-request effect semantics, `newBlock` defaults, `normalize`, `stripNestedColumns`, undo store, real-time patching. Column-scoped block selection remains unsupported.
 
-Files: `src/lib/columns.test.ts` (new), extend `src/lib/export.test.ts` and `src/lib/html-to-markdown.test.ts`.
+## Parity test
 
-- validateColumnsCols: accepts 2..6, rejects 1 and 7, rejects nested columns.
-- blockToMarkdown on columns: flatten both columns in order, blank line between.
-- toHtml on columns: emits `repeat(N,minmax(0,1fr))` grid, contains both columns' content, user text escaped.
-- htmlToBlocks: Notion `<div class="column_list"><div class="column">…</div><div class="column">…</div></div>` → one columns block, correct N, content preserved.
-- htmlToBlocks: malformed input → returns null; caller path still yields the text as stacked blocks.
+`block-editor-decisions.test.ts` builds one fixture list and runs a table of `(key, scope, blockIndex, caret, text) → expected op`. Every row must produce identical output at both scopes, except four rows explicitly tagged `intended-diff` for the four cases above. This is what stops the two implementations drifting again.
 
-## 6. Required evidence
+## Staging inside the single response
 
-Included in the report:
-a) `rg -n "'columns'|\"columns\"" src/lib/types.ts src/lib/blocks.ts src/lib/columns.ts`
-b) `rg -n "col2|col3|col6" src/components/page-editor-body.tsx`
-c) `bun run build` — full raw tail
-d) `bunx vitest run` — full raw tail with new test names
-e) "What I did NOT do" — explicitly lists drag / marquee / arrow-nav across columns as deferred.
+1. Write the two new lib files and their test. Run `bunx vitest run` on them alone — must pass before touching the component.
+2. Rewrite `EditableBody`'s onKeyDown/onInput/onPaste to call the hook; keep top-level-only responsibilities (drag, marquee, selection, undo commit, global shortcuts, title focus) inline. Run full build + full vitest.
+3. Rewrite `ColumnStack` as a thin renderer. Delete the second copies. Run full build + full vitest.
+4. Verify the eight-row divergence table now reads SAME/INTENDED end-to-end.
 
-## Risk to flag before starting
+## Risk and honest caveats
 
-Extracting `<BlockStack>` from `EditableBody` touches the drag, marquee, and per-block keyboard code. I'll keep the drag/marquee/selection machinery attached at the `EditableBody` level (they read from `rowEls` which BlockStack still populates for the top level), and pass `insideColumn` to opt those signals out inside columns. If, during the refactor, the marquee/drag logic needs to change more than trivially, I'll stop, report what needs to move, and ask before continuing — rather than half-migrate.
+- This is a large edit to a load-bearing file. I will preserve behaviour by keeping the hook's `onKeyDown` structurally identical to today's page-scope handler, then parameterising only the four intended differences — not by rewriting from spec.
+- If any row cannot be unified cleanly (e.g. undo coalescence at column scope depends on parent-owned commit boundaries in a way the hook cannot express without leaking), I will leave it DIFFERENT with a written reason rather than fake it, per your instruction.
+- Column-scoped multi-block selection stays out of scope.
+- The file will shrink materially (rough estimate 3273 → ~2500 lines) but I will not target a line count; I will target zero duplication.
 
-Approve and I'll build.
+## Approval question
+
+Confirm: proceed as written, or adjust the hook boundary / staging first. I want your sign-off on the shape before I touch `page-editor-body.tsx`, because unwinding a bad extraction is more expensive than agreeing on it now.
