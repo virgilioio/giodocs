@@ -2555,6 +2555,22 @@ function BlockContent({
     );
   }
 
+  if (t === "h3") {
+    // Poppins 600 at 17px — text-subhead pairs with font-display. Distinct
+    // from body prose (Lato 17/400) by family and weight, so no new token.
+    return renderSwap(
+      "w-full resize-none border-0 bg-transparent p-0 font-display text-subhead text-noir outline-none placeholder:text-faint",
+    );
+  }
+
+  if (t === "caption") {
+    // A small muted line. No other chrome. See notes in blockToMarkdown:
+    // markdown round-trip is lossy (comes back as `text`).
+    return renderSwap(
+      "w-full resize-none border-0 bg-transparent p-0 text-caption text-muted outline-none placeholder:text-faint",
+    );
+  }
+
   // text (default)
   return renderSwap(
     "w-full resize-none border-0 bg-transparent p-0 text-prose text-body outline-none placeholder:text-faint",
