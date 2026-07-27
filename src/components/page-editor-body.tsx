@@ -1152,18 +1152,23 @@ function BlockRow({
   onAddBelow: () => void;
   onSetIcon: (icon: string) => void;
 }) {
+  const noEditor = block.type === "divider";
   return (
     <div
       ref={(el) => registerRowEl(block.id, el)}
+      data-block-id={block.id}
+      data-block-no-editor={noEditor ? "true" : undefined}
       className="group relative -ml-[42px] pl-[42px]"
       style={{
         opacity: dimmed ? 0.45 : undefined,
         background: selected ? "var(--color-blueTint)" : undefined,
         boxShadow: selected ? "0 0 0 4px var(--color-blueTint)" : undefined,
         borderRadius: selected ? 4 : undefined,
+        cursor: noEditor ? "pointer" : undefined,
         transition: "background 120ms ease, box-shadow 120ms ease",
       }}
     >
+
       {!locked ? (
         <div
           className="pointer-events-none absolute top-0 flex select-none items-center gap-0.5 opacity-0 transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100"
