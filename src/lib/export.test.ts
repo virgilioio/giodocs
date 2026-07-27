@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { slugOf, toHtml, toMarkdown } from "./export";
+import {
+  slugOf,
+  toCsv,
+  toHtml,
+  toMarkdown,
+  toMarkdownTable,
+  type ExportViewRow,
+} from "./export";
 import type { Block } from "./types";
 
 const B = (type: string, extra: Record<string, unknown> = {}): Block =>
