@@ -49,7 +49,8 @@ import { PageEditor } from "./page-view";
 import { PageTopbarActions } from "./page-topbar-actions";
 import { CommandPalette } from "./command-palette";
 import { SettingsModal, type SettingsPane } from "./settings-modal";
-import { AddMembersModal, type PendingInvite } from "./add-members-modal";
+import { AddMembersModal } from "./add-members-modal";
+import { useWorkspaceInvites, useCancelInvite } from "@/hooks/use-invites";
 import { Popover } from "./popover";
 import { EmojiPicker } from "./emoji-picker";
 import {
@@ -137,7 +138,9 @@ export function AppShell() {
   const [membersTab, setMembersTab] = useState<"members" | "guests">("members");
   const [accountMenu, setAccountMenu] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+  const invitesQ = useWorkspaceInvites();
+  const pendingInvites = invitesQ.data ?? [];
+  const cancelInvite = useCancelInvite();
   const [sidebarPopover, setSidebarPopover] = useState<"view" | "area" | null>(null);
   const [pageMenuOpen, setPageMenuOpen] = useState(false);
 
@@ -418,9 +421,7 @@ export function AppShell() {
         onPaneChange={setSettingsPane}
         onClose={closeSettings}
         pendingInvites={pendingInvites}
-        onRevokeInvite={(email) =>
-          setPendingInvites((prev) => prev.filter((i) => i.email !== email))
-        }
+        onRevokeInvite={(email) => cancelInvite.mutate(email)}
         onOpenInvite={() => setInviteOpen(true)}
         membersTab={membersTab}
         onMembersTabChange={setMembersTab}
@@ -430,8 +431,8 @@ export function AppShell() {
         onClose={() => setInviteOpen(false)}
         workspaceName={workspaceName}
         allowedDomains={allowedDomains}
-        onSend={(invs) => setPendingInvites((prev) => [...prev, ...invs])}
       />
+
     </div>
     </RowMenuProvider>
   );
