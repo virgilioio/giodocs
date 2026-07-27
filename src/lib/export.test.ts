@@ -370,6 +370,70 @@ describe("unknown block types (graceful fallback)", () => {
       blocks: [{ type: "paragraph", text: "hello world" } as unknown as Block],
     });
     expect(md).toContain("hello world");
-    spy.mockRestore();
+  spy.mockRestore();
+  });
+});
+
+describe("includeDetails toggle", () => {
+  const richCtx = {
+    title: "My Page",
+    area: "Engineering",
+    status: "Active",
+    ownerName: "Ada Lovelace",
+    tags: ["alpha", "beta"],
+    verifiedAt: "2024-06-01T10:00:00Z",
+    blocks: [{ type: "paragraph", text: "body" } as unknown as Block],
+  };
+
+  it("toMarkdown with details OFF starts with '# ' and has no front matter", () => {
+    const md = toMarkdown({ ...richCtx, includeDetails: false });
+    expect(md.startsWith("# ")).toBe(true);
+    expect(md.indexOf("---")).not.toBe(0);
+    expect(md).not.toContain("area:");
+    expect(md).not.toContain("status:");
+  });
+
+  it("toMarkdown with details ON emits title/area/status/owner/tags/verified", () => {
+    const md = toMarkdown({ ...richCtx, includeDetails: true });
+    expect(md.startsWith("---")).toBe(true);
+    expect(md).toContain("title:");
+    expect(md).toContain("area:");
+    expect(md).toContain("status:");
+    expect(md).toContain("owner:");
+    expect(md).toContain("tags:");
+    expect(md).toContain("verified:");
+  });
+
+  it("toHtml with details OFF has no <dl and no orphaned header rule", () => {
+    const html = toHtml({ ...richCtx, includeDetails: false });
+    expect(html).not.toContain("<dl");
+    expect(html).not.toContain('<header class="meta"');
+    expect(html).toContain("<h1 class=\"title\">My Page</h1>");
+  });
+
+  it("toHtml with details ON contains <dl and header.meta", () => {
+    const html = toHtml({ ...richCtx, includeDetails: true });
+    expect(html).toContain("<dl");
+    expect(html).toContain('<header class="meta"');
+  });
+
+  it("toHtml always contains the print footer and the page title", () => {
+    for (const inc of [true, false]) {
+      const html = toHtml({ ...richCtx, includeDetails: inc });
+      expect(html).toContain('class="print-footer"');
+      expect(html).toContain("My Page");
+    }
+  });
+
+  it("toHtml contains no external references (self-contained)", () => {
+    for (const inc of [true, false]) {
+      const html = toHtml({ ...richCtx, includeDetails: inc });
+      // Base64 data URI is fine; assert no protocol references outside it.
+      // Strip data: URIs first so their inner blobs don't false-positive.
+      const stripped = html.replace(/data:[^"'\s)]+/g, "");
+      expect(stripped).not.toContain("http://");
+      expect(stripped).not.toContain("https://");
+      expect(stripped).not.toContain("<script");
+    }
   });
 });
