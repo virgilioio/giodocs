@@ -57,10 +57,15 @@ import {
   MoreButton as RowMoreButton,
   RowMenuList,
   RowMenuConfirm,
+  SpecMenuTrigger,
   Sc,
   Val,
   type RowMenuItem,
+  type MenuSpec,
+  type MenuRow,
 } from "./row-menu";
+import { areaMenuFooter } from "@/lib/area-menu-footer";
+
 import { useAllowedDomains, useMembers, usePropDefs } from "@/hooks/use-workspace-data";
 import { usePrefs } from "@/lib/preferences";
 
