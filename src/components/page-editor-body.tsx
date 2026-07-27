@@ -911,6 +911,12 @@ export function EditableBody({
 function BlockRow({
   block,
   locked,
+  selected,
+  dimmed,
+  registerRowEl,
+  onHandlePointerDown,
+  onHandlePlainClick,
+  onHandleShiftClick,
   onBlur,
   registerRef,
   onChange,
@@ -921,6 +927,12 @@ function BlockRow({
 }: {
   block: Blk;
   locked: boolean;
+  selected: boolean;
+  dimmed: boolean;
+  registerRowEl: (id: string, el: HTMLElement | null) => void;
+  onHandlePointerDown: (ev: React.PointerEvent<HTMLElement>) => void;
+  onHandlePlainClick: () => void;
+  onHandleShiftClick: () => void;
   onBlur?: () => void;
   registerRef: (el: HTMLTextAreaElement | HTMLInputElement | null) => void;
   onChange: (patch: Partial<Blk>) => void;
@@ -930,14 +942,27 @@ function BlockRow({
   onSetIcon: (icon: string) => void;
 }) {
   return (
-    <div className="group relative -ml-[42px] pl-[42px]">
-      {/* Gutter lives inside the row's own hover box so there is no dead
-       * zone between text and gutter. The row extends 42px to the left
-       * via negative margin + matching padding; buttons sit at left:0. */}
+    <div
+      ref={(el) => registerRowEl(block.id, el)}
+      className="group relative -ml-[42px] pl-[42px]"
+      style={{
+        opacity: dimmed ? 0.45 : undefined,
+        background: selected ? "var(--color-blueTint)" : undefined,
+        boxShadow: selected ? "0 0 0 4px var(--color-blueTint)" : undefined,
+        borderRadius: selected ? 4 : undefined,
+        transition: "background 120ms ease, box-shadow 120ms ease",
+      }}
+    >
       {!locked ? (
         <div
           className="pointer-events-none absolute top-0 flex select-none items-center gap-0.5 opacity-0 transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100"
-          style={{ left: 0, height: 32, width: 39 }}
+          style={{
+            left: 0,
+            height: 32,
+            width: 39,
+            opacity: selected ? 1 : undefined,
+            pointerEvents: selected ? "auto" : undefined,
+          }}
         >
           <button
             type="button"
@@ -948,13 +973,36 @@ function BlockRow({
           >
             +
           </button>
-          <span
-            aria-hidden
-            title="Reordering arrives soon"
-            className="grid h-6 w-6 cursor-default place-items-center rounded-md text-faint"
+          <button
+            type="button"
+            aria-label="Drag to reorder"
+            title="Drag to reorder · shift-click to select range"
+            onPointerDown={(e) => {
+              if (e.button !== 0) return;
+              // Shift-click selects a contiguous range and does NOT start a drag.
+              if (e.shiftKey) return;
+              onHandlePointerDown(e);
+            }}
+            onClick={(e) => {
+              if (e.shiftKey) {
+                e.preventDefault();
+                onHandleShiftClick();
+                return;
+              }
+              // Plain click: clear any active selection, do nothing else.
+              onHandlePlainClick();
+            }}
+            className={
+              "grid h-6 w-6 place-items-center rounded-md hover:bg-sunken " +
+              (selected ? "text-blueInk" : "text-faint hover:text-muted")
+            }
+            style={{
+              cursor: "grab",
+              touchAction: "none",
+            }}
           >
             ⋮⋮
-          </span>
+          </button>
         </div>
       ) : null}
 
@@ -971,6 +1019,7 @@ function BlockRow({
     </div>
   );
 }
+
 
 function BlockContent({
   block,
