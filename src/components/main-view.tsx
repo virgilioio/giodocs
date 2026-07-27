@@ -956,17 +956,84 @@ export function MainView({ selection }: { selection: Selection }) {
   };
   const doPublish = () => {
     if (!view) return;
-    if (
-      !window.confirm(
-        `Publish "${view.name}" to Team views? It moves out of My views into Team views for all ${memberCount} people at ${workspace?.name ?? "the workspace"}. Publishing is the only way a view becomes shared.`,
-      )
-    )
-      return;
     publishView.mutate(view.id);
+  };
+  const doUnpublish = () => {
+    if (!view) return;
+    updateView.mutate({ id: view.id, patch: { scope: "personal" } });
   };
   const doDelete = () => {
     if (!view) return;
-    if (window.confirm(`Delete view "${view.name}"?`)) deleteView.mutate(view.id);
+    deleteView.mutate(view.id, {
+      onSuccess: () => {
+        // Navigate to the first remaining personal view owned by me.
+        const first = views
+          .filter(
+            (v) =>
+              v.id !== view.id &&
+              v.scope === "personal" &&
+              v.owner_id === user?.id,
+          )
+          .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0];
+        if (first) navigate({ to: "/v/$viewId", params: { viewId: first.id } });
+        else navigate({ to: "/" });
+      },
+    });
+  };
+  const doDuplicatePersonal = () => {
+    if (!view) return;
+    createView.mutate(
+      {
+        name: `${view.name} copy`,
+        icon: view.icon,
+        filter: (view.filter ?? []) as Filter[],
+        sort: (view.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
+        layout: view.layout as Layout,
+      },
+      {
+        onSuccess: (row) =>
+          navigate({ to: "/v/$viewId", params: { viewId: row.id } }),
+      },
+    );
+  };
+  const doDuplicateTeam = () => {
+    if (!view) return;
+    forkView.mutate(
+      {
+        viewId: view.id,
+        name: `${view.name} copy`,
+        filter: (view.filter ?? []) as Filter[],
+        sort: (view.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
+        layout: view.layout as Layout,
+      },
+      {
+        onSuccess: (row) =>
+          navigate({ to: "/v/$viewId", params: { viewId: row.id } }),
+      },
+    );
+  };
+  const doAreaSaveAsView = () => {
+    if (selection.kind !== "area") return;
+    createView.mutate(
+      {
+        name: selection.area,
+        filter: [{ op: "eq", prop: "area", value: selection.area }],
+        sort: { prop: "edited", dir: "desc" },
+        layout: "table",
+      },
+      {
+        onSuccess: (row) =>
+          navigate({ to: "/v/$viewId", params: { viewId: row.id } }),
+      },
+    );
+  };
+  const doRenameCommit = (v: string) => {
+    setRenaming(false);
+    if (!view) return;
+    const next = v.trim();
+    if (next && next !== view.name) {
+      updateView.mutate({ id: view.id, patch: { name: next } });
+    }
   };
 
 
