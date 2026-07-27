@@ -297,15 +297,19 @@ function blockHtml(b: Block, ordinal = 1): string {
     case "h3":
       return `<h4>${inline(text)}</h4>`;
     case "bullet":
-      return `<ul><li>${inline(text)}</li></ul>`;
     case "numbered":
-      // Each block is its own <ol>; use `start` so the number matches the
-      // page's read of the run (see numberedOrdinals).
-      return `<ol start="${ordinal}"><li>${inline(text)}</li></ol>`;
     case "todo":
-      return `<p class="todo"><input type="checkbox" disabled${
-        b.checked ? " checked" : ""
-      }/> <span${b.checked ? ' class="done"' : ""}>${inline(text)}</span></p>`;
+      // Runs of consecutive list-like blocks are emitted by `renderListRun`
+      // inside toHtml so they nest into real <ul>/<ol>. If we ever end up
+      // here (e.g. a solitary list block reached through some other path),
+      // fall back to a flat single-item list so nothing is lost.
+      return t === "numbered"
+        ? `<ol${ordinal > 1 ? ` start="${ordinal}"` : ""}><li>${inline(text)}</li></ol>`
+        : t === "todo"
+          ? `<p class="todo"><input type="checkbox" disabled${
+              b.checked ? " checked" : ""
+            }/> <span${b.checked ? ' class="done"' : ""}>${inline(text)}</span></p>`
+          : `<ul><li>${inline(text)}</li></ul>`;
     case "toggle": {
       const body = typeof b.body === "string" ? b.body : "";
       const level = typeof b.level === "string" ? (b.level as string) : "text";
