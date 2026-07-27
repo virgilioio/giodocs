@@ -901,7 +901,7 @@ export function EditableBody({
           dimmed={draggingIdSet.has(b.id)}
           registerRowEl={registerRowEl}
           onHandlePointerDown={(ev) => beginDrag(b.id, ev)}
-          onHandlePlainClick={handlePlainClick}
+          onHandleClick={(anchor) => handleClick(b.id, anchor)}
           onHandleShiftClick={() => handleShiftClick(b.id)}
           onBlur={onBlur}
           registerRef={(el) => {
