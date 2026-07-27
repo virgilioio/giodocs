@@ -508,9 +508,32 @@ export function EditableBody({
     draggingRef.current = dragging;
   }, [dragging]);
 
-  const registerRowEl = useCallback((id: string, el: HTMLElement | null) => {
-    if (el) rowEls.current.set(id, el);
-    else rowEls.current.delete(id);
+  // Column-track registry (for hierarchical drag hit-testing): each column
+  // of a columns block registers its outermost stack element under the key
+  // `${blockId}:${colIndex}`, and each block row inside a column records
+  // its owning colRef in `rowColRefById` so drag/marquee logic can find
+  // which list a given row belongs to.
+  const colTracks = useRef<Map<string, HTMLElement>>(new Map());
+  const rowColRefById = useRef<Map<string, ColumnRef | null>>(new Map());
+  const trackKey = (r: ColumnRef) => `${r.blockId}:${r.colIndex}`;
+
+  const registerRowEl = useCallback(
+    (id: string, el: HTMLElement | null, colRef: ColumnRef | null = null) => {
+      if (el) {
+        rowEls.current.set(id, el);
+        rowColRefById.current.set(id, colRef);
+      } else {
+        rowEls.current.delete(id);
+        rowColRefById.current.delete(id);
+      }
+    },
+    [],
+  );
+
+  const registerColTrack = useCallback((r: ColumnRef, el: HTMLElement | null) => {
+    const k = trackKey(r);
+    if (el) colTracks.current.set(k, el);
+    else colTracks.current.delete(k);
   }, []);
 
   // Clear selection when clicking into any textarea/input.
