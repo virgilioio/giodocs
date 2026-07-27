@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  blockToMarkdown,
   slugOf,
   toCsv,
   toHtml,
@@ -8,6 +9,7 @@ import {
   type ExportViewRow,
 } from "./export";
 import type { Block } from "./types";
+
 
 const B = (type: string, extra: Record<string, unknown> = {}): Block =>
   ({ type, ...extra } as Block);
