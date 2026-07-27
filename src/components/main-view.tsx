@@ -49,7 +49,9 @@ import {
   useDeletePage,
   useMovePageToArea,
   useRestorePage,
+  useArchivePage,
 } from "@/hooks/use-page-mutations";
+import { BulkBar } from "./bulk-bar";
 import { ExportViewDialog } from "./export-view-dialog";
 import { useDelayedPending } from "./sk";
 import { ViewSkeleton, BoardSkeleton } from "./skeletons";
@@ -1376,6 +1378,7 @@ export function MainView({ selection }: { selection: Selection }) {
   const deletePage = useDeletePage();
   const movePageToArea = useMovePageToArea();
   const restorePage = useRestorePage();
+  const archivePage = useArchivePage();
 
   const base: ViewBase | null = useMemo(() => {
     if (selection.kind === "area") return areaBaseView(selection.area);
@@ -1483,6 +1486,15 @@ export function MainView({ selection }: { selection: Selection }) {
     for (const p of pages) {
       const a = propsOf(p)["area"];
       if (typeof a === "string" && a) s.add(a);
+    }
+    return [...s].sort();
+  }, [pages]);
+
+  const tagsWs = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of pages) {
+      const t = propsOf(p)["tags"];
+      if (Array.isArray(t)) for (const x of t) if (typeof x === "string" && x) s.add(x);
     }
     return [...s].sort();
   }, [pages]);
@@ -1981,6 +1993,67 @@ export function MainView({ selection }: { selection: Selection }) {
         </div>
       )}
 
+
+      <BulkBar
+        pages={pages}
+        selectedIds={selPages}
+        propDefs={propDefs}
+        members={members}
+        areas={areas}
+        tags={tagsWs}
+        views={views}
+        onClear={clearSelection}
+        actions={{
+          staleDays,
+          meId: user?.id ?? "",
+          verify: async (ids) => {
+            await Promise.all(ids.map((id) => verifyPage.mutateAsync(id)));
+          },
+          setStatus: async (ids, value) => {
+            await Promise.all(
+              ids.map((id) =>
+                setProp.mutateAsync({ pageId: id, key: "status", value }),
+              ),
+            );
+          },
+          setOwner: async (ids, uid) => {
+            await Promise.all(
+              ids.map((id) =>
+                setProp.mutateAsync({ pageId: id, key: "owner", value: uid }),
+              ),
+            );
+          },
+          moveArea: async (ids, area) => {
+            await Promise.all(
+              ids.map((id) => movePageToArea.mutateAsync({ pageId: id, area })),
+            );
+          },
+          addTag: async (ids, tag) => {
+            await Promise.all(
+              ids.map((id) => {
+                const p = pages.find((x) => x.id === id);
+                const existing = (propsOf(p ?? ({} as PageListItem))["tags"] ?? []) as unknown[];
+                const arr = Array.isArray(existing)
+                  ? existing.filter((x): x is string => typeof x === "string")
+                  : [];
+                const next = arr.includes(tag) ? arr : [...arr, tag];
+                return setProp.mutateAsync({ pageId: id, key: "tags", value: next });
+              }),
+            );
+          },
+          archive: async (ids) => {
+            await Promise.all(
+              ids.map((id) =>
+                archivePage.mutateAsync({ pageId: id, archived: true }),
+              ),
+            );
+          },
+          deletePages: async (ids) => {
+            await Promise.all(ids.map((id) => deletePage.mutateAsync(id)));
+          },
+          toast: (message) => toast.push(message),
+        }}
+      />
 
       {body}
 

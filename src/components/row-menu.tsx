@@ -64,6 +64,8 @@ export type MenuSpec = {
     danger?: boolean;
     onConfirm: () => void;
   };
+  /** When set, the title bar renders a ‹ Back button that calls this. */
+  onBack?: () => void;
   width?: number;
 };
 
@@ -387,6 +389,7 @@ function SpecBody({ spec, onClose }: { spec: MenuSpec; onClose: () => void }) {
   return (
     <div style={{ maxHeight: 280, overflow: "auto" }}>
       <div
+        className="flex items-center gap-1 truncate"
         style={{
           padding: "7px 10px 3px",
           fontFamily: "var(--font-display)",
@@ -396,9 +399,28 @@ function SpecBody({ spec, onClose }: { spec: MenuSpec; onClose: () => void }) {
           textTransform: "uppercase",
           color: "var(--color-faint)",
         }}
-        className="truncate"
       >
-        {spec.title}
+        {spec.onBack && (
+          <button
+            type="button"
+            aria-label="Back"
+            onClick={spec.onBack}
+            className="grid place-items-center rounded-sm hover:bg-rail"
+            style={{ width: 16, height: 16, marginRight: 2 }}
+          >
+            <svg viewBox="0 0 24 24" width={11} height={11} aria-hidden>
+              <path
+                d="M15 6l-6 6 6 6"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.4}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        )}
+        <span className="truncate">{spec.title}</span>
       </div>
       <div>
         {rows.map((r, i) =>
@@ -536,7 +558,7 @@ export function SpecMenuTrigger({
   className = "",
 }: {
   build: (ctx: MenuBuildCtx) => MenuSpec;
-  size?: "sm" | "toolbar";
+  size?: "sm" | "toolbar" | "row" | "board-row";
   ariaLabel?: string;
   visible?: boolean;
   className?: string;
@@ -547,7 +569,12 @@ export function SpecMenuTrigger({
     setAnchor(null);
     setSpec(null);
   }, []);
-  const px = size === "toolbar" ? 26 : 17;
+  const px =
+    size === "toolbar" ? 26 : size === "row" ? 24 : size === "board-row" ? 22 : 17;
+  const hoverClass =
+    size === "row" || size === "board-row"
+      ? "text-faint hover:bg-line hover:text-strong"
+      : "text-whisper hover:bg-railHover hover:text-strong";
   return (
     <>
       <button
@@ -563,7 +590,9 @@ export function SpecMenuTrigger({
         }}
         onMouseDown={(e) => e.stopPropagation()}
         className={
-          "grid place-items-center rounded-md text-whisper hover:bg-railHover hover:text-strong " +
+          "grid place-items-center rounded-md " +
+          hoverClass +
+          " " +
           (visible ? "" : "pointer-events-none opacity-0 ") +
           className
         }
