@@ -1135,15 +1135,10 @@ export function PageEditor({ pageId }: { pageId: string }) {
     return [...s].sort();
   }, [shell.pages.data]);
 
-  if (pageQ.isLoading) {
-    return (
-      <div
-        className="mx-auto"
-        style={{ maxWidth: 780, padding: "42px 44px" }}
-      >
-        <p className="text-meta text-muted">Loading page…</p>
-      </div>
-    );
+  const pagePending = pageQ.isPending && !pageQ.data;
+  const showPageSkeleton = useDelayedPending(pagePending);
+  if (pagePending) {
+    return showPageSkeleton ? <PageSkeleton /> : null;
   }
 
   if (!page) {
