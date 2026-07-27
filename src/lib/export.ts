@@ -404,11 +404,14 @@ const HTML_CSS = `
     font-size: 17px; line-height: 1.6; color: ${ink};
     padding: 56px 44px; max-width: 780px; margin: 0 auto;
   }
-  h1, h2, h3 { font-family: Poppins, -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -0.02em; color: ${noir}; }
+  h1, h2, h3, h4 { font-family: Poppins, -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -0.02em; color: ${noir}; }
   h1.title { font-size: 34px; margin: 0 0 4px; letter-spacing: -0.035em; }
   h1 { font-size: 26px; margin: 28px 0 8px; }
   h2 { font-size: 20px; margin: 22px 0 6px; }
+  h3 { font-size: 17px; margin: 18px 0 4px; font-weight: 600; }
+  h4 { font-size: 17px; margin: 18px 0 4px; font-weight: 600; }
   p { margin: 0 0 10px; }
+  p.caption { font-size: 12.5px; color: ${muted}; margin: 4px 0 10px; }
   ul, ol { margin: 0 0 10px; padding-left: 22px; }
   li { margin: 2px 0; }
   hr { border: 0; border-top: 1px solid ${line}; margin: 20px 0; }
