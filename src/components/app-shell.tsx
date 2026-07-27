@@ -900,6 +900,58 @@ function firstNameOf(m: MemberLite | undefined) {
 }
 
 /* Personal view row — hover reveals ⋯ in place of the count. */
+/* Sort label used by the personal-view menu footer. Matches the labels
+ * shown by the toolbar's sort picker in MainView. */
+function sortLabelFor(sort: { prop: string; dir: string } | null | undefined): string {
+  if (!sort) return "";
+  const key = `${sort.prop}:${sort.dir}`;
+  switch (key) {
+    case "edited:desc": return "Newest edits";
+    case "edited:asc":  return "Oldest edits";
+    case "created:desc": return "Newest first";
+    case "created:asc":  return "Oldest first";
+    case "verified:asc": return "Stalest verification";
+    case "title:asc":    return "Title A→Z";
+    default: return "";
+  }
+}
+
+/* The three layout choices with their sub-line copy. Used by the layout
+ * submenu on both personal and team view rows. */
+const LAYOUT_ROWS: Array<{ layout: ViewLayout; label: string; sub: string; icon: string }> = [
+  { layout: "table", label: "Table", sub: "rows + properties", icon: "layout" },
+  { layout: "board", label: "Board", sub: "grouped by select", icon: "board" },
+  { layout: "list",  label: "List",  sub: "title + sub-line", icon: "list" },
+];
+
+function buildLayoutSubmenu(
+  current: ViewLayout,
+  onPick: (l: ViewLayout) => void,
+  ctxClose: () => void,
+): MenuSpec {
+  return {
+    title: "Change layout",
+    footer: "Same query, different arrangement — no page moves.",
+    rows: LAYOUT_ROWS.map((r) => ({
+      kind: "row",
+      label: r.label,
+      icon: r.icon,
+      hint: { text: r.sub },
+      checked: r.layout === current,
+      onPick: () => {
+        if (r.layout !== current) onPick(r.layout);
+        ctxClose();
+      },
+    })),
+  };
+}
+
+function copyViewLink(id: string): string {
+  const origin =
+    typeof window !== "undefined" && window.location ? window.location.origin : "";
+  return `${origin}/v/${id}`;
+}
+
 function MyViewRow({
   v,
   active,
@@ -907,6 +959,9 @@ function MyViewRow({
   renderCount,
   wsName,
   wsMembers,
+  isWorkspaceOwner,
+  pages,
+  ctx,
 }: {
   v: ViewRow;
   active: boolean;
@@ -914,6 +969,9 @@ function MyViewRow({
   renderCount: (c: number | "!", size: string) => ReactNode;
   wsName: string;
   wsMembers: number;
+  isWorkspaceOwner: boolean;
+  pages: PageListItem[];
+  ctx: { me: string; staleDays: number };
 }) {
   const [hover, setHover] = useState(false);
   const updateView = useUpdateView();
@@ -921,60 +979,137 @@ function MyViewRow({
   const deleteView = useDeleteView();
   const publishView = usePublishView();
   const navigate = useNavigate();
+  const toast = useToast();
+  const drafts = useDrafts();
 
-  const build = (): ReactNode => {
-    const items: RowMenuItem[] = [
+  const effectiveLayout = layoutOf(v, drafts);
+
+  const build = (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }): MenuSpec => {
+    const filters = (v.filter ?? []) as Filter[];
+    const sort = (v.sort as SortSpec | null) ?? { prop: "edited", dir: "desc" };
+    const total = pages.length;
+    const matched = runView(pages, { filter: filters, sort, group_by: null }, ctx).rows.length;
+    const footer = personalViewFooter({
+      matchCount: matched,
+      totalCount: total,
+      sortLabel: sortLabelFor(sort),
+    });
+
+    const rows: MenuRow[] = [
       {
-        id: "open",
-        label: "Open",
-        hint: <Sc>↵</Sc>,
-        onSelect: () =>
-          navigate({ to: "/v/$viewId", params: { viewId: v.id } }),
-      },
-      {
-        id: "rename",
-        label: "Rename",
-        keepOpen: true,
-        onSelect: () => {
-          /* opens the input frame below on next tick */
+        kind: "row",
+        label: "Open view",
+        icon: "open",
+        hint: { text: "↵", mono: true },
+        onPick: () => {
+          navigate({ to: "/v/$viewId", params: { viewId: v.id } });
+          mctx.close();
         },
       },
+      { kind: "sep" },
       {
-        id: "duplicate",
-        label: "Duplicate",
-        hint: <Val>personal</Val>,
-        onSelect: () =>
-          createView.mutate({
-            name: `${v.name} copy`,
-            icon: v.icon,
-            filter: (v.filter ?? []) as Filter[],
-            sort: (v.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
-            layout: v.layout,
+        kind: "row",
+        label: "Rename",
+        icon: "pencil",
+        hint: { text: "⌘⇧R", mono: true },
+        onPick: () =>
+          mctx.setSpec({
+            title: "Rename view",
+            rows: [],
+            input: {
+              placeholder: "View name",
+              initial: v.name,
+              selectOnFocus: true,
+              onCommit: (name) => {
+                if (name && name !== v.name)
+                  updateView.mutate({ id: v.id, patch: { name } });
+              },
+            },
           }),
       },
       {
-        id: "publish",
-        label: "Publish to team",
-        hint: <Val>shared</Val>,
-        submenu: true,
-        onSelect: () => {
-          /* handled by wrapper below */
+        kind: "row",
+        label: "Change layout",
+        icon: "layout",
+        hint: { text: LAYOUT_ROWS.find((r) => r.layout === effectiveLayout)?.label ?? "Table" },
+        onPick: () =>
+          mctx.setSpec(
+            buildLayoutSubmenu(effectiveLayout, (l) => {
+              updateView.mutate({ id: v.id, patch: { layout: l } });
+            }, mctx.close),
+          ),
+      },
+      {
+        kind: "row",
+        label: "Duplicate",
+        icon: "dup",
+        hint: { text: "⌘D", mono: true },
+        onPick: () => {
+          createView.mutate({
+            name: `${v.name} copy`,
+            icon: v.icon,
+            filter: filters,
+            sort,
+            layout: v.layout,
+          });
+          mctx.close();
         },
       },
-      { kind: "divider" },
       {
-        id: "delete",
-        label: "Delete view",
-        danger: true,
-        submenu: true,
-        onSelect: () => {
-          /* handled by wrapper below */
+        kind: "row",
+        label: "Copy link",
+        icon: "link",
+        hint: { text: "⌘⌥L", mono: true },
+        onPick: () => {
+          void navigator.clipboard?.writeText?.(copyViewLink(v.id));
+          toast.push(`Copied link to "${v.name}"`);
+          mctx.close();
         },
+      },
+      ...(isWorkspaceOwner
+        ? ([
+            { kind: "sep" },
+            {
+              kind: "row",
+              label: "Publish to team",
+              icon: "people",
+              hint: { text: "shared" },
+              onPick: () =>
+                mctx.setSpec({
+                  title: `Publish "${v.name}"?`,
+                  rows: [],
+                  confirm: {
+                    title: `Publish "${v.name}" to the team?`,
+                    body: `It moves out of My views into Team views for all ${wsMembers} people at ${wsName}. Publishing is the only way a view becomes shared.`,
+                    cta: "Publish",
+                    onConfirm: () => publishView.mutate(v.id),
+                  },
+                }),
+            },
+          ] satisfies MenuRow[])
+        : []),
+      { kind: "sep" },
+      {
+        kind: "row",
+        label: "Delete view",
+        icon: "trash",
+        danger: true,
+        onPick: () =>
+          mctx.setSpec({
+            title: `Delete "${v.name}"?`,
+            rows: [],
+            confirm: {
+              title: `Delete "${v.name}"?`,
+              body: "The view disappears from your sidebar — the pages it filtered are untouched.",
+              cta: "Delete view",
+              danger: true,
+              onConfirm: () => deleteView.mutate(v.id),
+            },
+          }),
       },
     ];
-    return <MyViewMenu view={v} items={items}
-      wsName={wsName} wsMembers={wsMembers}
-      updateView={updateView} publishView={publishView} deleteView={deleteView} />;
+
+    return { title: "My view", rows, footer };
   };
 
   return (
@@ -989,14 +1124,18 @@ function MyViewRow({
         style={{ height: "var(--spacing-rowMy)" }}
         className={rowClass(active)}
       >
-        <ViewIconSlot view={v} onSet={(icon) => updateView.mutate({ id: v.id, patch: { icon } })} />
+        <ViewIconSlot
+          view={v}
+          effectiveLayout={effectiveLayout}
+          onSet={(icon) => updateView.mutate({ id: v.id, patch: { icon } })}
+        />
         <span className="min-w-0 flex-1 truncate text-row">{v.name}</span>
         <span
           className="relative flex items-center justify-end"
           style={{ height: 17, minWidth: 17 }}
         >
           {hover ? (
-            <RowMoreButton size="sm" build={build} />
+            <SpecMenuTrigger size="sm" build={build} />
           ) : (
             renderCount(count, "text-row")
           )}
@@ -1013,9 +1152,11 @@ function MyViewRow({
  */
 function ViewIconSlot({
   view,
+  effectiveLayout,
   onSet,
 }: {
   view: ViewRow;
+  effectiveLayout: ViewLayout;
   onSet: (icon: string | null) => void;
 }) {
   return (
@@ -1041,7 +1182,7 @@ function ViewIconSlot({
             {view.icon ? (
               <span className="text-row leading-none">{view.icon}</span>
             ) : (
-              <LayoutGlyph layout={view.layout} />
+              <LayoutGlyph layout={effectiveLayout} />
             )}
           </button>
         )}
@@ -1060,93 +1201,6 @@ function ViewIconSlot({
   );
 }
 
-
-/**
- * Inner content for the personal-view menu. Stateful because "Rename" swaps
- * the same popover to an inline-input frame, and "Publish"/"Delete" swap to
- * a confirm frame — all in place (no flyouts).
- */
-function MyViewMenu({
-  view,
-  items,
-  wsName,
-  wsMembers,
-  updateView,
-  publishView,
-  deleteView,
-}: {
-  view: ViewRow;
-  items: RowMenuItem[];
-  wsName: string;
-  wsMembers: number;
-  updateView: ReturnType<typeof useUpdateView>;
-  publishView: ReturnType<typeof usePublishView>;
-  deleteView: ReturnType<typeof useDeleteView>;
-}) {
-  const [mode, setMode] = useState<"list" | "rename" | "publish" | "delete">("list");
-  if (mode === "rename") {
-    return (
-      <RowMenuList
-        title="Rename view"
-        items={[]}
-        onBack={() => setMode("list")}
-        input={{
-          initialValue: view.name,
-          placeholder: "View name",
-          autoSelect: true,
-          onSubmit: (v) => {
-            if (v && v !== view.name)
-              updateView.mutate({ id: view.id, patch: { name: v } });
-          },
-        }}
-      />
-    );
-  }
-  if (mode === "publish") {
-    return (
-      <RowMenuConfirm
-        title={`Publish "${view.name}" to the team?`}
-        body={
-          <>
-            It moves out of My views into Team views for all{" "}
-            <b>{wsMembers} people</b> at <b>{wsName}</b>. Publishing is the only
-            way a view becomes shared.
-          </>
-        }
-        confirmLabel="Publish"
-        variant="publish"
-        onConfirm={() => publishView.mutate(view.id)}
-      />
-    );
-  }
-  if (mode === "delete") {
-    return (
-      <RowMenuConfirm
-        title={`Delete "${view.name}"?`}
-        body="The view disappears from your sidebar — the pages it filtered are untouched."
-        confirmLabel="Delete view"
-        variant="danger"
-        onConfirm={() => deleteView.mutate(view.id)}
-      />
-    );
-  }
-  return (
-    <RowMenuList
-      title="My view"
-      items={items.map((it) => {
-        if (it.kind === "divider") return it;
-        if (it.id === "rename")
-          return { ...it, onSelect: () => setMode("rename"), keepOpen: true };
-        if (it.id === "publish")
-          return { ...it, onSelect: () => setMode("publish"), submenu: true, keepOpen: true };
-        if (it.id === "delete")
-          return { ...it, onSelect: () => setMode("delete"), submenu: true, keepOpen: true };
-        return it;
-      })}
-    />
-  );
-}
-
 /* Team view row — non-owners get a short menu; owners also get Unpublish. */
 function TeamViewRow({
   v,
@@ -1154,6 +1208,10 @@ function TeamViewRow({
   count,
   renderCount,
   isOwner,
+  isWorkspaceOwner,
+  memberCount,
+  pages,
+  ctx,
   onHide,
 }: {
   v: ViewRow;
@@ -1161,32 +1219,127 @@ function TeamViewRow({
   count: number | "!";
   renderCount: (c: number | "!", size: string) => ReactNode;
   isOwner: boolean;
+  isWorkspaceOwner: boolean;
+  memberCount: number;
+  pages: PageListItem[];
+  ctx: { me: string; staleDays: number };
   onHide: (id: string) => void;
 }) {
   const [hover, setHover] = useState(false);
   const fork = useForkView();
   const unpublish = useUnpublishView();
   const navigate = useNavigate();
+  const toast = useToast();
+  const drafts = useDrafts();
 
-  const build = (): ReactNode => (
-    <TeamViewMenu
-      v={v}
-      isOwner={isOwner}
-      onOpen={() => navigate({ to: "/v/$viewId", params: { viewId: v.id } })}
-      onFork={() =>
-        fork.mutate({
-          viewId: v.id,
-          name: `${v.name} copy`,
-          filter: (v.filter ?? []) as Filter[],
-          sort: (v.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
-          layout: v.layout,
-        })
-      }
-      onHide={() => onHide(v.id)}
-      onUnpublish={() => unpublish.mutate(v.id)}
-    />
-  );
+  const effectiveLayout = layoutOf(v, drafts);
 
+  const build = (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }): MenuSpec => {
+    const filters = (v.filter ?? []) as Filter[];
+    const sort = (v.sort as SortSpec | null) ?? { prop: "edited", dir: "desc" };
+    const total = pages.length;
+    const matched = runView(pages, { filter: filters, sort, group_by: null }, ctx).rows.length;
+    const footer = personalViewFooter({
+      matchCount: matched,
+      totalCount: total,
+      sortLabel: sortLabelFor(sort),
+    });
+
+    const rows: MenuRow[] = [
+      {
+        kind: "row",
+        label: "Open view",
+        icon: "open",
+        hint: { text: "↵", mono: true },
+        onPick: () => {
+          navigate({ to: "/v/$viewId", params: { viewId: v.id } });
+          mctx.close();
+        },
+      },
+      { kind: "sep" },
+      {
+        kind: "row",
+        label: "Change layout",
+        icon: "layout",
+        hint: { text: LAYOUT_ROWS.find((r) => r.layout === effectiveLayout)?.label ?? "Table" },
+        onPick: () =>
+          mctx.setSpec(
+            buildLayoutSubmenu(effectiveLayout, (l) => {
+              // Team views: session-only draft, never persisted from the row.
+              storePatchDraft(v.id, { layout: l }, {
+                filter: filters,
+                sort,
+                layout: v.layout,
+                group_by: v.group_by ?? null,
+              });
+            }, mctx.close),
+          ),
+      },
+      {
+        kind: "row",
+        label: "Duplicate into My views",
+        icon: "dup",
+        hint: { text: "personal" },
+        onPick: () => {
+          fork.mutate({
+            viewId: v.id,
+            name: `${v.name} copy`,
+            filter: filters,
+            sort,
+            layout: v.layout,
+          });
+          mctx.close();
+        },
+      },
+      {
+        kind: "row",
+        label: "Copy link",
+        icon: "link",
+        hint: { text: "⌘⌥L", mono: true },
+        onPick: () => {
+          void navigator.clipboard?.writeText?.(copyViewLink(v.id));
+          toast.push(`Copied link to "${v.name}"`);
+          mctx.close();
+        },
+      },
+      { kind: "sep" },
+      {
+        kind: "row",
+        label: "Hide from my sidebar",
+        icon: "eyeOff",
+        onPick: () => {
+          onHide(v.id);
+          mctx.close();
+        },
+      },
+      ...(isOwner && isWorkspaceOwner
+        ? ([
+            { kind: "sep" },
+            {
+              kind: "row",
+              label: "Unpublish",
+              icon: "arrow",
+              hint: { text: "back to mine" },
+              danger: true,
+              onPick: () =>
+                mctx.setSpec({
+                  title: `Unpublish "${v.name}"?`,
+                  rows: [],
+                  confirm: {
+                    title: `Unpublish "${v.name}"?`,
+                    body: `The view leaves Team views and returns to your My views. The pages it filtered are untouched. Only workspace owners can publish or unpublish team views. (${memberCount} members)`,
+                    cta: "Unpublish",
+                    danger: true,
+                    onConfirm: () => unpublish.mutate(v.id),
+                  },
+                }),
+            },
+          ] satisfies MenuRow[])
+        : []),
+    ];
+
+    return { title: "Team view", rows, footer };
+  };
 
   return (
     <li
@@ -1200,10 +1353,12 @@ function TeamViewRow({
         style={{ height: "var(--spacing-rowTeam)" }}
         className={rowClass(active)}
       >
-        <Glyph
-          path="M8 12a3 3 0 100-6 3 3 0 000 6zm8 0a3 3 0 100-6 3 3 0 000 6zM2 20c0-3 3-5 6-5s6 2 6 5m2 0c0-2 2-4 4-4s4 2 4 4"
-          className="h-3 w-3 shrink-0 text-muted"
-        />
+        <span
+          className="grid place-items-center"
+          style={{ width: 18, height: 18 }}
+        >
+          <LayoutGlyph layout={effectiveLayout} />
+        </span>
         <span className="min-w-0 flex-1 truncate text-meta text-secondary">
           {v.name}
         </span>
@@ -1212,7 +1367,7 @@ function TeamViewRow({
           style={{ height: 17, minWidth: 17 }}
         >
           {hover ? (
-            <RowMoreButton size="sm" build={build} />
+            <SpecMenuTrigger size="sm" build={build} />
           ) : (
             renderCount(count, "text-meta")
           )}
@@ -1222,69 +1377,6 @@ function TeamViewRow({
   );
 }
 
-/**
- * Team-view menu content. Non-owners see open/duplicate/hide; owners also
- * see an Unpublish row that swaps to a confirm submode in the same panel.
- */
-function TeamViewMenu({
-  v,
-  isOwner,
-  onOpen,
-  onFork,
-  onHide,
-  onUnpublish,
-}: {
-  v: ViewRow;
-  isOwner: boolean;
-  onOpen: () => void;
-  onFork: () => void;
-  onHide: () => void;
-  onUnpublish: () => void;
-}) {
-  const [mode, setMode] = useState<"list" | "unpublish">("list");
-  if (mode === "unpublish") {
-    return (
-      <RowMenuConfirm
-        title={`Unpublish "${v.name}"?`}
-        body={
-          <>
-            The view leaves Team views and returns to your <b>My views</b>. The
-            pages it filtered are untouched. Only workspace owners can
-            publish or unpublish team views.
-          </>
-        }
-        confirmLabel="Unpublish"
-        variant="danger"
-        onConfirm={onUnpublish}
-      />
-    );
-  }
-  const items: RowMenuItem[] = [
-    { id: "open", label: "Open", hint: <Sc>↵</Sc>, onSelect: onOpen },
-    {
-      id: "dup",
-      label: "Duplicate into My views",
-      hint: <Val>personal</Val>,
-      onSelect: onFork,
-    },
-    { id: "hide", label: "Hide from my sidebar", onSelect: onHide },
-    ...(isOwner
-      ? ([
-          { kind: "divider" },
-          {
-            id: "unpublish",
-            label: "Unpublish",
-            hint: <Val>back to mine</Val>,
-            submenu: true,
-            keepOpen: true,
-            danger: true,
-            onSelect: () => setMode("unpublish"),
-          },
-        ] satisfies RowMenuItem[])
-      : []),
-  ];
-  return <RowMenuList title="Team view" items={items} />;
-}
 
 
 /* Area row — its menu carries area-scope actions plus rename with a footer. */
