@@ -2292,8 +2292,6 @@ function BlockRow({
         block={block}
         ordinal={ordinal}
         locked={locked}
-        focused={focused}
-        onRequestFocus={onRequestFocus}
         onEditorFocus={onEditorFocus}
         onEditorBlur={onEditorBlur}
         onBlur={onBlur}
