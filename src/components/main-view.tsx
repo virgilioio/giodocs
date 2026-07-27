@@ -1378,6 +1378,7 @@ export function MainView({ selection }: { selection: Selection }) {
   const deletePage = useDeletePage();
   const movePageToArea = useMovePageToArea();
   const restorePage = useRestorePage();
+  const archivePage = useArchivePage();
 
   const base: ViewBase | null = useMemo(() => {
     if (selection.kind === "area") return areaBaseView(selection.area);
