@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import React, { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePrefs } from "@/lib/preferences";
 import { formatTimestamp } from "@/lib/format";
 import { useNavigate } from "@tanstack/react-router";
@@ -33,6 +33,8 @@ import {
   type MenuRow,
 } from "./row-menu";
 import { personalViewFooter } from "@/lib/personal-view-footer";
+import { buildPageRowSpec, firstNameOf } from "@/lib/page-row-spec";
+import { rangeSelect } from "@/lib/row-selection";
 import {
   useSetPageProperty,
   useRenamePage,
@@ -43,6 +45,10 @@ import {
   useForkView,
   usePublishView,
   useDeleteView,
+  useVerifyPage,
+  useDeletePage,
+  useMovePageToArea,
+  useRestorePage,
 } from "@/hooks/use-page-mutations";
 import { ExportViewDialog } from "./export-view-dialog";
 import { useDelayedPending } from "./sk";
@@ -1361,6 +1367,16 @@ export function MainView({ selection }: { selection: Selection }) {
   const [renaming, setRenaming] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
 
+  // Multi-select — exactly two fields on the view. anchor drives shift-click
+  // range from the RENDERED row order (post-runView, post-sort).
+  const [selPages, setSelPages] = useState<string[]>([]);
+  const [selPageAnchor, setSelPageAnchor] = useState<string | null>(null);
+
+  const verifyPage = useVerifyPage();
+  const deletePage = useDeletePage();
+  const movePageToArea = useMovePageToArea();
+  const restorePage = useRestorePage();
+
   const base: ViewBase | null = useMemo(() => {
     if (selection.kind === "area") return areaBaseView(selection.area);
     if (view)
@@ -1409,6 +1425,58 @@ export function MainView({ selection }: { selection: Selection }) {
     () => runView(pages, { filter: filters, sort }, { me: user?.id ?? "", staleDays }),
     [pages, filters, sort, user?.id, staleDays],
   );
+
+  const rowIds = useMemo(() => rows.map((r) => r.id), [rows]);
+  const selectedSet = useMemo(() => new Set(selPages), [selPages]);
+  const anySelection = selPages.length > 0;
+
+  const toggleOne = (id: string) => {
+    setSelPages((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+    setSelPageAnchor(id);
+  };
+  const toggleShift = (id: string) => {
+    setSelPages((prev) => rangeSelect(rowIds, selPageAnchor, id, prev));
+    setSelPageAnchor(id);
+  };
+  const onCheckboxClick = (id: string, shift: boolean) => {
+    if (shift) toggleShift(id);
+    else toggleOne(id);
+  };
+  const clearSelection = () => {
+    setSelPages([]);
+    setSelPageAnchor(null);
+  };
+  const selectAllRendered = () => {
+    setSelPages(rowIds);
+    setSelPageAnchor(rowIds[rowIds.length - 1] ?? null);
+  };
+  const selectAllState: "none" | "some" | "all" =
+    selPages.length === 0
+      ? "none"
+      : rowIds.length > 0 && rowIds.every((id) => selectedSet.has(id))
+        ? "all"
+        : "some";
+  const onHeaderCheckboxClick = () => {
+    if (selectAllState === "none") selectAllRendered();
+    else clearSelection();
+  };
+
+  // Escape clears any active selection. Sits after popovers (which own
+  // their own escape) and before block selection (page editor scope).
+  useEffect(() => {
+    if (!anySelection) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // Popovers and menus stop propagation before this fires; if the event
+      // reaches window and there's a selection, clear it.
+      clearSelection();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anySelection]);
 
   const areas = useMemo(() => {
     const s = new Set<string>();
@@ -1686,6 +1754,63 @@ export function MainView({ selection }: { selection: Selection }) {
     </div>
   );
 
+  // Delete-with-undo — mirrors the sidebar page row behaviour so the two
+  // surfaces stay identical.
+  const onDeleteWithUndo = (row: PageListItem) => {
+    const snap = row;
+    deletePage.mutate(row.id, {
+      onSuccess: () => {
+        toast.push({
+          message: "Page deleted — it left every view at once.",
+          action: {
+            label: "Undo",
+            onClick: () =>
+              restorePage.mutate({ pageId: snap.id, row: snap }),
+          },
+          durationMs: 10_000,
+        });
+      },
+    });
+  };
+
+  // Adapter — the view surfaces receive `PropDef[]`, buildPageRowSpec wants
+  // { key, label, options }. Same rows, narrower shape.
+  const specPropDefs = useMemo(
+    () =>
+      propDefs.map((d) => ({
+        key: d.key,
+        label: d.label ?? d.key,
+        options: d.options,
+      })),
+    [propDefs],
+  );
+
+  const getPageMenuBuild = (p: PageListItem) => {
+    const editedByFirstName = firstNameOf(
+      members.find((m) => m.user_id === p.edited_by),
+    );
+    return (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) =>
+      buildPageRowSpec(
+        {
+          p,
+          isStale: new Date(p.verified_at).getTime() < staleThreshold,
+          propDefs: specPropDefs,
+          members,
+          editedByFirstName,
+          onOpen: () =>
+            navigate({ to: "/p/$pageId", params: { pageId: p.id } }),
+          onVerify: () => verifyPage.mutate(p.id),
+          onSetStatus: (v) =>
+            setProp.mutate({ pageId: p.id, key: "status", value: v }),
+          onSetOwner: (uid) =>
+            setProp.mutate({ pageId: p.id, key: "owner", value: uid }),
+          onMoveArea: (a) => movePageToArea.mutate({ pageId: p.id, area: a }),
+          onDelete: () => onDeleteWithUndo(p),
+        },
+        mctx,
+      );
+  };
+
   let body: ReactNode;
   if (rows.length === 0) body = emptyBody;
   else if (layout === "board")
@@ -1699,6 +1824,10 @@ export function MainView({ selection }: { selection: Selection }) {
         onMove={(pageId, value) =>
           setProp.mutate({ pageId, key: groupBy, value })
         }
+        selectedSet={selectedSet}
+        anySelection={anySelection}
+        onCheckboxClick={onCheckboxClick}
+        getPageMenuBuild={getPageMenuBuild}
       />
     );
   else if (layout === "list")
@@ -1708,6 +1837,10 @@ export function MainView({ selection }: { selection: Selection }) {
         members={members}
         propDefs={propDefs}
         staleThreshold={staleThreshold}
+        selectedSet={selectedSet}
+        anySelection={anySelection}
+        onCheckboxClick={onCheckboxClick}
+        getPageMenuBuild={getPageMenuBuild}
       />
     );
   else
@@ -1721,6 +1854,12 @@ export function MainView({ selection }: { selection: Selection }) {
         staleThreshold={staleThreshold}
         rename={rename}
         setProp={setProp}
+        selectedSet={selectedSet}
+        anySelection={anySelection}
+        onCheckboxClick={onCheckboxClick}
+        selectAllState={selectAllState}
+        onHeaderCheckboxClick={onHeaderCheckboxClick}
+        getPageMenuBuild={getPageMenuBuild}
       />
     );
 
@@ -2276,6 +2415,10 @@ const TableRow = memo(function TableRow({
   rename,
   setProp,
   pagesForTitleCell,
+  selected,
+  anySelection,
+  onCheckboxClick,
+  buildMenu,
 }: {
   p: PageListItem;
   isStale: boolean;
@@ -2286,9 +2429,20 @@ const TableRow = memo(function TableRow({
   rename: RenameFn;
   setProp: SetPropFn;
   pagesForTitleCell: PageListItem[];
+  selected: boolean;
+  anySelection: boolean;
+  onCheckboxClick: (id: string, shift: boolean) => void;
+  buildMenu: (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
 }) {
   return (
-    <RowGroup>
+    <RowGroup pageId={p.id} selected={selected}>
+      <Cell>
+        <RowCheckbox
+          checked={selected}
+          alwaysVisible={anySelection}
+          onClick={(shift) => onCheckboxClick(p.id, shift)}
+        />
+      </Cell>
       <Cell>
         <PageTitleCell
           page={p}
@@ -2335,6 +2489,14 @@ const TableRow = memo(function TableRow({
       <Cell>
         <span className="text-meta text-muted">{relTime(p.edited_at)}</span>
       </Cell>
+      <Cell className="justify-self-end" data-row-more>
+        <SpecMenuTrigger
+          build={buildMenu}
+          size="sm"
+          ariaLabel="Page actions"
+          className="opacity-0 group-hover:opacity-100 focus:opacity-100"
+        />
+      </Cell>
       {/* keep prop referenced so lint stays quiet — hover prefetch lives in PageTitleCell */}
       <span hidden data-count={pagesForTitleCell.length} />
     </RowGroup>
@@ -2363,6 +2525,12 @@ function TableBody({
   staleThreshold,
   rename,
   setProp,
+  selectedSet,
+  anySelection,
+  onCheckboxClick,
+  selectAllState,
+  onHeaderCheckboxClick,
+  getPageMenuBuild,
 }: {
   rows: PageListItem[];
   pages: PageListItem[];
@@ -2372,6 +2540,12 @@ function TableBody({
   staleThreshold: number;
   rename: ReturnType<typeof useRenamePage>;
   setProp: ReturnType<typeof useSetPageProperty>;
+  selectedSet: Set<string>;
+  anySelection: boolean;
+  onCheckboxClick: (id: string, shift: boolean) => void;
+  selectAllState: "none" | "some" | "all";
+  onHeaderCheckboxClick: () => void;
+  getPageMenuBuild: (p: PageListItem) => (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
 }) {
   // Stable tag options: recompute from pages, but keep the same array ref
   // when contents are unchanged so memoized rows don't re-render.
@@ -2390,6 +2564,23 @@ function TableBody({
   const renameMutate = rename.mutate;
   const setPropMutate = setProp.mutate;
 
+  // Click delegation — while a selection is active, clicking a row body
+  // toggles that row instead of opening the page. Without this, one stray
+  // mid-selection click navigates away and the selection is lost. Skip
+  // clicks that originate on the checkbox or the ⋯ button — those handle
+  // themselves.
+  const onGridClickCapture = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!anySelection) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("[data-row-checkbox]") || target.closest("[data-row-more]") || target.closest('[aria-label="Page actions"]')) return;
+    const cell = target.closest("[data-page-id]") as HTMLElement | null;
+    const id = cell?.getAttribute("data-page-id");
+    if (!id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onCheckboxClick(id, e.shiftKey);
+  };
+
   return (
     <div className="overflow-x-auto">
       <div
@@ -2398,9 +2589,17 @@ function TableBody({
         style={{
           display: "grid",
           gridTemplateColumns:
-            "minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr) minmax(0,0.9fr) minmax(0,0.9fr)",
+            "16px minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr) minmax(0,0.9fr) minmax(0,0.9fr) 24px",
         }}
+        onClickCapture={onGridClickCapture}
       >
+        <HeaderCell>
+          <HeaderSelectAll
+            state={selectAllState}
+            count={rows.length}
+            onClick={onHeaderCheckboxClick}
+          />
+        </HeaderCell>
         <HeaderCell>Page</HeaderCell>
         <HeaderCell className="hidden xs:block">Area</HeaderCell>
         <HeaderCell>Owner</HeaderCell>
@@ -2408,6 +2607,7 @@ function TableBody({
         <HeaderCell className="hidden sm:block">Tags</HeaderCell>
         <HeaderCell className="hidden md:block">Verified</HeaderCell>
         <HeaderCell>Edited</HeaderCell>
+        <HeaderCell> </HeaderCell>
 
         {rows.map((p) => (
           <TableRow
@@ -2421,6 +2621,10 @@ function TableBody({
             rename={renameMutate}
             setProp={setPropMutate}
             pagesForTitleCell={pages}
+            selected={selectedSet.has(p.id)}
+            anySelection={anySelection}
+            onCheckboxClick={onCheckboxClick}
+            buildMenu={getPageMenuBuild(p)}
           />
         ))}
       </div>
@@ -2438,6 +2642,10 @@ function BoardBody({
   members,
   staleThreshold,
   onMove,
+  selectedSet,
+  anySelection,
+  onCheckboxClick,
+  getPageMenuBuild,
 }: {
   rows: PageListItem[];
   groupBy: string;
@@ -2445,6 +2653,10 @@ function BoardBody({
   members: MemberRow[];
   staleThreshold: number;
   onMove: (pageId: string, value: string) => void;
+  selectedSet: Set<string>;
+  anySelection: boolean;
+  onCheckboxClick: (id: string, shift: boolean) => void;
+  getPageMenuBuild: (p: PageListItem) => (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
 }) {
   const navigate = useNavigate();
   const setOrigin = useSetPageOrigin();
@@ -2506,20 +2718,58 @@ function BoardBody({
                 typeof ownerId === "string"
                   ? members.find((m) => m.user_id === ownerId)?.profiles
                   : null;
+              const isSelected = selectedSet.has(p.id);
               return (
-                <button
+                <div
                   key={p.id}
-                  type="button"
                   draggable
                   onDragStart={(e) => e.dataTransfer.setData("text/pageId", p.id)}
-                  onClick={() => { setOrigin(p.id); navigate({ to: "/p/$pageId", params: { pageId: p.id } }); }}
-
-                  className="rounded-[9px] border border-line bg-surface p-[10px] text-left shadow-card transition hover:shadow-cardHover"
+                  onClick={(e) => {
+                    // Skip when the click originated inside the checkbox or menu.
+                    const t = e.target as HTMLElement;
+                    if (
+                      t.closest("[data-row-checkbox]") ||
+                      t.closest("[data-row-more]") ||
+                      t.closest('[aria-label="Page actions"]')
+                    ) return;
+                    if (anySelection) {
+                      onCheckboxClick(p.id, e.shiftKey);
+                      return;
+                    }
+                    setOrigin(p.id);
+                    navigate({ to: "/p/$pageId", params: { pageId: p.id } });
+                  }}
+                  className={
+                    "group rounded-[9px] bg-surface p-[10px] text-left shadow-card transition hover:shadow-cardHover cursor-pointer " +
+                    (isSelected
+                      ? "border-[1.5px] border-blue"
+                      : "border border-line")
+                  }
                 >
                   <div className="flex items-center gap-2">
-                    <span className="text-row leading-none">{p.icon ?? "📄"}</span>
+                    {(anySelection || isSelected) ? (
+                      <span className="mt-[2px]" data-row-checkbox>
+                        <RowCheckbox
+                          checked={isSelected}
+                          alwaysVisible
+                          onClick={(shift) => onCheckboxClick(p.id, shift)}
+                        />
+                      </span>
+                    ) : (
+                      <span className="text-row leading-none">{p.icon ?? "📄"}</span>
+                    )}
                     <span className="min-w-0 flex-1 truncate text-row font-bold text-noir">
                       {p.title || "Untitled"}
+                    </span>
+                    <span
+                      data-row-more
+                      className="opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+                    >
+                      <SpecMenuTrigger
+                        build={getPageMenuBuild(p)}
+                        size="sm"
+                        ariaLabel="Page actions"
+                      />
                     </span>
                   </div>
                   <div className="mt-2 flex items-center gap-2 text-caption">
@@ -2542,7 +2792,7 @@ function BoardBody({
                       <span className="ml-auto text-muted">{relTime(p.edited_at)}</span>
                     )}
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -2562,11 +2812,19 @@ function ListBody({
   members,
   propDefs,
   staleThreshold,
+  selectedSet,
+  anySelection,
+  onCheckboxClick,
+  getPageMenuBuild,
 }: {
   rows: PageListItem[];
   members: MemberRow[];
   propDefs: PropDef[];
   staleThreshold: number;
+  selectedSet: Set<string>;
+  anySelection: boolean;
+  onCheckboxClick: (id: string, shift: boolean) => void;
+  getPageMenuBuild: (p: PageListItem) => (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
 }) {
   const navigate = useNavigate();
   const setOrigin = useSetPageOrigin();
@@ -2590,22 +2848,48 @@ function ListBody({
         const ownerName = owner?.full_name ?? owner?.email ?? null;
         const parts = [area, ownerName, status].filter(Boolean) as string[];
         const isLast = idx === rows.length - 1;
+        const isSelected = selectedSet.has(p.id);
         return (
-          <button
+          <div
             key={p.id}
-            type="button"
-            onClick={() => { setOrigin(p.id); navigate({ to: "/p/$pageId", params: { pageId: p.id } }); }}
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              const t = e.target as HTMLElement;
+              if (
+                t.closest("[data-row-checkbox]") ||
+                t.closest("[data-row-more]") ||
+                t.closest('[aria-label="Page actions"]')
+              ) return;
+              if (anySelection) {
+                onCheckboxClick(p.id, e.shiftKey);
+                return;
+              }
+              setOrigin(p.id);
+              navigate({ to: "/p/$pageId", params: { pageId: p.id } });
+            }}
             className={
-              "grid w-full items-center gap-[11px] rounded-lg text-left hover:bg-sunken " +
+              "group grid w-full items-center gap-[11px] rounded-lg text-left cursor-pointer " +
+              (isSelected ? "bg-blueTint hover:bg-blueWash " : "hover:bg-sunken ") +
               (isLast ? "" : "border-b border-lineSoft ")
             }
             style={{
-              gridTemplateColumns: "20px minmax(0,1fr) auto",
+              gridTemplateColumns: "20px minmax(0,1fr) auto 24px",
               minHeight: "var(--gio-list-row, 44px)",
               padding: "7px 10px",
             }}
           >
-            <span className="text-row leading-none">{p.icon ?? "📄"}</span>
+            {(anySelection || isSelected) ? (
+              <span data-row-checkbox>
+                <RowCheckbox
+                  checked={isSelected}
+                  alwaysVisible
+                  onClick={(shift) => onCheckboxClick(p.id, shift)}
+                />
+              </span>
+            ) : (
+              <span className="text-row leading-none">{p.icon ?? "📄"}</span>
+            )}
             <div className="min-w-0">
               <div className="truncate text-row font-bold text-noir">
                 {p.title || "Untitled"}
@@ -2630,14 +2914,126 @@ function ListBody({
                 {relTime(p.edited_at)}
               </span>
             )}
-          </button>
+            <span
+              data-row-more
+              className="justify-self-end opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+            >
+              <SpecMenuTrigger
+                build={getPageMenuBuild(p)}
+                size="sm"
+                ariaLabel="Page actions"
+              />
+            </span>
+          </div>
         );
       })}
     </div>
   );
 }
 
+/* ─────────────────────────── Selection primitives ─────────────────────────── */
 
+function RowCheckbox({
+  checked,
+  alwaysVisible,
+  onClick,
+}: {
+  checked: boolean;
+  alwaysVisible: boolean;
+  onClick: (shift: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-row-checkbox
+      aria-checked={checked}
+      role="checkbox"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick(e.shiftKey);
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      className={
+        "grid place-items-center rounded-[4px] " +
+        (alwaysVisible || checked ? "visible " : "invisible group-hover:visible ")
+      }
+      style={{
+        width: 16,
+        height: 16,
+        border: "1.6px solid var(--color-rule)",
+        background: checked ? "var(--color-accent)" : "var(--color-surface)",
+        borderColor: checked ? "var(--color-accent)" : "var(--color-rule)",
+      }}
+    >
+      {checked && (
+        <svg viewBox="0 0 24 24" width={10} height={10} aria-hidden fill="none">
+          <path
+            d="M20 6 9 17l-5-5"
+            stroke="white"
+            strokeWidth={3.4}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+function HeaderSelectAll({
+  state,
+  count,
+  onClick,
+}: {
+  state: "none" | "some" | "all";
+  count: number;
+  onClick: () => void;
+}) {
+  const filled = state !== "none";
+  return (
+    <button
+      type="button"
+      title={
+        state === "none"
+          ? `Select all ${count}`
+          : state === "all"
+            ? "Clear selection"
+            : "Clear selection"
+      }
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick();
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      className="grid place-items-center rounded-[4px]"
+      style={{
+        width: 16,
+        height: 16,
+        border: "1.6px solid " + (filled ? "var(--color-accent)" : "var(--color-rule)"),
+        background: filled ? "var(--color-accent)" : "var(--color-surface)",
+      }}
+    >
+      {state === "some" && (
+        <svg viewBox="0 0 24 24" width={10} height={10} aria-hidden fill="none">
+          <path d="M6 12h12" stroke="white" strokeWidth={3.4} strokeLinecap="round" />
+        </svg>
+      )}
+      {state === "all" && (
+        <svg viewBox="0 0 24 24" width={10} height={10} aria-hidden fill="none">
+          <path
+            d="M20 6 9 17l-5-5"
+            stroke="white"
+            strokeWidth={3.4}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+    </button>
+  );
+}
 
 
 function HeaderCell({ children, className }: { children: ReactNode; className?: string }) {
@@ -2655,11 +3051,26 @@ function HeaderCell({ children, className }: { children: ReactNode; className?: 
 }
 
 
-function Cell({ children, className }: { children: ReactNode; className?: string }) {
+function Cell({
+  children,
+  className,
+  pageId,
+  selected,
+  ...rest
+}: {
+  children: ReactNode;
+  className?: string;
+  pageId?: string;
+  selected?: boolean;
+  [key: string]: unknown;
+}) {
   return (
     <div
+      data-page-id={pageId}
+      data-row-more={rest["data-row-more"] as string | undefined}
       className={
         "min-w-0 border-b border-lineSoft px-[11px] gio-cell-pad flex items-center whitespace-nowrap overflow-hidden " +
+        (selected ? "bg-blueTint group-hover:bg-blueWash " : "group-hover:bg-sunken ") +
         (className ?? "")
       }
     >
@@ -2668,7 +3079,35 @@ function Cell({ children, className }: { children: ReactNode; className?: string
   );
 }
 
-function RowGroup({ children }: { children: ReactNode }) {
-  // grid subrow container that highlights on hover across its 7 cells.
-  return <div className="contents group hover:[&>div]:bg-sunken">{children}</div>;
+function RowGroup({
+  children,
+  pageId,
+  selected,
+}: {
+  children: ReactNode;
+  pageId: string;
+  selected: boolean;
+}) {
+  // grid subrow — contents so cells become direct grid children. Pass
+  // pageId+selected down to each Cell so the row can carry click delegation
+  // and the selected background without a wrapper element (a wrapper would
+  // break the grid).
+  const injected = (
+    (Array.isArray(children) ? children : [children]) as Array<React.ReactNode>
+  ).map((child, i) => {
+    if (
+      typeof child === "object" &&
+      child !== null &&
+      "type" in (child as object) &&
+      (child as React.ReactElement).type === Cell
+    ) {
+      return React.cloneElement(child as React.ReactElement<Record<string, unknown>>, {
+        pageId,
+        selected,
+        key: (child as React.ReactElement).key ?? i,
+      } as Record<string, unknown>);
+    }
+    return child;
+  });
+  return <div className="contents group">{injected}</div>;
 }
