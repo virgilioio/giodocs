@@ -13,6 +13,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as VViewIdRouteImport } from './routes/v.$viewId'
 import { Route as PPageIdRouteImport } from './routes/p.$pageId'
+import { Route as AcceptInviteTokenRouteImport } from './routes/accept-invite.$token'
 import { Route as AAreaRouteImport } from './routes/a.$area'
 
 const LoginRoute = LoginRouteImport.update({
@@ -35,6 +36,11 @@ const PPageIdRoute = PPageIdRouteImport.update({
   path: '/p/$pageId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AcceptInviteTokenRoute = AcceptInviteTokenRouteImport.update({
+  id: '/accept-invite/$token',
+  path: '/accept-invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AAreaRoute = AAreaRouteImport.update({
   id: '/a/$area',
   path: '/a/$area',
@@ -45,6 +51,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/a/$area': typeof AAreaRoute
+  '/accept-invite/$token': typeof AcceptInviteTokenRoute
   '/p/$pageId': typeof PPageIdRoute
   '/v/$viewId': typeof VViewIdRoute
 }
@@ -52,6 +59,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/a/$area': typeof AAreaRoute
+  '/accept-invite/$token': typeof AcceptInviteTokenRoute
   '/p/$pageId': typeof PPageIdRoute
   '/v/$viewId': typeof VViewIdRoute
 }
@@ -60,21 +68,42 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
   '/a/$area': typeof AAreaRoute
+  '/accept-invite/$token': typeof AcceptInviteTokenRoute
   '/p/$pageId': typeof PPageIdRoute
   '/v/$viewId': typeof VViewIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/a/$area' | '/p/$pageId' | '/v/$viewId'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/a/$area'
+    | '/accept-invite/$token'
+    | '/p/$pageId'
+    | '/v/$viewId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/a/$area' | '/p/$pageId' | '/v/$viewId'
-  id: '__root__' | '/' | '/login' | '/a/$area' | '/p/$pageId' | '/v/$viewId'
+  to:
+    | '/'
+    | '/login'
+    | '/a/$area'
+    | '/accept-invite/$token'
+    | '/p/$pageId'
+    | '/v/$viewId'
+  id:
+    | '__root__'
+    | '/'
+    | '/login'
+    | '/a/$area'
+    | '/accept-invite/$token'
+    | '/p/$pageId'
+    | '/v/$viewId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
   AAreaRoute: typeof AAreaRoute
+  AcceptInviteTokenRoute: typeof AcceptInviteTokenRoute
   PPageIdRoute: typeof PPageIdRoute
   VViewIdRoute: typeof VViewIdRoute
 }
@@ -109,6 +138,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PPageIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/accept-invite/$token': {
+      id: '/accept-invite/$token'
+      path: '/accept-invite/$token'
+      fullPath: '/accept-invite/$token'
+      preLoaderRoute: typeof AcceptInviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/a/$area': {
       id: '/a/$area'
       path: '/a/$area'
@@ -123,6 +159,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
   AAreaRoute: AAreaRoute,
+  AcceptInviteTokenRoute: AcceptInviteTokenRoute,
   PPageIdRoute: PPageIdRoute,
   VViewIdRoute: VViewIdRoute,
 }
