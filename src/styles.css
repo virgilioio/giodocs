@@ -144,11 +144,19 @@
   }
 
   .gio-page[data-wide="1"] { max-width: var(--container-pageWide) !important; }
-  .gio-page[data-small="1"] .gio-page-body { font-size: 15px; line-height: 1.55; }
-  .gio-page[data-small="1"] .gio-page-body :where(h1) { font-size: 25px; }
-  .gio-page[data-small="1"] .gio-page-body :where(h2) { font-size: 19.5px; }
-  .gio-page[data-small="1"] .gio-page-body :where(h3) { font-size: 17px; }
-  .gio-page[data-small="1"] .gio-page-body :where(blockquote) { font-size: 18px; }
+  /* Small text scales the ENTIRE ramp (title 38→34, H1 28→25, H2 21.5→19.5,
+     quote 20→18, body 17→15). Editor renders headings as textareas with the
+     tailwind text-* classes, so target those classes directly. */
+  .gio-page[data-small="1"] .gio-page-body,
+  .gio-page[data-small="1"] .gio-page-body .text-body,
+  .gio-page[data-small="1"] .gio-page-body .text-prose { font-size: 15px !important; line-height: 1.55; }
+  .gio-page[data-small="1"] .gio-page-body :where(h1) { font-size: 25px !important; }
+  .gio-page[data-small="1"] .gio-page-body :where(h2) { font-size: 19.5px !important; }
+  .gio-page[data-small="1"] .gio-page-body :where(h3) { font-size: 17px !important; }
+  .gio-page[data-small="1"] .gio-page-body :where(blockquote),
+  .gio-page[data-small="1"] .gio-page-body .text-quote { font-size: 18px !important; }
+  .gio-page[data-small="1"] .gio-page-body .text-title { font-size: 25px !important; }
+  .gio-page[data-small="1"] .gio-page-body .text-heading { font-size: 19.5px !important; }
   .gio-page[data-small="1"] :where(.gio-title, h1.gio-title) { font-size: 34px !important; }
   .gio-page[data-locked="1"] .gio-block-gutter { opacity: 0.4; pointer-events: none; }
 }
