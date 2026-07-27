@@ -368,46 +368,36 @@ function Row({
   );
 }
 
-const PickerButton = (function () {
-  return (function forwardRef() {
-    return require("react").forwardRef(function PickerButton(
-      {
-        value,
-        onClick,
+const PickerButton = forwardRef<
+  HTMLButtonElement,
+  { value: string; onClick: () => void; width: number }
+>(function PickerButton({ value, onClick, width }, ref) {
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onClick}
+      style={{
         width,
-      }: { value: string; onClick: () => void; width: number },
-      ref: React.Ref<HTMLButtonElement>,
-    ) {
-      return (
-        <button
-          ref={ref}
-          type="button"
-          onClick={onClick}
-          style={{
-            width,
-            padding: "6px 10px",
-            background: "var(--color-track)",
-            border: "1px solid var(--color-line)",
-            borderRadius: 8,
-            fontSize: 14,
-            color: "var(--color-body)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 8,
-          }}
-        >
-          <span>{value}</span>
-          <span aria-hidden style={{ color: "var(--color-whisper)" }}>
-            ▾
-          </span>
-        </button>
-      );
-    });
-  })();
-})() as unknown as React.ForwardRefExoticComponent<
-  { value: string; onClick: () => void; width: number } & React.RefAttributes<HTMLButtonElement>
->;
+        padding: "6px 10px",
+        background: "var(--color-track)",
+        border: "1px solid var(--color-line)",
+        borderRadius: 8,
+        fontSize: 14,
+        color: "var(--color-body)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 8,
+      }}
+    >
+      <span>{value}</span>
+      <span aria-hidden style={{ color: "var(--color-whisper)" }}>
+        ▾
+      </span>
+    </button>
+  );
+});
 
 function ScaleInput({
   value,
