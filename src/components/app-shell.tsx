@@ -1715,7 +1715,6 @@ function PageRowLi({
   onVerify,
   setPageProperty,
   moveToArea,
-  duplicatePage,
   deletePage,
   navigate,
 }: {
@@ -1727,7 +1726,6 @@ function PageRowLi({
   onVerify: (pageId: string) => void;
   setPageProperty: ReturnType<typeof useSetPageProperty>;
   moveToArea: ReturnType<typeof useMovePageToArea>;
-  duplicatePage: ReturnType<typeof useDuplicatePage>;
   deletePage: ReturnType<typeof useDeletePage>;
   navigate: ReturnType<typeof useNavigate>;
 }) {
