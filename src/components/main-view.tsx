@@ -2415,6 +2415,10 @@ const TableRow = memo(function TableRow({
   rename,
   setProp,
   pagesForTitleCell,
+  selected,
+  anySelection,
+  onCheckboxClick,
+  buildMenu,
 }: {
   p: PageListItem;
   isStale: boolean;
@@ -2425,9 +2429,20 @@ const TableRow = memo(function TableRow({
   rename: RenameFn;
   setProp: SetPropFn;
   pagesForTitleCell: PageListItem[];
+  selected: boolean;
+  anySelection: boolean;
+  onCheckboxClick: (id: string, shift: boolean) => void;
+  buildMenu: (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
 }) {
   return (
-    <RowGroup>
+    <RowGroup pageId={p.id} selected={selected}>
+      <Cell>
+        <RowCheckbox
+          checked={selected}
+          alwaysVisible={anySelection}
+          onClick={(shift) => onCheckboxClick(p.id, shift)}
+        />
+      </Cell>
       <Cell>
         <PageTitleCell
           page={p}
@@ -2473,6 +2488,14 @@ const TableRow = memo(function TableRow({
       </Cell>
       <Cell>
         <span className="text-meta text-muted">{relTime(p.edited_at)}</span>
+      </Cell>
+      <Cell className="justify-self-end" data-row-more>
+        <SpecMenuTrigger
+          build={buildMenu}
+          size="sm"
+          ariaLabel="Page actions"
+          className="opacity-0 group-hover:opacity-100 focus:opacity-100"
+        />
       </Cell>
       {/* keep prop referenced so lint stays quiet — hover prefetch lives in PageTitleCell */}
       <span hidden data-count={pagesForTitleCell.length} />
