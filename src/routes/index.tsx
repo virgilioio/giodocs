@@ -7,9 +7,9 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Gio Docs" },
-      { name: "description", content: "Gio Docs" },
+      { name: "description", content: "Virgilio's knowledge, findable. No folders, no six-level nesting, no three competing sources of truth — just pages that tell you when they've gone stale." },
       { property: "og:title", content: "Gio Docs" },
-      { property: "og:description", content: "Gio Docs" },
+      { property: "og:description", content: "Virgilio's knowledge, findable. No folders, no six-level nesting, no three competing sources of truth — just pages that tell you when they've gone stale." },
     ],
   }),
   component: Index,
