@@ -872,11 +872,13 @@ export function EditableBody({
     <div
       ref={containerRef}
       className="relative space-y-1"
+      onPointerDown={handleContainerPointerDown}
       onFocusCapture={(e) => {
         const t = e.target as HTMLElement;
         if (t.tagName === "TEXTAREA" || t.tagName === "INPUT") clearSelection();
       }}
     >
+
       {blocks.map((b) => (
         <BlockRow
           key={b.id}
