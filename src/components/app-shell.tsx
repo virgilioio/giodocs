@@ -1234,6 +1234,8 @@ function ViewIconSlot({
 }) {
   return (
     <span
+      className="shrink-0"
+      style={{ flex: "none" }}
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
     >
