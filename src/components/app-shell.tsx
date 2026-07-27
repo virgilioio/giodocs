@@ -17,8 +17,8 @@ import { getPageOrigin } from "@/lib/page-origin";
 import { resolvePageIdParam } from "@/lib/slug";
 
 import {
-  useCreatePage,
   useCreatePageAndOpen,
+
   useCreateView,
   useDeleteView,
   useDeletePage,
