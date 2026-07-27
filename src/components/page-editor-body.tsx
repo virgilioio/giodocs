@@ -2536,11 +2536,25 @@ function BlockContent({
     );
   }
 
+  // Flat outline: indent shifts only the block CONTENT, not the gutter (+
+  // and drag handle stay at the row's left edge). 24px per level. Bullet
+  // glyph and numbered label cycle every 3 levels for legibility.
+  const indent = typeof block.indent === "number" && block.indent > 0
+    ? Math.min(6, Math.floor(block.indent))
+    : 0;
+  const BULLET_GLYPHS = ["•", "◦", "▪"] as const;
+
+  const contentWrap = (node: React.ReactNode) =>
+    indent > 0
+      ? <div style={{ paddingLeft: indent * 24 }}>{node}</div>
+      : node;
+
   if (t === "bullet") {
-    return (
+    const glyph = BULLET_GLYPHS[indent % 3];
+    return contentWrap(
       <div className="flex items-start gap-2 text-prose text-body">
         <span aria-hidden className="mt-2 leading-none text-muted">
-          •
+          {glyph}
         </span>
         {renderSwap(textareaProps.className)}
       </div>
@@ -2548,10 +2562,11 @@ function BlockContent({
   }
 
   if (t === "numbered") {
-    return (
+    const label = ordinalLabel(ordinal ?? 1, indent);
+    return contentWrap(
       <div className="flex items-start gap-2 text-prose text-body">
         <span aria-hidden className="mt-1 min-w-4 text-meta text-muted tnum">
-          {ordinal ?? 1}.
+          {label}
         </span>
         {renderSwap(textareaProps.className)}
       </div>
