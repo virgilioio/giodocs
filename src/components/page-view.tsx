@@ -907,6 +907,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
           pageId={page.id}
           initialBlocks={blocks}
           onChange={onBlocksChange}
+          onBlur={onBodyBlur}
           locked={app.locked}
         />
       </div>
