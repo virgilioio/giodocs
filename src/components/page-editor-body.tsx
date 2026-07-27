@@ -1400,18 +1400,23 @@ export function EditableBody({
   );
 
   const runTurnInto = useCallback(
-    (blockId: string, type: BlockType) => {
+    (blockId: string, type: BlockType, extra?: Partial<Blk>) => {
       const run = getRunIndicesForBlock(blockId);
       if (!run.length) return;
       const next = [...blocks];
       for (const i of run) {
         const prev = next[i];
-        const nb: Blk = { ...prev, type };
+        const nb: Blk = { ...prev, type, ...(extra ?? {}) };
         if (type === "todo" && nb.checked == null) nb.checked = false;
         if (type === "toggle" && nb.open == null) nb.open = false;
         if (type === "callout" && !nb.icon) nb.icon = "💡";
         if (type === "table" && !nb.rows) nb.rows = [["", "", ""], ["", "", ""]];
         if (type === "divider") nb.text = "";
+        // Clear a stale toggle level unless we're explicitly setting one.
+        if (type !== "toggle" || !("level" in (extra ?? {}))) {
+          if (type !== "toggle") delete nb.level;
+          else if (!extra?.level) delete nb.level;
+        }
         next[i] = nb;
       }
       commit(next);
