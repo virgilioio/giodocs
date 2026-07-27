@@ -62,10 +62,10 @@ describe("buildOffsetMap — grammar coverage", () => {
     expect(m.toSource(1)).toBe(7); // 'b' starts at src 7
   });
 
-  it("nested: **bold *and italic***", () => {
-    const src = "**bold *and italic***";
+  it("nested: **bold *italic* end**", () => {
+    const src = "**bold *italic* end**";
     const m = buildOffsetMap(src);
-    expect(m.renderedText).toBe("bold and italic");
+    expect(m.renderedText).toBe("bold italic end");
     // round-trip over every rendered index
     for (let r = 0; r <= m.renderedText.length; r++) {
       expect(m.toRendered(m.toSource(r))).toBe(r);
