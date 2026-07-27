@@ -611,6 +611,7 @@ function BlockRow({
 function BlockContent({
   block,
   locked,
+  onBlur,
   registerRef,
   onChange,
   onInput,
@@ -619,6 +620,7 @@ function BlockContent({
 }: {
   block: Blk;
   locked: boolean;
+  onBlur?: () => void;
   registerRef: (el: HTMLTextAreaElement | HTMLInputElement | null) => void;
   onChange: (patch: Partial<Blk>) => void;
   onInput: (val: string) => void;
@@ -632,6 +634,7 @@ function BlockContent({
       onChange({ text: e.target.value });
       onInput(e.target.value);
     },
+    onBlur: onBlur,
     onKeyDown,
     disabled: locked,
     rows: 1,
