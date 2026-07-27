@@ -9,6 +9,8 @@ import { useWorkspaceShell, pageQuery } from "@/hooks/use-workspace-data";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
 import { applyFilterReplacement, filterLabel } from "@/lib/filter-label";
 import { PageOriginContext, useSetPageOrigin } from "@/lib/page-origin";
+import { areaBaseView, currentView, type ViewBase, type ViewDraft } from "@/lib/view-drafts";
+import { useToast } from "@/lib/toast";
 
 import { Popover } from "./popover";
 import {
@@ -263,6 +265,7 @@ function QueryToolbar({
   fixedFilterIndex,
   pages,
   verbose,
+  pill,
   menuBuild,
 }: {
   filters: Filter[];
@@ -279,6 +282,7 @@ function QueryToolbar({
   fixedFilterIndex?: number;
   pages: PageListItem[];
   verbose: boolean;
+  pill?: ReactNode;
   menuBuild: () => ReactNode;
 }) {
   const pickFilter = (picked: Filter) =>
@@ -366,6 +370,8 @@ function QueryToolbar({
       )}
 
       <div style={{ flex: 1, minWidth: 8 }} />
+
+      {pill}
 
       <RowMoreButton
         size="view"
@@ -1303,31 +1309,68 @@ export function MainView({ selection }: { selection: Selection }) {
     (m) => m.user_id === user.id && m.role === "owner",
   );
 
-  // Local session-only overrides layered on top of the view/area base.
-  const [localFilters, setLocalFilters] = useState<Filter[] | null>(null);
-  const [localSort, setLocalSort] = useState<SortSpec | null>(null);
-  const [localLayout, setLocalLayout] = useState<Layout | null>(null);
-  const [localGroupBy, setLocalGroupBy] = useState<string | null | undefined>(undefined);
+  // Per-view drafts (session-only, keyed by base id). Toolbar edits on
+  // team/area views land here; personal-owned views bypass drafts and
+  // persist directly to the row.
+  const [drafts, setDrafts] = useState<Record<string, ViewDraft>>({});
   const [renaming, setRenaming] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
-  // Header ⋯ menu is now handled by the unified RowMenu popover; no local anchor state.
 
-  const baseFilters: Filter[] = useMemo(() => {
-    if (selection.kind === "area") return [{ op: "eq", prop: "area", value: selection.area }];
-    return ((view?.filter ?? []) as Filter[]);
+  const base: ViewBase | null = useMemo(() => {
+    if (selection.kind === "area") return areaBaseView(selection.area);
+    if (view)
+      return {
+        id: view.id,
+        name: view.name,
+        scope: view.scope === "team" ? "team" : "personal",
+        layout: (view.layout as ViewBase["layout"]) ?? "table",
+        filter: (view.filter ?? []) as Filter[],
+        sort: (view.sort as SortSpec | null) ?? { prop: "edited", dir: "desc" },
+        group_by: view.group_by ?? null,
+      };
+    return null;
   }, [selection, view]);
-  const baseSort: SortSpec = useMemo(
-    () => ((view?.sort as SortSpec | null) ?? { prop: "edited", dir: "desc" }),
-    [view],
-  );
-  const baseLayout: Layout = (view?.layout as Layout | undefined) ?? "table";
-  const baseGroupBy: string | null = view?.group_by ?? null;
 
-  const filters = localFilters ?? baseFilters;
-  const sort = localSort ?? baseSort;
-  const layout: Layout = localLayout ?? baseLayout;
-  const groupBy: string = (localGroupBy !== undefined ? localGroupBy : baseGroupBy) ?? "status";
+  const current = useMemo(
+    () =>
+      base
+        ? currentView(base, drafts)
+        : null,
+    [base, drafts],
+  );
+
+  const filters: Filter[] = current?.filter ?? [];
+  const sort: SortSpec = current?.sort ?? { prop: "edited", dir: "desc" };
+  const layout: Layout = (current?.layout as Layout) ?? "table";
+  const groupBy: string = current?.group_by ?? "status";
   const fixedFilterIndex = selection.kind === "area" ? 0 : undefined;
+
+  const patchDraft = (id: string, patch: ViewDraft) => {
+    setDrafts((prev) => {
+      const next: Record<string, ViewDraft> = { ...prev };
+      const merged: ViewDraft = { ...(next[id] ?? {}), ...patch };
+      // Prune fields that now match the base — a fully-equal draft is
+      // indistinguishable from having none, so drop the key entirely.
+      if (base && id === base.id) {
+        const drop = (k: keyof ViewDraft, eq: () => boolean) => {
+          if (k in merged && eq()) delete merged[k];
+        };
+        drop("filter", () => JSON.stringify(merged.filter) === JSON.stringify(base.filter));
+        drop("sort", () => JSON.stringify(merged.sort) === JSON.stringify(base.sort));
+        drop("layout", () => merged.layout === base.layout);
+        drop("group_by", () => (merged.group_by ?? null) === (base.group_by ?? null));
+      }
+      if (Object.keys(merged).length === 0) delete next[id];
+      else next[id] = merged;
+      return next;
+    });
+  };
+  const clearDraft = (id: string) =>
+    setDrafts((prev) => {
+      if (!(id in prev)) return prev;
+      const { [id]: _drop, ...rest } = prev;
+      return rest;
+    });
 
   const rows = useMemo(
     () => runView(pages, { filter: filters, sort }, { me: user?.id ?? "", staleDays }),
@@ -1359,40 +1402,27 @@ export function MainView({ selection }: { selection: Selection }) {
 
   const staleThreshold = Date.now() - staleDays * 24 * 60 * 60 * 1000;
 
-  const onChangeFilters = (next: Filter[]) => {
-    if (selection.kind === "area") { setLocalFilters(next); return; }
+  // Personal-owned views persist directly; everything else (team + area)
+  // writes to the per-view draft.
+  const persistOrDraft = (patch: ViewDraft) => {
+    if (!base) return;
     if (isOwnerOfView && view) {
-      setLocalFilters(null);
-      updateView.mutate({ id: view.id, patch: { filter: next } });
-    } else setLocalFilters(next);
-  };
-  const onChangeSort = (s: SortSpec) => {
-    if (selection.kind === "area") { setLocalSort(s); return; }
-    if (isOwnerOfView && view) {
-      setLocalSort(null);
-      updateView.mutate({ id: view.id, patch: { sort: s } });
-    } else setLocalSort(s);
-  };
-  const onChangeLayout = (l: Layout) => {
-    if (selection.kind === "area") { setLocalLayout(l); return; }
-    if (isOwnerOfView && view) {
-      setLocalLayout(null);
-      updateView.mutate({ id: view.id, patch: { layout: l } });
-    } else setLocalLayout(l);
-  };
-  const onChangeGroupBy = (g: string) => {
-    if (selection.kind === "area") { setLocalGroupBy(g); return; }
-    if (isOwnerOfView && view) {
-      setLocalGroupBy(undefined);
-      updateView.mutate({ id: view.id, patch: { group_by: g } });
-    } else setLocalGroupBy(g);
+      clearDraft(base.id);
+      const dbPatch: Parameters<typeof updateView.mutate>[0]["patch"] = {};
+      if ("filter" in patch) dbPatch.filter = patch.filter ?? [];
+      if ("sort" in patch) dbPatch.sort = patch.sort ?? { prop: "edited", dir: "desc" };
+      if ("layout" in patch) dbPatch.layout = patch.layout as ViewBase["layout"];
+      if ("group_by" in patch) dbPatch.group_by = patch.group_by ?? null;
+      updateView.mutate({ id: view.id, patch: dbPatch });
+    } else {
+      patchDraft(base.id, patch);
+    }
   };
 
-  const filterEq = JSON.stringify(filters) !== JSON.stringify(baseFilters);
-  const sortEq = JSON.stringify(sort) !== JSON.stringify(baseSort);
-  const layoutEq = layout !== baseLayout;
-  const groupEq = groupBy !== (baseGroupBy ?? "status");
-  const isModified = isTeamView && (filterEq || sortEq || layoutEq || groupEq);
+  const onChangeFilters = (next: Filter[]) => persistOrDraft({ filter: next });
+  const onChangeSort = (s: SortSpec) => persistOrDraft({ sort: s });
+  const onChangeLayout = (l: Layout) => persistOrDraft({ layout: l });
+  const onChangeGroupBy = (g: string) => persistOrDraft({ group_by: g });
 
   const statusDef = propDefs.find((d) => d.key === "status");
 
@@ -1402,7 +1432,7 @@ export function MainView({ selection }: { selection: Selection }) {
 
   const onNewPage = () => {
     const seed: Record<string, unknown> = {};
-    for (const f of baseFilters) {
+    for (const f of (base?.filter ?? [])) {
       if (f.op === "eq" && f.prop && f.value !== undefined) seed[f.prop] = f.value;
       if (f.op === "is_me" && f.prop && user?.id) seed[f.prop] = user.id;
     }
@@ -1410,15 +1440,23 @@ export function MainView({ selection }: { selection: Selection }) {
     void createAndOpen({ seedProps: seed });
   };
 
+  // Team and area toolbars are editable (edits flow to the draft).
+  // Personal-owned views are also editable (edits persist directly).
+  const editable = !!base;
 
-  const editable = selection.kind === "area" || isOwnerOfView;
+  const isModified =
+    !!current && current._modified && current.scope !== "personal";
+
+  const toast = useToast();
 
   const doSaveAsMyView = () => {
-    if (!view) return;
-    forkView.mutate(
+    if (!base || !isModified) return;
+    const baseName = base.name;
+    const isAreaBase = base.scope === "area";
+    createView.mutate(
       {
-        viewId: view.id,
-        name: `${view.name} (my copy)`,
+        name: `${baseName} (mine)`,
+        icon: null,
         filter: filters,
         sort,
         layout,
@@ -1426,20 +1464,19 @@ export function MainView({ selection }: { selection: Selection }) {
       },
       {
         onSuccess: (row) => {
-          setLocalFilters(null);
-          setLocalSort(null);
-          setLocalLayout(null);
-          setLocalGroupBy(undefined);
+          clearDraft(base.id);
           navigate({ to: "/v/$viewId", params: { viewId: row.id } });
+          toast.push(
+            isAreaBase
+              ? `Saved to My views — "${baseName}" is unchanged for everyone.`
+              : `Saved to My views — "${baseName}" is unchanged for the team.`,
+          );
         },
       },
     );
   };
   const doDiscard = () => {
-    setLocalFilters(null);
-    setLocalSort(null);
-    setLocalLayout(null);
-    setLocalGroupBy(undefined);
+    if (base) clearDraft(base.id);
   };
   const doPublish = () => {
     if (!view) return;
@@ -1624,6 +1661,14 @@ export function MainView({ selection }: { selection: Selection }) {
         fixedFilterIndex={fixedFilterIndex}
         pages={pages}
         verbose={prefs.explainQuery}
+        pill={
+          isModified && base ? (
+            <ModifiedPill
+              onSave={doSaveAsMyView}
+              onDiscard={doDiscard}
+            />
+          ) : null
+        }
         menuBuild={() => (
           <ViewHeaderMenu
             view={view}
@@ -1645,6 +1690,10 @@ export function MainView({ selection }: { selection: Selection }) {
         )}
       />
 
+      {isModified && base && (
+        <ModifiedBand baseName={base.name} />
+      )}
+
       {rows.length < unfilteredCount && (
         <div
           style={{
@@ -1658,15 +1707,6 @@ export function MainView({ selection }: { selection: Selection }) {
         </div>
       )}
 
-
-      {isModified && (
-        <ModifiedBanner
-          viewName={view!.name}
-          workspaceName={workspace?.name ?? "the workspace"}
-          onSave={doSaveAsMyView}
-          onDiscard={doDiscard}
-        />
-      )}
 
       {body}
 
@@ -1715,49 +1755,121 @@ export function MainView({ selection }: { selection: Selection }) {
 
 }
 
-/* ─────────────────────────── Modified banner ─────────────────────────── */
+/* ─────────────────────────── Modified pill + band ─────────────────────────── */
 
-function ModifiedBanner({
-  viewName,
-  workspaceName,
+function ModifiedPill({
   onSave,
   onDiscard,
 }: {
-  viewName: string;
-  workspaceName: string;
   onSave: () => void;
   onDiscard: () => void;
 }) {
   return (
-    <div className="mb-4">
-      <div className="flex flex-wrap items-center gap-2 rounded-md border border-amberRing bg-amberTint px-3 py-2">
-        <span className="inline-flex h-2 w-2 rounded-full bg-amberDot" aria-hidden />
-        <span className="font-display text-label uppercase text-amberInk">MODIFIED</span>
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onSave}
-            className="rounded-md bg-noir px-3 py-1 text-meta font-bold text-canvas"
-          >
-            Save as my view
-          </button>
-          <button
-            type="button"
-            aria-label="Discard changes"
-            onClick={onDiscard}
-            className="grid h-7 w-7 place-items-center rounded-md text-amberInk hover:bg-amberRing"
-          >
-            ×
-          </button>
-        </div>
-      </div>
-      <p className="mt-1 px-1 text-caption text-amberInk">
-        You&apos;re looking at unsaved changes. <b>{viewName}</b> is untouched for everyone
-        else at {workspaceName} — saving makes a copy in <b>My views</b>.
-      </p>
+    <span
+      className="inline-flex items-center animate-fadeIn"
+      style={{
+        gap: 8,
+        background: "var(--color-amberTint)",
+        border: "1px solid var(--color-amberRing)",
+        borderRadius: 9,
+        padding: "3px 5px 3px 10px",
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: 999,
+          background: "var(--color-amberDot)",
+        }}
+      />
+      <span
+        className="font-display uppercase"
+        style={{
+          fontSize: 11.5,
+          fontWeight: 700,
+          letterSpacing: "0.05em",
+          color: "var(--color-amberInk)",
+        }}
+      >
+        MODIFIED
+      </span>
+      <button
+        type="button"
+        onClick={onSave}
+        className="font-display"
+        style={{
+          background: "var(--color-noir)",
+          color: "var(--color-track)",
+          fontSize: 12.5,
+          fontWeight: 700,
+          borderRadius: 6,
+          padding: "2px 8px",
+        }}
+      >
+        Save as my view
+      </button>
+      <button
+        type="button"
+        aria-label="Discard changes"
+        onClick={onDiscard}
+        className="grid place-items-center hover:bg-amberRing"
+        style={{
+          width: 20,
+          height: 20,
+          borderRadius: 4,
+          color: "var(--color-amberInk)",
+          fontSize: 14,
+          lineHeight: 1,
+        }}
+      >
+        ×
+      </button>
+    </span>
+  );
+}
+
+function ModifiedBand({ baseName }: { baseName: string }) {
+  return (
+    <div
+      role="status"
+      className="flex items-start animate-fadeIn"
+      style={{
+        marginTop: 10,
+        gap: 10,
+        background: "var(--color-amberTint)",
+        border: "1px solid var(--color-amberRing)",
+        borderRadius: 9,
+        padding: "9px 13px",
+        fontSize: 13.5,
+        color: "var(--color-amberInk)",
+      }}
+    >
+      <svg
+        aria-hidden
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{ flexShrink: 0, marginTop: 2 }}
+      >
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+      <span>
+        You&apos;re looking at unsaved changes. <b>{baseName}</b> is untouched for
+        everyone else — saving makes a copy in <b>My views</b>.
+      </span>
     </div>
   );
 }
+
 
 /* ─────────────────────────── Header options menu ─────────────────────────── */
 

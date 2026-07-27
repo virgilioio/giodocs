@@ -23,7 +23,7 @@ const DEFAULT: Prefs = {
   fontFamily: "default",
   density: "comfortable",
   dateFormat: "relative",
-  explainQuery: false,
+  explainQuery: true,
   showSidebarCounts: true,
 };
 

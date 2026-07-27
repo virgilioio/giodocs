@@ -258,6 +258,7 @@ export function useCreateView() {
       filter?: Filter[];
       sort?: SortSpec;
       layout?: "table" | "board" | "list";
+      groupBy?: string | null;
       _tempId?: string;
     }) => {
       const { data, error } = await supabase
@@ -271,6 +272,7 @@ export function useCreateView() {
           filter: (v.filter ?? []) as never,
           sort: (v.sort ?? { prop: "edited", dir: "desc" }) as never,
           icon: v.icon ?? null,
+          group_by: v.groupBy ?? null,
         })
         .select("*")
         .single();
@@ -294,7 +296,7 @@ export function useCreateView() {
         filter: (v.filter ?? []) as unknown,
         sort: (v.sort ?? { prop: "edited", dir: "desc" }) as unknown,
         icon: v.icon ?? null,
-        group_by: null,
+        group_by: v.groupBy ?? null,
       };
       qc.setQueryData<ViewFull[]>(qk.views(ws), (prev) =>
         prev ? [...prev, optimistic] : [optimistic],
