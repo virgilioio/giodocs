@@ -898,10 +898,14 @@ export function EditableBody({
   } | null>(null);
 
   const filteredMenu = useMemo(() => {
+    // Top-level slash menu: BLOCK_MENU + COLUMNS_MENU. ColumnStack (inside a
+    // column) manages its own menu with BLOCK_MENU only — columns must
+    // never nest (see src/lib/columns.ts).
+    const all: MenuItem[] = [...BLOCK_MENU, ...COLUMNS_MENU];
     const q = (slash?.query ?? "").toLowerCase().trim();
-    if (!q) return BLOCK_MENU;
-    return BLOCK_MENU.filter(
-      (m) => m.name.toLowerCase().includes(q) || m.type.includes(q),
+    if (!q) return all;
+    return all.filter(
+      (m) => m.name.toLowerCase().includes(q) || m.type.includes(q) || (m.count != null && `col${m.count}`.includes(q)),
     );
   }, [slash]);
   const [menuIdx, setMenuIdx] = useState(0);
@@ -910,14 +914,28 @@ export function EditableBody({
   const closeSlash = useCallback(() => setSlash(null), []);
 
   const applyType = useCallback(
-    (blockId: string, type: BlockType) => {
+    (blockId: string, type: BlockType, count?: number) => {
       const idx = blocks.findIndex((b) => b.id === blockId);
       if (idx === -1) return;
       const prev = blocks[idx];
-      // Strip the "/query" from the text.
       const t = (prev.text ?? "");
       const slashPos = t.lastIndexOf("/");
       const stripped = slashPos >= 0 ? t.slice(0, slashPos) : t;
+
+      // Columns: replace the current block wholesale with a fresh columns
+      // block seeded with N empty text-column columns; focus cols[0][0].
+      if (type === "columns") {
+        const n = count ?? 2;
+        const cb = newColumnsBlock(n);
+        const next = [...blocks];
+        next[idx] = cb;
+        commit(next);
+        setSlash(null);
+        const firstId = cb.cols![0][0].id;
+        setFocusRequest({ id: firstId, caret: "start" });
+        return;
+      }
+
       const nb: Blk = { ...prev, type, text: stripped };
       if (type === "todo" && nb.checked == null) nb.checked = false;
       if (type === "toggle" && nb.open == null) nb.open = false;
@@ -926,7 +944,6 @@ export function EditableBody({
       if (type === "divider") nb.text = "";
       const next = [...blocks];
       next[idx] = nb;
-      // Divider is caret-less; move focus to a new text block after it.
       if (type === "divider") {
         const spawn = newBlock("text");
         next.splice(idx + 1, 0, spawn);
@@ -941,6 +958,7 @@ export function EditableBody({
     },
     [blocks, commit],
   );
+
 
   /* ────────── Block-handle menu: run ops (Move up/down, Duplicate, Delete, Copy link) ────────── */
 
