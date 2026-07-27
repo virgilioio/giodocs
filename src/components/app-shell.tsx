@@ -26,6 +26,8 @@ import {
 
   useDuplicatePage,
   useForkView,
+  useUnpublishView,
+
   useMovePageToArea,
   useRenameArea,
   useSetPageProperty,
@@ -34,6 +36,8 @@ import {
   useVerifyPage,
   useSetAreaIcon,
   useRegisterArea,
+  useClearArea,
+
 
 } from "@/hooks/use-page-mutations";
 
@@ -1118,51 +1122,28 @@ function TeamViewRow({
 }) {
   const [hover, setHover] = useState(false);
   const fork = useForkView();
+  const unpublish = useUnpublishView();
   const navigate = useNavigate();
 
   const build = (): ReactNode => (
-    <RowMenuList
-      title="Team view"
-      items={[
-        {
-          id: "open",
-          label: "Open",
-          hint: <Sc>↵</Sc>,
-          onSelect: () =>
-            navigate({ to: "/v/$viewId", params: { viewId: v.id } }),
-        },
-        {
-          id: "dup",
-          label: "Duplicate into My views",
-          hint: <Val>personal</Val>,
-          onSelect: () =>
-            fork.mutate({
-              viewId: v.id,
-              name: `${v.name} copy`,
-              filter: (v.filter ?? []) as Filter[],
-              sort: (v.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
-              layout: v.layout,
-            }),
-        },
-        {
-          id: "hide",
-          label: "Hide from my sidebar",
-          onSelect: () => onHide(v.id),
-        },
-        ...(isOwner
-          ? ([
-              { kind: "divider" },
-              {
-                id: "unpublish",
-                label: "Unpublish",
-                hint: <Val>back to mine</Val>,
-                disabled: true,
-              },
-            ] satisfies RowMenuItem[])
-          : []),
-      ]}
+    <TeamViewMenu
+      v={v}
+      isOwner={isOwner}
+      onOpen={() => navigate({ to: "/v/$viewId", params: { viewId: v.id } })}
+      onFork={() =>
+        fork.mutate({
+          viewId: v.id,
+          name: `${v.name} copy`,
+          filter: (v.filter ?? []) as Filter[],
+          sort: (v.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
+          layout: v.layout,
+        })
+      }
+      onHide={() => onHide(v.id)}
+      onUnpublish={() => unpublish.mutate(v.id)}
     />
   );
+
 
   return (
     <li
@@ -1197,6 +1178,71 @@ function TeamViewRow({
     </li>
   );
 }
+
+/**
+ * Team-view menu content. Non-owners see open/duplicate/hide; owners also
+ * see an Unpublish row that swaps to a confirm submode in the same panel.
+ */
+function TeamViewMenu({
+  v,
+  isOwner,
+  onOpen,
+  onFork,
+  onHide,
+  onUnpublish,
+}: {
+  v: ViewRow;
+  isOwner: boolean;
+  onOpen: () => void;
+  onFork: () => void;
+  onHide: () => void;
+  onUnpublish: () => void;
+}) {
+  const [mode, setMode] = useState<"list" | "unpublish">("list");
+  if (mode === "unpublish") {
+    return (
+      <RowMenuConfirm
+        title={`Unpublish "${v.name}"?`}
+        body={
+          <>
+            The view leaves Team views and returns to your <b>My views</b>. The
+            pages it filtered are untouched. Only workspace owners can
+            publish or unpublish team views.
+          </>
+        }
+        confirmLabel="Unpublish"
+        variant="danger"
+        onConfirm={onUnpublish}
+      />
+    );
+  }
+  const items: RowMenuItem[] = [
+    { id: "open", label: "Open", hint: <Sc>↵</Sc>, onSelect: onOpen },
+    {
+      id: "dup",
+      label: "Duplicate into My views",
+      hint: <Val>personal</Val>,
+      onSelect: onFork,
+    },
+    { id: "hide", label: "Hide from my sidebar", onSelect: onHide },
+    ...(isOwner
+      ? ([
+          { kind: "divider" },
+          {
+            id: "unpublish",
+            label: "Unpublish",
+            hint: <Val>back to mine</Val>,
+            submenu: true,
+            keepOpen: true,
+            danger: true,
+            onSelect: () => setMode("unpublish"),
+          },
+        ] satisfies RowMenuItem[])
+      : []),
+  ];
+  return <RowMenuList title="Team view" items={items} />;
+}
+
 
 /* Area row — its menu carries area-scope actions plus rename with a footer. */
 function AreaLi({
@@ -1351,7 +1397,7 @@ function AreaLi({
   );
 }
 
-/** Stateful content for the area menu — rename swaps in place. */
+/** Stateful content for the area menu — rename and clear swap in place. */
 function AreaMenu({
   area,
   count,
@@ -1373,7 +1419,8 @@ function AreaMenu({
   onChangeEmoji: () => void;
   onSaveAsView: () => void;
 }) {
-  const [mode, setMode] = useState<"list" | "rename">("list");
+  const [mode, setMode] = useState<"list" | "rename" | "clear">("list");
+  const clearArea = useClearArea();
   if (mode === "rename") {
     return (
       <RowMenuList
@@ -1389,6 +1436,26 @@ function AreaMenu({
           },
         }}
         footer="Every page with this area follows."
+      />
+    );
+  }
+  if (mode === "clear") {
+    return (
+      <RowMenuConfirm
+        title={`Clear "${area}"?`}
+        body={
+          count === 0 ? (
+            <>The area has no pages — it will just disappear from your sidebar.</>
+          ) : (
+            <>
+              The area is removed from <b>{count}</b>{" "}
+              {count === 1 ? "page" : "pages"}. The pages themselves are kept.
+            </>
+          )
+        }
+        confirmLabel="Clear area"
+        variant="danger"
+        onConfirm={() => clearArea.mutate(area)}
       />
     );
   }
@@ -1421,9 +1488,20 @@ function AreaMenu({
       hint: <Val>personal</Val>,
       onSelect: onSaveAsView,
     },
+    { kind: "divider" },
+    {
+      id: "clear",
+      label: "Clear area",
+      hint: <Val>{count === 0 ? "unused" : `${count} ${count === 1 ? "page" : "pages"}`}</Val>,
+      submenu: true,
+      keepOpen: true,
+      danger: true,
+      onSelect: () => setMode("clear"),
+    },
   ];
   return <RowMenuList title={title} items={items} />;
 }
+
 
 /**
  * Emoji slot for an area row — clickable target that opens the shared

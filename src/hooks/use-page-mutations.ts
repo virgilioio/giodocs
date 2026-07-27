@@ -574,6 +574,39 @@ export function usePublishView() {
   });
 }
 
+/**
+ * Unpublish a team view — flips scope back to 'personal' with `owner_id`
+ * set to the caller so it returns to their My views. RLS restricts this
+ * update to workspace owners (see views_update policy).
+ */
+export function useUnpublishView() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const { user } = useAuth();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (viewId: string) => {
+      const { data, error } = await supabase
+        .from("views")
+        .update({ scope: "personal", owner_id: user!.id })
+        .eq("id", viewId)
+        .select("*")
+        .single();
+      if (error) throw error;
+      return data as unknown as ViewFull;
+    },
+    onSuccess: (row) => {
+      qc.setQueryData<ViewFull[]>(qk.views(ws), (prev) =>
+        prev ? prev.map((x) => (x.id === row.id ? row : x)) : [row],
+      );
+      toast.push(`Unpublished "${row.name}" — it's back in your My views.`);
+    },
+    onError: (err) => toast.push(`Couldn't unpublish: ${(err as Error).message}`),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.views(ws) }),
+  });
+}
+
+
 /* ────────────── Page-level actions used by the topbar menu ────────────── */
 
 // Move to area with menu-appropriate toast wording that names both
@@ -1153,5 +1186,110 @@ export function useRegisterArea() {
     },
   });
 }
+
+/**
+ * Clears an area from every page that carries it AND removes the area's
+ * registry entry from the `area` property_def options. Neither half is
+ * enough on its own: without the registry sweep an area that was created
+ * ahead of any page (previous chunk) would linger in the sidebar at count 0
+ * after the pages were cleared. There is deliberately no separate
+ * "Delete area" operation — an area is a value, not a container.
+ */
+export function useClearArea() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (area: string) => {
+      const snapshot = qc.getQueryData<PageListItem[]>(qk.pages(ws)) ?? [];
+      const ids = snapshot
+        .filter((p) => {
+          const props =
+            p.props && typeof p.props === "object" && !Array.isArray(p.props)
+              ? (p.props as Record<string, unknown>)
+              : {};
+          return props.area === area;
+        })
+        .map((p) => p.id);
+      for (const pageId of ids) {
+        const { error } = await supabase.rpc("set_page_property", {
+          p_page: pageId,
+          p_key: "area",
+          p_value: null as never,
+        });
+        if (error) throw error;
+      }
+      // Registry sweep — remove the entry so a zero-page registered area
+      // doesn't survive the clear.
+      const { data: def, error: readErr } = await supabase
+        .from("property_defs")
+        .select("id, options")
+        .eq("workspace_id", ws)
+        .eq("key", "area")
+        .single();
+      if (readErr) throw readErr;
+      const options = Array.isArray(def?.options)
+        ? (def!.options as Array<Record<string, unknown>>)
+        : [];
+      const nextOptions = options.filter((o) => o?.value !== area);
+      if (nextOptions.length !== options.length) {
+        const { error: writeErr } = await supabase
+          .from("property_defs")
+          .update({ options: nextOptions as never })
+          .eq("id", def!.id);
+        if (writeErr) throw writeErr;
+      }
+      return { count: ids.length };
+    },
+    onMutate: async (area) => {
+      await qc.cancelQueries({ queryKey: qk.pages(ws) });
+      await qc.cancelQueries({ queryKey: qk.propDefs(ws) });
+      const pagesSnap = qc.getQueryData<PageListItem[]>(qk.pages(ws)) ?? [];
+      const defsSnap =
+        qc.getQueryData<Array<{ key: string; options: unknown }>>(qk.propDefs(ws)) ??
+        [];
+      const nowIso = new Date().toISOString();
+      qc.setQueryData<PageListItem[]>(
+        qk.pages(ws),
+        pagesSnap.map((p) => {
+          const props =
+            p.props && typeof p.props === "object" && !Array.isArray(p.props)
+              ? { ...(p.props as Record<string, unknown>) }
+              : {};
+          if (props.area !== area) return p;
+          delete props.area;
+          return {
+            ...p,
+            props: props as PageListItem["props"],
+            edited_at: nowIso,
+          };
+        }),
+      );
+      qc.setQueryData<Array<{ key: string; options: unknown }>>(
+        qk.propDefs(ws),
+        defsSnap.map((d) => {
+          if (d.key !== "area") return d;
+          const opts = Array.isArray(d.options)
+            ? (d.options as Array<Record<string, unknown>>)
+            : [];
+          return { ...d, options: opts.filter((o) => o?.value !== area) as unknown };
+        }),
+      );
+      return { pagesSnap, defsSnap };
+    },
+    onError: (err, _v, ctx) => {
+      if (ctx?.pagesSnap) qc.setQueryData(qk.pages(ws), ctx.pagesSnap);
+      if (ctx?.defsSnap) qc.setQueryData(qk.propDefs(ws), ctx.defsSnap);
+      toast.push(`Couldn't clear area: ${(err as Error).message}`);
+    },
+    onSuccess: (res, area) =>
+      toast.push(
+        res.count === 0
+          ? `“${area}” removed from the sidebar.`
+          : `Cleared "${area}" from ${res.count} ${res.count === 1 ? "page" : "pages"}.`,
+      ),
+  });
+}
+
 
 
