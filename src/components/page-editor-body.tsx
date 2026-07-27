@@ -1519,6 +1519,7 @@ function BlockRow({
 
       <BlockContent
         block={block}
+        ordinal={ordinal}
         locked={locked}
         onBlur={onBlur}
         registerRef={registerRef}
