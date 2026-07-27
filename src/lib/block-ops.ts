@@ -15,6 +15,12 @@ import { nanoid } from "nanoid";
 import { parseMarkdown } from "@/lib/markdown-import";
 import { htmlToMarkdown, htmlToBlocks } from "@/lib/html-to-markdown";
 import { emptyColumns } from "@/lib/columns";
+import { clampIndent } from "@/lib/blocks";
+
+/** Block types that participate in list indentation. Headings, quotes,
+ *  callouts, code, tables, dividers, columns, captions, and toggles do
+ *  NOT — indenting them has no meaning in this flat model. */
+const INDENTABLE = new Set<BlockType>(["bullet", "numbered", "todo", "text"]);
 
 export type BlockType =
   | "text"
@@ -52,6 +58,11 @@ export type Blk = {
   level?: ToggleLevel;
   /** Only meaningful when type === "columns". Never nested. */
   cols?: Blk[][];
+  /** Flat outline level for list-like blocks (bullet, numbered, todo, text).
+   *  Absent or 0 means top level. NOT a tree — blocks stay in a flat array;
+   *  this is only a rendering / label / export hint. Clamped 0..6 with the
+   *  parent+1 rule. */
+  indent?: number;
 };
 
 export type FocusReq = { id: string; caret?: number | "start" | "end" };
