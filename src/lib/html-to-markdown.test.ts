@@ -203,3 +203,60 @@ describe("legal-contract fixture → block sequence", () => {
     expect(blocks[1].text).toContain("___________________________");
   });
 });
+
+/* ─────────────────── htmlToBlocks (structured) ─────────────────── */
+describe("htmlToBlocks — Notion column_list → columns block", () => {
+  it("builds a columns block with the correct count and preserved content", () => {
+    const html = `
+      <div class="column_list">
+        <div class="column"><p>left one</p><ul><li>a</li></ul></div>
+        <div class="column"><h2>right</h2><p>two</p></div>
+      </div>
+    `;
+    const blocks = htmlToBlocks(html);
+    expect(blocks).not.toBeNull();
+    expect(blocks!.length).toBe(1);
+    const cb = blocks![0] as { type?: string; cols?: unknown[][] };
+    expect(cb.type).toBe("columns");
+    expect(cb.cols!.length).toBe(2);
+    // Left column: contains a paragraph and a bullet
+    const leftTexts = (cb.cols![0] as Array<{ type?: string; text?: string }>).map(
+      (b) => `${b.type}:${b.text}`,
+    );
+    expect(leftTexts.some((s) => s.startsWith("text:") && s.includes("left one"))).toBe(true);
+    expect(leftTexts.some((s) => s.startsWith("bullet:") && s.includes("a"))).toBe(true);
+    // Right column: h2 + paragraph
+    const rightTexts = (cb.cols![1] as Array<{ type?: string; text?: string }>).map(
+      (b) => `${b.type}:${b.text}`,
+    );
+    expect(rightTexts.some((s) => s.startsWith("h2:") && s.includes("right"))).toBe(true);
+    expect(rightTexts.some((s) => s.startsWith("text:") && s.includes("two"))).toBe(true);
+  });
+
+  it("returns null when no column_list is present (caller falls back)", () => {
+    const html = `<h1>Just a page</h1><p>no columns here</p>`;
+    expect(htmlToBlocks(html)).toBeNull();
+    // And the fallback path yields the text as stacked blocks.
+    const parsed = parseMarkdown(htmlToMarkdown(html));
+    expect(parsed.map((b) => b.type)).toEqual(["h1", "text"]);
+  });
+
+  it("clamps at 6 columns — overflow content flattened into last kept column", () => {
+    const cols = Array.from(
+      { length: 8 },
+      (_, i) => `<div class="column"><p>c${i}</p></div>`,
+    ).join("");
+    const html = `<div class="column_list">${cols}</div>`;
+    const blocks = htmlToBlocks(html);
+    expect(blocks).not.toBeNull();
+    const cb = blocks![0] as { cols?: unknown[][] };
+    expect(cb.cols!.length).toBe(6);
+    // Overflow c6, c7 pushed into last kept column (index 5).
+    const last = cb.cols![5] as Array<{ text?: string }>;
+    const combined = last.map((b) => b.text ?? "").join("|");
+    expect(combined).toContain("c5");
+    expect(combined).toContain("c6");
+    expect(combined).toContain("c7");
+  });
+});
+
