@@ -1831,11 +1831,6 @@ export function EditableBody({
       {blocks.map((b) => (
         <BlockRow
           key={b.id}
-          focused={focusedId === b.id}
-          onRequestFocus={(caret) => {
-            setFocusedId(b.id);
-            setFocusRequest({ id: b.id, caret });
-          }}
           onEditorFocus={() => setFocusedId(b.id)}
           onEditorBlur={() =>
             setFocusedId((cur) => (cur === b.id ? null : cur))
