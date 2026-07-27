@@ -1632,12 +1632,12 @@ function AreaLi({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
-      <div className="relative flex items-center">
+      <div className="relative flex min-w-0 items-center">
         <button
           type="button"
           onClick={onToggle}
           aria-label={open ? `Collapse ${area}` : `Expand ${area}`}
-          className="grid h-6 w-6 place-items-center rounded-sm text-muted hover:bg-railHover"
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-sm text-muted hover:bg-railHover"
         >
           <Glyph
             path="M9 6l6 6-6 6"
@@ -1650,7 +1650,7 @@ function AreaLi({
           params={{ area }}
           style={{ height: "var(--spacing-rowArea)" }}
           className={
-            "flex flex-1 items-center gap-2 rounded-md px-1 " +
+            "flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 " +
             (active
               ? "bg-selected font-bold text-noir"
               : "text-body hover:bg-railHover")
@@ -1664,10 +1664,16 @@ function AreaLi({
             onPick={(e) => setAreaIcon.mutate({ area, emoji: e })}
           />
 
-          <span className="min-w-0 flex-1 truncate text-row">{area}</span>
           <span
-            className="relative flex items-center justify-end"
-            style={{ height: 17, minWidth: 17 }}
+            className="min-w-0 flex-1 truncate text-row"
+            style={{ flex: "1 1 auto" }}
+            title={area}
+          >
+            {area}
+          </span>
+          <span
+            className="relative flex shrink-0 items-center justify-end"
+            style={{ height: 17, minWidth: 17, flex: "none" }}
           >
             {hover ? (
               <SpecMenuTrigger size="sm" build={buildAreaSpec} />
@@ -1678,6 +1684,7 @@ function AreaLi({
           </span>
         </Link>
       </div>
+
       {open && (
         <ul className="ml-6">
           {items.map((p) => (
