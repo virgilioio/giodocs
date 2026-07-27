@@ -2826,7 +2826,7 @@ function ColumnStack({
   const ordinalMap = useMemo(() => numberedOrdinals(blocks), [blocks]);
 
   return (
-    <div className="space-y-1">
+    <div ref={trackRef} className="space-y-1">
       {blocks.map((b) => (
         <BlockRow
           key={b.id}
@@ -2844,12 +2844,12 @@ function ColumnStack({
           onEditorBlur={() =>
             setFocusedId((cur) => (cur === b.id ? null : cur))
           }
-          registerRowEl={() => {}}
-          onHandlePointerDown={() => {
-            /* Drag inside columns is deferred to part 2 of 2. */
+          registerRowEl={(id, el) => bridge?.registerRow(colRef, id, el)}
+          onHandlePointerDown={(ev) => {
+            if (bridge) bridge.beginDrag(b.id, ev, colRef);
           }}
           onHandleClick={() => {
-            /* Handle menu inside columns is deferred to part 2 of 2. */
+            /* Handle menu inside columns still deferred (out of scope). */
           }}
           onHandleShiftClick={() => {}}
           registerRef={(el) => {
