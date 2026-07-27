@@ -181,7 +181,7 @@ describe("legal-contract fixture → block sequence", () => {
     const blocks = parseMarkdown(md);
     // Heading levels: our model collapses h3+ to h2.
     expect(blocks.map((b) => b.type)).toEqual([
-      "h1", // <h2> → level-1 heading in our model (see renderBlock)
+      "h2", // <h2> → ## (our model collapses to h1/h2 only; h1 stays h1)
       "text",
       "divider",
       "h2",
