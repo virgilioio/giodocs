@@ -366,3 +366,135 @@ export async function printPdf(
     /* the print dialog may be dismissed by the user; that is not an error. */
   }
 }
+
+/* ─────────────────────────── View exports (CSV / MD table) ───────────────────────────
+ *
+ * Consumed by the "Export view" dialog. The rows array MUST be exactly what
+ * the table is rendering right now — same runView output, same sort, after
+ * local session filters. Do not re-derive inside this file.
+ *
+ * Column keys mirror the visible table columns; the caller passes only the
+ * columns whose checkboxes are ticked, in the order they appear on screen.
+ */
+
+export type ExportViewColumnKey =
+  | "title"
+  | "area"
+  | "owner"
+  | "status"
+  | "tags"
+  | "verified"
+  | "edited";
+
+export type ExportViewRow = {
+  title: string | null;
+  area: string | null;
+  ownerId: string | null;
+  status: string | null;
+  tags: readonly string[];
+  verifiedAt: string | null;
+  editedAt: string | null;
+};
+
+export type ExportViewOptions = {
+  columns: readonly ExportViewColumnKey[];
+  /** Resolve a member id to a display name. Called only for owner columns. */
+  resolveOwner: (id: string | null) => string;
+};
+
+const VIEW_COLUMN_LABEL: Record<ExportViewColumnKey, string> = {
+  title: "Page",
+  area: "Area",
+  owner: "Owner",
+  status: "Status",
+  tags: "Tags",
+  verified: "Verified",
+  edited: "Edited",
+};
+
+function dateOnly(iso: string | null | undefined): string {
+  return verifiedDate(iso);
+}
+
+function rawIso(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString();
+}
+
+function cellFor(
+  row: ExportViewRow,
+  key: ExportViewColumnKey,
+  resolveOwner: (id: string | null) => string,
+  dateFmt: (iso: string | null | undefined) => string,
+): string {
+  switch (key) {
+    case "title": {
+      const t = (row.title ?? "").trim();
+      return t || "Untitled";
+    }
+    case "area":
+      return row.area ?? "";
+    case "owner":
+      return resolveOwner(row.ownerId);
+    case "status":
+      return row.status ?? "";
+    case "tags":
+      return row.tags.join("; ");
+    case "verified":
+      return dateFmt(row.verifiedAt);
+    case "edited":
+      return dateFmt(row.editedAt);
+  }
+}
+
+/* ─────────── CSV (RFC-4180, CRLF, ISO date-only) ─────────── */
+
+function csvField(v: string): string {
+  if (/[",\r\n]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
+  return v;
+}
+
+export function toCsv(
+  rows: readonly ExportViewRow[],
+  opts: ExportViewOptions,
+): string {
+  const CRLF = "\r\n";
+  const header = opts.columns.map((k) => csvField(VIEW_COLUMN_LABEL[k])).join(",");
+  if (rows.length === 0) return header + CRLF;
+  const body = rows
+    .map((r) =>
+      opts.columns
+        .map((k) => csvField(cellFor(r, k, opts.resolveOwner, dateOnly)))
+        .join(","),
+    )
+    .join(CRLF);
+  return header + CRLF + body + CRLF;
+}
+
+/* ─────────── Markdown pipe table (GFM, raw ISO timestamps) ─────────── */
+
+function mdCell(v: string): string {
+  return v.replace(/\|/g, "\\|");
+}
+
+export function toMarkdownTable(
+  rows: readonly ExportViewRow[],
+  opts: ExportViewOptions,
+): string {
+  const header =
+    "| " + opts.columns.map((k) => mdCell(VIEW_COLUMN_LABEL[k])).join(" | ") + " |";
+  const sep = "| " + opts.columns.map(() => "---").join(" | ") + " |";
+  if (rows.length === 0) return header + "\n" + sep + "\n";
+  const body = rows
+    .map(
+      (r) =>
+        "| " +
+        opts.columns
+          .map((k) => mdCell(cellFor(r, k, opts.resolveOwner, rawIso)))
+          .join(" | ") +
+        " |",
+    )
+    .join("\n");
+  return header + "\n" + sep + "\n" + body + "\n";
+}
