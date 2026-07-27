@@ -3020,6 +3020,19 @@ function ColumnStack({
               }
             }
 
+            // ⌘A two-stage inside a column. Column-scoped block selection
+            // is not supported (selectedIds is flat; bulk bar / delete /
+            // drag operate on top-level runs), so stage 2 jumps straight
+            // to selecting every top-level block on the page.
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+              if (shouldSelectAllBlocks(ss, se, v.length)) {
+                e.preventDefault();
+                el.blur();
+                bridge?.selectAllTopLevel();
+              }
+              return;
+            }
+
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
               const idx = blocks.findIndex((x) => x.id === b.id);
