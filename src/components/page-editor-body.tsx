@@ -220,7 +220,7 @@ export function EditableBody({
     if (!focusRequest) return;
     const el = refs.current[focusRequest.id];
     if (!el) return;
-    el.focus();
+    el.focus({ preventScroll: true });
     if ("setSelectionRange" in el) {
       const v = (el as HTMLTextAreaElement).value;
       const c =
@@ -234,6 +234,11 @@ export function EditableBody({
       } catch {
         /* input types that don't support selection */
       }
+    }
+    // Only scroll if the target is outside the visible area.
+    const rect = (el as HTMLElement).getBoundingClientRect();
+    if (rect.top < 0 || rect.bottom > window.innerHeight) {
+      (el as HTMLElement).scrollIntoView({ block: "nearest" });
     }
     setFocusRequest(null);
   }, [focusRequest, blocks]);
