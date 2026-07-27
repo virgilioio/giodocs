@@ -3101,11 +3101,11 @@ function RowGroup({
       "type" in (child as object) &&
       (child as React.ReactElement).type === Cell
     ) {
-      return React.cloneElement(child as React.ReactElement, {
+      return React.cloneElement(child as React.ReactElement<Record<string, unknown>>, {
         pageId,
         selected,
         key: (child as React.ReactElement).key ?? i,
-      });
+      } as Record<string, unknown>);
     }
     return child;
   });
