@@ -1979,14 +1979,23 @@ function FooterAccount({
           {initials}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="truncate text-body" style={{ fontSize: 14, fontWeight: 700 }}>
+          <div
+            className="truncate text-body"
+            style={{ fontSize: 14, fontWeight: 700 }}
+            title={displayName}
+          >
             {displayName}
           </div>
-          <div className="truncate text-muted" style={{ fontSize: 12.5 }}>
+          <div
+            className="truncate text-muted"
+            style={{ fontSize: 12.5 }}
+            title={`${workspaceName}${memberCount ? ` · ${memberCount} people` : ""}`}
+          >
             {workspaceName}
             {memberCount ? ` · ${memberCount} people` : ""}
           </div>
         </div>
+
         <span className="shrink-0 text-whisper">
           <svg width={14} height={14} viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth={2} strokeLinecap="round"
