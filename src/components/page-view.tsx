@@ -109,7 +109,7 @@ function Glyph({
   );
 }
 
-/* ────────────── Permissions chip (non-interactive this phase) ────────────── */
+/* ────────────── Permissions chip ────────────── */
 
 function PermissionsChip({
   page,
@@ -132,9 +132,15 @@ function PermissionsChip({
     : "M6 10V8a6 6 0 1112 0v2M5 10h14v10H5z";
 
   return (
-    <span
+    <button
+      type="button"
       data-permissions-chip
-      className="inline-flex items-center gap-1.5 rounded-full border border-line text-meta text-secondary"
+      onClick={(e) => {
+        openPermissionsPopover(
+          (e.currentTarget as HTMLElement).getBoundingClientRect(),
+        );
+      }}
+      className="inline-flex items-center gap-1.5 rounded-full border border-line text-meta text-secondary transition-colors hover:bg-rail"
       style={{
         height: 27,
         boxSizing: "border-box",
@@ -144,7 +150,7 @@ function PermissionsChip({
     >
       <Glyph path={path} className="h-3.5 w-3.5" />
       <span>{label}</span>
-    </span>
+    </button>
   );
 }
 
