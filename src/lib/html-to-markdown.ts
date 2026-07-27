@@ -195,6 +195,11 @@ function textOnly(nodes: Node[]): string {
 /* A checkbox <li> is one whose descendants include an <input type=checkbox>
  * or a data-checked attribute anywhere. Returns {checkbox, checked} or null. */
 function detectCheckbox(li: Extract<Node, { type: "elem" }>): { checked: boolean } | null {
+  // Check the li's OWN data-checked before descending. Notion emits it
+  // directly on the <li>.
+  const own = li.attrs["data-checked"];
+  if (own === "true" || own === "false") return { checked: own === "true" };
+
   let found: { checked: boolean } | null = null;
   const visit = (n: Node) => {
     if (found) return;
