@@ -242,7 +242,6 @@ function ViewHeader({
           <Glyph path="M12 5v14M5 12h14" className="h-3 w-3" />
           New page
         </button>
-        <RowMoreButton size="md" build={menuBuild} />
 
       </div>
     </div>
