@@ -463,9 +463,199 @@ export function EditableBody({
     return () => window.removeEventListener("keydown", onKey);
   }, [selectedIds, blocks, commit, clearSelection]);
 
+  /* ────────── Copy / Cut a block selection as Markdown ────────── */
 
+  const toast = useToast();
+
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const key = e.key.toLowerCase();
+      if (key !== "c" && key !== "x") return;
+      const target = e.target as HTMLElement | null;
+      const inField =
+        !!target &&
+        (target.tagName === "TEXTAREA" ||
+          target.tagName === "INPUT" ||
+          target.isContentEditable);
+      if (inField) return; // native copy stays intact inside text
+      e.preventDefault();
+      const selected = blocks.filter((b) => selectedIds.has(b.id));
+      const md = selected.map(blockToMarkdown).join("\n\n");
+      const write = navigator.clipboard?.writeText?.(md);
+      const after = () => {
+        toast.push(
+          `Copied ${selected.length} ${selected.length === 1 ? "block" : "blocks"} as Markdown`,
+        );
+        if (key === "x" && !locked) {
+          const ids = blocks.map((b) => b.id);
+          const toDrop = ids
+            .map((id, i) => (selectedIds.has(id) ? i : -1))
+            .filter((i) => i >= 0);
+          const next = deleteIndices(blocks, toDrop, () => newBlock("text"));
+          clearSelection();
+          commit(next);
+        }
+      };
+      if (write && typeof (write as Promise<void>).then === "function") {
+        (write as Promise<void>).then(after).catch(() => after());
+      } else {
+        after();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedIds, blocks, commit, clearSelection, locked, toast]);
+
+  /* ────────── Marquee selection ────────── */
+
+  const [marquee, setMarquee] = useState<{
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+  } | null>(null);
+  const marqueeRef = useRef<{
+    active: boolean;
+    originX: number;
+    originY: number;
+    originTarget: HTMLElement | null;
+    moved: boolean;
+  } | null>(null);
+  const marqueeScrollDirRef = useRef<0 | 1 | -1>(0);
+  const marqueeScrollRafRef = useRef<number | null>(null);
+
+  const tickMarqueeScroll = useCallback(() => {
+    const dir = marqueeScrollDirRef.current;
+    const sc = scrollContainerRef.current;
+    if (!sc || dir === 0) {
+      marqueeScrollRafRef.current = null;
+      return;
+    }
+    sc.scrollTop += dir * 8;
+    marqueeScrollRafRef.current = requestAnimationFrame(tickMarqueeScroll);
+  }, []);
+
+  const selectByMarqueeY = useCallback((y1: number, y2: number) => {
+    const top = Math.min(y1, y2);
+    const bot = Math.max(y1, y2);
+    const ids = new Set<string>();
+    rowEls.current.forEach((el, id) => {
+      const r = el.getBoundingClientRect();
+      if (r.bottom >= top && r.top <= bot) ids.add(id);
+    });
+    setSelectedIds(ids);
+  }, []);
+
+  const onBelowClickRef = useRef<() => void>(() => {});
+
+  const handleContainerPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      const t = e.target as HTMLElement;
+      if (
+        t.closest(
+          "textarea, input, button, [data-slash-menu], [data-block-handle]",
+        )
+      ) {
+        return;
+      }
+      // If a drag is in progress, do not start a marquee session.
+      if (draggingRef.current) return;
+      marqueeRef.current = {
+        active: true,
+        originX: e.clientX,
+        originY: e.clientY,
+        originTarget: t,
+        moved: false,
+      };
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const onMove = (ev: PointerEvent) => {
+      const m = marqueeRef.current;
+      if (!m || !m.active) return;
+      const dx = ev.clientX - m.originX;
+      const dy = ev.clientY - m.originY;
+      if (!m.moved && Math.hypot(dx, dy) < 4) return;
+      if (!m.moved) {
+        m.moved = true;
+        setSelectedIds(new Set());
+        anchorId.current = null;
+        document.body.style.userSelect = "none";
+      }
+      if (!scrollContainerRef.current) {
+        scrollContainerRef.current = containerRef.current?.closest("main") ?? null;
+      }
+      const sc = scrollContainerRef.current;
+      if (sc) {
+        const r = sc.getBoundingClientRect();
+        const near = 48;
+        if (ev.clientY < r.top + near) marqueeScrollDirRef.current = -1;
+        else if (ev.clientY > r.bottom - near) marqueeScrollDirRef.current = 1;
+        else marqueeScrollDirRef.current = 0;
+        if (
+          marqueeScrollDirRef.current !== 0 &&
+          marqueeScrollRafRef.current == null
+        ) {
+          marqueeScrollRafRef.current = requestAnimationFrame(tickMarqueeScroll);
+        }
+      }
+      setMarquee({ x1: m.originX, y1: m.originY, x2: ev.clientX, y2: ev.clientY });
+      selectByMarqueeY(m.originY, ev.clientY);
+    };
+    const onUp = () => {
+      const m = marqueeRef.current;
+      if (!m || !m.active) return;
+      marqueeRef.current = null;
+      marqueeScrollDirRef.current = 0;
+      if (marqueeScrollRafRef.current != null) {
+        cancelAnimationFrame(marqueeScrollRafRef.current);
+        marqueeScrollRafRef.current = null;
+      }
+      document.body.style.userSelect = "";
+      if (m.moved) {
+        setMarquee(null);
+        return;
+      }
+      // Click branch (no drag past threshold).
+      setMarquee(null);
+      const t = m.originTarget;
+      if (!t) return;
+      // Trailing zone → append/focus a text block.
+      if (t.closest("[data-trailing-zone]")) {
+        onBelowClickRef.current();
+        return;
+      }
+      // No-editor block row (e.g. divider) → select just that block.
+      const noEditor = t.closest("[data-block-no-editor='true']") as HTMLElement | null;
+      if (noEditor) {
+        const id = noEditor.getAttribute("data-block-id");
+        if (id) {
+          anchorId.current = id;
+          setSelectedIds(new Set([id]));
+          return;
+        }
+      }
+      // Otherwise: clear any existing selection.
+      setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
+      anchorId.current = null;
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [selectByMarqueeY, tickMarqueeScroll]);
 
   /* ────────── Slash menu state ────────── */
+
   const [slash, setSlash] = useState<{
     blockId: string;
     query: string;
