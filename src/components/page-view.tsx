@@ -1395,6 +1395,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
           page={page}
           workspaceName={workspaceName}
           access={access}
+          members={members}
         />
         <span className="text-rule">·</span>
         <span className="text-meta text-muted">
