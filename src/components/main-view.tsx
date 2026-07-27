@@ -1994,6 +1994,7 @@ function buildViewToolbarSpec(
     onPublish: () => void;
     onUnpublish: () => void;
     onDelete: () => void;
+    onExportView: () => void;
   },
   mctx: { setSpec: (s: MenuSpec) => void; close: () => void },
 ): MenuSpec {
