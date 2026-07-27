@@ -2283,10 +2283,11 @@ function SlashMenu({
 }: {
   x: number;
   y: number;
-  items: Array<{ type: BlockType; name: string; desc: string; icon: string }>;
+  items: MenuItem[];
   activeIdx: number;
   onHover: (i: number) => void;
-  onPick: (t: BlockType) => void;
+  onPick: (t: BlockType, count?: number) => void;
+
   onClose: () => void;
 }) {
   // Clamp to viewport so the panel never clips out of view.
@@ -2318,13 +2319,14 @@ function SlashMenu({
         ) : (
           items.map((m, i) => (
             <button
-              key={m.type}
+              key={m.type + (m.count != null ? `-${m.count}` : "")}
               type="button"
               onMouseEnter={() => onHover(i)}
               onMouseDown={(e) => {
                 e.preventDefault();
-                onPick(m.type);
+                onPick(m.type, m.count);
               }}
+
               className={
                 "flex w-full items-center gap-3 px-2 py-1.5 text-left " +
                 (i === activeIdx ? "bg-sunken" : "")
