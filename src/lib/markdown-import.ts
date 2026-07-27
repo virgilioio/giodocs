@@ -2,7 +2,7 @@
  * parseMarkdown — inverse of blockToMarkdown in export.ts.
  *
  * Supports the block-type set: text, h1, h2, h3, bullet, numbered,
- * todo, toggle, quote, callout, divider, code, table. Line-based scan; no
+ * todo, toggle, quote, callout, divider, code, table. Caption round-trips
  * dependencies (no turndown, no marked, no remark).
  *
  * INLINE FORMATTING IS PRESERVED AS LITERAL CHARACTERS.
