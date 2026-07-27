@@ -34,6 +34,8 @@ import {
   useVerifyPage,
   useSetAreaIcon,
   useRegisterArea,
+  useClearArea,
+
 
 } from "@/hooks/use-page-mutations";
 
