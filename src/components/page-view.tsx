@@ -313,6 +313,15 @@ function EditableValue({
 }) {
   const raw = propsOf(page)[propKey];
   const missing = <span className="italic text-whisper">—</span>;
+  const allTags = useMemo(() => {
+    if (def?.type !== "multi_select") return [] as string[];
+    const s = new Set<string>();
+    for (const p of pages) {
+      const t = propsOf(p)[propKey];
+      if (Array.isArray(t)) t.forEach((x) => s.add(String(x)));
+    }
+    return [...s].sort();
+  }, [pages, propKey, def?.type]);
 
   /* ── Area ── */
   if (propKey === "area") {
