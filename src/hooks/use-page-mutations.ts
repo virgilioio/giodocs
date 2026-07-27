@@ -776,21 +776,47 @@ export function useArchivePage() {
     },
     onMutate: async (v) => {
       await qc.cancelQueries({ queryKey: qk.pages(ws) });
+      await qc.cancelQueries({ queryKey: qk.page(v.pageId) });
       const snapshot = qc.getQueryData<PageListItem[]>(qk.pages(ws)) ?? [];
+      const pageSnap =
+        qc.getQueryData<PageFull | null>(qk.page(v.pageId)) ?? null;
       const nowIso = new Date().toISOString();
-      qc.setQueryData<PageListItem[]>(
-        qk.pages(ws),
-        snapshot.map((p) =>
-          p.id === v.pageId
-            ? { ...p, archived_at: v.archived ? nowIso : null }
-            : p,
-        ),
+      // The list query only contains non-archived rows, so archiving
+      // removes and unarchiving re-inserts. This gives the sidebar,
+      // areas, and view counts an immediate optimistic drop/return.
+      if (v.archived) {
+        qc.setQueryData<PageListItem[]>(
+          qk.pages(ws),
+          snapshot.filter((p) => p.id !== v.pageId),
+        );
+      } else {
+        const row = snapshot.find((p) => p.id === v.pageId);
+        if (!row && pageSnap) {
+          const listRow: PageListItem = {
+            id: pageSnap.id,
+            title: pageSnap.title,
+            icon: pageSnap.icon,
+            props: pageSnap.props as PageListItem["props"],
+            verified_at: pageSnap.verified_at,
+            verified_by: pageSnap.verified_by,
+            edited_at: pageSnap.edited_at,
+            edited_by: pageSnap.edited_by,
+            access_type: pageSnap.access_type,
+            archived_at: null,
+          };
+          qc.setQueryData<PageListItem[]>(qk.pages(ws), [listRow, ...snapshot]);
+        }
+      }
+      qc.setQueryData<PageFull | null>(qk.page(v.pageId), (prev) =>
+        prev ? { ...prev, archived_at: v.archived ? nowIso : null } : prev,
       );
-      return { snapshot };
+      return { snapshot, pageSnap };
     },
-    onError: (err, _v, ctx) => {
+    onError: (err, v, ctx) => {
       if (ctx?.snapshot) qc.setQueryData(qk.pages(ws), ctx.snapshot);
-      toast.push(`Couldn't ${_v.archived ? "archive" : "unarchive"}: ${(err as Error).message}`);
+      if (ctx?.pageSnap !== undefined)
+        qc.setQueryData(qk.page(v.pageId), ctx.pageSnap);
+      toast.push(`Couldn't ${v.archived ? "archive" : "unarchive"}: ${(err as Error).message}`);
     },
     onSuccess: (_d, v) => {
       toast.push(
@@ -799,8 +825,10 @@ export function useArchivePage() {
           : `Unarchived — it's back in every view that matches.`,
       );
     },
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.pages(ws) }),
   });
 }
+
 
 /** Soft-delete via the delete_page RPC. Returns the removed row (from
  *  cache) so the caller can offer an Undo action to restore_page. */
