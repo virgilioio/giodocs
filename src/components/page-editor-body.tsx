@@ -1,5 +1,7 @@
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -10,7 +12,15 @@ import {
 import { nanoid } from "nanoid";
 import { createPortal } from "react-dom";
 import type { Block } from "@/lib/types";
-import { moveBlock, moveRun, deleteIndices } from "@/lib/reorder";
+import {
+  moveBlock,
+  moveRun,
+  deleteIndices,
+  moveBlockAcross,
+  moveRunAcross,
+  type Path as ReorderPath,
+  type ColumnRef,
+} from "@/lib/reorder";
 import { blockToMarkdown } from "@/lib/export";
 import { parseMarkdown } from "@/lib/markdown-import";
 import { htmlToMarkdown, htmlToBlocks } from "@/lib/html-to-markdown";
@@ -44,6 +54,22 @@ import {
  *  incoming `{ cols }` patch is a typing burst on that inner block id
  *  (and can coalesce it). Consumed synchronously by commit(). */
 const columnTypingHint: { key: string | null } = { key: null };
+
+/** Cross-list bridge: nested `ColumnStack`s hand their block-row elements,
+ *  their column-track element, and drag-handle presses to the top-level
+ *  `EditableBody` so drag/marquee logic sees ALL rows in one registry.
+ *  A missing provider means the columns block is being rendered outside
+ *  a real EditableBody (older call sites); everything degrades to a no-op. */
+type ColumnBridge = {
+  registerRow: (colRef: ColumnRef, id: string, el: HTMLElement | null) => void;
+  registerTrack: (colRef: ColumnRef, el: HTMLElement | null) => void;
+  beginDrag: (
+    id: string,
+    ev: React.PointerEvent<HTMLElement>,
+    sourceCol: ColumnRef,
+  ) => void;
+};
+const ColumnBridgeCtx = createContext<ColumnBridge | null>(null);
 
 
 
@@ -480,19 +506,52 @@ export function EditableBody({
   const rowEls = useRef<Map<string, HTMLElement>>(new Map());
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+  /* Drag state — cross-list (top-level ↔ columns).
+   *
+   * `sourceCol` is where the dragged run lives; null = top-level, otherwise
+   * `{blockId,colIndex}` names the source column. `targetCol` is where the
+   * pointer currently is; the indicator is rendered inside that list's
+   * bounding box (in container-space). `indicator` carries the full 2px
+   * rect so a drop into a column shows a bar spanning JUST that column,
+   * not the whole page width. */
   const [dragging, setDragging] = useState<{
-    ids: string[]; // in original order
-    gap: number | null; // 0..blocks.length or null while indicator hidden
-    indicatorY: number | null; // relative to container top
+    ids: string[]; // in original order (source-list order)
+    sourceCol: ColumnRef | null;
+    targetCol: ColumnRef | null;
+    gap: number | null; // 0..targetList.length or null while indicator hidden
+    indicator: { x: number; y: number; width: number } | null; // container-space
   } | null>(null);
   const draggingRef = useRef(dragging);
   useEffect(() => {
     draggingRef.current = dragging;
   }, [dragging]);
 
-  const registerRowEl = useCallback((id: string, el: HTMLElement | null) => {
-    if (el) rowEls.current.set(id, el);
-    else rowEls.current.delete(id);
+  // Column-track registry (for hierarchical drag hit-testing): each column
+  // of a columns block registers its outermost stack element under the key
+  // `${blockId}:${colIndex}`, and each block row inside a column records
+  // its owning colRef in `rowColRefById` so drag/marquee logic can find
+  // which list a given row belongs to.
+  const colTracks = useRef<Map<string, HTMLElement>>(new Map());
+  const rowColRefById = useRef<Map<string, ColumnRef | null>>(new Map());
+  const trackKey = (r: ColumnRef) => `${r.blockId}:${r.colIndex}`;
+
+  const registerRowEl = useCallback(
+    (id: string, el: HTMLElement | null, colRef: ColumnRef | null = null) => {
+      if (el) {
+        rowEls.current.set(id, el);
+        rowColRefById.current.set(id, colRef);
+      } else {
+        rowEls.current.delete(id);
+        rowColRefById.current.delete(id);
+      }
+    },
+    [],
+  );
+
+  const registerColTrack = useCallback((r: ColumnRef, el: HTMLElement | null) => {
+    const k = trackKey(r);
+    if (el) colTracks.current.set(k, el);
+    else colTracks.current.delete(k);
   }, []);
 
   // Clear selection when clicking into any textarea/input.
@@ -531,20 +590,31 @@ export function EditableBody({
 
 
 
-  /* ────────── Drag: pointer session on a handle ────────── */
+  /* ────────── Drag: pointer session on a handle ──────────
+   *
+   * `sourceCol` identifies where the dragged run lives — null for the
+   * top-level block list, or a `{blockId, colIndex}` for a column. A drag
+   * started from inside a column carries its colRef so the source list
+   * is unambiguous at endDrag time, even when the pointer wanders across
+   * multiple columns during the drag. */
 
   const beginDrag = useCallback(
-    (id: string, ev: React.PointerEvent<HTMLElement>) => {
-      // If the handle belongs to a multi-selected run, drag the whole run.
-      const ids = blocks.map((b) => b.id);
-      const targetIdx = ids.indexOf(id);
-      if (targetIdx < 0) return;
-      const isMulti = selectedIds.size > 1 && selectedIds.has(id);
-      const dragIds = isMulti
-        ? ids.filter((x) => selectedIds.has(x))
-        : [id];
-      if (!isMulti) {
-        // Non-selected drag clears any prior selection.
+    (
+      id: string,
+      ev: React.PointerEvent<HTMLElement>,
+      sourceCol: ColumnRef | null = null,
+    ) => {
+      const sourceIsTopLevel = sourceCol === null;
+      let dragIds: string[] = [id];
+      if (sourceIsTopLevel) {
+        // Top-level multi-select: only drag the run when the handle
+        // belongs to a currently-selected top-level block.
+        const ids = blocks.map((b) => b.id);
+        if (ids.indexOf(id) < 0) return;
+        const isMulti = selectedIds.size > 1 && selectedIds.has(id);
+        if (isMulti) dragIds = ids.filter((x) => selectedIds.has(x));
+      }
+      if (dragIds.length === 1) {
         setSelectedIds(new Set());
         anchorId.current = null;
       }
@@ -554,18 +624,114 @@ export function EditableBody({
         /* ignore */
       }
       document.body.style.userSelect = "none";
-      setDragging({ ids: dragIds, gap: null, indicatorY: null });
+      setDragging({
+        ids: dragIds,
+        sourceCol,
+        targetCol: sourceCol,
+        gap: null,
+        indicator: null,
+      });
     },
     [blocks, selectedIds],
   );
 
   const computeGap = useCallback(
-    (clientY: number): { gap: number; indicatorY: number } | null => {
+    (
+      clientX: number,
+      clientY: number,
+    ): {
+      targetCol: ColumnRef | null;
+      gap: number;
+      indicator: { x: number; y: number; width: number };
+    } | null => {
       const container = containerRef.current;
       if (!container) return null;
       const cRect = container.getBoundingClientRect();
+
+      // A dragged columns block itself may never land inside a column;
+      // force top-level hit-testing in that case (see reorder.ts guard).
+      const d = draggingRef.current;
+      const draggingColumnsBlock =
+        !!d &&
+        d.ids.some((x) => blocks.find((b) => b.id === x)?.type === "columns");
+
+      // Step 1: is the pointer inside any columns block's bounding box?
+      // If so, hit-test against its column tracks (unless we're dragging
+      // a columns block itself, in which case only top-level applies).
+      if (!draggingColumnsBlock) {
+        for (const b of blocks) {
+          if (b.type !== "columns" || !Array.isArray(b.cols)) continue;
+          const colsEl = rowEls.current.get(b.id);
+          if (!colsEl) continue;
+          const cb = colsEl.getBoundingClientRect();
+          if (
+            clientY < cb.top ||
+            clientY > cb.bottom ||
+            clientX < cb.left ||
+            clientX > cb.right
+          )
+            continue;
+          // Find which column track the pointer is over (by x).
+          let chosen: { colIndex: number; el: HTMLElement } | null = null;
+          for (let i = 0; i < b.cols.length; i++) {
+            const el = colTracks.current.get(trackKey({ blockId: b.id, colIndex: i }));
+            if (!el) continue;
+            const r = el.getBoundingClientRect();
+            if (clientX >= r.left && clientX <= r.right) {
+              chosen = { colIndex: i, el };
+              break;
+            }
+          }
+          if (!chosen) continue;
+          const colRef: ColumnRef = { blockId: b.id, colIndex: chosen.colIndex };
+          const colBlocks = b.cols[chosen.colIndex] as Blk[];
+          const rects: Array<{ id: string; top: number; bottom: number; mid: number }> = [];
+          for (const cb2 of colBlocks) {
+            const el = rowEls.current.get(cb2.id);
+            if (!el) continue;
+            const r = el.getBoundingClientRect();
+            rects.push({ id: cb2.id, top: r.top, bottom: r.bottom, mid: (r.top + r.bottom) / 2 });
+          }
+          const trackRect = chosen.el.getBoundingClientRect();
+          const width = trackRect.width;
+          const xInContainer = trackRect.left - cRect.left;
+          if (rects.length === 0) {
+            // Empty-looking column (shouldn't happen post-normalise).
+            return {
+              targetCol: colRef,
+              gap: 0,
+              indicator: { x: xInContainer, y: trackRect.top - cRect.top, width },
+            };
+          }
+          if (clientY < rects[0].mid) {
+            return {
+              targetCol: colRef,
+              gap: 0,
+              indicator: { x: xInContainer, y: rects[0].top - cRect.top - 2, width },
+            };
+          }
+          for (let i = 0; i < rects.length; i++) {
+            const rr = rects[i];
+            if (clientY < rr.mid) {
+              const y = ((rects[i - 1]?.bottom ?? rr.top) + rr.top) / 2;
+              return {
+                targetCol: colRef,
+                gap: i,
+                indicator: { x: xInContainer, y: y - cRect.top - 1, width },
+              };
+            }
+          }
+          const last = rects[rects.length - 1];
+          return {
+            targetCol: colRef,
+            gap: rects.length,
+            indicator: { x: xInContainer, y: last.bottom - cRect.top + 2, width },
+          };
+        }
+      }
+
+      // Step 2: top-level hit-test.
       const ids = blocks.map((b) => b.id);
-      // For each block, look up its row element rect.
       const rects: Array<{ id: string; top: number; bottom: number; mid: number }> = [];
       for (const id of ids) {
         const el = rowEls.current.get(id);
@@ -574,27 +740,32 @@ export function EditableBody({
         rects.push({ id, top: r.top, bottom: r.bottom, mid: (r.top + r.bottom) / 2 });
       }
       if (rects.length === 0) return null;
-      // Above the first row?
+      const width = cRect.width;
+      const x = 0;
       if (clientY < rects[0].mid) {
-        return { gap: 0, indicatorY: rects[0].top - cRect.top - 2 };
+        return {
+          targetCol: null,
+          gap: 0,
+          indicator: { x, y: rects[0].top - cRect.top - 2, width },
+        };
       }
       for (let i = 0; i < rects.length; i++) {
         const r = rects[i];
-        const nextTop = i + 1 < rects.length ? rects[i + 1].top : r.bottom;
         if (clientY < r.mid) {
-          // Between prev and this row → gap = i
           const y = ((rects[i - 1]?.bottom ?? r.top) + r.top) / 2;
-          return { gap: i, indicatorY: y - cRect.top - 1 };
+          return {
+            targetCol: null,
+            gap: i,
+            indicator: { x, y: y - cRect.top - 1, width },
+          };
         }
-        // pointer is past this row's mid
-        const isLast = i + 1 >= rects.length;
-        if (isLast) {
-          return { gap: rects.length, indicatorY: r.bottom - cRect.top + 2 };
-        }
-        // Fall through to check next row's mid
-        void nextTop;
       }
-      return { gap: rects.length, indicatorY: rects[rects.length - 1].bottom - cRect.top + 2 };
+      const last = rects[rects.length - 1];
+      return {
+        targetCol: null,
+        gap: rects.length,
+        indicator: { x, y: last.bottom - cRect.top + 2, width },
+      };
     },
     [blocks],
   );
@@ -614,10 +785,12 @@ export function EditableBody({
     scrollRafRef.current = requestAnimationFrame(tickScroll);
   }, []);
 
+  const dragLastClient = useRef<{ x: number; y: number } | null>(null);
+
   const onPointerMove = useCallback(
     (ev: PointerEvent) => {
       if (!draggingRef.current) return;
-      // Find scroll container lazily.
+      dragLastClient.current = { x: ev.clientX, y: ev.clientY };
       if (!scrollContainerRef.current) {
         const c = containerRef.current;
         scrollContainerRef.current = c?.closest("main") ?? null;
@@ -633,10 +806,12 @@ export function EditableBody({
           scrollRafRef.current = requestAnimationFrame(tickScroll);
         }
       }
-      const gap = computeGap(ev.clientY);
-      if (!gap) return;
+      const hit = computeGap(ev.clientX, ev.clientY);
+      if (!hit) return;
       setDragging((prev) =>
-        prev ? { ...prev, gap: gap.gap, indicatorY: gap.indicatorY } : prev,
+        prev
+          ? { ...prev, targetCol: hit.targetCol, gap: hit.gap, indicator: hit.indicator }
+          : prev,
       );
     },
     [computeGap, tickScroll],
@@ -653,24 +828,33 @@ export function EditableBody({
       }
       setDragging(null);
       if (!commitDrop || !d || d.gap == null) return;
-      const ids = blocks.map((b) => b.id);
-      if (d.ids.length === 1) {
-        const from = ids.indexOf(d.ids[0]);
-        if (from < 0) return;
-        const next = moveBlock(blocks, from, d.gap);
-        if (next === blocks || (next.length === blocks.length && next.every((x, i) => x === blocks[i]))) return;
-        commit(next);
-      } else {
-        const runIdxs = d.ids.map((x) => ids.indexOf(x)).filter((i) => i >= 0).sort((a, b) => a - b);
-        if (runIdxs.length === 0) return;
-        const runStart = runIdxs[0];
-        const runEnd = runIdxs[runIdxs.length - 1];
-        // Only handle contiguous runs; if selection got broken, bail.
-        if (runEnd - runStart + 1 !== runIdxs.length) return;
-        const next = moveRun(blocks, runStart, runEnd, d.gap);
-        if (next.length === blocks.length && next.every((x, i) => x === blocks[i])) return;
-        commit(next);
-      }
+      const froms: ReorderPath[] = d.ids.map((id) => {
+        // Discover this id's source list from the registry so cross-list
+        // drags remain correct even if `sourceCol` is stale.
+        const colRef = rowColRefById.current.get(id) ?? d.sourceCol;
+        // Compute index inside its list.
+        let index = -1;
+        if (colRef === null) {
+          index = blocks.findIndex((b) => b.id === id);
+        } else {
+          const b = blocks.find((x) => x.id === colRef.blockId);
+          if (b?.cols && Array.isArray(b.cols)) {
+            index = (b.cols[colRef.colIndex] as Blk[]).findIndex((x) => x.id === id);
+          }
+        }
+        return { col: colRef, index };
+      });
+      // Bail if any path failed to resolve.
+      if (froms.some((p) => p.index < 0)) return;
+      const to: ReorderPath = { col: d.targetCol, index: d.gap };
+      const makeEmpty = () => newBlock("text");
+      const next =
+        d.ids.length === 1
+          ? moveBlockAcross(blocks, froms[0], to, makeEmpty)
+          : moveRunAcross(blocks, froms, to, makeEmpty);
+      if (next === blocks) return;
+      if (next.length === blocks.length && next.every((x, i) => x === blocks[i])) return;
+      commit(next);
     },
     [blocks, commit],
   );
@@ -976,6 +1160,49 @@ export function EditableBody({
     },
     [containerPoint],
   );
+
+  // The narrow `.gio-page-body` column is centred inside `<main>`, so a
+  // press in the lateral margin (outside the text column but still in
+  // the scroll container) never bubbles to `handleContainerPointerDown`.
+  // Attach the same session opener to `<main>` and gate it to the body's
+  // vertical span — that turns those margins into marquee-startable
+  // gutters without swallowing presses on the title / property strip above.
+  useEffect(() => {
+    const c = containerRef.current;
+    const main = c?.closest("main") as HTMLElement | null;
+    if (!c || !main) return;
+    const onDown = (e: PointerEvent) => {
+      if (e.button !== 0) return;
+      if (marqueeRef.current?.active) return;
+      if (draggingRef.current) return;
+      // If the press already lands inside `.gio-page-body`, the React
+      // handler on containerRef takes it — don't double-start.
+      const t = e.target as HTMLElement;
+      if (c.contains(t)) return;
+      // Filter interactive targets that live outside the body too.
+      if (
+        t.closest(
+          "textarea, input, button, [data-slash-menu], [data-block-handle], [data-popover-root]",
+        )
+      )
+        return;
+      // Only start when the pointer is within the vertical band of the body.
+      const rect = c.getBoundingClientRect();
+      if (e.clientY < rect.top || e.clientY > rect.bottom) return;
+      const p = containerPoint(e.clientX, e.clientY);
+      marqueeRef.current = {
+        active: true,
+        originX: p.x,
+        originY: p.y,
+        originTarget: t,
+        moved: false,
+      };
+      marqueeLastClient.current = { x: e.clientX, y: e.clientY };
+    };
+    main.addEventListener("pointerdown", onDown);
+    return () => main.removeEventListener("pointerdown", onDown);
+  }, [containerPoint]);
+
 
   useEffect(() => {
     const onMove = (ev: PointerEvent) => {
@@ -1530,21 +1757,48 @@ export function EditableBody({
       .sort((a, b) => a - b);
     return idxs.length ? { start: idxs[0], end: idxs[idxs.length - 1] } : null;
   }, [dragging, blocks]);
-  // Hide indicator when a run drop would land inside the run.
+  // Hide indicator when a same-list drop would land inside the run.
   const indicatorVisible =
     dragging &&
     dragging.gap != null &&
-    dragging.indicatorY != null &&
-    (runIdxs
-      ? dragging.gap < runIdxs.start || dragging.gap > runIdxs.end + 1
-      : (() => {
-          const from = blocks.findIndex((b) => b.id === dragging.ids[0]);
-          return from < 0 ? true : dragging.gap !== from && dragging.gap !== from + 1;
-        })());
+    dragging.indicator != null &&
+    (() => {
+      const sameList =
+        (dragging.sourceCol === null && dragging.targetCol === null) ||
+        (dragging.sourceCol &&
+          dragging.targetCol &&
+          dragging.sourceCol.blockId === dragging.targetCol.blockId &&
+          dragging.sourceCol.colIndex === dragging.targetCol.colIndex);
+      if (!sameList) return true;
+      if (runIdxs) {
+        return dragging.gap < runIdxs.start || dragging.gap > runIdxs.end + 1;
+      }
+      // Single-block same-list: hide on the block's own two adjacent gaps.
+      const id = dragging.ids[0];
+      const sourceCol = dragging.sourceCol;
+      let from = -1;
+      if (sourceCol === null) {
+        from = blocks.findIndex((b) => b.id === id);
+      } else {
+        const b = blocks.find((x) => x.id === sourceCol.blockId);
+        if (b?.cols) from = (b.cols[sourceCol.colIndex] as Blk[]).findIndex((x) => x.id === id);
+      }
+      return from < 0 ? true : dragging.gap !== from && dragging.gap !== from + 1;
+    })();
 
   const ordinalMap = useMemo(() => numberedOrdinals(blocks), [blocks]);
 
+  const columnBridge = useMemo<ColumnBridge>(
+    () => ({
+      registerRow: (colRef, id, el) => registerRowEl(id, el, colRef),
+      registerTrack: (colRef, el) => registerColTrack(colRef, el),
+      beginDrag: (id, ev, colRef) => beginDrag(id, ev, colRef),
+    }),
+    [registerRowEl, registerColTrack, beginDrag],
+  );
+
   return (
+    <ColumnBridgeCtx.Provider value={columnBridge}>
     <div
       ref={containerRef}
       className="gio-page-body relative space-y-1"
@@ -1783,15 +2037,15 @@ export function EditableBody({
         />
       ))}
 
-      {/* Drop indicator */}
+      {/* Drop indicator — column-relative width when dropping into a column. */}
       {indicatorVisible ? (
         <div
           aria-hidden
           style={{
             position: "absolute",
-            left: 0,
-            right: 0,
-            top: dragging!.indicatorY!,
+            left: dragging!.indicator!.x,
+            top: dragging!.indicator!.y,
+            width: dragging!.indicator!.width,
             height: 2,
             background: "var(--color-accentDot)",
             borderRadius: 1,
@@ -1901,6 +2155,7 @@ export function EditableBody({
         />
       ) : null}
     </div>
+    </ColumnBridgeCtx.Provider>
   );
 }
 
@@ -2420,6 +2675,8 @@ function ColumnsBlock({
       {cols.map((col, i) => (
         <ColumnStack
           key={i}
+          parentBlockId={block.id}
+          colIndex={i}
           blocks={col}
           setBlocks={(next) => setColumn(i, next)}
           locked={locked}
@@ -2434,14 +2691,29 @@ function ColumnsBlock({
  * from EditableBody rather than fully sharing state — part 2 of the
  * columns task will unify these under a single BlockStack component. */
 function ColumnStack({
+  parentBlockId,
+  colIndex,
   blocks,
   setBlocks,
   locked,
 }: {
+  parentBlockId: string;
+  colIndex: number;
   blocks: Blk[];
   setBlocks: (next: Blk[]) => void;
   locked: boolean;
 }) {
+  const bridge = useContext(ColumnBridgeCtx);
+  const colRef = useMemo<ColumnRef>(
+    () => ({ blockId: parentBlockId, colIndex }),
+    [parentBlockId, colIndex],
+  );
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    bridge?.registerTrack(colRef, trackRef.current);
+    return () => bridge?.registerTrack(colRef, null);
+  }, [bridge, colRef]);
+
   const refs = useRef<Record<string, HTMLTextAreaElement | HTMLInputElement | null>>({});
   const [focusRequest, setFocusRequest] = useState<{
     id: string;
@@ -2608,7 +2880,7 @@ function ColumnStack({
   const ordinalMap = useMemo(() => numberedOrdinals(blocks), [blocks]);
 
   return (
-    <div className="space-y-1">
+    <div ref={trackRef} className="space-y-1">
       {blocks.map((b) => (
         <BlockRow
           key={b.id}
@@ -2626,12 +2898,12 @@ function ColumnStack({
           onEditorBlur={() =>
             setFocusedId((cur) => (cur === b.id ? null : cur))
           }
-          registerRowEl={() => {}}
-          onHandlePointerDown={() => {
-            /* Drag inside columns is deferred to part 2 of 2. */
+          registerRowEl={(id, el) => bridge?.registerRow(colRef, id, el)}
+          onHandlePointerDown={(ev) => {
+            if (bridge) bridge.beginDrag(b.id, ev, colRef);
           }}
           onHandleClick={() => {
-            /* Handle menu inside columns is deferred to part 2 of 2. */
+            /* Handle menu inside columns still deferred (out of scope). */
           }}
           onHandleShiftClick={() => {}}
           registerRef={(el) => {
