@@ -13,6 +13,7 @@ import { useToast } from "@/lib/toast";
 import { pageUrl } from "@/lib/slug";
 import { getPageOrigin } from "@/lib/page-origin";
 import { PageActionsMenu, PageMoreButton } from "./page-actions-menu";
+import { openPermissionsPopover } from "./permissions-popover";
 import { usePageAppearance } from "@/lib/page-appearance";
 import {
   useArchivePage,
