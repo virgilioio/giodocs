@@ -1661,6 +1661,14 @@ export function MainView({ selection }: { selection: Selection }) {
         fixedFilterIndex={fixedFilterIndex}
         pages={pages}
         verbose={prefs.explainQuery}
+        pill={
+          isModified && base ? (
+            <ModifiedPill
+              onSave={doSaveAsMyView}
+              onDiscard={doDiscard}
+            />
+          ) : null
+        }
         menuBuild={() => (
           <ViewHeaderMenu
             view={view}
@@ -1682,6 +1690,10 @@ export function MainView({ selection }: { selection: Selection }) {
         )}
       />
 
+      {isModified && base && (
+        <ModifiedBand baseName={base.name} />
+      )}
+
       {rows.length < unfilteredCount && (
         <div
           style={{
@@ -1695,15 +1707,6 @@ export function MainView({ selection }: { selection: Selection }) {
         </div>
       )}
 
-
-      {isModified && (
-        <ModifiedBanner
-          viewName={view!.name}
-          workspaceName={workspace?.name ?? "the workspace"}
-          onSave={doSaveAsMyView}
-          onDiscard={doDiscard}
-        />
-      )}
 
       {body}
 
