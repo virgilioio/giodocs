@@ -1856,8 +1856,8 @@ export function EditableBody({
           onChange={(patch) => updateBlock(b.id, patch)}
           onInput={(val) => {
             if (tryMarkdown(b.id, val)) return;
-            const el = refs.current[b.id] as HTMLTextAreaElement | undefined;
-            const caret = el?.selectionStart ?? val.length;
+            const el = refs.current[b.id];
+            const caret = el ? (readCaret(el, val)?.start ?? val.length) : val.length;
             const before = val.slice(0, caret);
             const slashPos = before.lastIndexOf("/");
             const openable =
