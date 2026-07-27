@@ -45,6 +45,8 @@ import {
   useDeleteView,
 } from "@/hooks/use-page-mutations";
 import { ExportViewDialog } from "./export-view-dialog";
+import { useDelayedPending } from "./sk";
+import { ViewSkeleton, BoardSkeleton } from "./skeletons";
 import { EmojiPicker } from "./emoji-picker";
 import type { ExportViewRow } from "@/lib/export";
 import type { PageListItem } from "@/lib/types";
