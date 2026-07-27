@@ -252,7 +252,7 @@ function CheckIcon() {
   );
 }
 
-function SpecRow({ row, onClose }: { row: Extract<MenuRow, { kind: "row" }>; onClose: () => void }) {
+function SpecRow({ row }: { row: Extract<MenuRow, { kind: "row" }> }) {
   const iconPath =
     row.icon && (row.icon in IC ? IC[row.icon as keyof typeof IC] : row.icon);
   return (
