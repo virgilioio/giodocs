@@ -278,47 +278,100 @@ function MiniAvatar({ profile }: { profile: MemberRow["profiles"] }) {
   );
 }
 
-function ReadOnlyValue({
+/* Editable property row that opens the shared picker on click. Uses
+ * the same popover components the table uses so the two experiences
+ * are byte-identical.
+ *
+ * The row keeps its `bg-sunken` hover background while its own popover
+ * is open — achieved by lifting the "is my popover open" flag up here
+ * and mixing it with the hover flag in the caller. */
+
+function EditableValue({
   propKey,
   page,
   def,
   members,
+  pages,
+  areas,
+  onSet,
+  onOpenChange,
 }: {
   propKey: string;
   page: PageFull;
   def: PropDef | undefined;
   members: MemberRow[];
+  pages: PageListItem[];
+  areas: string[];
+  onSet: (value: unknown) => void;
+  onOpenChange: (open: boolean) => void;
 }) {
   const raw = propsOf(page)[propKey];
   const missing = <span className="italic text-whisper">—</span>;
 
+  /* ── Area ── */
   if (propKey === "area") {
-    if (typeof raw === "string" && raw) {
-      return (
-        <span
-          className="inline-flex items-center rounded-sm bg-sunken px-1.5 py-0.5 text-meta text-body"
-          style={{ paddingBlock: 2 }}
-        >
-          {raw}
-        </span>
-      );
-    }
-    return missing;
-  }
-
-  if (propKey === "owner" || def?.type === "person") {
-    const m = members.find((x) => x.user_id === raw);
-    if (!m) return missing;
     return (
-      <span className="inline-flex items-center gap-2">
-        <MiniAvatar profile={m.profiles} />
-        <span className="text-meta text-body">
-          {m.profiles?.full_name ?? m.profiles?.email ?? "Unknown"}
-        </span>
-      </span>
+      <AreaPicker
+        value={typeof raw === "string" ? raw : null}
+        areas={areas}
+        onPick={onSet}
+        onOpenChange={onOpenChange}
+        trigger={({ onClick, ref }) => (
+          <button
+            ref={ref}
+            type="button"
+            onClick={onClick}
+            className="text-left"
+          >
+            {typeof raw === "string" && raw ? (
+              <span
+                className="inline-flex items-center rounded-sm bg-sunken px-1.5 py-0.5 text-meta text-body"
+                style={{ paddingBlock: 2 }}
+              >
+                {raw}
+              </span>
+            ) : (
+              missing
+            )}
+          </button>
+        )}
+      />
     );
   }
 
+  /* ── Owner / Person ── */
+  if (propKey === "owner" || def?.type === "person") {
+    const m = members.find((x) => x.user_id === raw);
+    return (
+      <OwnerPicker
+        value={typeof raw === "string" ? raw : null}
+        members={members}
+        onPick={onSet}
+        onOpenChange={onOpenChange}
+        trigger={({ onClick, ref }) => (
+          <button
+            ref={ref}
+            type="button"
+            onClick={onClick}
+            className="flex min-w-0 items-center gap-2 text-left"
+          >
+            {m ? (
+              <>
+                <MiniAvatar profile={m.profiles} />
+                <span className="text-meta text-body">
+                  {m.profiles?.full_name ?? m.profiles?.email ?? "Unknown"}
+                </span>
+              </>
+            ) : (
+              missing
+            )}
+          </button>
+        )}
+      />
+    );
+  }
+
+  /* ── Select / Status ── */
   if (def?.type === "select" || def?.type === "status") {
     const opts =
       (def.options as unknown as Array<{
@@ -328,111 +381,355 @@ function ReadOnlyValue({
         ink: string;
       }>) ?? [];
     const cur = opts.find((o) => o.value === raw);
-    if (!cur) return missing;
     return (
-      <span
-        className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-caption"
-        style={{
-          background: `var(--color-${cur.tint})`,
-          color: `var(--color-${cur.ink})`,
-        }}
-      >
-        <span
-          className="h-1.5 w-1.5 rounded-full"
-          style={{ background: `var(--color-${cur.ink})` }}
-        />
-        {cur.label}
-      </span>
+      <SelectPicker
+        value={typeof raw === "string" ? raw : null}
+        options={opts}
+        onPick={onSet}
+        onOpenChange={onOpenChange}
+        trigger={({ onClick, ref }) => (
+          <button
+            ref={ref}
+            type="button"
+            onClick={onClick}
+            className="text-left"
+          >
+            {cur ? (
+              <StatusChipInline
+                label={cur.label}
+                tint={cur.tint}
+                ink={cur.ink}
+              />
+            ) : (
+              missing
+            )}
+          </button>
+        )}
+      />
     );
   }
 
+  /* ── Multi-select / Tags ── */
   if (def?.type === "multi_select") {
     const tags = Array.isArray(raw) ? raw.map(String) : [];
-    if (!tags.length) return missing;
+    const all = useMemo(() => {
+      const s = new Set<string>();
+      for (const p of pages) {
+        const t = propsOf(p)[propKey];
+        if (Array.isArray(t)) t.forEach((x) => s.add(String(x)));
+      }
+      return [...s].sort();
+    }, [pages, propKey]);
     return (
-      <span className="inline-flex flex-wrap items-center gap-1">
-        {tags.map((t) => {
-          const p = hashPair(t);
-          return (
-            <span
-              key={t}
-              className="rounded-sm px-1.5 py-0.5 text-caption"
-              style={{
-                background: `var(--color-${p.tint})`,
-                color: `var(--color-${p.ink})`,
+      <TagsPicker
+        value={tags}
+        options={all}
+        onSet={onSet}
+        onOpenChange={onOpenChange}
+        trigger={({ onClick, ref }) => (
+          <button
+            ref={ref}
+            type="button"
+            onClick={onClick}
+            className="flex flex-wrap items-center gap-1"
+          >
+            {tags.length === 0
+              ? missing
+              : tags.map((t) => {
+                  const p = hashPair(t);
+                  return (
+                    <span
+                      key={t}
+                      className="rounded-sm px-1.5 py-0.5 text-caption"
+                      style={{
+                        background: `var(--color-${p.tint})`,
+                        color: `var(--color-${p.ink})`,
+                      }}
+                    >
+                      {t}
+                    </span>
+                  );
+                })}
+          </button>
+        )}
+      />
+    );
+  }
+
+  /* ── Checkbox ── (direct toggle, no popover) */
+  if (def?.type === "checkbox") {
+    const on = !!raw;
+    return (
+      <button
+        type="button"
+        onClick={() => onSet(!on)}
+        className="grid h-5 w-5 place-items-center rounded-sm border border-line hover:bg-rail"
+        aria-pressed={on}
+        aria-label={def.label}
+      >
+        {on ? (
+          <Glyph path="M5 12l5 5 9-11" className="h-3.5 w-3.5 text-accent" />
+        ) : null}
+      </button>
+    );
+  }
+
+  /* ── Number ── */
+  if (def?.type === "number") {
+    return (
+      <NumberInline
+        value={typeof raw === "number" ? raw : null}
+        onSet={onSet}
+        onOpenChange={onOpenChange}
+      />
+    );
+  }
+
+  /* ── Date ── */
+  if (def?.type === "date") {
+    return (
+      <DateInline
+        value={typeof raw === "string" ? raw : null}
+        onSet={onSet}
+        onOpenChange={onOpenChange}
+      />
+    );
+  }
+
+  /* ── Text / default ── */
+  return (
+    <TextInline
+      value={typeof raw === "string" ? raw : ""}
+      onSet={onSet}
+    />
+  );
+}
+
+function StatusChipInline({
+  label,
+  tint,
+  ink,
+}: {
+  label: string;
+  tint: string;
+  ink: string;
+}) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-caption"
+      style={{
+        background: `var(--color-${tint})`,
+        color: `var(--color-${ink})`,
+      }}
+    >
+      <span
+        className="h-1.5 w-1.5 rounded-full"
+        style={{ background: `var(--color-${ink})` }}
+      />
+      {label}
+    </span>
+  );
+}
+
+function NumberInline({
+  value,
+  onSet,
+  onOpenChange,
+}: {
+  value: number | null;
+  onSet: (v: number | null) => void;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string>(value === null ? "" : String(value));
+  useEffect(() => {
+    onOpenChange(editing);
+  }, [editing, onOpenChange]);
+  useEffect(() => {
+    if (!editing) setDraft(value === null ? "" : String(value));
+  }, [value, editing]);
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="text-left text-meta text-body tnum"
+      >
+        {value === null ? (
+          <span className="italic text-whisper">—</span>
+        ) : (
+          value
+        )}
+      </button>
+    );
+  }
+  return (
+    <input
+      autoFocus
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          (e.target as HTMLInputElement).blur();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          setDraft(value === null ? "" : String(value));
+          setEditing(false);
+        }
+      }}
+      onBlur={() => {
+        const t = draft.trim();
+        if (t === "") {
+          onSet(null);
+        } else {
+          const n = Number(t);
+          if (!Number.isNaN(n)) onSet(n);
+        }
+        setEditing(false);
+      }}
+      inputMode="decimal"
+      className="w-full rounded-sm border border-line bg-surface px-2 py-0.5 text-meta tnum"
+    />
+  );
+}
+
+function DateInline({
+  value,
+  onSet,
+  onOpenChange,
+}: {
+  value: string | null;
+  onSet: (v: string | null) => void;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const label =
+    value && !isNaN(new Date(value).getTime())
+      ? new Date(value).toLocaleDateString()
+      : null;
+  return (
+    <Popover
+      width={220}
+      onOpenChange={onOpenChange}
+      trigger={({ onClick, ref }) => (
+        <button
+          ref={ref}
+          type="button"
+          onClick={onClick}
+          className="text-left text-meta text-body"
+        >
+          {label ?? <span className="italic text-whisper">—</span>}
+        </button>
+      )}
+    >
+      {(close) => (
+        <div className="flex flex-col gap-1 p-1">
+          <input
+            type="date"
+            defaultValue={value ?? ""}
+            onChange={(e) => {
+              onSet(e.target.value || null);
+              close();
+            }}
+            className="rounded-sm border border-line bg-surface px-2 py-1 text-meta"
+          />
+          {value ? (
+            <button
+              type="button"
+              className="rounded-sm px-2 py-1 text-left text-meta text-muted hover:bg-rail"
+              onClick={() => {
+                onSet(null);
+                close();
               }}
             >
-              {t}
-            </span>
-          );
-        })}
-      </span>
-    );
-  }
+              Clear
+            </button>
+          ) : null}
+        </div>
+      )}
+    </Popover>
+  );
+}
 
-  if (def?.type === "checkbox") {
-    return raw ? (
-      <Glyph path="M5 12l5 5 9-11" className="h-4 w-4 text-accent" />
-    ) : (
-      missing
-    );
-  }
-
-  if (def?.type === "number") {
-    return typeof raw === "number" ? (
-      <span className="text-meta text-body tnum">{raw}</span>
-    ) : (
-      missing
-    );
-  }
-
-  if (def?.type === "date") {
-    if (typeof raw !== "string" || !raw) return missing;
-    const d = new Date(raw);
+function TextInline({
+  value,
+  onSet,
+}: {
+  value: string;
+  onSet: (v: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  useEffect(() => {
+    if (!editing) setDraft(value);
+  }, [value, editing]);
+  if (!editing) {
     return (
-      <span className="text-meta text-body">
-        {isNaN(d.getTime()) ? raw : d.toLocaleDateString()}
-      </span>
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="w-full text-left text-meta text-body"
+      >
+        {value ? value : <span className="italic text-whisper">—</span>}
+      </button>
     );
   }
-
-  // text / default
-  if (typeof raw === "string" && raw) {
-    return <span className="text-meta text-body">{raw}</span>;
-  }
-  if (typeof raw === "number" || typeof raw === "boolean") {
-    return <span className="text-meta text-body">{String(raw)}</span>;
-  }
-  return missing;
+  return (
+    <input
+      autoFocus
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          (e.target as HTMLInputElement).blur();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          setDraft(value);
+          setEditing(false);
+        }
+      }}
+      onBlur={() => {
+        onSet(draft);
+        setEditing(false);
+      }}
+      className="w-full rounded-sm border border-line bg-surface px-2 py-0.5 text-meta"
+    />
+  );
 }
 
 function AddPropertyPopover({
   propDefs,
   present,
   onAdd,
-  onNotify,
 }: {
   propDefs: PropDef[];
   present: Set<string>;
-  onAdd: (key: string, seed: unknown) => void;
-  onNotify: (m: string) => void;
+  onAdd: (key: string, seed: unknown, focusAfter: boolean) => void;
 }) {
   const candidates = propDefs
     .filter((d) => !present.has(d.key))
     .filter((d) => d.key !== "area" && d.key !== "owner");
 
-  function seedFor(d: PropDef): { seed: unknown; ok: boolean } {
-    switch (d.type) {
+  function typeGlyph(t: string) {
+    switch (t) {
+      case "select":
+      case "status":
+        return "◉";
       case "multi_select":
-        return { seed: [], ok: true };
+        return "#";
       case "checkbox":
-        return { seed: false, ok: true };
+        return "☐";
+      case "number":
+        return "#";
+      case "date":
+        return "◵";
+      case "person":
+        return "@";
       case "text":
-        return { seed: "", ok: true };
-      // number / date / select / status — no null-ish default the trigger will
-      // accept without a real value. Disabled this phase.
+        return "T";
       default:
-        return { seed: null, ok: false };
+        return "•";
     }
   }
 
@@ -461,33 +758,42 @@ function AddPropertyPopover({
               Every registered property is already on this page.
             </p>
           ) : (
-            candidates.map((d) => {
-              const { seed, ok } = seedFor(d);
-              return (
-                <button
-                  key={d.id}
-                  type="button"
-                  disabled={!ok}
-                  title={
-                    ok
-                      ? undefined
-                      : "Set a value in the next phase"
+            candidates.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-meta hover:bg-rail"
+                onClick={() => {
+                  /* Seed by type. For select/status/person the seed is null;
+                   * the row appears and immediately auto-opens its picker via
+                   * the `autoOpenKey` mechanism in PropertyStrip. */
+                  let seed: unknown;
+                  switch (d.type) {
+                    case "multi_select":
+                      seed = [];
+                      break;
+                    case "checkbox":
+                      seed = false;
+                      break;
+                    case "text":
+                      seed = "";
+                      break;
+                    case "number":
+                    case "date":
+                    case "select":
+                    case "status":
+                    case "person":
+                    default:
+                      seed = null;
                   }
-                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-meta hover:bg-rail disabled:cursor-not-allowed disabled:opacity-40"
-                  onClick={() => {
-                    if (!ok) return;
-                    onAdd(d.key, seed);
-                    onNotify(`Added "${d.label}" — value comes next phase.`);
-                    close();
-                  }}
-                >
-                  <span className="text-faint">
-                    {d.type[0].toUpperCase()}
-                  </span>
-                  <span>{d.label}</span>
-                </button>
-              );
-            })
+                  onAdd(d.key, seed, true);
+                  close();
+                }}
+              >
+                <span className="w-4 text-faint">{typeGlyph(d.type)}</span>
+                <span>{d.label}</span>
+              </button>
+            ))
           )}
         </div>
       )}
@@ -500,17 +806,20 @@ function PropertyStrip({
   propDefs,
   members,
   meId,
+  pages,
+  areas,
   onSet,
 }: {
   page: PageFull;
   propDefs: PropDef[];
   members: MemberRow[];
   meId: string;
+  pages: PageListItem[];
+  areas: string[];
   onSet: (key: string, value: unknown) => void;
 }) {
   const propsRec = propsOf(page);
   const present = new Set(Object.keys(propsRec));
-  const registered = new Set(propDefs.map((d) => d.key));
   const byPos = [...propDefs].sort(
     (a, b) => (a.position ?? 0) - (b.position ?? 0),
   );
@@ -525,6 +834,7 @@ function PropertyStrip({
   ];
 
   const [hoverKey, setHoverKey] = useState<string | null>(null);
+  const [openKey, setOpenKey] = useState<string | null>(null);
 
   const verifiedByName = useMemo(() => {
     if (page.verified_by === meId) return "you";
@@ -538,11 +848,15 @@ function PropertyStrip({
         const def = propDefs.find((d) => d.key === r.key);
         const removable =
           def && def.is_system === false && present.has(r.key);
-        const showX = removable && hoverKey === r.key;
+        const active = hoverKey === r.key || openKey === r.key;
+        const showX = removable && active;
         return (
           <div
             key={r.key}
-            className="flex items-center gap-3 rounded-md px-1 hover:bg-sunken"
+            className={
+              "flex items-center gap-3 rounded-md px-1 " +
+              (active ? "bg-sunken" : "")
+            }
             style={{ minHeight: 32 }}
             onMouseEnter={() => setHoverKey(r.key)}
             onMouseLeave={() => setHoverKey(null)}
@@ -567,11 +881,19 @@ function PropertyStrip({
               ) : null}
             </div>
             <div className="min-w-0 flex-1">
-              <ReadOnlyValue
+              <EditableValue
                 propKey={r.key}
                 page={page}
                 def={def}
                 members={members}
+                pages={pages}
+                areas={areas}
+                onSet={(v) => onSet(r.key, v)}
+                onOpenChange={(open) =>
+                  setOpenKey(open ? r.key : (prev) =>
+                    prev === r.key ? null : prev,
+                  )
+                }
               />
             </div>
           </div>
@@ -595,14 +917,8 @@ function PropertyStrip({
           propDefs={propDefs}
           present={present}
           onAdd={(key, seed) => onSet(key, seed)}
-          onNotify={() => {
-            /* toasts are already emitted by useSetPageProperty */
-          }}
         />
       </div>
-
-      {/* Reserve reference to registered set so lint stays quiet if list is empty. */}
-      <span hidden aria-hidden data-registered={registered.size} />
     </div>
   );
 }
