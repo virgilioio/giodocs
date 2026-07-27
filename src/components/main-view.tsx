@@ -1184,6 +1184,46 @@ export function MainView({ selection }: { selection: Selection }) {
       )}
 
       {body}
+
+      {exportOpen && (
+        <ExportViewDialog
+          name={selection.kind === "area" ? selection.area : view?.name ?? "view"}
+          rows={rows.map<ExportViewRow>((p) => {
+            const pp = (p.props ?? {}) as Record<string, unknown>;
+            const area = typeof pp.area === "string" ? pp.area : null;
+            const ownerId = typeof pp.owner === "string" ? pp.owner : null;
+            const statusVal = typeof pp.status === "string" ? pp.status : null;
+            const statusOpts =
+              (statusDef?.options as unknown as Array<{
+                value: string;
+                label: string;
+              }>) ?? [];
+            const status =
+              statusOpts.find((o) => o.value === statusVal)?.label ??
+              statusVal;
+            const tags = Array.isArray(pp.tags)
+              ? (pp.tags as unknown[]).filter(
+                  (t): t is string => typeof t === "string",
+                )
+              : [];
+            return {
+              title: p.title ?? null,
+              area,
+              ownerId,
+              status,
+              tags,
+              verifiedAt: p.verified_at ?? null,
+              editedAt: p.edited_at ?? null,
+            };
+          })}
+          resolveOwner={(id) => {
+            if (!id) return "";
+            const m = members.find((mm) => mm.user_id === id);
+            return m?.profiles?.full_name || m?.profiles?.email || "";
+          }}
+          onClose={() => setExportOpen(false)}
+        />
+      )}
     </div>
     </PageOriginContext.Provider>
   );
