@@ -345,9 +345,9 @@ function QueryToolbar({
           </select>
         </div>
         <RowMoreButton
+          size="view"
           ariaLabel="View options"
           build={menuBuild}
-          className="!h-[26px] !w-[26px]"
         />
       </div>
 
