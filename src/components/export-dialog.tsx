@@ -407,6 +407,82 @@ function Row({
   );
 }
 
+/* Toggle row — sits with the format decision, above the note panel. Applies
+ * to all three formats (not PDF-only), so it renders regardless of `fmt`.
+ * The pill is the same control the page ⋯ menu uses. */
+function DetailsRow({
+  value,
+  onChange,
+  last,
+}: {
+  value: boolean;
+  onChange: (v: boolean) => void;
+  last?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "9px 0",
+        borderBottom: last ? "none" : "1px solid var(--color-lineSoft)",
+        gap: 16,
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 14, color: "var(--color-body)" }}>
+          Include page details
+        </div>
+        <div
+          style={{
+            marginTop: 2,
+            fontSize: 12.5,
+            color: "var(--color-secondary)",
+            lineHeight: 1.4,
+          }}
+        >
+          Area, owner, status, tags and last-verified
+        </div>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={value}
+        aria-label="Include page details"
+        onClick={() => onChange(!value)}
+        style={{
+          position: "relative",
+          width: 30,
+          height: 17,
+          borderRadius: 9,
+          border: "none",
+          padding: 0,
+          background: value ? "var(--color-accent)" : "var(--color-lineStrong)",
+          transition: "background 150ms ease",
+          cursor: "pointer",
+          flex: "none",
+        }}
+      >
+        <span
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: 2,
+            left: value ? 15 : 2,
+            width: 13,
+            height: 13,
+            borderRadius: 999,
+            background: "#ffffff",
+            transition: "left 150ms ease",
+            boxShadow: "0 1px 2px rgba(13,13,9,.22)",
+          }}
+        />
+      </button>
+    </div>
+  );
+}
+
 const PickerButton = forwardRef<
   HTMLButtonElement,
   { value: string; onClick: () => void; width: number }
