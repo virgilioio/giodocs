@@ -262,6 +262,7 @@ function QueryToolbar({
   fixedFilterIndex,
   pages,
   verbose,
+  menuBuild,
 }: {
   filters: Filter[];
   sort: SortSpec;
@@ -273,6 +274,7 @@ function QueryToolbar({
   fixedFilterIndex?: number;
   pages: PageListItem[];
   verbose: boolean;
+  menuBuild: () => ReactNode;
 }) {
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-lineSoft pb-3">
