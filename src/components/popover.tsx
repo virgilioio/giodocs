@@ -3,21 +3,30 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 /**
  * Minimal popover: renders trigger; on click, shows content absolutely below
  * with click-outside + Escape to close. Not portalled — sufficient for cell popovers.
+ * Optional `onOpenChange` lets callers react to open/close transitions
+ * (used by editable rows to keep their hover background while the popover
+ *  they own is open).
  */
 export function Popover({
   trigger,
   children,
   align = "start",
   width = 220,
+  onOpenChange,
 }: {
   trigger: (props: { open: boolean; onClick: () => void; ref: React.Ref<HTMLButtonElement> }) => ReactNode;
   children: (close: () => void) => ReactNode;
   align?: "start" | "end";
   width?: number;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    onOpenChange?.(open);
+  }, [open, onOpenChange]);
 
   useEffect(() => {
     if (!open) return;

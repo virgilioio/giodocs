@@ -11,6 +11,14 @@ import { PageOriginContext, useSetPageOrigin } from "@/lib/page-origin";
 
 import { Popover } from "./popover";
 import {
+  SelectPicker,
+  OwnerPicker,
+  AreaPicker,
+  TagsPicker,
+  MiniAvatar,
+  type SelectOption,
+} from "./property-pickers";
+import {
   MoreButton as RowMoreButton,
   RowMenuList,
   RowMenuConfirm,
@@ -605,56 +613,25 @@ function StatusCell({
   onPick: (value: string | null) => void;
 }) {
   if (!def) return <span className="text-faint">—</span>;
-  const opts = (def.options as unknown as Array<{ value: string; label: string; tint: string; ink: string }>) ?? [];
+  const opts =
+    (def.options as unknown as SelectOption[]) ?? [];
   const v = propsOf(page)[def.key];
-  const current = opts.find((o) => o.value === v);
+  const cur = opts.find((o) => o.value === v);
   return (
-    <Popover
-      width={200}
+    <SelectPicker
+      value={typeof v === "string" ? v : null}
+      options={opts}
+      onPick={onPick}
       trigger={({ onClick, ref }) => (
-        <button
-          ref={ref}
-          type="button"
-          onClick={onClick}
-          className="text-left"
-        >
-          {current ? (
-            <StatusChip label={current.label} tint={current.tint} ink={current.ink} />
+        <button ref={ref} type="button" onClick={onClick} className="text-left">
+          {cur ? (
+            <StatusChip label={cur.label} tint={cur.tint} ink={cur.ink} />
           ) : (
             <span className="text-faint">—</span>
           )}
         </button>
       )}
-    >
-      {(close) => (
-        <div>
-          {opts.map((o) => (
-            <button
-              key={o.value}
-              type="button"
-              className="flex w-full items-center rounded-sm px-2 py-1 text-left hover:bg-rail"
-              onClick={() => {
-                onPick(o.value);
-                close();
-              }}
-            >
-              <StatusChip label={o.label} tint={o.tint} ink={o.ink} />
-            </button>
-          ))}
-          <div className="my-1 border-t border-lineSoft" />
-          <button
-            type="button"
-            className="w-full rounded-sm px-2 py-1 text-left text-meta text-muted hover:bg-rail"
-            onClick={() => {
-              onPick(null);
-              close();
-            }}
-          >
-            Clear
-          </button>
-        </div>
-      )}
-    </Popover>
+    />
   );
 }
 
@@ -670,8 +647,10 @@ function OwnerCell({
   const owner = propsOf(page)["owner"];
   const current = members.find((m) => m.user_id === owner);
   return (
-    <Popover
-      width={240}
+    <OwnerPicker
+      value={typeof owner === "string" ? owner : null}
+      members={members}
+      onPick={onPick}
       trigger={({ onClick, ref }) => (
         <button
           ref={ref}
@@ -681,7 +660,7 @@ function OwnerCell({
         >
           {current ? (
             <>
-              <Avatar profile={current.profiles} />
+              <MiniAvatar profile={current.profiles} />
               <span className="min-w-0 truncate text-meta text-body hidden md:inline">
                 {current.profiles?.full_name}
               </span>
@@ -691,58 +670,7 @@ function OwnerCell({
           )}
         </button>
       )}
-    >
-      {(close) => (
-        <div className="max-h-72 overflow-y-auto">
-          {members.map((m) => (
-            <button
-              key={m.user_id}
-              type="button"
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left hover:bg-rail"
-              onClick={() => {
-                onPick(m.user_id);
-                close();
-              }}
-            >
-              <Avatar profile={m.profiles} />
-              <span className="text-meta">{m.profiles?.full_name}</span>
-            </button>
-          ))}
-          <div className="my-1 border-t border-lineSoft" />
-          <button
-            type="button"
-            className="w-full rounded-sm px-2 py-1 text-left text-meta text-muted hover:bg-rail"
-            onClick={() => {
-              onPick(null);
-              close();
-            }}
-          >
-            No owner
-          </button>
-        </div>
-      )}
-    </Popover>
-  );
-}
-
-function Avatar({ profile }: { profile: MemberRow["profiles"] }) {
-  const initials = (profile?.full_name || profile?.email || "?")
-    .split(/\s+/)
-    .map((s) => s[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-  return (
-    <span
-      className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-caption"
-      style={{
-        background: profile?.avatar_tint ?? "var(--color-sunken)",
-        color: profile?.avatar_ink ?? "var(--color-noir)",
-      }}
-    >
-      {initials}
-    </span>
+    />
   );
 }
 
@@ -756,64 +684,26 @@ function AreaCell({
   onPick: (v: string | null) => void;
 }) {
   const value = propsOf(page)["area"];
-  const [neu, setNeu] = useState("");
   return (
-    <Popover
-      width={220}
+    <AreaPicker
+      value={typeof value === "string" ? value : null}
+      areas={areas}
+      onPick={onPick}
       trigger={({ onClick, ref }) => (
-        <button ref={ref} type="button" onClick={onClick} className="text-left text-meta">
-          {typeof value === "string" && value ? value : <span className="text-faint">—</span>}
+        <button
+          ref={ref}
+          type="button"
+          onClick={onClick}
+          className="text-left text-meta"
+        >
+          {typeof value === "string" && value ? (
+            value
+          ) : (
+            <span className="text-faint">—</span>
+          )}
         </button>
       )}
-    >
-      {(close) => (
-        <div>
-          {areas.map((a) => (
-            <button
-              key={a}
-              type="button"
-              className="w-full rounded-sm px-2 py-1 text-left text-meta hover:bg-rail"
-              onClick={() => {
-                onPick(a);
-                close();
-              }}
-            >
-              {a}
-            </button>
-          ))}
-          <div className="my-1 border-t border-lineSoft" />
-          <div className="flex gap-1 p-1">
-            <input
-              value={neu}
-              onChange={(e) => setNeu(e.target.value)}
-              placeholder="Move to new area…"
-              className="min-w-0 flex-1 rounded-sm border border-line bg-surface px-2 py-1 text-meta"
-            />
-            <button
-              type="button"
-              disabled={!neu.trim()}
-              onClick={() => {
-                onPick(neu.trim());
-                close();
-              }}
-              className="rounded-sm bg-noir px-2 text-meta font-bold text-canvas disabled:opacity-40"
-            >
-              Set
-            </button>
-          </div>
-          <button
-            type="button"
-            className="w-full rounded-sm px-2 py-1 text-left text-meta text-muted hover:bg-rail"
-            onClick={() => {
-              onPick(null);
-              close();
-            }}
-          >
-            Clear
-          </button>
-        </div>
-      )}
-    </Popover>
+    />
   );
 }
 
@@ -839,77 +729,45 @@ function TagsCell({
     }
     return [...s].sort();
   }, [pages, allOverride]);
-  const all = derived;
-  const [neu, setNeu] = useState("");
   const shown = tags.slice(0, 3);
   const extra = tags.length - shown.length;
   return (
-    <Popover
-      width={240}
+    <TagsPicker
+      value={tags}
+      options={derived}
+      onSet={onSet}
       trigger={({ onClick, ref }) => (
-        <button ref={ref} type="button" onClick={onClick} className="flex flex-wrap items-center gap-1">
+        <button
+          ref={ref}
+          type="button"
+          onClick={onClick}
+          className="flex flex-wrap items-center gap-1"
+        >
           {shown.map((t) => {
             const c = hashTag(t);
             return (
               <span
                 key={t}
                 className="rounded-sm px-1.5 py-0.5 text-caption"
-                style={{ background: `var(--color-${c.tint})`, color: `var(--color-${c.ink})` }}
+                style={{
+                  background: `var(--color-${c.tint})`,
+                  color: `var(--color-${c.ink})`,
+                }}
               >
                 {t}
               </span>
             );
           })}
-          {extra > 0 && <span className="text-caption text-muted">+{extra}</span>}
+          {extra > 0 && (
+            <span className="text-caption text-muted">+{extra}</span>
+          )}
           {tags.length === 0 && <span className="text-faint">—</span>}
         </button>
       )}
-    >
-      {(close) => (
-        <div className="max-h-72 overflow-y-auto">
-          {all.map((t) => {
-            const on = tags.includes(t);
-            return (
-              <button
-                key={t}
-                type="button"
-                className="flex w-full items-center justify-between rounded-sm px-2 py-1 text-left text-meta hover:bg-rail"
-                onClick={() => {
-                  const next = on ? tags.filter((x) => x !== t) : [...tags, t];
-                  onSet(next);
-                }}
-              >
-                <span>{t}</span>
-                {on && <span className="text-accent">✓</span>}
-              </button>
-            );
-          })}
-          <div className="my-1 border-t border-lineSoft" />
-          <div className="flex gap-1 p-1">
-            <input
-              value={neu}
-              onChange={(e) => setNeu(e.target.value)}
-              placeholder="New tag…"
-              className="min-w-0 flex-1 rounded-sm border border-line bg-surface px-2 py-1 text-meta"
-            />
-            <button
-              type="button"
-              disabled={!neu.trim()}
-              onClick={() => {
-                onSet([...tags, neu.trim()]);
-                setNeu("");
-                close();
-              }}
-              className="rounded-sm bg-noir px-2 text-meta font-bold text-canvas disabled:opacity-40"
-            >
-              Add
-            </button>
-          </div>
-        </div>
-      )}
-    </Popover>
+    />
   );
 }
+
 
 /* ─────────────────────────── Main view ─────────────────────────── */
 
