@@ -126,34 +126,61 @@ export function parseMarkdown(text: string): Blk[] {
       continue;
     }
 
+    // Todo / bullet / numbered — the leading whitespace becomes an indent
+    // level. Accept spaces or tabs; every 2 spaces (or every tab) counts
+    // as one level. The parent+1 clamp is applied after the whole parse
+    // completes (see the tail of this function).
+    const indentOf = (raw: string): number => {
+      let spaces = 0;
+      for (const ch of raw) {
+        if (ch === " ") spaces += 1;
+        else if (ch === "\t") spaces += 2;
+        else break;
+      }
+      // 2-space and 4-space nesting both map to one level per two spaces,
+      // which matches emitters that write "  " or "    " per depth.
+      return Math.max(0, Math.floor(spaces / 2));
+    };
+
     // Todo — MUST be checked before bullet, or `- [ ] x` becomes a bullet.
-    const todo = line.match(/^[-*+] \[([ xX])\] (.*)$/);
+    const todo = line.match(/^([ \t]*)[-*+] \[([ xX])\] (.*)$/);
     if (todo) {
       flushParagraph();
       out.push({
         id: nanoid(10),
         type: "todo",
-        text: todo[2],
-        checked: todo[1].toLowerCase() === "x",
+        text: todo[3],
+        checked: todo[2].toLowerCase() === "x",
+        indent: indentOf(todo[1]),
       });
       i++;
       continue;
     }
 
     // Bullet
-    const bullet = line.match(/^[-*+] (.*)$/);
+    const bullet = line.match(/^([ \t]*)[-*+] (.*)$/);
     if (bullet) {
       flushParagraph();
-      out.push({ id: nanoid(10), type: "bullet", text: bullet[1] });
+      out.push({
+        id: nanoid(10),
+        type: "bullet",
+        text: bullet[2],
+        indent: indentOf(bullet[1]),
+      });
       i++;
       continue;
     }
 
     // Numbered — any digit run before ". ".
-    const num = line.match(/^\d+\. (.*)$/);
+    const num = line.match(/^([ \t]*)\d+\. (.*)$/);
     if (num) {
       flushParagraph();
-      out.push({ id: nanoid(10), type: "numbered", text: num[1] });
+      out.push({
+        id: nanoid(10),
+        type: "numbered",
+        text: num[2],
+        indent: indentOf(num[1]),
+      });
       i++;
       continue;
     }
