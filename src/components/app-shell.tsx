@@ -373,9 +373,16 @@ export function AppShell() {
 
         <main className="min-w-0 flex-1 bg-surface overflow-y-auto">
           {selection && selection.kind === "page" ? (
-            <PageEditor pageId={selection.id} />
+            <PageEditor key={selection.id} pageId={selection.id} />
           ) : selection ? (
-            <MainView selection={selection} />
+            <MainView
+              key={
+                selection.kind === "view"
+                  ? `v:${selection.id}`
+                  : `a:${selection.area}`
+              }
+              selection={selection}
+            />
           ) : (
             <div className="mx-auto max-w-view px-6 py-10">
               <p className="text-meta text-muted">Loading…</p>

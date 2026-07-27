@@ -717,7 +717,15 @@ export function PageEditor({ pageId }: { pageId: string }) {
     if (el) {
       el.focus();
       el.setSelectionRange(0, 0);
+      return;
     }
+    // Empty body: click the "Click to start writing." affordance so
+    // EditableBody appends the first text block; its own focusRequest
+    // effect will focus the resulting textarea.
+    const empty = document.querySelector<HTMLElement>(
+      '#page-body [role="button"]',
+    );
+    empty?.click();
   }, []);
 
   /* ────────── Body debounced save ────────── */
