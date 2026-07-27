@@ -79,7 +79,11 @@ export type Op =
   /** Tab on an indentable list-type block. Caller applies indentBlock(+1). */
   | { kind: "indent" }
   /** Shift-Tab, OR Backspace at caret 0 of an already-indented block. */
-  | { kind: "outdent" };
+  | { kind: "outdent" }
+  /** Inline-formatting shortcut: caller runs toggleWrap on the textarea
+   *  value with these delimiters, writes the new value back, and
+   *  restores the returned selection. */
+  | { kind: "wrap"; open: string; close: string };
 
 const LIST_TYPES = new Set(["bullet", "numbered", "todo"]);
 const INDENTABLE = new Set(["bullet", "numbered", "todo", "text"]);
@@ -110,6 +114,22 @@ export function resolveKey(
   // ⌘D duplicate — never yield to native (browser bookmarks the tab).
   if (meta && key.toLowerCase() === "d") {
     return { kind: "duplicate" };
+  }
+
+  // Inline formatting shortcuts. All are ⌘/Ctrl-based; ⌘B and ⌘U are
+  // browser-bound (bold/underline in every browser) and ⌘I is in some,
+  // so the caller must preventDefault on the wrap op.
+  if (meta) {
+    const k = key.toLowerCase();
+    if (!shift) {
+      if (k === "b") return { kind: "wrap", open: "**", close: "**" };
+      if (k === "i") return { kind: "wrap", open: "*", close: "*" };
+      if (k === "u") return { kind: "wrap", open: "<u>", close: "</u>" };
+      if (k === "e") return { kind: "wrap", open: "`", close: "`" };
+    } else {
+      if (k === "h") return { kind: "wrap", open: "==", close: "==" };
+      if (k === "x") return { kind: "wrap", open: "~~", close: "~~" };
+    }
   }
 
   // Tab / Shift-Tab — indent/outdent, only on list-like types. Always

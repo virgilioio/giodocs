@@ -533,6 +533,7 @@ const HTML_CSS = `
   table { border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 15px; }
   th, td { border: 1px solid ${line}; padding: 6px 10px; text-align: left; vertical-align: top; }
   thead th { background: ${sunken}; }
+  mark { background: #FFF4B8; color: ${noir}; padding: 0 2px; border-radius: 2px; }
   .todo .done { color: ${muted}; text-decoration: line-through; }
   details { margin: 8px 0; }
   summary { cursor: default; font-weight: 700; }
