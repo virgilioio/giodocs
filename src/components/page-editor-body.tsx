@@ -2767,19 +2767,17 @@ function ColumnStack({
     const el = refs.current[focusRequest.id];
     if (!el) return;
     el.focus({ preventScroll: true });
-    if ("setSelectionRange" in el) {
-      const v = (el as HTMLTextAreaElement).value;
-      const c =
-        focusRequest.caret === "end"
-          ? v.length
-          : focusRequest.caret === "start" || focusRequest.caret == null
-            ? 0
-            : Math.min(focusRequest.caret, v.length);
-      try {
-        (el as HTMLTextAreaElement).setSelectionRange(c, c);
-      } catch {
-        /* noop */
-      }
+    const src = blocks.find((b) => b.id === focusRequest.id)?.text ?? "";
+    const c =
+      focusRequest.caret === "end"
+        ? src.length
+        : focusRequest.caret === "start" || focusRequest.caret == null
+          ? 0
+          : Math.min(focusRequest.caret, src.length);
+    try {
+      writeCaret(el, src, c, c);
+    } catch {
+      /* noop */
     }
     setFocusRequest(null);
   }, [focusRequest, blocks]);
@@ -2997,8 +2995,8 @@ function ColumnStack({
               applyOp(mr);
               return;
             }
-            const el = refs.current[b.id] as HTMLTextAreaElement | undefined;
-            const caret = el?.selectionStart ?? val.length;
+            const el = refs.current[b.id];
+            const caret = el ? (readCaret(el, val)?.start ?? val.length) : val.length;
             const before = val.slice(0, caret);
             const slashPos = before.lastIndexOf("/");
             const openable =
@@ -3017,10 +3015,11 @@ function ColumnStack({
           }}
           onKeyDown={(e) => {
             if (locked) return;
-            const el = e.currentTarget as HTMLTextAreaElement;
-            const v = el.value;
-            const ss = el.selectionStart ?? 0;
-            const se = el.selectionEnd ?? 0;
+            const el = e.currentTarget as HTMLElement;
+            const v = b.text ?? "";
+            const car = readCaret(el, v) ?? { start: 0, end: 0 };
+            const ss = car.start;
+            const se = car.end;
 
             if (slash?.blockId === b.id) {
               if (e.key === "ArrowDown") {
@@ -3123,13 +3122,16 @@ function ColumnStack({
                 const bid = b.id;
                 const dir = op.dir;
                 requestAnimationFrame(() => {
-                  const cur = refs.current[bid] as HTMLTextAreaElement | undefined;
+                  const cur = refs.current[bid];
                   if (!cur || document.activeElement !== cur) return;
+                  const curBlk = blocks.find((x) => x.id === bid);
+                  const src = curBlk?.text ?? "";
+                  const c2 = readCaret(cur, src);
+                  if (!c2) return;
                   const atBoundary =
                     dir === -1
-                      ? cur.selectionStart === 0 && cur.selectionEnd === 0
-                      : cur.selectionStart === cur.value.length &&
-                        cur.selectionEnd === cur.value.length;
+                      ? c2.start === 0 && c2.end === 0
+                      : c2.start === src.length && c2.end === src.length;
                   if (!atBoundary) return;
                   const j = blocks.findIndex((x) => x.id === bid);
                   const target = nextEditableIndex(blocks, j, dir);
@@ -3158,11 +3160,11 @@ function ColumnStack({
                 const r = toggleWrap(v, ss, se, op.open, op.close);
                 updateBlock(b.id, { text: r.text });
                 requestAnimationFrame(() => {
-                  const cur = refs.current[b.id] as HTMLTextAreaElement | undefined;
+                  const cur = refs.current[b.id];
                   if (!cur) return;
                   try {
                     cur.focus({ preventScroll: true });
-                    cur.setSelectionRange(r.start, r.end);
+                    writeCaret(cur, r.text, r.start, r.end);
                   } catch {
                     /* noop */
                   }
