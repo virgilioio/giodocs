@@ -2030,6 +2030,22 @@ export function EditableBody({
                 e.preventDefault();
                 applyOp(opsIndent(blocks, b.id, -1));
                 return;
+              case "wrap": {
+                e.preventDefault();
+                const r = toggleWrap(v, ss, se, op.open, op.close);
+                updateBlock(b.id, { text: r.text });
+                requestAnimationFrame(() => {
+                  const cur = refs.current[b.id] as HTMLTextAreaElement | undefined;
+                  if (!cur) return;
+                  try {
+                    cur.focus({ preventScroll: true });
+                    cur.setSelectionRange(r.start, r.end);
+                  } catch {
+                    /* noop */
+                  }
+                });
+                return;
+              }
             }
           }}
           onAddBelow={() => { if (!locked) insertAfter(b.id); }}
