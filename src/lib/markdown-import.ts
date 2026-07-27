@@ -2,8 +2,10 @@
  * parseMarkdown — inverse of blockToMarkdown in export.ts.
  *
  * Supports the block-type set: text, h1, h2, h3, bullet, numbered,
- * todo, toggle, quote, callout, divider, code, table. Caption round-trips
- * dependencies (no turndown, no marked, no remark).
+ * todo, toggle, quote, callout, divider, code, table, caption. `caption`
+ * is a LOSSY round-trip: exported as a plain paragraph, so the parser sees
+ * a `text` block coming back. Line-based scan; no external dependencies
+ * (no turndown, no marked, no remark).
  *
  * INLINE FORMATTING IS PRESERVED AS LITERAL CHARACTERS.
  * Blk.text is a plain string with no inline model, so "**bold**",
