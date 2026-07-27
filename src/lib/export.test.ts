@@ -172,7 +172,7 @@ describe("toCsv", () => {
     expect(csv.split("\r\n")[0]).toBe("Page,Owner");
     expect(csv.split("\r\n")[1]).toBe("Untitled,Sam Lee");
     // Tags column omitted
-    expect(csv).not.toContain("a");
+    expect(csv).not.toContain("Tags");
   });
 });
 
