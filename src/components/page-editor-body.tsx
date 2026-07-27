@@ -39,6 +39,15 @@ import {
   type UndoState,
   type UndoEntry,
 } from "@/lib/undo-stack";
+import {
+  normalizeTable,
+  addColumn,
+  addRow,
+  deleteColumn,
+  deleteRow,
+  clearRow,
+  clearColumn,
+} from "@/lib/table-ops";
 // The shared block-editor primitives — ONE implementation used by both
 // EditableBody (top-level) and ColumnStack (per-column). See:
 //   src/lib/block-ops.ts          — pure list ops + factories + shortcuts + paste
