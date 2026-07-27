@@ -380,10 +380,7 @@ function blockHtml(b: Block, ordinal = 1): string {
         .map((col) => {
           if (!Array.isArray(col)) return "<div></div>";
           const ords = numberedOrdinals(col);
-          const html = col
-            .map((c) => blockHtml(c, (c.id && ords.get(c.id)) || 1))
-            .join("");
-          return `<div>${html}</div>`;
+          return `<div>${renderBlocksHtml(col, ords)}</div>`;
         })
         .join("");
       return `<div class="cols" style="display:grid;grid-template-columns:repeat(${n},minmax(0,1fr));gap:20px">${inner}</div>`;
@@ -392,6 +389,105 @@ function blockHtml(b: Block, ordinal = 1): string {
       warnUnknownBlock(t);
       return `<p>${esc(text)}</p>`;
   }
+}
+
+/* ─────────────────────────── nested list renderer ───────────────────────────
+ *
+ * Runs of consecutive list-like blocks (bullet, numbered, todo) become a
+ * single nested <ul>/<ol> tree keyed off each block's indent level. Type
+ * transitions at the same depth close and reopen the list; deeper items
+ * nest inside the current <li> (semantic HTML outline); ascents close the
+ * inner list AND the parent <li> before opening a new sibling.
+ *
+ * Adjacent bullets and todos merge into the same <ul> (they share the tag);
+ * a numbered item at the same depth breaks and reopens as <ol>.
+ */
+const LIST_LIKE = new Set(["bullet", "numbered", "todo"]);
+
+function readIndent(b: Block): number {
+  const raw = (b as { indent?: unknown }).indent;
+  return typeof raw === "number" && raw > 0 ? Math.min(6, Math.floor(raw)) : 0;
+}
+
+function listItemInner(b: Block, ordinal: number): string {
+  const text = blockText(b);
+  const inline = (s: string) => inlineToHtml(s);
+  if (b.type === "todo") {
+    return `<input type="checkbox" disabled${
+      b.checked ? " checked" : ""
+    }/> <span${b.checked ? ' class="done"' : ""}>${inline(text)}</span>`;
+  }
+  // ordinal is embedded on the <ol> via `start`, so <li> content is the same
+  // for bullet and numbered.
+  void ordinal;
+  return inline(text);
+}
+
+function renderListRun(
+  items: readonly { block: Block; ordinal: number }[],
+): string {
+  let out = "";
+  const stack: Array<{ tag: "ul" | "ol"; depth: number }> = [];
+  for (const { block, ordinal } of items) {
+    const K = readIndent(block);
+    const targetTag: "ul" | "ol" = block.type === "numbered" ? "ol" : "ul";
+    // Ascend to depth ≤ K, closing each deeper <li></ul|ol>.
+    while (stack.length && stack[stack.length - 1].depth > K) {
+      const top = stack.pop()!;
+      out += `</li></${top.tag}>`;
+    }
+    if (stack.length && stack[stack.length - 1].depth === K) {
+      if (stack[stack.length - 1].tag !== targetTag) {
+        // Same depth, different tag → close and reopen fresh.
+        const top = stack.pop()!;
+        out += `</li></${top.tag}>`;
+      } else {
+        // Same depth, same tag → sibling <li>.
+        out += `</li><li>${listItemInner(block, ordinal)}`;
+        continue;
+      }
+    }
+    // Open a new list at this depth (either descending or empty stack).
+    const attr = targetTag === "ol" && ordinal > 1 ? ` start="${ordinal}"` : "";
+    out += `<${targetTag}${attr}><li>${listItemInner(block, ordinal)}`;
+    stack.push({ tag: targetTag, depth: K });
+  }
+  while (stack.length) {
+    const top = stack.pop()!;
+    out += `</li></${top.tag}>`;
+  }
+  return out;
+}
+
+/**
+ * Walk `blocks` and emit HTML, batching consecutive list-like blocks
+ * (bullet/numbered/todo) through the nested renderer. Non-list blocks go
+ * through `blockHtml` one by one.
+ */
+function renderBlocksHtml(
+  blocks: readonly Block[],
+  ords: Map<string, number>,
+): string {
+  const parts: string[] = [];
+  let run: { block: Block; ordinal: number }[] = [];
+  const flush = () => {
+    if (run.length) {
+      parts.push(renderListRun(run));
+      run = [];
+    }
+  };
+  for (const b of blocks) {
+    if (b && typeof b.type === "string" && LIST_LIKE.has(b.type)) {
+      const ord = (b.id && ords.get(b.id)) || 1;
+      run.push({ block: b, ordinal: ord });
+    } else {
+      flush();
+      const ord = (b && b.id && ords.get(b.id)) || 1;
+      parts.push(blockHtml(b, ord));
+    }
+  }
+  flush();
+  return parts.join("\n");
 }
 
 
