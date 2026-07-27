@@ -1158,7 +1158,13 @@ export function EditableBody({
           dimmed={draggingIdSet.has(b.id)}
           registerRowEl={registerRowEl}
           onHandlePointerDown={(ev) => beginDrag(b.id, ev)}
-          onHandleClick={(anchor) => handleClick(b.id, anchor)}
+          onHandleClick={(anchor) => {
+            const initial = buildBlockHandleSpec(b.id, {
+              setSpec: setHandleMenuSpec,
+              close: closeHandleMenu,
+            });
+            setHandleMenu({ blockId: b.id, anchor, spec: initial });
+          }}
           onHandleShiftClick={() => handleShiftClick(b.id)}
           onBlur={onBlur}
           registerRef={(el) => {
