@@ -120,11 +120,14 @@ export function EditableTitle({
   onChange,
   onEnter,
   autoFocus,
+  topMarginClass = "mt-3",
 }: {
   value: string;
   onChange: (v: string) => void;
   onEnter: () => void;
   autoFocus?: boolean;
+  /** Override the default `mt-3` when rendering in an already-spaced row. */
+  topMarginClass?: string;
 }) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   useAutoGrow(ref, value);
@@ -148,7 +151,10 @@ export function EditableTitle({
           onEnter();
         }
       }}
-      className="mt-3 block w-full resize-none border-0 bg-transparent p-0 font-display text-display text-noir outline-none placeholder:text-faint"
+      className={
+        (topMarginClass ? topMarginClass + " " : "") +
+        "block w-full resize-none border-0 bg-transparent p-0 font-display text-display text-noir outline-none placeholder:text-faint"
+      }
       style={{ overflow: "hidden", lineHeight: 1.15 }}
       aria-label="Page title"
     />
