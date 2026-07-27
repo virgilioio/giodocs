@@ -1680,6 +1680,9 @@ export function MainView({ selection }: { selection: Selection }) {
             workspaceName={workspace?.name ?? "the workspace"}
             memberCount={memberCount}
             onRename={() => setRenaming(true)}
+            onChangeIcon={(icon) => {
+              if (view) updateView.mutate({ id: view.id, patch: { icon } });
+            }}
             onDuplicatePersonal={doDuplicatePersonal}
             onDuplicateTeam={doDuplicateTeam}
             onPublish={doPublish}
