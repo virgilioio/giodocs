@@ -2464,6 +2464,17 @@ function BlockContent({
   }
 
   if (t === "toggle") {
+    // Optional heading level: 'h1' | 'h2' | 'h3' promotes the SUMMARY to
+    // heading typography. Absent = today's plain-toggle rendering (Lato).
+    const level = (block as { level?: string }).level;
+    const summaryCls =
+      level === "h1"
+        ? "w-full resize-none border-0 bg-transparent p-0 font-display text-title text-noir outline-none placeholder:text-faint"
+        : level === "h2"
+          ? "w-full resize-none border-0 bg-transparent p-0 font-display text-heading text-noir outline-none placeholder:text-faint"
+          : level === "h3"
+            ? "w-full resize-none border-0 bg-transparent p-0 font-display text-subhead text-noir outline-none placeholder:text-faint"
+            : textareaProps.className;
     return (
       <div className="text-prose text-body">
         <div className="flex items-start gap-1">
@@ -2480,7 +2491,7 @@ function BlockContent({
               ›
             </span>
           </button>
-          {renderSwap(textareaProps.className)}
+          {renderSwap(summaryCls)}
         </div>
         {block.open ? (
           <div className="ml-5 mt-1 text-meta text-muted">
