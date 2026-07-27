@@ -1309,6 +1309,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
           locked={app.locked}
           editedRel={page.edited_at ? relTime(page.edited_at) : null}
           editorFirstName={editorName}
+        />
       </div>
       <PermissionsPopoverHost
         page={page}
