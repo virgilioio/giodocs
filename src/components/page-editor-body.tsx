@@ -1637,6 +1637,10 @@ function BlockRow({
         block={block}
         ordinal={ordinal}
         locked={locked}
+        focused={focused}
+        onRequestFocus={onRequestFocus}
+        onEditorFocus={onEditorFocus}
+        onEditorBlur={onEditorBlur}
         onBlur={onBlur}
         registerRef={registerRef}
         onChange={onChange}
@@ -1654,6 +1658,10 @@ function BlockContent({
   block,
   ordinal,
   locked,
+  focused,
+  onRequestFocus,
+  onEditorFocus,
+  onEditorBlur,
   onBlur,
   registerRef,
   onChange,
@@ -1665,6 +1673,10 @@ function BlockContent({
   block: Blk;
   ordinal?: number;
   locked: boolean;
+  focused: boolean;
+  onRequestFocus: (caret: number | "end") => void;
+  onEditorFocus: () => void;
+  onEditorBlur: () => void;
   onBlur?: () => void;
   registerRef: (el: HTMLTextAreaElement | HTMLInputElement | null) => void;
   onChange: (patch: Partial<Blk>) => void;
