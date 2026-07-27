@@ -864,10 +864,12 @@ function TableBlock({
   block,
   locked,
   onChange,
+  onBlur,
 }: {
   block: Blk;
   locked: boolean;
   onChange: (patch: Partial<Blk>) => void;
+  onBlur?: () => void;
 }) {
   const rows = block.rows ?? [["", "", ""], ["", "", ""]];
   const nCols = Math.max(...rows.map((r) => r.length));
