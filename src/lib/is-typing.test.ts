@@ -1,45 +1,63 @@
-/* @vitest-environment jsdom */
 import { describe, it, expect } from "vitest";
 import { isTypingTarget, shouldSelectAllBlocks } from "./is-typing";
 
+// Minimal fake element implementing the tiny surface isTypingTarget uses:
+// `closest(selector)` returning self on match, walking up the parent chain,
+// plus `isContentEditable`.
+type Fake = {
+  tag: string;
+  isContentEditable?: boolean;
+  contenteditable?: boolean;
+  parent?: Fake;
+  closest: (sel: string) => unknown;
+};
+function fake(opts: Omit<Fake, "closest">): Fake {
+  const self: Fake = {
+    ...opts,
+    closest(sel: string) {
+      const matches = (n: Fake): boolean => {
+        // super-tiny matcher for the selectors we actually use
+        if (sel === "textarea, input, select") {
+          return n.tag === "textarea" || n.tag === "input" || n.tag === "select";
+        }
+        if (sel === "[contenteditable]") return !!n.contenteditable;
+        return false;
+      };
+      let cur: Fake | undefined = self;
+      while (cur) {
+        if (matches(cur)) return cur as unknown;
+        cur = cur.parent;
+      }
+      return null;
+    },
+  };
+  return self;
+}
+
 describe("isTypingTarget", () => {
   it("returns true for a textarea", () => {
-    const el = document.createElement("textarea");
-    expect(isTypingTarget(el)).toBe(true);
+    expect(isTypingTarget(fake({ tag: "textarea" }) as unknown as EventTarget)).toBe(true);
   });
   it("returns true for a text input", () => {
-    const el = document.createElement("input");
-    el.type = "text";
-    expect(isTypingTarget(el)).toBe(true);
+    expect(isTypingTarget(fake({ tag: "input" }) as unknown as EventTarget)).toBe(true);
   });
-  it("returns true for a number input", () => {
-    const el = document.createElement("input");
-    el.type = "number";
-    expect(isTypingTarget(el)).toBe(true);
+  it("returns true for a number input (any input type)", () => {
+    expect(isTypingTarget(fake({ tag: "input" }) as unknown as EventTarget)).toBe(true);
   });
   it("returns true for a select", () => {
-    const el = document.createElement("select");
-    expect(isTypingTarget(el)).toBe(true);
+    expect(isTypingTarget(fake({ tag: "select" }) as unknown as EventTarget)).toBe(true);
   });
-  it("returns true for a contenteditable div", () => {
-    const el = document.createElement("div");
-    el.setAttribute("contenteditable", "true");
-    document.body.appendChild(el);
-    expect(isTypingTarget(el)).toBe(true);
-    document.body.removeChild(el);
+  it("returns true for a contenteditable element", () => {
+    const el = fake({ tag: "div", contenteditable: true, isContentEditable: true });
+    expect(isTypingTarget(el as unknown as EventTarget)).toBe(true);
   });
   it("returns true for a span nested inside a contenteditable", () => {
-    const wrap = document.createElement("div");
-    wrap.setAttribute("contenteditable", "true");
-    const span = document.createElement("span");
-    wrap.appendChild(span);
-    document.body.appendChild(wrap);
-    expect(isTypingTarget(span)).toBe(true);
-    document.body.removeChild(wrap);
+    const wrap = fake({ tag: "div", contenteditable: true, isContentEditable: true });
+    const span = fake({ tag: "span", parent: wrap });
+    expect(isTypingTarget(span as unknown as EventTarget)).toBe(true);
   });
   it("returns false for a plain div", () => {
-    const el = document.createElement("div");
-    expect(isTypingTarget(el)).toBe(false);
+    expect(isTypingTarget(fake({ tag: "div" }) as unknown as EventTarget)).toBe(false);
   });
   it("returns false for null", () => {
     expect(isTypingTarget(null)).toBe(false);

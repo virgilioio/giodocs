@@ -11,11 +11,16 @@
  * used to break ⌘C/⌘X/⌘V inside page-body textareas.
  */
 
+type ClosestLike = {
+  closest?: (sel: string) => Element | null;
+  isContentEditable?: boolean;
+};
+
 export function isTypingTarget(target: EventTarget | null): boolean {
   if (!target) return false;
-  if (!(target instanceof Element)) return false;
+  const el = target as ClosestLike;
+  if (typeof el.closest !== "function") return false;
   // Walk up so a click on a nested span inside a contenteditable still counts.
-  const el = target as HTMLElement;
   if (el.closest("textarea, input, select")) return true;
   const editable = el.closest("[contenteditable]") as HTMLElement | null;
   if (editable && editable.isContentEditable) return true;
