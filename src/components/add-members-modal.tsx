@@ -484,6 +484,39 @@ export function AddMembersModal({
           />
         </div>
 
+        {/* Inline failures — visible even if the toast is obscured */}
+        {(() => {
+          const failures = sendInvites.data?.results.filter((r) => !r.ok) ?? [];
+          if (failures.length === 0) return null;
+          return (
+            <div
+              role="alert"
+              className="border border-amberRing bg-amberTint text-amberInk"
+              style={{
+                marginTop: 16,
+                borderRadius: 9,
+                padding: "10px 12px",
+                fontSize: 13,
+                lineHeight: 1.45,
+              }}
+            >
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                {failures.length === 1
+                  ? "1 invite didn't send"
+                  : `${failures.length} invites didn't send`}
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 16, listStyle: "disc" }}>
+                {failures.map((f) => (
+                  <li key={f.email}>
+                    <span style={{ fontWeight: 700 }}>{f.email}</span>
+                    {f.error ? <> — {f.error}</> : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })()}
+
         {/* Actions */}
         <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 6 }}>
           <button
