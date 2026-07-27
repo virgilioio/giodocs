@@ -2171,6 +2171,7 @@ export function EditableBody({
           onClose={closeHandleMenu}
         />
       ) : null}
+      <FloatingToolbar />
     </div>
     </ColumnBridgeCtx.Provider>
   );
