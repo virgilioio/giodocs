@@ -55,6 +55,22 @@ import {
  *  (and can coalesce it). Consumed synchronously by commit(). */
 const columnTypingHint: { key: string | null } = { key: null };
 
+/** Cross-list bridge: nested `ColumnStack`s hand their block-row elements,
+ *  their column-track element, and drag-handle presses to the top-level
+ *  `EditableBody` so drag/marquee logic sees ALL rows in one registry.
+ *  A missing provider means the columns block is being rendered outside
+ *  a real EditableBody (older call sites); everything degrades to a no-op. */
+type ColumnBridge = {
+  registerRow: (colRef: ColumnRef, id: string, el: HTMLElement | null) => void;
+  registerTrack: (colRef: ColumnRef, el: HTMLElement | null) => void;
+  beginDrag: (
+    id: string,
+    ev: React.PointerEvent<HTMLElement>,
+    sourceCol: ColumnRef,
+  ) => void;
+};
+const ColumnBridgeCtx = createContext<ColumnBridge | null>(null);
+
 
 
 
