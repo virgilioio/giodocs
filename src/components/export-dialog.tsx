@@ -473,7 +473,7 @@ function DetailsRow({
             width: 13,
             height: 13,
             borderRadius: 999,
-            background: "#ffffff",
+            background: "var(--color-surface)",
             transition: "left 150ms ease",
             boxShadow: "0 1px 2px rgba(13,13,9,.22)",
           }}
