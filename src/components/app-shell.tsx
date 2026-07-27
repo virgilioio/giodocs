@@ -24,7 +24,7 @@ import {
   useDeletePage,
   useRestorePage,
 
-  useDuplicatePage,
+  
   useForkView,
   useUnpublishView,
 
@@ -539,7 +539,6 @@ function SidebarBody({
   const verifyPage = useVerifyPage();
   const setPageProperty = useSetPageProperty();
   const moveToArea = useMovePageToArea();
-  const duplicatePage = useDuplicatePage();
   const deletePage = useDeletePage();
 
   // Local "hide from my sidebar" list for team views. Persisted per-user.
@@ -823,7 +822,6 @@ function SidebarBody({
                       onVerify={(id) => verifyPage.mutate(id)}
                       setPageProperty={setPageProperty}
                       moveToArea={moveToArea}
-                      duplicatePage={duplicatePage}
                       deletePage={deletePage}
                       navigate={navigate}
                     />
@@ -1390,7 +1388,6 @@ function AreaLi({
   onVerify,
   setPageProperty,
   moveToArea,
-  duplicatePage,
   deletePage,
   navigate,
 }: {
@@ -1408,7 +1405,6 @@ function AreaLi({
   onVerify: (pageId: string) => void;
   setPageProperty: ReturnType<typeof useSetPageProperty>;
   moveToArea: ReturnType<typeof useMovePageToArea>;
-  duplicatePage: ReturnType<typeof useDuplicatePage>;
   deletePage: ReturnType<typeof useDeletePage>;
   navigate: ReturnType<typeof useNavigate>;
 }) {
@@ -1610,7 +1606,6 @@ function AreaLi({
               onVerify={onVerify}
               setPageProperty={setPageProperty}
               moveToArea={moveToArea}
-              duplicatePage={duplicatePage}
               deletePage={deletePage}
               navigate={navigate}
             />
@@ -1720,7 +1715,6 @@ function PageRowLi({
   onVerify,
   setPageProperty,
   moveToArea,
-  duplicatePage,
   deletePage,
   navigate,
 }: {
@@ -1732,7 +1726,6 @@ function PageRowLi({
   onVerify: (pageId: string) => void;
   setPageProperty: ReturnType<typeof useSetPageProperty>;
   moveToArea: ReturnType<typeof useMovePageToArea>;
-  duplicatePage: ReturnType<typeof useDuplicatePage>;
   deletePage: ReturnType<typeof useDeletePage>;
   navigate: ReturnType<typeof useNavigate>;
 }) {
@@ -1786,7 +1779,6 @@ function PageRowLi({
       },
       mctx,
     );
-  void duplicatePage; // Sidebar page menu no longer offers Duplicate (CHUNK 3a).
   void me;
   void props;
   return (

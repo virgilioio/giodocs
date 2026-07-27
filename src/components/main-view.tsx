@@ -594,6 +594,17 @@ function FilterBuilderContent({
   })();
   const [step, setStep] = useState<BuilderStep>(initialStep);
 
+  const ROOT_ICON: Record<string, string> = {
+    area: "M4 12h14m-5-5 5 5-5 5",
+    owner:
+      "M12 3.4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 20.6v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2",
+    status: "M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8z",
+    stage: "M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8z",
+    priority: "M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8z",
+    tags:
+      "M20.4 13.6 13.6 20.4a2 2 0 0 1-2.8 0L3.6 13.2V4.4a.8.8 0 0 1 .8-.8h8.8l7.2 7.2a2 2 0 0 1 0 2.8zM7.6 7.6h.01",
+    __freshness: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7.5V12l3.2 1.9",
+  };
   const rootItems: Array<{ key: string; label: string }> = [];
   for (const k of ["area", "owner", "status", "stage", "priority", "tags"]) {
     const def = propDefs.find((d) => d.key === k);
@@ -609,12 +620,29 @@ function FilterBuilderContent({
         {rootItems.map((it) => (
           <BuilderRow
             key={it.key}
+            leading={
+              <svg viewBox="0 0 24 24" width={15} height={15} aria-hidden style={{ flex: "none", color: "var(--color-muted)" }}>
+                <path d={ROOT_ICON[it.key] ?? ""} fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            }
             onClick={() => setStep({ kind: "prop", propKey: it.key })}
-            trailing={<span style={{ color: "var(--color-whisper)" }}>›</span>}
+            trailing={<span className="font-mono" style={{ color: "var(--color-whisper)", fontSize: 11.5 }}>›</span>}
           >
             {it.label}
           </BuilderRow>
         ))}
+        <div
+          style={{
+            borderTop: "1px solid var(--color-lineSoft)",
+            margin: "4px 4px 0",
+            padding: "8px 7px 4px",
+            fontSize: 12.5,
+            lineHeight: 1.45,
+            color: "var(--color-whisper)",
+          }}
+        >
+          Filters combine with and. Two filters on one property replace each other.
+        </div>
       </div>
     );
   }
@@ -1771,6 +1799,7 @@ export function MainView({ selection }: { selection: Selection }) {
               onPublish: doPublish,
               onUnpublish: doUnpublish,
               onDelete: doDelete,
+              onExportView: () => setExportOpen(true),
             },
             mctx,
           )
@@ -1994,6 +2023,7 @@ function buildViewToolbarSpec(
     onPublish: () => void;
     onUnpublish: () => void;
     onDelete: () => void;
+    onExportView: () => void;
   },
   mctx: { setSpec: (s: MenuSpec) => void; close: () => void },
 ): MenuSpec {
@@ -2103,6 +2133,16 @@ function buildViewToolbarSpec(
     hint: { text: "⌘⌥L", mono: true },
     onPick: () => {
       args.onCopyLink();
+      mctx.close();
+    },
+  });
+  rows.push({
+    kind: "row",
+    label: "Export view",
+    icon: "download",
+    hint: { text: "CSV, Markdown" },
+    onPick: () => {
+      args.onExportView();
       mctx.close();
     },
   });

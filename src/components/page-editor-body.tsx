@@ -12,7 +12,11 @@ import { createPortal } from "react-dom";
 import type { Block } from "@/lib/types";
 import { moveBlock, moveRun, deleteIndices } from "@/lib/reorder";
 import { blockToMarkdown } from "@/lib/export";
+import { blockHandleFooter } from "@/lib/block-handle-footer";
 import { useToast } from "@/lib/toast";
+import { RowMenu, type MenuSpec, type MenuRow } from "./row-menu";
+
+
 
 
 /* Editable body for a page. All blocks are auto-growing textareas
@@ -159,12 +163,16 @@ export function EditableBody({
   onChange,
   onBlur,
   locked,
+  editedRel,
+  editorFirstName,
 }: {
   pageId: string;
   initialBlocks: unknown[];
   onChange: (blocks: Blk[]) => void;
   onBlur?: () => void;
   locked?: boolean;
+  editedRel?: string | null;
+  editorFirstName?: string | null;
 }) {
   const [blocks, setBlocks] = useState<Blk[]>(() => {
     const n = normalize(initialBlocks);
@@ -262,10 +270,17 @@ export function EditableBody({
     [blocks],
   );
 
-  const handlePlainClick = useCallback(() => {
-    // Plain click on a handle without shift clears any selection.
-    clearSelection();
-  }, [clearSelection]);
+  const [handleMenu, setHandleMenu] = useState<{
+    blockId: string;
+    anchor: HTMLElement;
+    spec: MenuSpec;
+  } | null>(null);
+  const closeHandleMenu = useCallback(() => setHandleMenu(null), []);
+  const setHandleMenuSpec = useCallback((spec: MenuSpec) => {
+    setHandleMenu((cur) => (cur ? { ...cur, spec } : cur));
+  }, []);
+
+
 
   /* ────────── Drag: pointer session on a handle ────────── */
 
@@ -708,6 +723,261 @@ export function EditableBody({
     [blocks, commit],
   );
 
+  /* ────────── Block-handle menu: run ops (Move up/down, Duplicate, Delete, Copy link) ────────── */
+
+  const getRunIndicesForBlock = useCallback(
+    (blockId: string): number[] => {
+      const ids = blocks.map((b) => b.id);
+      const idx = ids.indexOf(blockId);
+      if (idx < 0) return [];
+      if (selectedIds.has(blockId) && selectedIds.size > 1) {
+        return ids
+          .map((id, i) => (selectedIds.has(id) ? i : -1))
+          .filter((i) => i >= 0)
+          .sort((a, b) => a - b);
+      }
+      return [idx];
+    },
+    [blocks, selectedIds],
+  );
+
+  const runMoveUp = useCallback(
+    (blockId: string) => {
+      const run = getRunIndicesForBlock(blockId);
+      if (!run.length || run[0] === 0) return;
+      const runStart = run[0];
+      const runEnd = run[run.length - 1];
+      const next =
+        run.length === 1
+          ? moveBlock(blocks, runStart, runStart - 1)
+          : moveRun(blocks, runStart, runEnd, runStart - 1);
+      commit(next);
+    },
+    [blocks, commit, getRunIndicesForBlock],
+  );
+
+  const runMoveDown = useCallback(
+    (blockId: string) => {
+      const run = getRunIndicesForBlock(blockId);
+      if (!run.length) return;
+      const runStart = run[0];
+      const runEnd = run[run.length - 1];
+      if (runEnd >= blocks.length - 1) return;
+      const next =
+        run.length === 1
+          ? moveBlock(blocks, runStart, runStart + 1)
+          : moveRun(blocks, runStart, runEnd, runEnd + 2);
+      commit(next);
+    },
+    [blocks, commit, getRunIndicesForBlock],
+  );
+
+  const runDuplicate = useCallback(
+    (blockId: string) => {
+      const run = getRunIndicesForBlock(blockId);
+      if (!run.length) return;
+      const runEnd = run[run.length - 1];
+      const copies: Blk[] = run.map((i) => ({ ...blocks[i], id: nanoid(10) }));
+      const next = [...blocks];
+      next.splice(runEnd + 1, 0, ...copies);
+      commit(next);
+    },
+    [blocks, commit, getRunIndicesForBlock],
+  );
+
+  const runDelete = useCallback(
+    (blockId: string) => {
+      const run = getRunIndicesForBlock(blockId);
+      if (!run.length) return;
+      const next = deleteIndices(blocks, run, () => newBlock("text"));
+      clearSelection();
+      commit(next);
+    },
+    [blocks, commit, clearSelection, getRunIndicesForBlock],
+  );
+
+  const runTurnInto = useCallback(
+    (blockId: string, type: BlockType) => {
+      const run = getRunIndicesForBlock(blockId);
+      if (!run.length) return;
+      const next = [...blocks];
+      for (const i of run) {
+        const prev = next[i];
+        const nb: Blk = { ...prev, type };
+        if (type === "todo" && nb.checked == null) nb.checked = false;
+        if (type === "toggle" && nb.open == null) nb.open = false;
+        if (type === "callout" && !nb.icon) nb.icon = "💡";
+        if (type === "table" && !nb.rows) nb.rows = [["", "", ""], ["", "", ""]];
+        if (type === "divider") nb.text = "";
+        next[i] = nb;
+      }
+      commit(next);
+    },
+    [blocks, commit, getRunIndicesForBlock],
+  );
+
+  const copyBlockLink = useCallback(
+    (blockId: string) => {
+      const run = getRunIndicesForBlock(blockId);
+      const firstId = run.length ? blocks[run[0]].id : blockId;
+      const url = `${window.location.origin}/p/${pageId}#${firstId}`;
+      const write = navigator.clipboard?.writeText?.(url);
+      const after = () => toast.push("Link copied");
+      if (write && typeof (write as Promise<void>).then === "function") {
+        (write as Promise<void>).then(after).catch(() => after());
+      } else after();
+    },
+    [blocks, pageId, toast, getRunIndicesForBlock],
+  );
+
+  // ⌘D duplicates the current block or the selection run.
+  useEffect(() => {
+    if (locked) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key.toLowerCase() !== "d") return;
+      const target = e.target as HTMLElement | null;
+      const inField =
+        !!target &&
+        (target.tagName === "TEXTAREA" ||
+          target.tagName === "INPUT" ||
+          target.isContentEditable);
+      let anchorId: string | null = null;
+      if (selectedIds.size > 0) {
+        anchorId = blocks.find((b) => selectedIds.has(b.id))?.id ?? null;
+      } else if (inField) {
+        const row = (target as HTMLElement).closest(
+          "[data-block-id]",
+        ) as HTMLElement | null;
+        anchorId = row?.dataset.blockId ?? null;
+      }
+      if (!anchorId) return;
+      e.preventDefault();
+      runDuplicate(anchorId);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [locked, blocks, selectedIds, runDuplicate]);
+
+  const buildBlockHandleSpec = useCallback(
+    (
+      blockId: string,
+      mctx: { setSpec: (s: MenuSpec) => void; close: () => void },
+    ): MenuSpec => {
+      const run = getRunIndicesForBlock(blockId);
+      const runStart = run[0] ?? 0;
+      const runEnd = run[run.length - 1] ?? 0;
+      const isMulti = run.length > 1;
+      const target = blocks[runStart];
+      const targetName =
+        BLOCK_MENU.find((m) => m.type === target?.type)?.name ??
+        target?.type ??
+        "Block";
+      const title = isMulti ? `${run.length} blocks` : targetName;
+      const atTop = runStart === 0;
+      const atEnd = runEnd >= blocks.length - 1;
+
+      const turnIntoSub: MenuRow[] = BLOCK_MENU.map((m) => ({
+        kind: "row",
+        label: m.name,
+        icon: "layout",
+        onPick: () => {
+          runTurnInto(blockId, m.type);
+          mctx.close();
+        },
+      }));
+
+      const rows: MenuRow[] = [
+        {
+          kind: "row",
+          label: "Turn into",
+          icon: "layout",
+          hint: { text: "›" },
+          onPick: () =>
+            mctx.setSpec({ title: "Turn into", rows: turnIntoSub }),
+        },
+        { kind: "sep" },
+        {
+          kind: "row",
+          label: "Duplicate",
+          icon: "dup",
+          hint: { text: "⌘D", mono: true },
+          onPick: () => {
+            runDuplicate(blockId);
+            mctx.close();
+          },
+        },
+        {
+          kind: "row",
+          label: "Copy link to block",
+          icon: "link",
+          hint: { text: "⌘⌥L", mono: true },
+          onPick: () => {
+            copyBlockLink(blockId);
+            mctx.close();
+          },
+        },
+        { kind: "sep" },
+        {
+          kind: "row",
+          label: "Move up",
+          icon: "chevUp",
+          hint: atTop ? { text: "at top" } : undefined,
+          onPick: () => {
+            runMoveUp(blockId);
+            mctx.close();
+          },
+        },
+        {
+          kind: "row",
+          label: "Move down",
+          icon: "chevDown",
+          hint: atEnd ? { text: "at end" } : undefined,
+          onPick: () => {
+            runMoveDown(blockId);
+            mctx.close();
+          },
+        },
+        { kind: "sep" },
+        {
+          kind: "row",
+          label: "Delete",
+          icon: "trash",
+          danger: true,
+          onPick: () => {
+            runDelete(blockId);
+            mctx.close();
+          },
+        },
+      ];
+
+      const footer = blockHandleFooter({
+        editedRel: editedRel ?? null,
+        firstName: editorFirstName ?? null,
+      });
+
+      return {
+        title,
+        rows,
+        ...(footer ? { footer } : {}),
+      };
+    },
+    [
+      blocks,
+      copyBlockLink,
+      editedRel,
+      editorFirstName,
+      getRunIndicesForBlock,
+      runDelete,
+      runDuplicate,
+      runMoveDown,
+      runMoveUp,
+      runTurnInto,
+    ],
+  );
+
+
+
   /* ────────── Per-block ops ────────── */
 
   function updateBlock(id: string, patch: Partial<Blk>) {
@@ -888,7 +1158,13 @@ export function EditableBody({
           dimmed={draggingIdSet.has(b.id)}
           registerRowEl={registerRowEl}
           onHandlePointerDown={(ev) => beginDrag(b.id, ev)}
-          onHandlePlainClick={handlePlainClick}
+          onHandleClick={(anchor) => {
+            const initial = buildBlockHandleSpec(b.id, {
+              setSpec: setHandleMenuSpec,
+              close: closeHandleMenu,
+            });
+            setHandleMenu({ blockId: b.id, anchor, spec: initial });
+          }}
           onHandleShiftClick={() => handleShiftClick(b.id)}
           onBlur={onBlur}
           registerRef={(el) => {
@@ -1113,6 +1389,13 @@ export function EditableBody({
             document.body,
           )
         : null}
+      {handleMenu ? (
+        <RowMenu
+          spec={handleMenu.spec}
+          anchor={handleMenu.anchor}
+          onClose={closeHandleMenu}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1126,7 +1409,7 @@ function BlockRow({
   dimmed,
   registerRowEl,
   onHandlePointerDown,
-  onHandlePlainClick,
+  onHandleClick,
   onHandleShiftClick,
   onBlur,
   registerRef,
@@ -1142,7 +1425,7 @@ function BlockRow({
   dimmed: boolean;
   registerRowEl: (id: string, el: HTMLElement | null) => void;
   onHandlePointerDown: (ev: React.PointerEvent<HTMLElement>) => void;
-  onHandlePlainClick: () => void;
+  onHandleClick: (anchor: HTMLElement) => void;
   onHandleShiftClick: () => void;
   onBlur?: () => void;
   registerRef: (el: HTMLTextAreaElement | HTMLInputElement | null) => void;
@@ -1205,8 +1488,8 @@ function BlockRow({
                 onHandleShiftClick();
                 return;
               }
-              // Plain click: clear any active selection, do nothing else.
-              onHandlePlainClick();
+              // Plain click: open the block-handle menu anchored to this button.
+              onHandleClick(e.currentTarget as HTMLElement);
             }}
             className={
               "grid h-6 w-6 place-items-center rounded-md hover:bg-sunken " +
