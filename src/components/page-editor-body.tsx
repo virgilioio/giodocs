@@ -1696,17 +1696,34 @@ export function EditableBody({
       .sort((a, b) => a - b);
     return idxs.length ? { start: idxs[0], end: idxs[idxs.length - 1] } : null;
   }, [dragging, blocks]);
-  // Hide indicator when a run drop would land inside the run.
+  // Hide indicator when a same-list drop would land inside the run.
   const indicatorVisible =
     dragging &&
     dragging.gap != null &&
-    dragging.indicatorY != null &&
-    (runIdxs
-      ? dragging.gap < runIdxs.start || dragging.gap > runIdxs.end + 1
-      : (() => {
-          const from = blocks.findIndex((b) => b.id === dragging.ids[0]);
-          return from < 0 ? true : dragging.gap !== from && dragging.gap !== from + 1;
-        })());
+    dragging.indicator != null &&
+    (() => {
+      const sameList =
+        (dragging.sourceCol === null && dragging.targetCol === null) ||
+        (dragging.sourceCol &&
+          dragging.targetCol &&
+          dragging.sourceCol.blockId === dragging.targetCol.blockId &&
+          dragging.sourceCol.colIndex === dragging.targetCol.colIndex);
+      if (!sameList) return true;
+      if (runIdxs) {
+        return dragging.gap < runIdxs.start || dragging.gap > runIdxs.end + 1;
+      }
+      // Single-block same-list: hide on the block's own two adjacent gaps.
+      const id = dragging.ids[0];
+      const sourceCol = dragging.sourceCol;
+      let from = -1;
+      if (sourceCol === null) {
+        from = blocks.findIndex((b) => b.id === id);
+      } else {
+        const b = blocks.find((x) => x.id === sourceCol.blockId);
+        if (b?.cols) from = (b.cols[sourceCol.colIndex] as Blk[]).findIndex((x) => x.id === id);
+      }
+      return from < 0 ? true : dragging.gap !== from && dragging.gap !== from + 1;
+    })();
 
   const ordinalMap = useMemo(() => numberedOrdinals(blocks), [blocks]);
 
