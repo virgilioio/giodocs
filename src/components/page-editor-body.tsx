@@ -2839,8 +2839,8 @@ function ColumnStack({
       if (parsed.length === 0) return;
       e.preventDefault();
       const ta = e.currentTarget;
-      const caret =
-        ta.selectionStart ?? (blocks.find((b) => b.id === blockId)?.text ?? "").length;
+      const src = blocks.find((b) => b.id === blockId)?.text ?? "";
+      const caret = readCaret(ta, src)?.start ?? src.length;
       applyOp(splicePasteAtCaret(blocks, blockId, caret, parsed));
     },
     [blocks, locked, applyOp],
