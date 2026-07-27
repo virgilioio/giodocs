@@ -1218,8 +1218,8 @@ function BlockRow({
                 onHandleShiftClick();
                 return;
               }
-              // Plain click: clear any active selection, do nothing else.
-              onHandlePlainClick();
+              // Plain click: open the block-handle menu anchored to this button.
+              onHandleClick(e.currentTarget as HTMLElement);
             }}
             className={
               "grid h-6 w-6 place-items-center rounded-md hover:bg-sunken " +
