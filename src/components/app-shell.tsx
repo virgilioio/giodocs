@@ -1351,7 +1351,7 @@ function AreaLi({
   );
 }
 
-/** Stateful content for the area menu — rename swaps in place. */
+/** Stateful content for the area menu — rename and clear swap in place. */
 function AreaMenu({
   area,
   count,
@@ -1373,7 +1373,8 @@ function AreaMenu({
   onChangeEmoji: () => void;
   onSaveAsView: () => void;
 }) {
-  const [mode, setMode] = useState<"list" | "rename">("list");
+  const [mode, setMode] = useState<"list" | "rename" | "clear">("list");
+  const clearArea = useClearArea();
   if (mode === "rename") {
     return (
       <RowMenuList
@@ -1389,6 +1390,26 @@ function AreaMenu({
           },
         }}
         footer="Every page with this area follows."
+      />
+    );
+  }
+  if (mode === "clear") {
+    return (
+      <RowMenuConfirm
+        title={`Clear "${area}"?`}
+        body={
+          count === 0 ? (
+            <>The area has no pages — it will just disappear from your sidebar.</>
+          ) : (
+            <>
+              The area is removed from <b>{count}</b>{" "}
+              {count === 1 ? "page" : "pages"}. The pages themselves are kept.
+            </>
+          )
+        }
+        confirmLabel="Clear area"
+        variant="danger"
+        onConfirm={() => clearArea.mutate(area)}
       />
     );
   }
@@ -1421,9 +1442,20 @@ function AreaMenu({
       hint: <Val>personal</Val>,
       onSelect: onSaveAsView,
     },
+    { kind: "divider" },
+    {
+      id: "clear",
+      label: "Clear area",
+      hint: <Val>{count === 0 ? "unused" : `${count} ${count === 1 ? "page" : "pages"}`}</Val>,
+      submenu: true,
+      keepOpen: true,
+      danger: true,
+      onSelect: () => setMode("clear"),
+    },
   ];
   return <RowMenuList title={title} items={items} />;
 }
+
 
 /**
  * Emoji slot for an area row — clickable target that opens the shared
