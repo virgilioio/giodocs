@@ -1296,13 +1296,4 @@ export function PageEditor({ pageId }: { pageId: string }) {
   );
 }
 
-async function updatePageIcon(
-  pageId: string,
-  icon: string,
-  qc: ReturnType<typeof useQueryClient>,
-) {
-  const { supabase } = await import("@/integrations/supabase/client");
-  await supabase.from("pages").update({ icon }).eq("id", pageId);
-  qc.invalidateQueries({ queryKey: qk.page(pageId) });
-}
 
