@@ -1388,7 +1388,6 @@ function AreaLi({
   onVerify,
   setPageProperty,
   moveToArea,
-  duplicatePage,
   deletePage,
   navigate,
 }: {
@@ -1406,7 +1405,6 @@ function AreaLi({
   onVerify: (pageId: string) => void;
   setPageProperty: ReturnType<typeof useSetPageProperty>;
   moveToArea: ReturnType<typeof useMovePageToArea>;
-  duplicatePage: ReturnType<typeof useDuplicatePage>;
   deletePage: ReturnType<typeof useDeletePage>;
   navigate: ReturnType<typeof useNavigate>;
 }) {
