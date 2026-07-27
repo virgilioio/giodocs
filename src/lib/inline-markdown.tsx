@@ -148,24 +148,27 @@ function parseNodes(
       }
     }
 
-    // Italic: *…* or _…_
-    if (c === "*" || c === "_") {
+    // Italic: *…*   — underscore is deliberately NOT supported here.
+    // See the header comment for why (legal-contract fill-in blanks).
+    if (c === "*") {
       let j = i + 1;
       while (j < text.length) {
         if (text[j] === "\\") {
           j += 2;
           continue;
         }
-        if (text[j] === c) break;
-        // Do not consume another opening ** by accident — bail out italic
-        // scan if we hit a bold delimiter of the same char.
-        if (c === "*" && text[j] === "*" && text[j + 1] === "*") {
-          j = -1;
+        if (text[j] === "*") {
+          // Do not consume another opening ** by accident — bail out italic
+          // scan if we hit a bold delimiter.
+          if (text[j + 1] === "*") {
+            j = -1;
+            break;
+          }
           break;
         }
         j++;
       }
-      if (j > i + 1 && j < text.length) {
+      if (j > i + 1 && j < text.length && text[j] === "*") {
         flush();
         out.push(
           <em
