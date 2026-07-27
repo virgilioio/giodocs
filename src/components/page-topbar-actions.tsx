@@ -191,6 +191,7 @@ function PageActionsMenu({
   access,
   areas,
   onCopyLink,
+  onExport,
   onDuplicate,
   onMoveArea,
   onVerify,
@@ -205,6 +206,7 @@ function PageActionsMenu({
   access: PageAccessRow[];
   areas: string[];
   onCopyLink: () => void;
+  onExport: () => void;
   onDuplicate: () => void;
   onMoveArea: (area: string | null) => void;
   onVerify: () => void;
