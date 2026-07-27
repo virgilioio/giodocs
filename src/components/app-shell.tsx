@@ -26,6 +26,8 @@ import {
 
   useDuplicatePage,
   useForkView,
+  useUnpublishView,
+
   useMovePageToArea,
   useRenameArea,
   useSetPageProperty,
