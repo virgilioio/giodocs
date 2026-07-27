@@ -9,9 +9,11 @@ describe("renderInline — six forms", () => {
     expect(html("**strong**")).toContain("<strong");
     expect(html("**strong**")).toContain(">strong<");
   });
-  it("renders italic with * and _", () => {
+  it("renders italic with * (underscore is NOT a delimiter)", () => {
     expect(html("*a*")).toContain("<em");
-    expect(html("_b_")).toContain("<em");
+    // Deliberately: _b_ must NOT parse as italic — see file header.
+    expect(html("_b_")).not.toContain("<em");
+    expect(html("_b_")).toContain("_b_");
   });
   it("renders strike", () => {
     expect(html("~~gone~~")).toContain("<s");
