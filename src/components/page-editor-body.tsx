@@ -137,11 +137,13 @@ const BLOCK_MENU: MenuItem[] = [
   { type: "text", name: "Text", desc: "Plain writing. The default.", icon: "Aa" },
   { type: "h1", name: "Heading 1", desc: "Big section title.", icon: "H1" },
   { type: "h2", name: "Heading 2", desc: "Sub-section title.", icon: "H2" },
+  { type: "h3", name: "Heading 3", desc: "Smaller section title.", icon: "H3" },
   { type: "bullet", name: "Bullet list", desc: "Unordered points.", icon: "•" },
   { type: "numbered", name: "Numbered list", desc: "Steps, in order.", icon: "1." },
   { type: "todo", name: "To-do", desc: "A checkbox that means it.", icon: "☑" },
   { type: "toggle", name: "Toggle", desc: "Details, tucked away.", icon: "▸" },
   { type: "quote", name: "Quote", desc: "Someone said it better.", icon: "\u201D" },
+  { type: "caption", name: "Caption", desc: "A quiet note.", icon: "c" },
   {
     type: "callout",
     name: "Callout",
