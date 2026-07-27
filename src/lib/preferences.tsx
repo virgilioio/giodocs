@@ -81,7 +81,10 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ ...prefs, prefsVersion: PREFS_VERSION }),
+    );
   }, [prefs]);
 
   useEffect(() => {
