@@ -1419,32 +1419,38 @@ export function PageEditor({ pageId }: { pageId: string }) {
       </div>
 
 
-      {/* 5. Properties strip. */}
-      <div style={{ marginTop: 18 }}>
-        <PropertyStrip
-          page={page}
-          propDefs={propDefs}
-          members={members}
-          meId={meId}
-          pages={(shell.pages.data ?? []) as PageListItem[]}
-          areas={areasList}
-          onSet={(key, value) => {
-            if (key === "icon") {
-              if (typeof value === "string" && value)
-                setPageIcon.mutate({ pageId: page.id, icon: value });
-              return;
-            }
-            setProp.mutate({ pageId: page.id, key, value });
-          }}
+      {/* 5. Properties strip. The strip owns its own top hairline —
+       * marginTop 22 + border-top + padding-top 8 — so no wrapper spacing
+       * here. */}
+      <PropertyStrip
+        page={page}
+        propDefs={propDefs}
+        members={members}
+        meId={meId}
+        pages={(shell.pages.data ?? []) as PageListItem[]}
+        areas={areasList}
+        onSet={(key, value) => {
+          if (key === "icon") {
+            if (typeof value === "string" && value)
+              setPageIcon.mutate({ pageId: page.id, icon: value });
+            return;
+          }
+          setProp.mutate({ pageId: page.id, key, value });
+        }}
+      />
 
-        />
-      </div>
+      {/* 6. Body divider — a matching bracket to the strip's top rule:
+       * 22px from the strip's last row, hairline var(--color-line), then
+       * 8px padding before the body. */}
+      <div
+        id="page-body"
+        style={{
+          marginTop: 22,
+          borderTop: "1px solid var(--color-line)",
+          paddingTop: 8,
+        }}
+      >
 
-      {/* 6. Hairline divider. */}
-      <div className="border-t border-lineSoft" style={{ marginTop: 20 }} />
-
-      {/* 7. Editable body. */}
-      <div id="page-body" style={{ marginTop: 26 }}>
         <EditableBody
           pageId={page.id}
           initialBlocks={blocks}
