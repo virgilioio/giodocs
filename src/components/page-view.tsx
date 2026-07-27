@@ -951,6 +951,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
   const rename = useRenamePage();
   const updateBlocks = useUpdateBlocks();
   const archive = useArchivePage();
+  const setPageIcon = useSetPageIcon();
 
   const qc = useQueryClient();
   const { prefs } = usePrefs();
