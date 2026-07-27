@@ -59,6 +59,7 @@ import { EmojiPicker } from "./emoji-picker";
 import type { ExportViewRow } from "@/lib/export";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
+import { isTypingTarget } from "@/lib/is-typing";
 
 type Layout = "table" | "board" | "list";
 
@@ -1718,15 +1719,8 @@ export function MainView({ selection }: { selection: Selection }) {
   // Wire the mono keyboard hints the toolbar promises. Guard against
   // focus in typable elements so shortcuts never eat a keystroke.
   useEffect(() => {
-    const isTypable = (el: EventTarget | null): boolean => {
-      if (!(el instanceof HTMLElement)) return false;
-      const tag = el.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT")
-        return true;
-      return el.isContentEditable;
-    };
     const onKey = (e: KeyboardEvent) => {
-      if (isTypable(document.activeElement)) return;
+      if (isTypingTarget(e.target)) return;
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
       const k = e.key.toLowerCase();

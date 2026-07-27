@@ -20,6 +20,7 @@ import { rowsInBand } from "@/lib/marquee";
 import { blockHandleFooter } from "@/lib/block-handle-footer";
 import { useToast } from "@/lib/toast";
 import { RowMenu, type MenuSpec, type MenuRow } from "./row-menu";
+import { isTypingTarget, shouldSelectAllBlocks } from "@/lib/is-typing";
 
 
 
@@ -472,18 +473,14 @@ export function EditableBody({
   useEffect(() => {
     if (selectedIds.size === 0) return;
     const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const inField =
-        !!target &&
-        (target.tagName === "TEXTAREA" ||
-          target.tagName === "INPUT" ||
-          target.isContentEditable);
+      // Escape is a deliberate exception to the typing guard.
       if (e.key === "Escape") {
         e.preventDefault();
         clearSelection();
         return;
       }
-      if ((e.key === "Delete" || e.key === "Backspace") && !inField) {
+      if (isTypingTarget(e.target)) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
         const ids = blocks.map((b) => b.id);
         const toDrop = ids
@@ -508,13 +505,8 @@ export function EditableBody({
       if (!(e.metaKey || e.ctrlKey)) return;
       const key = e.key.toLowerCase();
       if (key !== "c" && key !== "x") return;
-      const target = e.target as HTMLElement | null;
-      const inField =
-        !!target &&
-        (target.tagName === "TEXTAREA" ||
-          target.tagName === "INPUT" ||
-          target.isContentEditable);
-      if (inField) return; // native copy stays intact inside text
+      // Native copy/cut must win while the caret is in a text field.
+      if (isTypingTarget(e.target)) return;
       e.preventDefault();
       const selected = blocks.filter((b) => selectedIds.has(b.id));
       const md = selected.map(blockToMarkdown).join("\n\n");
@@ -542,6 +534,24 @@ export function EditableBody({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [selectedIds, blocks, commit, clearSelection, locked, toast]);
+
+  /* ────────── ⌘A — select all blocks (block-selection scope) ──────────
+   * The in-textarea two-stage behaviour lives in the textarea onKeyDown.
+   * This handler only fires when a block-selection is already active AND
+   * focus is outside a text field, so ⌘A extends that selection to the
+   * whole document. */
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key.toLowerCase() !== "a") return;
+      if (isTypingTarget(e.target)) return;
+      e.preventDefault();
+      setSelectedIds(new Set(blocks.map((b) => b.id)));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedIds, blocks]);
 
   /* ────────── Paste Markdown → real blocks ──────────
    * Inverse of the copy path above. If the pasted text has no newline and
@@ -977,27 +987,16 @@ export function EditableBody({
     [blocks, pageId, toast, getRunIndicesForBlock],
   );
 
-  // ⌘D duplicates the current block or the selection run.
+  // ⌘D duplicates the current block-selection run. Yields to text fields
+  // — inside a textarea the browser's native ⌘D (or nothing) wins.
   useEffect(() => {
     if (locked) return;
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key.toLowerCase() !== "d") return;
-      const target = e.target as HTMLElement | null;
-      const inField =
-        !!target &&
-        (target.tagName === "TEXTAREA" ||
-          target.tagName === "INPUT" ||
-          target.isContentEditable);
-      let anchorId: string | null = null;
-      if (selectedIds.size > 0) {
-        anchorId = blocks.find((b) => selectedIds.has(b.id))?.id ?? null;
-      } else if (inField) {
-        const row = (target as HTMLElement).closest(
-          "[data-block-id]",
-        ) as HTMLElement | null;
-        anchorId = row?.dataset.blockId ?? null;
-      }
+      if (isTypingTarget(e.target)) return;
+      if (selectedIds.size === 0) return;
+      const anchorId = blocks.find((b) => selectedIds.has(b.id))?.id ?? null;
       if (!anchorId) return;
       e.preventDefault();
       runDuplicate(anchorId);
@@ -1385,6 +1384,19 @@ export function EditableBody({
             if (e.key === "Escape") {
               e.preventDefault();
               el.blur();
+              return;
+            }
+
+            // ⌘A two-stage. First press: shouldSelectAllBlocks() returns
+            // false → let the browser select the block's text natively.
+            // Second press (text already fully selected, or empty block) →
+            // preventDefault, blur, and select every block on the page.
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+              if (shouldSelectAllBlocks(ss, se, v.length)) {
+                e.preventDefault();
+                el.blur();
+                setSelectedIds(new Set(blocks.map((x) => x.id)));
+              }
               return;
             }
 
