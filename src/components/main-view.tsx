@@ -289,7 +289,7 @@ function QueryToolbar({
   pages: PageListItem[];
   verbose: boolean;
   pill?: ReactNode;
-  menuBuild: () => ReactNode;
+  menuSpec: (ctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
 }) {
   const pickFilter = (picked: Filter) =>
     onChangeFilters(applyFilterReplacement(filters, picked));
