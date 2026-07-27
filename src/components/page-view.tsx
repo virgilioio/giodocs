@@ -189,8 +189,8 @@ function FreshnessRow({
   if (justVerified) {
     return (
       <div
-        className="flex w-full items-center gap-2 rounded-lg border border-accentRing bg-accentTint px-3 py-2 text-row"
-        style={{ borderRadius: 10 }}
+        className="flex w-full items-center rounded-lg border border-accentRing bg-accentTint text-row"
+        style={{ borderRadius: 10, padding: "12px 13px", gap: 10 }}
       >
         <Glyph path="M5 12l5 5 9-11" className="h-4 w-4 text-accent" />
         <span className="font-bold text-accent">
@@ -203,8 +203,8 @@ function FreshnessRow({
   if (isStale) {
     return (
       <div
-        className="flex w-full items-center gap-2 rounded-lg border border-amberRing bg-amberTint px-3 py-2 text-row"
-        style={{ borderRadius: 10 }}
+        className="flex w-full items-center rounded-lg border border-amberRing bg-amberTint text-row"
+        style={{ borderRadius: 10, padding: "12px 13px", gap: 10 }}
       >
         <Glyph
           path="M12 3l10 18H2L12 3zM12 10v5M12 18h.01"
@@ -217,7 +217,7 @@ function FreshnessRow({
           type="button"
           onClick={onVerify}
           className="ml-auto rounded-md border border-line bg-surface px-3 text-meta text-amberInk hover:bg-amberTint"
-          style={{ height: 32 }}
+          style={{ height: 24 }}
         >
           Still accurate ✓
         </button>
@@ -227,8 +227,8 @@ function FreshnessRow({
 
   return (
     <div
-      className="flex w-full items-center gap-2 rounded-lg border border-line bg-track px-3 py-2 text-row"
-      style={{ borderRadius: 10 }}
+      className="flex w-full items-center rounded-lg border border-line bg-track text-row"
+      style={{ borderRadius: 10, padding: "12px 13px", gap: 10 }}
     >
       <Glyph
         path="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3zM8.5 12l2.5 2.5L16 9.5"
@@ -241,7 +241,7 @@ function FreshnessRow({
         type="button"
         onClick={onVerify}
         className="ml-auto rounded-md border border-line bg-surface px-3 text-meta text-body hover:bg-rail"
-        style={{ height: 32 }}
+        style={{ height: 24 }}
       >
         Still accurate ✓
       </button>
@@ -871,16 +871,16 @@ function PropertyStrip({
           <div
             key={r.key}
             className={
-              "flex items-center gap-3 rounded-md px-1 " +
+              "flex items-center rounded-md px-1 " +
               (active ? "bg-sunken" : "")
             }
-            style={{ minHeight: 32 }}
+            style={{ height: 20, gap: 10 }}
             onMouseEnter={() => setHoverKey(r.key)}
             onMouseLeave={() => setHoverKey(null)}
           >
             <div
               className="flex shrink-0 items-center gap-1 text-meta text-muted"
-              style={{ width: 132 }}
+              style={{ width: 118, flex: "none" }}
             >
               <span>{labelFor(r.key, propDefs)}</span>
               {showX ? (
@@ -918,10 +918,10 @@ function PropertyStrip({
       })}
 
       <div
-        className="flex items-center gap-3 rounded-md px-1"
-        style={{ minHeight: 32 }}
+        className="flex items-center rounded-md px-1"
+        style={{ height: 20, gap: 10 }}
       >
-        <div className="shrink-0 text-meta text-muted" style={{ width: 132 }}>
+        <div className="shrink-0 text-meta text-muted" style={{ width: 118, flex: "none" }}>
           Last verified
         </div>
         <div className="min-w-0 flex-1 text-meta text-secondary">
