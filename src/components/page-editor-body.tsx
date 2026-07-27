@@ -75,6 +75,8 @@ import {
 import { resolveKey, type Op as KeyOp } from "@/lib/block-key-handler";
 import { toggleWrap } from "@/lib/toggle-wrap";
 import { FloatingToolbar } from "./floating-toolbar";
+import { Editable } from "./editable";
+import { readCaret, writeCaret } from "@/lib/caret-shim";
 import { ordinalLabel } from "@/lib/blocks";
 
 /** Module-local bridge: nested ColumnStack keystrokes set this before
@@ -303,7 +305,7 @@ export function EditableBody({
     }
   }, [pageId, initialBlocks]);
 
-  const refs = useRef<Record<string, HTMLTextAreaElement | HTMLInputElement | null>>({});
+  const refs = useRef<Record<string, HTMLElement | null>>({});
   const [focusRequest, setFocusRequest] = useState<{
     id: string;
     caret?: number | "end" | "start";
@@ -318,24 +320,21 @@ export function EditableBody({
     const el = refs.current[focusRequest.id];
     if (!el) return;
     el.focus({ preventScroll: true });
-    if ("setSelectionRange" in el) {
-      const v = (el as HTMLTextAreaElement).value;
-      const c =
-        focusRequest.caret === "end"
-          ? v.length
-          : focusRequest.caret === "start" || focusRequest.caret == null
-            ? 0
-            : Math.min(focusRequest.caret, v.length);
-      try {
-        (el as HTMLTextAreaElement).setSelectionRange(c, c);
-      } catch {
-        /* input types that don't support selection */
-      }
+    const src = blocks.find((b) => b.id === focusRequest.id)?.text ?? "";
+    const c =
+      focusRequest.caret === "end"
+        ? src.length
+        : focusRequest.caret === "start" || focusRequest.caret == null
+          ? 0
+          : Math.min(focusRequest.caret, src.length);
+    try {
+      writeCaret(el, src, c, c);
+    } catch {
+      /* elements that don't support caret placement */
     }
-    // Only scroll if the target is outside the visible area.
-    const rect = (el as HTMLElement).getBoundingClientRect();
+    const rect = el.getBoundingClientRect();
     if (rect.top < 0 || rect.bottom > window.innerHeight) {
-      (el as HTMLElement).scrollIntoView({ block: "nearest" });
+      el.scrollIntoView({ block: "nearest" });
     }
     setFocusRequest(null);
   }, [focusRequest, blocks]);
@@ -372,10 +371,11 @@ export function EditableBody({
     const id = focusedIdRef.current;
     if (!id) return null;
     const el = refs.current[id];
-    if (!el || !("selectionStart" in el)) return null;
-    const off = (el as HTMLTextAreaElement).selectionStart;
-    if (typeof off !== "number") return null;
-    return { blockId: id, offset: off };
+    if (!el) return null;
+    const src = blocksRef.current.find((b) => b.id === id)?.text ?? "";
+    const car = readCaret(el, src);
+    if (!car) return null;
+    return { blockId: id, offset: car.start };
   }
 
   const commit = useCallback(
@@ -982,7 +982,7 @@ export function EditableBody({
    * ordinary text (undo history stays intact). Otherwise we splice parsed
    * blocks at the caret — or replace the current block-selection run. */
   const handlePaste = useCallback(
-    (blockId: string, e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    (blockId: string, e: React.ClipboardEvent<HTMLElement>) => {
       if (locked) return;
       const htmlSrc = e.clipboardData?.getData("text/html") ?? "";
       const plainSrc = e.clipboardData?.getData("text/plain") ?? "";
@@ -1016,8 +1016,9 @@ export function EditableBody({
         clearSelection();
       } else {
         // Splice at caret within the target block, via the shared op.
-        const ta = e.currentTarget as HTMLTextAreaElement;
-        const caret = ta.selectionStart ?? (blocks[idx].text ?? "").length;
+        const ta = e.currentTarget;
+        const src = blocks[idx].text ?? "";
+        const caret = readCaret(ta, src)?.start ?? src.length;
         const r = splicePasteAtCaret(blocks, blockId, caret, parsed);
         if (!r) return;
         next = r.next;
@@ -1829,11 +1830,6 @@ export function EditableBody({
       {blocks.map((b) => (
         <BlockRow
           key={b.id}
-          focused={focusedId === b.id}
-          onRequestFocus={(caret) => {
-            setFocusedId(b.id);
-            setFocusRequest({ id: b.id, caret });
-          }}
           onEditorFocus={() => setFocusedId(b.id)}
           onEditorBlur={() =>
             setFocusedId((cur) => (cur === b.id ? null : cur))
@@ -1861,8 +1857,8 @@ export function EditableBody({
           onChange={(patch) => updateBlock(b.id, patch)}
           onInput={(val) => {
             if (tryMarkdown(b.id, val)) return;
-            const el = refs.current[b.id] as HTMLTextAreaElement | undefined;
-            const caret = el?.selectionStart ?? val.length;
+            const el = refs.current[b.id];
+            const caret = el ? (readCaret(el, val)?.start ?? val.length) : val.length;
             const before = val.slice(0, caret);
             const slashPos = before.lastIndexOf("/");
             const openable =
@@ -1881,10 +1877,11 @@ export function EditableBody({
           }}
           onKeyDown={(e) => {
             if (locked) return;
-            const el = e.currentTarget as HTMLTextAreaElement;
-            const v = el.value;
-            const ss = el.selectionStart ?? 0;
-            const se = el.selectionEnd ?? 0;
+            const el = e.currentTarget as HTMLElement;
+            const v = b.text ?? "";
+            const caret = readCaret(el, v) ?? { start: 0, end: 0 };
+            const ss = caret.start;
+            const se = caret.end;
 
             if (slash?.blockId === b.id) {
               if (e.key === "ArrowDown") {
@@ -1993,10 +1990,14 @@ export function EditableBody({
                 const bid = b.id;
                 const dir = op.dir;
                 requestAnimationFrame(() => {
-                  const cur = refs.current[bid] as HTMLTextAreaElement | undefined;
+                  const cur = refs.current[bid];
                   if (!cur || document.activeElement !== cur) return;
+                  const curBlk = blocks.find((x) => x.id === bid);
+                  const src = curBlk?.text ?? "";
+                  const car = readCaret(cur, src);
+                  if (!car) return;
                   if (dir === -1) {
-                    if (cur.selectionStart === 0 && cur.selectionEnd === 0) {
+                    if (car.start === 0 && car.end === 0) {
                       const idx = blocks.findIndex((x) => x.id === bid);
                       const target = nextEditableIndex(blocks, idx, -1);
                       if (target !== null) {
@@ -2006,8 +2007,8 @@ export function EditableBody({
                       }
                     }
                   } else {
-                    const l = cur.value.length;
-                    if (cur.selectionStart === l && cur.selectionEnd === l) {
+                    const l = src.length;
+                    if (car.start === l && car.end === l) {
                       const idx = blocks.findIndex((x) => x.id === bid);
                       const target = nextEditableIndex(blocks, idx, 1);
                       if (target !== null) {
@@ -2035,11 +2036,11 @@ export function EditableBody({
                 const r = toggleWrap(v, ss, se, op.open, op.close);
                 updateBlock(b.id, { text: r.text });
                 requestAnimationFrame(() => {
-                  const cur = refs.current[b.id] as HTMLTextAreaElement | undefined;
+                  const cur = refs.current[b.id];
                   if (!cur) return;
                   try {
                     cur.focus({ preventScroll: true });
-                    cur.setSelectionRange(r.start, r.end);
+                    writeCaret(cur, r.text, r.start, r.end);
                   } catch {
                     /* noop */
                   }
@@ -2185,8 +2186,6 @@ function BlockRow({
   locked,
   selected,
   dimmed,
-  focused,
-  onRequestFocus,
   onEditorFocus,
   onEditorBlur,
   registerRowEl,
@@ -2207,8 +2206,6 @@ function BlockRow({
   locked: boolean;
   selected: boolean;
   dimmed: boolean;
-  focused: boolean;
-  onRequestFocus: (caret: number | "end") => void;
   onEditorFocus: () => void;
   onEditorBlur: () => void;
   registerRowEl: (id: string, el: HTMLElement | null) => void;
@@ -2216,13 +2213,13 @@ function BlockRow({
   onHandleClick: (anchor: HTMLElement) => void;
   onHandleShiftClick: () => void;
   onBlur?: () => void;
-  registerRef: (el: HTMLTextAreaElement | HTMLInputElement | null) => void;
+  registerRef: (el: HTMLElement | null) => void;
   onChange: (patch: Partial<Blk>) => void;
   onInput: (val: string) => void;
-  onKeyDown: (e: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
+  onKeyDown: (e: ReactKeyboardEvent<HTMLElement>) => void;
   onAddBelow: () => void;
   onSetIcon: (icon: string) => void;
-  onPaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
+  onPaste: (e: React.ClipboardEvent<HTMLElement>) => void;
 }) {
   const noEditor = block.type === "divider";
   return (
@@ -2299,8 +2296,6 @@ function BlockRow({
         block={block}
         ordinal={ordinal}
         locked={locked}
-        focused={focused}
-        onRequestFocus={onRequestFocus}
         onEditorFocus={onEditorFocus}
         onEditorBlur={onEditorBlur}
         onBlur={onBlur}
@@ -2320,8 +2315,6 @@ function BlockContent({
   block,
   ordinal,
   locked,
-  focused,
-  onRequestFocus,
   onEditorFocus,
   onEditorBlur,
   onBlur,
@@ -2335,21 +2328,52 @@ function BlockContent({
   block: Blk;
   ordinal?: number;
   locked: boolean;
-  focused: boolean;
-  onRequestFocus: (caret: number | "end") => void;
   onEditorFocus: () => void;
   onEditorBlur: () => void;
   onBlur?: () => void;
-  registerRef: (el: HTMLTextAreaElement | HTMLInputElement | null) => void;
+  registerRef: (el: HTMLElement | null) => void;
   onChange: (patch: Partial<Blk>) => void;
   onInput: (val: string) => void;
-  onKeyDown: (e: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
+  onKeyDown: (e: ReactKeyboardEvent<HTMLElement>) => void;
   onSetIcon: (icon: string) => void;
-  onPaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
+  onPaste: (e: React.ClipboardEvent<HTMLElement>) => void;
 }) {
+  const t = block.type;
+  const rawText = block.text ?? "";
+
+  // Shared prose renderer. β: <Editable> IS the rendered view and
+  // IS the editable element — no swap, no showFormatted branch. The
+  // shared `gio-line` class survives so styles.css's parity rule
+  // still keys correctly and any future non-prose block that opts
+  // back in inherits the same metrics.
+  const editableCls = (className: string, extra?: string) =>
+    "gio-line " + className + (extra ? " " + extra : "");
+
+  const renderProse = (className: string, opts?: { placeholder?: string; extraClass?: string; ariaLabel?: string }) => (
+    <Editable
+      ref={(el) => registerRef(el)}
+      source={rawText}
+      onSourceChange={(val) => {
+        onChange({ text: val });
+        onInput(val);
+      }}
+      onKeyDown={onKeyDown as (e: ReactKeyboardEvent<HTMLDivElement>) => void}
+      onPaste={onPaste as (e: React.ClipboardEvent<HTMLDivElement>) => void}
+      onFocus={() => onEditorFocus()}
+      onBlur={() => {
+        onEditorBlur();
+        onBlur?.();
+      }}
+      locked={locked}
+      className={editableCls(className, opts?.extraClass)}
+      placeholder={opts?.placeholder}
+      ariaLabel={opts?.ariaLabel}
+    />
+  );
+
   const textareaProps = {
     ref: (el: HTMLTextAreaElement | null) => registerRef(el),
-    value: block.text ?? "",
+    value: rawText,
     onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       onChange({ text: e.target.value });
       onInput(e.target.value);
@@ -2359,83 +2383,14 @@ function BlockContent({
       onEditorBlur();
       onBlur?.();
     },
-    onKeyDown,
-    onPaste,
-    // BUG 3: readOnly (not disabled) keeps focus/selection intact but blocks
-    // typing when the page is locked. Also prevents native re-focus loss.
+    onKeyDown: onKeyDown as (e: ReactKeyboardEvent<HTMLTextAreaElement>) => void,
+    onPaste: onPaste as (e: React.ClipboardEvent<HTMLTextAreaElement>) => void,
     readOnly: locked,
     rows: 1,
     className:
       "w-full resize-none border-0 bg-transparent p-0 outline-none placeholder:text-faint",
     style: { overflow: "hidden" as const },
   };
-
-  const t = block.type;
-
-  // Rendered ↔ editable swap. Formatted view for every text-carrying block
-  // when it does not own focus (and always for locked pages). Empty blocks
-  // stay as textareas so the placeholder and click-to-type are preserved.
-  const rawText = block.text ?? "";
-  const canFormat = t !== "code" && t !== "table" && t !== "divider";
-  const showFormatted = canFormat && (locked || (!focused && rawText.length > 0));
-
-  function caretFromEvent(e: React.MouseEvent<HTMLDivElement>): number | "end" {
-    const x = e.clientX;
-    const y = e.clientY;
-    let range: Range | null = null;
-    const d = document as Document & {
-      caretRangeFromPoint?: (x: number, y: number) => Range | null;
-      caretPositionFromPoint?: (
-        x: number,
-        y: number,
-      ) => { offsetNode: Node; offset: number } | null;
-    };
-    if (typeof d.caretRangeFromPoint === "function") {
-      range = d.caretRangeFromPoint(x, y);
-    } else if (typeof d.caretPositionFromPoint === "function") {
-      const p = d.caretPositionFromPoint(x, y);
-      if (p) {
-        range = document.createRange();
-        range.setStart(p.offsetNode, p.offset);
-      }
-    }
-    if (!range) return "end";
-    let el: HTMLElement | null =
-      range.startContainer instanceof Element
-        ? (range.startContainer as HTMLElement)
-        : range.startContainer.parentElement;
-    while (el && !el.hasAttribute("data-o")) el = el.parentElement;
-    if (!el) return "end";
-    const base = parseInt(el.getAttribute("data-o") || "0", 10);
-    return Math.min(rawText.length, base + range.startOffset);
-  }
-
-  // Returns the div-or-textarea for a given wrapping className. Both
-  // branches carry `gio-line` (see styles.css) — that shared class is the
-  // ONLY guarantee that the div and the textarea measure identically.
-  // Tailwind utilities in `className` may reset border/padding too, but a
-  // separate class in a single stylesheet cannot drift as this file grows.
-  function renderSwap(className: string, extra?: string) {
-    const cls = "gio-line " + className + (extra ? " " + extra : "");
-    if (!showFormatted) {
-      return <GrowText {...textareaProps} className={cls} />;
-    }
-    return (
-      <div
-        className={cls + " cursor-text"}
-        onMouseDown={
-          locked
-            ? undefined
-            : (e) => {
-                e.preventDefault();
-                onRequestFocus(caretFromEvent(e));
-              }
-        }
-      >
-        {rawText ? renderInlineWithOffsets(rawText) : "\u200B"}
-      </div>
-    );
-  }
 
   if (t === "columns" && Array.isArray(block.cols)) {
     return (
@@ -2455,8 +2410,6 @@ function BlockContent({
     );
   }
 
-
-
   if (t === "table") {
     return (
       <TableBlock block={block} locked={locked} onChange={onChange} onBlur={onBlur} />
@@ -2464,6 +2417,9 @@ function BlockContent({
   }
 
   if (t === "code") {
+    // Code blocks stay on <textarea>: their content is literal, no
+    // inline grammar applies, and the shim keeps caret access
+    // uniform with contenteditable neighbours.
     return (
       <div className="rounded-md bg-sunken p-3">
         <GrowText
@@ -2480,8 +2436,9 @@ function BlockContent({
         className="border-l-2 border-lineStrong pl-4"
         style={{ fontFamily: "Lato, sans-serif" }}
       >
-        {renderSwap(
-          "w-full resize-none border-0 bg-transparent p-0 text-quote italic text-body outline-none placeholder:text-faint",
+        {renderProse(
+          "w-full text-quote italic text-body placeholder:text-faint",
+          { placeholder: "Write, or type / for blocks" },
         )}
       </blockquote>
     );
@@ -2494,25 +2451,24 @@ function BlockContent({
         style={{ borderRadius: 10 }}
       >
         <CalloutIconPicker icon={block.icon ?? "💡"} onPick={onSetIcon} disabled={locked} />
-        {renderSwap(
-          "w-full resize-none border-0 bg-transparent p-0 text-prose text-body outline-none placeholder:text-faint",
+        {renderProse(
+          "w-full text-prose text-body",
+          { placeholder: "Write, or type / for blocks" },
         )}
       </div>
     );
   }
 
   if (t === "toggle") {
-    // Optional heading level: 'h1' | 'h2' | 'h3' promotes the SUMMARY to
-    // heading typography. Absent = today's plain-toggle rendering (Lato).
     const level = (block as { level?: string }).level;
     const summaryCls =
       level === "h1"
-        ? "w-full resize-none border-0 bg-transparent p-0 font-display text-title text-noir outline-none placeholder:text-faint"
+        ? "w-full font-display text-title text-noir"
         : level === "h2"
-          ? "w-full resize-none border-0 bg-transparent p-0 font-display text-heading text-noir outline-none placeholder:text-faint"
+          ? "w-full font-display text-heading text-noir"
           : level === "h3"
-            ? "w-full resize-none border-0 bg-transparent p-0 font-display text-subhead text-noir outline-none placeholder:text-faint"
-            : textareaProps.className;
+            ? "w-full font-display text-subhead text-noir"
+            : "w-full text-prose text-body";
     return (
       <div className="text-prose text-body">
         <div className="flex items-start gap-1">
@@ -2529,7 +2485,7 @@ function BlockContent({
               ›
             </span>
           </button>
-          {renderSwap(summaryCls)}
+          {renderProse(summaryCls, { placeholder: "Toggle" })}
         </div>
         {block.open ? (
           <div className="ml-5 mt-1 text-meta text-muted">
@@ -2540,10 +2496,9 @@ function BlockContent({
     );
   }
 
-  // Flat outline: indent shifts only the block CONTENT for the indentable
-  // types (bullet, numbered, todo, text). Gutter stays at the row's left
-  // edge. 24px per level. Bullet glyph and numbered label cycle every 3
-  // levels for legibility.
+  // Flat outline: indent shifts only the block CONTENT for the
+  // indentable types (bullet, numbered, todo, text). Gutter stays at
+  // the row's left edge.
   const indent = typeof block.indent === "number" && block.indent > 0
     ? Math.min(6, Math.floor(block.indent))
     : 0;
@@ -2564,15 +2519,16 @@ function BlockContent({
           className="mt-2 accent-accent"
           aria-label={done ? "Done" : "Todo"}
         />
-        {renderSwap(
-          "w-full resize-none border-0 bg-transparent p-0 outline-none placeholder:text-faint",
-          done ? "text-muted line-through" : "",
+        {renderProse(
+          "w-full",
+          {
+            extraClass: done ? "text-muted line-through" : "",
+            placeholder: "To-do",
+          },
         )}
       </div>
     );
   }
-
-
 
   if (t === "bullet") {
     const glyph = BULLET_GLYPHS[indent % 3];
@@ -2581,7 +2537,7 @@ function BlockContent({
         <span aria-hidden className="mt-2 leading-none text-muted">
           {glyph}
         </span>
-        {renderSwap(textareaProps.className)}
+        {renderProse("w-full", { placeholder: "List" })}
       </div>
     );
   }
@@ -2593,44 +2549,48 @@ function BlockContent({
         <span aria-hidden className="mt-1 min-w-4 text-meta text-muted tnum">
           {label}
         </span>
-        {renderSwap(textareaProps.className)}
+        {renderProse("w-full", { placeholder: "List" })}
       </div>
     );
   }
 
   if (t === "h1") {
-    return renderSwap(
-      "w-full resize-none border-0 bg-transparent p-0 font-display text-title text-noir outline-none placeholder:text-faint",
+    return renderProse(
+      "w-full font-display text-title text-noir",
+      { placeholder: "Heading 1", ariaLabel: "Heading 1" },
     );
   }
 
   if (t === "h2") {
-    return renderSwap(
-      "w-full resize-none border-0 bg-transparent p-0 font-display text-heading text-noir outline-none placeholder:text-faint",
+    return renderProse(
+      "w-full font-display text-heading text-noir",
+      { placeholder: "Heading 2", ariaLabel: "Heading 2" },
     );
   }
 
   if (t === "h3") {
-    // Poppins 600 at 17px — text-subhead pairs with font-display. Distinct
-    // from body prose (Lato 17/400) by family and weight, so no new token.
-    return renderSwap(
-      "w-full resize-none border-0 bg-transparent p-0 font-display text-subhead text-noir outline-none placeholder:text-faint",
+    return renderProse(
+      "w-full font-display text-subhead text-noir",
+      { placeholder: "Heading 3", ariaLabel: "Heading 3" },
     );
   }
 
   if (t === "caption") {
-    // A small muted line. No other chrome. See notes in blockToMarkdown:
-    // markdown round-trip is lossy (comes back as `text`).
-    return renderSwap(
-      "w-full resize-none border-0 bg-transparent p-0 text-caption text-muted outline-none placeholder:text-faint",
+    return renderProse(
+      "w-full text-caption text-muted",
+      { placeholder: "Caption" },
     );
   }
 
   // text (default)
-  return contentWrap(renderSwap(
-    "w-full resize-none border-0 bg-transparent p-0 text-prose text-body outline-none placeholder:text-faint",
-  ));
+  return contentWrap(
+    renderProse(
+      "w-full text-prose text-body",
+      { placeholder: "Write, or type / for blocks" },
+    ),
+  );
 }
+
 
 const GrowText = function GrowText(
   props: React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
@@ -2779,7 +2739,7 @@ function ColumnStack({
     return () => bridge?.registerTrack(colRef, null);
   }, [bridge, colRef]);
 
-  const refs = useRef<Record<string, HTMLTextAreaElement | HTMLInputElement | null>>({});
+  const refs = useRef<Record<string, HTMLElement | null>>({});
   const [focusRequest, setFocusRequest] = useState<{
     id: string;
     caret?: number | "end" | "start";
@@ -2873,7 +2833,7 @@ function ColumnStack({
    * Uses the same parse + splice engine as the top level. Any parsed
    * `columns` blocks are filtered out to preserve the never-nest rule. */
   const handlePaste = useCallback(
-    (blockId: string, e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    (blockId: string, e: React.ClipboardEvent<HTMLElement>) => {
       if (locked) return;
       const htmlSrc = e.clipboardData?.getData("text/html") ?? "";
       const plainSrc = e.clipboardData?.getData("text/plain") ?? "";
@@ -2883,8 +2843,8 @@ function ColumnStack({
       if (parsed.length === 0) return;
       e.preventDefault();
       const ta = e.currentTarget;
-      const caret =
-        ta.selectionStart ?? (blocks.find((b) => b.id === blockId)?.text ?? "").length;
+      const src = blocks.find((b) => b.id === blockId)?.text ?? "";
+      const caret = readCaret(ta, src)?.start ?? src.length;
       applyOp(splicePasteAtCaret(blocks, blockId, caret, parsed));
     },
     [blocks, locked, applyOp],
@@ -3010,11 +2970,6 @@ function ColumnStack({
           locked={locked}
           selected={false}
           dimmed={false}
-          focused={focusedId === b.id}
-          onRequestFocus={(caret) => {
-            setFocusedId(b.id);
-            setFocusRequest({ id: b.id, caret });
-          }}
           onEditorFocus={() => setFocusedId(b.id)}
           onEditorBlur={() =>
             setFocusedId((cur) => (cur === b.id ? null : cur))

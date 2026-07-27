@@ -1,16 +1,13 @@
 /* Floating selection toolbar for text blocks.
  *
- * Appears while a block textarea (top-level OR inside a column) holds a
- * non-empty selection. Hides on: collapse, blur outside the page body,
- * Escape, scroll of any ancestor, and any block-structure change.
+ * Phase 2b.β: prose blocks are contenteditable, so the toolbar
+ * anchors to Range geometry and reads/writes through the caret shim.
+ * ColumnStack textareas are out of scope for this phase — they simply
+ * don't surface the toolbar until 2c.
  *
- * Positioning uses the mirror in caret-rect.ts — a textarea's selection
- * has no client rect, so this is the one place in the codebase where the
- * browser cannot measure for us.
- *
- * Focus-trap discipline: every button and the link field's wrapper call
- * e.preventDefault() on mousedown so the click never blurs the textarea
- * and collapses the selection.
+ * Focus-trap discipline: every button and the link field's wrapper
+ * call preventDefault on mousedown so the click never blurs the
+ * element and collapses the selection.
  *
  * All mutations go through toggleWrap so the shortcut path in
  * block-key-handler and the toolbar cannot drift.
@@ -19,43 +16,52 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toggleWrap, isWrapped } from "@/lib/toggle-wrap";
-import { textareaCaretRect } from "@/lib/caret-rect";
 import { safeUrl } from "@/lib/inline-markdown";
+import { htmlToInlineMarkdown } from "@/lib/inline-tokens";
+import { readCaret, writeCaret } from "@/lib/caret-shim";
 
 type Sel = {
-  el: HTMLTextAreaElement;
+  el: HTMLElement;
   start: number;
   end: number;
-  /** Snapshot of textarea value at selection time — used to decide the
-   *  active state without re-reading during render. */
+  /** Snapshot of the block's source at selection time. */
   value: string;
 };
 
-/** React's synthetic onChange won't fire from a direct `el.value = …`
- *  assignment because React tracks the previous value. Use the native
- *  setter and dispatch a bubbling `input` so the component's onChange
- *  runs and state updates normally. */
-function setTextareaValue(el: HTMLTextAreaElement, next: string) {
-  const proto = Object.getPrototypeOf(el);
-  const desc = Object.getOwnPropertyDescriptor(proto, "value");
-  const setter = desc?.set;
-  if (setter) setter.call(el, next);
-  else el.value = next;
-  el.dispatchEvent(new Event("input", { bubbles: true }));
+function isEditableProse(node: EventTarget | null): node is HTMLElement {
+  if (!(node instanceof HTMLElement)) return false;
+  if (!node.closest("[data-gio-page-body]")) return false;
+  return node.isContentEditable;
 }
 
-function applyWrap(sel: Sel, open: string, close: string) {
-  const r = toggleWrap(sel.value, sel.start, sel.end, open, close);
-  setTextareaValue(sel.el, r.text);
-  // Restore focus + selection after React commits.
+function currentSource(el: HTMLElement): string {
+  return htmlToInlineMarkdown(el);
+}
+
+function commitSource(el: HTMLElement, next: string, start: number, end: number) {
+  // The Editable component owns the DOM. Fire an input event after we
+  // stage state; its onInput handler will canonicalise the HTML and
+  // restore the caret via writeCaret in source coords.
+  writeCaret(el, next, start, end);
+  // Rewrite the DOM to the new source so onInput serialises to it.
+  // We temporarily set innerText — Editable's onInput normalises via
+  // htmlToInlineMarkdown → inlineToHtml, restoring inline HTML.
+  el.innerText = next;
+  writeCaret(el, next, start, end);
+  el.dispatchEvent(new InputEvent("input", { bubbles: true }));
   requestAnimationFrame(() => {
     try {
-      sel.el.focus({ preventScroll: true });
-      sel.el.setSelectionRange(r.start, r.end);
+      el.focus({ preventScroll: true });
+      writeCaret(el, next, start, end);
     } catch {
       /* noop */
     }
   });
+}
+
+function applyWrap(sel: Sel, open: string, close: string) {
+  const r = toggleWrap(sel.value, sel.start, sel.end, open, close);
+  commitSource(sel.el, r.text, r.start, r.end);
 }
 
 function applyLink(sel: Sel, rawUrl: string) {
@@ -65,17 +71,9 @@ function applyLink(sel: Sel, rawUrl: string) {
   const insert = `[${label}](${url})`;
   const next =
     sel.value.slice(0, sel.start) + insert + sel.value.slice(sel.end);
-  setTextareaValue(sel.el, next);
-  const newStart = sel.start + 1; // right after '['
+  const newStart = sel.start + 1;
   const newEnd = newStart + label.length;
-  requestAnimationFrame(() => {
-    try {
-      sel.el.focus({ preventScroll: true });
-      sel.el.setSelectionRange(newStart, newEnd);
-    } catch {
-      /* noop */
-    }
-  });
+  commitSource(sel.el, next, newStart, newEnd);
   return true;
 }
 
@@ -102,31 +100,22 @@ export function FloatingToolbar() {
   /* ── Selection tracking ─────────────────────────────────────────── */
 
   useEffect(() => {
-    function isPageBodyTextarea(node: EventTarget | null): node is HTMLTextAreaElement {
-      if (!(node instanceof HTMLTextAreaElement)) return false;
-      // Only textareas that live inside a real page body — never the
-      // title, never search boxes, never modals.
-      return !!node.closest("[data-gio-page-body]");
-    }
     function poll() {
       const active = document.activeElement;
-      if (!isPageBodyTextarea(active)) {
-        // Keep the toolbar open if focus went into the toolbar itself
-        // (clicking a button will briefly focus the button). The
-        // mousedown-preventDefault below usually blocks that transfer.
+      if (!isEditableProse(active)) {
         const t = active as Element | null;
         if (t && barRef.current && barRef.current.contains(t)) return;
         setSel(null);
         return;
       }
-      const el = active as HTMLTextAreaElement;
-      const s = el.selectionStart ?? 0;
-      const e = el.selectionEnd ?? 0;
-      if (s === e) {
+      const el = active as HTMLElement;
+      const value = currentSource(el);
+      const car = readCaret(el, value);
+      if (!car || car.start === car.end) {
         setSel(null);
         return;
       }
-      setSel({ el, start: s, end: e, value: el.value });
+      setSel({ el, start: car.start, end: car.end, value });
     }
     document.addEventListener("selectionchange", poll);
     document.addEventListener("focusin", poll);
@@ -138,8 +127,6 @@ export function FloatingToolbar() {
     };
   }, []);
 
-  /* ── Escape closes ──────────────────────────────────────────────── */
-
   useEffect(() => {
     if (!sel) return;
     function onKey(e: KeyboardEvent) {
@@ -149,27 +136,25 @@ export function FloatingToolbar() {
     return () => document.removeEventListener("keydown", onKey, true);
   }, [sel, hide]);
 
-  /* ── Any scroll hides ───────────────────────────────────────────── */
-
   useEffect(() => {
     if (!sel) return;
-    // Capture-phase so ANY scrolling ancestor triggers hide (main column,
-    // window, modal). Passive because we never preventDefault.
     const onScroll = () => hide();
     window.addEventListener("scroll", onScroll, { capture: true, passive: true });
     return () =>
       window.removeEventListener("scroll", onScroll, { capture: true } as EventListenerOptions);
   }, [sel, hide]);
 
-  /* ── Position via caret-rect mirror ────────────────────────────── */
+  /* ── Position via live Range geometry ──────────────────────────── */
 
   useLayoutEffect(() => {
     if (!sel) {
       setPos(null);
       return;
     }
-    const rect = textareaCaretRect(sel.el, sel.start, sel.end);
-    if (!rect) {
+    const selection = window.getSelection();
+    const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+    const rect = range ? range.getBoundingClientRect() : null;
+    if (!rect || (rect.width === 0 && rect.height === 0)) {
       setPos(null);
       return;
     }
@@ -179,11 +164,9 @@ export function FloatingToolbar() {
     const gap = 8;
     const centerX = rect.left + rect.width / 2;
     let left = centerX - barW / 2;
-    // Clamp with 8px viewport margin.
     const vw = window.innerWidth;
     if (left < 8) left = 8;
     if (left + barW > vw - 8) left = vw - 8 - barW;
-    // Above by default; flip below when no room.
     let top = rect.top - gap - barH;
     let flipped = false;
     if (top < 8) {
@@ -192,8 +175,6 @@ export function FloatingToolbar() {
     }
     setPos({ top, left, flipped });
   }, [sel, linkMode]);
-
-  /* ── Render ─────────────────────────────────────────────────────── */
 
   if (!sel || !pos) return null;
 
@@ -244,8 +225,6 @@ export function FloatingToolbar() {
         title={title}
         className="bar-btn"
         style={{ ...btnBase, ...(active ? activeStyle : null) }}
-        // FOCUS TRAP — preventDefault on mousedown keeps the textarea
-        // focused so the selection is still there when we apply.
         onMouseDown={NOOP_MOUSE}
         onClick={(e) => {
           e.preventDefault();
