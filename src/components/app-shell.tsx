@@ -17,8 +17,8 @@ import { getPageOrigin } from "@/lib/page-origin";
 import { resolvePageIdParam } from "@/lib/slug";
 
 import {
-  useCreatePage,
   useCreatePageAndOpen,
+
   useCreateView,
   useDeleteView,
   useDeletePage,
@@ -33,6 +33,8 @@ import {
   usePublishView,
   useVerifyPage,
   useSetAreaIcon,
+  useRegisterArea,
+
 } from "@/hooks/use-page-mutations";
 
 import { useToast } from "@/lib/toast";
@@ -57,7 +59,7 @@ import {
 } from "./row-menu";
 import { useAllowedDomains, useMembers, usePropDefs } from "@/hooks/use-workspace-data";
 import { usePrefs } from "@/lib/preferences";
-import { nanoid } from "nanoid";
+
 
 type Selection =
   | { kind: "view"; id: string }
@@ -2321,7 +2323,7 @@ function NewAreaPopover({
   const [submitting, setSubmitting] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const createPage = useCreatePage();
+  const registerArea = useRegisterArea();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -2349,32 +2351,19 @@ function NewAreaPopover({
     if (!valid || submitting) return;
     setSubmitting(true);
     try {
-      const created = await createPage.mutateAsync({
-        seedProps: { area: trimmed },
-        blocks: [
-          {
-            id: nanoid(10),
-            type: "paragraph",
-            text: "",
-          },
-        ],
-      });
-      try {
-        sessionStorage.setItem(
-          "gio.page-back",
-          JSON.stringify({ pageId: created.id, area: trimmed }),
-        );
-        sessionStorage.setItem("gio.focus-title", created.id);
-      } catch {
-        /* storage unavailable */
-      }
+      // Register the area in property_defs. No page is created — areas
+      // are queries over pages, not containers. The area view will render
+      // its empty state until a page's props.area matches.
+      await registerArea.mutateAsync(trimmed);
+
       onClose();
-      navigate({ to: "/p/$pageId", params: { pageId: created.id } });
+      navigate({ to: "/a/$area", params: { area: trimmed } });
     } catch (err) {
       console.error(err);
       setSubmitting(false);
     }
   };
+
 
   return (
     <div

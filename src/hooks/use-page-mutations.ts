@@ -1097,3 +1097,61 @@ export function useSetAreaIcon() {
   });
 }
 
+/**
+ * Append a new area name to the `area` property_def's options. Creating an
+ * area does NOT create a page — areas are queries over pages, not
+ * containers. Uses the append defaults from `applyAreaIcon`. No-op if the
+ * area is already registered (case-insensitive).
+ */
+export function useRegisterArea() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (area: string) => {
+      const trimmed = area.trim();
+      if (!trimmed) return;
+      const { data: def, error: readErr } = await supabase
+        .from("property_defs")
+        .select("id, options")
+        .eq("workspace_id", ws)
+        .eq("key", "area")
+        .single();
+      if (readErr) throw readErr;
+      const existing = Array.isArray(def?.options)
+        ? (def!.options as Array<Record<string, unknown>>)
+        : [];
+      const lower = trimmed.toLowerCase();
+      if (
+        existing.some(
+          (o) =>
+            typeof o?.value === "string" &&
+            (o.value as string).toLowerCase() === lower,
+        )
+      ) {
+        return;
+      }
+      const nextOptions = [
+        ...existing,
+        {
+          value: trimmed,
+          label: trimmed,
+          dot: "whisper",
+          tint: "sunken",
+          ink: "secondary",
+        },
+      ];
+      const { error: writeErr } = await supabase
+        .from("property_defs")
+        .update({ options: nextOptions as never })
+        .eq("id", def!.id);
+      if (writeErr) throw writeErr;
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.propDefs(ws) }),
+    onError: (err) => {
+      toast.push(`Couldn't create area: ${(err as Error).message}`);
+    },
+  });
+}
+
+
