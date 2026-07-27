@@ -2653,6 +2653,10 @@ function BoardBody({
   members: MemberRow[];
   staleThreshold: number;
   onMove: (pageId: string, value: string) => void;
+  selectedSet: Set<string>;
+  anySelection: boolean;
+  onCheckboxClick: (id: string, shift: boolean) => void;
+  getPageMenuBuild: (p: PageListItem) => (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
 }) {
   const navigate = useNavigate();
   const setOrigin = useSetPageOrigin();
