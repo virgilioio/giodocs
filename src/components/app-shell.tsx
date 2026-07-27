@@ -1882,7 +1882,7 @@ function PageRowLi({
         to="/p/$pageId"
         params={{ pageId: p.id }}
         style={{ height: "var(--spacing-rowPage)" }}
-        className="flex cursor-pointer items-center gap-2 rounded-md px-2 text-meta text-secondary hover:bg-railHover"
+        className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 text-meta text-secondary hover:bg-railHover"
       >
         {isStale && (
           <span
@@ -1890,13 +1890,18 @@ function PageRowLi({
             className="h-1.5 w-1.5 shrink-0 rounded-full bg-amberDot"
           />
         )}
-        <span className="min-w-0 flex-1 truncate">
+        <span
+          className="min-w-0 flex-1 truncate"
+          style={{ flex: "1 1 auto" }}
+          title={p.title || "Untitled"}
+        >
           {p.title || "Untitled"}
         </span>
         <span
-          className="relative flex items-center justify-end"
-          style={{ height: 17, minWidth: 17 }}
+          className="relative flex shrink-0 items-center justify-end"
+          style={{ height: 17, minWidth: 17, flex: "none" }}
         >
+
           {hover ? (
             <SpecMenuTrigger
               size="sm"
