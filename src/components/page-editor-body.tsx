@@ -2035,11 +2035,11 @@ export function EditableBody({
                 const r = toggleWrap(v, ss, se, op.open, op.close);
                 updateBlock(b.id, { text: r.text });
                 requestAnimationFrame(() => {
-                  const cur = refs.current[b.id] as HTMLTextAreaElement | undefined;
+                  const cur = refs.current[b.id];
                   if (!cur) return;
                   try {
                     cur.focus({ preventScroll: true });
-                    cur.setSelectionRange(r.start, r.end);
+                    writeCaret(cur, r.text, r.start, r.end);
                   } catch {
                     /* noop */
                   }
