@@ -225,8 +225,9 @@ export function buildOffsetMap(source: string): OffsetMap {
   return {
     renderedText,
     toSource(rendered: number): number {
-      if (!isFinite(rendered) || rendered <= 0) return 0;
+      if (!isFinite(rendered)) return 0;
       if (rendered >= rndLen) return srcLen;
+      if (rendered <= 0) return rndLen === 0 ? 0 : r2s[0];
       return r2s[rendered];
     },
     toRendered(source: number): number {
