@@ -1886,6 +1886,7 @@ function ViewHeaderMenu({
   workspaceName,
   memberCount,
   onRename,
+  onChangeIcon,
   onDuplicatePersonal,
   onDuplicateTeam,
   onPublish,
@@ -1902,6 +1903,7 @@ function ViewHeaderMenu({
   workspaceName: string;
   memberCount: number;
   onRename: () => void;
+  onChangeIcon: (icon: string | null) => void;
   onDuplicatePersonal: () => void;
   onDuplicateTeam: () => void;
   onPublish: () => void;
@@ -1910,7 +1912,7 @@ function ViewHeaderMenu({
   onDelete: () => void;
   onAreaSaveAsView: () => void;
 }) {
-  const [mode, setMode] = useState<"list" | "publish" | "delete">("list");
+  const [mode, setMode] = useState<"list" | "publish" | "delete" | "icon">("list");
 
   const name = view?.name ?? (selection.kind === "area" ? selection.area : "");
   const title =
