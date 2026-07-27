@@ -17,6 +17,12 @@ import { qk } from "@/lib/query-keys";
 import { usePrefs } from "@/lib/preferences";
 import { usePageAppearance } from "@/lib/page-appearance";
 import { Popover } from "./popover";
+import {
+  AreaPicker,
+  OwnerPicker,
+  SelectPicker,
+  TagsPicker,
+} from "./property-pickers";
 import { formatTimestamp } from "@/lib/format";
 import { EditableBody, EditableTitle } from "./page-editor-body";
 import { createBlocksSaver } from "@/lib/blocks-saver";
