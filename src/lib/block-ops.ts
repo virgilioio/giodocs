@@ -48,6 +48,8 @@ export type Blk = {
   icon?: string;
   rows?: string[][];
   language?: string;
+  /** Only meaningful when type === "toggle". Absent = today's plain toggle. */
+  level?: ToggleLevel;
   /** Only meaningful when type === "columns". Never nested. */
   cols?: Blk[][];
 };
