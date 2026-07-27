@@ -563,7 +563,7 @@ const HTML_CSS = `
   dl.props dt { color: ${muted}; }
   header.meta { border-bottom: 1px solid ${line}; padding-bottom: 18px; margin-bottom: 22px; }
   /* Masthead — a letterhead. Rendered once at the top of the document,
-     never repeated per sheet. Replaces the old position:fixed footer,
+     never repeated per sheet. Replaces the old fixed-position footer,
      which fought pagination on every long export. */
   header.masthead {
     display: flex; align-items: center; gap: 10px;
@@ -620,7 +620,7 @@ ${propsHtml}
   const body = renderBlocksHtml(ctx.blocks, ords);
 
   // Masthead: renders ONCE at the top of the document (letterhead style).
-  // The old position:fixed footer fought pagination and repeatedly caused
+  // The old fixed-position footer fought pagination and repeatedly caused
   // bottom-edge collisions — deleted. The browser's own print header/footer
   // (URL, page numbers, date) is now a checkbox in the user's print dialog.
   // If the logo failed to inline (very unlikely — module init exception),
