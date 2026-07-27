@@ -572,30 +572,13 @@ export function EditableBody({
 
 
 
-  /* ────────── Drag: pointer session on a handle ────────── */
-
-  const beginDrag = useCallback(
-    (id: string, ev: React.PointerEvent<HTMLElement>) => {
-      // If the handle belongs to a multi-selected run, drag the whole run.
-      const ids = blocks.map((b) => b.id);
-      const targetIdx = ids.indexOf(id);
-      if (targetIdx < 0) return;
-      const isMulti = selectedIds.size > 1 && selectedIds.has(id);
-      const dragIds = isMulti
-        ? ids.filter((x) => selectedIds.has(x))
-        : [id];
-      if (!isMulti) {
-        // Non-selected drag clears any prior selection.
-        setSelectedIds(new Set());
-        anchorId.current = null;
-      }
-      try {
-        ev.currentTarget.setPointerCapture(ev.pointerId);
-      } catch {
-        /* ignore */
-      }
-      document.body.style.userSelect = "none";
   /* ────────── Drag: pointer session on a handle ──────────
+   *
+   * `sourceCol` identifies where the dragged run lives — null for the
+   * top-level block list, or a `{blockId, colIndex}` for a column. A drag
+   * started from inside a column carries its colRef so the source list
+   * is unambiguous at endDrag time, even when the pointer wanders across
+   * multiple columns during the drag. */
    *
    * `sourceCol` identifies where the dragged run lives — null for the
    * top-level block list, or a `{blockId, colIndex}` for a column. A drag
