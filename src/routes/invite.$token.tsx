@@ -35,7 +35,7 @@ function InvitePage() {
   const { session, loading } = useAuth();
   const navigate = useNavigate();
 
-  const [preview, setPreview] = useState<Preview | null | "loading">("loading");
+  const [preview, setPreview] = useState<Preview | "loading">("loading");
 
   useEffect(() => {
     let cancelled = false;
