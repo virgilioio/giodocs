@@ -433,8 +433,6 @@ function EditableValue({
         options={allTags}
         onSet={onSet}
         onOpenChange={onOpenChange}
-        onSet={onSet}
-        onOpenChange={onOpenChange}
         trigger={({ onClick, ref }) => (
           <button
             ref={ref}
