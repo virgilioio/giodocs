@@ -795,39 +795,71 @@ export function useArchivePage() {
     onSuccess: (_d, v) => {
       toast.push(
         v.archived
-          ? `Archived — it left every view but ⌘K still finds it.`
+          ? `Archived — it stays searchable in ⌘K but appears in no views.`
           : `Unarchived — it's back in every view that matches.`,
       );
     },
   });
 }
 
+/** Soft-delete via the delete_page RPC. Returns the removed row (from
+ *  cache) so the caller can offer an Undo action to restore_page. */
 export function useDeletePage() {
   const qc = useQueryClient();
   const ws = useWorkspaceId();
   const toast = useToast();
   return useMutation({
     mutationFn: async (pageId: string) => {
-      const { error } = await supabase
-        .from("pages")
-        .update({ deleted_at: new Date().toISOString() } as never)
-        .eq("id", pageId);
+      const { error } = await supabase.rpc("delete_page", { p_page: pageId });
       if (error) throw error;
     },
     onMutate: async (pageId) => {
       await qc.cancelQueries({ queryKey: qk.pages(ws) });
       const snapshot = qc.getQueryData<PageListItem[]>(qk.pages(ws)) ?? [];
+      const removed = snapshot.find((p) => p.id === pageId) ?? null;
       qc.setQueryData<PageListItem[]>(
         qk.pages(ws),
         snapshot.filter((p) => p.id !== pageId),
       );
-      return { snapshot };
+      return { snapshot, removed };
     },
     onError: (err, _pageId, ctx) => {
       if (ctx?.snapshot) qc.setQueryData(qk.pages(ws), ctx.snapshot);
       toast.push(`Couldn't delete: ${(err as Error).message}`);
     },
-    onSuccess: () => toast.push("Page deleted."),
+    // The topbar menu owns the undo toast — it needs the restore mutation
+    // and a page-detail reference, both of which live at the call site.
+  });
+}
+
+/** Undo companion to useDeletePage. Restores the page and re-inserts the
+ *  cached list row so the sidebar / view reappears without a refetch. */
+export function useRestorePage() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (v: { pageId: string; row: PageListItem | null }) => {
+      const { error } = await supabase.rpc("restore_page", { p_page: v.pageId });
+      if (error) throw error;
+    },
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: qk.pages(ws) });
+      if (v.row) {
+        qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) => {
+          const list = prev ?? [];
+          if (list.some((p) => p.id === v.pageId)) return list;
+          return [v.row!, ...list];
+        });
+      }
+    },
+    onError: (err) => {
+      toast.push(`Couldn't undo delete: ${(err as Error).message}`);
+    },
+    onSuccess: () => {
+      toast.push("Restored.");
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.pages(ws) }),
   });
 }
 
