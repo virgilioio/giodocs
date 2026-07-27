@@ -1692,7 +1692,11 @@ function BlockContent({
       onChange({ text: e.target.value });
       onInput(e.target.value);
     },
-    onBlur: onBlur,
+    onFocus: () => onEditorFocus(),
+    onBlur: () => {
+      onEditorBlur();
+      onBlur?.();
+    },
     onKeyDown,
     onPaste,
     // BUG 3: readOnly (not disabled) keeps focus/selection intact but blocks
@@ -1705,6 +1709,69 @@ function BlockContent({
   };
 
   const t = block.type;
+
+  // Rendered ↔ editable swap. Formatted view for every text-carrying block
+  // when it does not own focus (and always for locked pages). Empty blocks
+  // stay as textareas so the placeholder and click-to-type are preserved.
+  const rawText = block.text ?? "";
+  const canFormat = t !== "code" && t !== "table" && t !== "divider";
+  const showFormatted = canFormat && (locked || (!focused && rawText.length > 0));
+
+  function caretFromEvent(e: React.MouseEvent<HTMLDivElement>): number | "end" {
+    const x = e.clientX;
+    const y = e.clientY;
+    let range: Range | null = null;
+    const d = document as Document & {
+      caretRangeFromPoint?: (x: number, y: number) => Range | null;
+      caretPositionFromPoint?: (
+        x: number,
+        y: number,
+      ) => { offsetNode: Node; offset: number } | null;
+    };
+    if (typeof d.caretRangeFromPoint === "function") {
+      range = d.caretRangeFromPoint(x, y);
+    } else if (typeof d.caretPositionFromPoint === "function") {
+      const p = d.caretPositionFromPoint(x, y);
+      if (p) {
+        range = document.createRange();
+        range.setStart(p.offsetNode, p.offset);
+      }
+    }
+    if (!range) return "end";
+    let el: HTMLElement | null =
+      range.startContainer instanceof Element
+        ? (range.startContainer as HTMLElement)
+        : range.startContainer.parentElement;
+    while (el && !el.hasAttribute("data-o")) el = el.parentElement;
+    if (!el) return "end";
+    const base = parseInt(el.getAttribute("data-o") || "0", 10);
+    return Math.min(rawText.length, base + range.startOffset);
+  }
+
+  // Returns the div-or-textarea for a given wrapping className. The div and
+  // the textarea share the exact same className so font/size/line-height/
+  // padding match — the caret does not jump when swapping.
+  function renderSwap(className: string, extra?: string) {
+    const cls = className + (extra ? " " + extra : "");
+    if (!showFormatted) {
+      return <GrowText {...textareaProps} className={cls} />;
+    }
+    return (
+      <div
+        className={cls + " cursor-text whitespace-pre-wrap break-words"}
+        onMouseDown={
+          locked
+            ? undefined
+            : (e) => {
+                e.preventDefault();
+                onRequestFocus(caretFromEvent(e));
+              }
+        }
+      >
+        {rawText ? renderInlineWithOffsets(rawText) : "\u200B"}
+      </div>
+    );
+  }
 
   if (t === "divider") {
     return (
@@ -1738,10 +1805,9 @@ function BlockContent({
         className="border-l-2 border-lineStrong pl-4"
         style={{ fontFamily: "Lato, sans-serif" }}
       >
-        <GrowText
-          {...textareaProps}
-          className="w-full resize-none border-0 bg-transparent p-0 text-quote italic text-body outline-none placeholder:text-faint"
-        />
+        {renderSwap(
+          "w-full resize-none border-0 bg-transparent p-0 text-quote italic text-body outline-none placeholder:text-faint",
+        )}
       </blockquote>
     );
   }
@@ -1753,10 +1819,9 @@ function BlockContent({
         style={{ borderRadius: 10 }}
       >
         <CalloutIconPicker icon={block.icon ?? "💡"} onPick={onSetIcon} disabled={locked} />
-        <GrowText
-          {...textareaProps}
-          className="w-full resize-none border-0 bg-transparent p-0 text-prose text-body outline-none placeholder:text-faint"
-        />
+        {renderSwap(
+          "w-full resize-none border-0 bg-transparent p-0 text-prose text-body outline-none placeholder:text-faint",
+        )}
       </div>
     );
   }
@@ -1778,7 +1843,7 @@ function BlockContent({
               ›
             </span>
           </button>
-          <GrowText {...textareaProps} />
+          {renderSwap(textareaProps.className)}
         </div>
         {block.open ? (
           <div className="ml-5 mt-1 text-meta text-muted">
@@ -1800,12 +1865,10 @@ function BlockContent({
           className="mt-2 accent-accent"
           aria-label={done ? "Done" : "Todo"}
         />
-        <GrowText
-          {...textareaProps}
-          className={`w-full resize-none border-0 bg-transparent p-0 outline-none placeholder:text-faint ${
-            done ? "text-muted line-through" : ""
-          }`}
-        />
+        {renderSwap(
+          "w-full resize-none border-0 bg-transparent p-0 outline-none placeholder:text-faint",
+          done ? "text-muted line-through" : "",
+        )}
       </div>
     );
   }
@@ -1816,7 +1879,7 @@ function BlockContent({
         <span aria-hidden className="mt-2 leading-none text-muted">
           •
         </span>
-        <GrowText {...textareaProps} />
+        {renderSwap(textareaProps.className)}
       </div>
     );
   }
@@ -1827,35 +1890,26 @@ function BlockContent({
         <span aria-hidden className="mt-1 min-w-4 text-meta text-muted tnum">
           {ordinal ?? 1}.
         </span>
-        <GrowText {...textareaProps} />
+        {renderSwap(textareaProps.className)}
       </div>
     );
   }
 
   if (t === "h1") {
-    return (
-      <GrowText
-        {...textareaProps}
-        className="w-full resize-none border-0 bg-transparent p-0 font-display text-title text-noir outline-none placeholder:text-faint"
-      />
+    return renderSwap(
+      "w-full resize-none border-0 bg-transparent p-0 font-display text-title text-noir outline-none placeholder:text-faint",
     );
   }
 
   if (t === "h2") {
-    return (
-      <GrowText
-        {...textareaProps}
-        className="w-full resize-none border-0 bg-transparent p-0 font-display text-heading text-noir outline-none placeholder:text-faint"
-      />
+    return renderSwap(
+      "w-full resize-none border-0 bg-transparent p-0 font-display text-heading text-noir outline-none placeholder:text-faint",
     );
   }
 
   // text (default)
-  return (
-    <GrowText
-      {...textareaProps}
-      className="w-full resize-none border-0 bg-transparent p-0 text-prose text-body outline-none placeholder:text-faint"
-    />
+  return renderSwap(
+    "w-full resize-none border-0 bg-transparent p-0 text-prose text-body outline-none placeholder:text-faint",
   );
 }
 
