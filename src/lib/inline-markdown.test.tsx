@@ -95,3 +95,39 @@ describe("inlineToHtml", () => {
     expect(inlineToHtml("[x](javascript:alert(1))")).not.toContain("<a ");
   });
 });
+
+/* ─────────── Underscore runs must never be treated as italic ─────────── */
+describe("renderInline — underscore runs (legal-contract fill-ins)", () => {
+  it("preserves a long fill-in blank verbatim", () => {
+    const s = "_____________________";
+    const out = html(s);
+    expect(out).not.toContain("<em");
+    // The run of underscores must appear verbatim in the rendered output.
+    expect(out).toContain(s);
+  });
+  it("preserves 'Firma: ___________________________'", () => {
+    const s = "Firma: ___________________________";
+    const out = html(s);
+    expect(out).not.toContain("<em");
+    expect(out).toContain(s);
+  });
+  it("preserves 'a_b_c' unchanged", () => {
+    const s = "a_b_c";
+    const out = html(s);
+    expect(out).not.toContain("<em");
+    expect(out).toContain(s);
+  });
+  it("*real italic* still works alongside underscores", () => {
+    const s = "____ *emphasised* ____";
+    const out = html(s);
+    expect(out).toContain("<em");
+    expect(out).toContain("emphasised");
+    // The surrounding underscore runs survive.
+    expect(out).toContain("____");
+  });
+  it("a lone ~~ or ** does not eat following text", () => {
+    expect(html("a ** b c")).not.toContain("<strong");
+    expect(html("a ~~ b c")).not.toContain("<s");
+    expect(html("a ** b c")).toContain("a ** b c");
+  });
+});
