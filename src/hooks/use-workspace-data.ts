@@ -165,7 +165,22 @@ export function useAllowedDomains(ws: string | undefined) {
 
 export function useAreas(ws: string | undefined) {
   const pagesQ = usePages(ws);
+  const propDefsQ = usePropDefs(ws);
   const pages = pagesQ.data ?? [];
+  const areas = mergeAreas(pages, propDefsQ.data ?? []);
+  return { ...pagesQ, data: areas };
+}
+
+/**
+ * Union of areas derived from the pages cache and areas registered in the
+ * `area` property_def's options. Derived counts come from pages; a
+ * registered area with no pages appears with count 0. Sorted alphabetically,
+ * one entry per name.
+ */
+export function mergeAreas(
+  pages: Array<{ props?: unknown }>,
+  propDefs: Array<{ key?: string | null; options?: unknown }>,
+): Array<{ area: string; page_count: number }> {
   const counts = new Map<string, number>();
   for (const p of pages) {
     const props =
@@ -177,12 +192,19 @@ export function useAreas(ws: string | undefined) {
       counts.set(area, (counts.get(area) ?? 0) + 1);
     }
   }
-  const areas = Array.from(counts, ([area, page_count]) => ({
-    area,
-    page_count,
-  })).sort((a, b) => (a.area < b.area ? -1 : a.area > b.area ? 1 : 0));
-  return { ...pagesQ, data: areas };
+  const areaDef = propDefs.find((d) => d?.key === "area");
+  const options = Array.isArray(areaDef?.options)
+    ? (areaDef!.options as Array<Record<string, unknown>>)
+    : [];
+  for (const opt of options) {
+    const v = opt?.value;
+    if (typeof v === "string" && v && !counts.has(v)) counts.set(v, 0);
+  }
+  return Array.from(counts, ([area, page_count]) => ({ area, page_count })).sort(
+    (a, b) => (a.area < b.area ? -1 : a.area > b.area ? 1 : 0),
+  );
 }
+
 
 export function useWorkspaceShell(ws: string | undefined) {
   const enabled = !!ws;
