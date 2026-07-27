@@ -12,7 +12,11 @@ import { createPortal } from "react-dom";
 import type { Block } from "@/lib/types";
 import { moveBlock, moveRun, deleteIndices } from "@/lib/reorder";
 import { blockToMarkdown } from "@/lib/export";
+import { blockHandleFooter } from "@/lib/block-handle-footer";
 import { useToast } from "@/lib/toast";
+import { RowMenu, type MenuSpec, type MenuRow } from "./row-menu";
+
+
 
 
 /* Editable body for a page. All blocks are auto-growing textareas
