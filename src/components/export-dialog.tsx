@@ -6,7 +6,7 @@
  * Escape order (RowMenu handles its own): open popover → dialog → beneath.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import { useRowMenu, RowMenuList } from "./row-menu";
 import { useToast } from "@/lib/toast";
 import {
