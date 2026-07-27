@@ -21,6 +21,7 @@ import { blockHandleFooter } from "@/lib/block-handle-footer";
 import { useToast } from "@/lib/toast";
 import { RowMenu, type MenuSpec, type MenuRow } from "./row-menu";
 import { isTypingTarget, shouldSelectAllBlocks } from "@/lib/is-typing";
+import { nextEditableIndex } from "@/lib/block-nav";
 
 
 
