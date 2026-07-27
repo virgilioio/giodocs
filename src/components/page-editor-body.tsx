@@ -2218,13 +2218,13 @@ function BlockRow({
   onHandleClick: (anchor: HTMLElement) => void;
   onHandleShiftClick: () => void;
   onBlur?: () => void;
-  registerRef: (el: HTMLTextAreaElement | HTMLInputElement | null) => void;
+  registerRef: (el: HTMLElement | null) => void;
   onChange: (patch: Partial<Blk>) => void;
   onInput: (val: string) => void;
-  onKeyDown: (e: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
+  onKeyDown: (e: ReactKeyboardEvent<HTMLElement>) => void;
   onAddBelow: () => void;
   onSetIcon: (icon: string) => void;
-  onPaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
+  onPaste: (e: React.ClipboardEvent<HTMLElement>) => void;
 }) {
   const noEditor = block.type === "divider";
   return (
