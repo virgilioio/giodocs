@@ -28,12 +28,11 @@ import {
   type SelectOption,
 } from "./property-pickers";
 import {
-  MoreButton as RowMoreButton,
-  RowMenuList,
-  RowMenuConfirm,
-  Sc,
-  Val,
+  SpecMenuTrigger,
+  type MenuSpec,
+  type MenuRow,
 } from "./row-menu";
+import { personalViewFooter } from "@/lib/personal-view-footer";
 import {
   useSetPageProperty,
   useRenamePage,
