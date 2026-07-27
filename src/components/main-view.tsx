@@ -31,10 +31,13 @@ import {
   useCreatePage,
   useCreatePageAndOpen,
   useUpdateView,
+  useCreateView,
   useForkView,
   usePublishView,
   useDeleteView,
 } from "@/hooks/use-page-mutations";
+import { ExportViewDialog } from "./export-view-dialog";
+import type { ExportViewRow } from "@/lib/export";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -144,6 +147,9 @@ function ViewHeader({
   layout,
   onChangeLayout,
   menuBuild,
+  renaming,
+  onRenameCommit,
+  onRenameCancel,
 }: {
   selection: Selection;
   view: ViewRow | null;
@@ -152,6 +158,9 @@ function ViewHeader({
   layout: Layout;
   onChangeLayout: (l: Layout) => void;
   menuBuild: () => ReactNode;
+  renaming: boolean;
+  onRenameCommit: (v: string) => void;
+  onRenameCancel: () => void;
 }) {
   let scopeLabel: ReactNode = "AREA";
   let name = "";
@@ -173,10 +182,29 @@ function ViewHeader({
       <div className="min-w-0">
         <div className="text-label uppercase text-faint">{scopeLabel}</div>
         <h1 className="mt-1 font-display text-title text-noir truncate">
-          {name}
-          <span className="ml-3 align-baseline text-ui text-faint font-normal tracking-normal">
-            {countLabel}
-          </span>
+          {renaming ? (
+            <input
+              autoFocus
+              defaultValue={name}
+              onBlur={(e) => onRenameCommit(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  onRenameCancel();
+                }
+              }}
+              className="w-full min-w-0 bg-transparent font-display text-title text-noir focus:outline-none"
+              style={{ letterSpacing: "-0.035em" }}
+            />
+          ) : (
+            <>
+              {name}
+              <span className="ml-3 align-baseline text-ui text-faint font-normal tracking-normal">
+                {countLabel}
+              </span>
+            </>
+          )}
         </h1>
       </div>
       <div className="flex shrink-0 items-center gap-2">
@@ -782,6 +810,7 @@ export function MainView({ selection }: { selection: Selection }) {
   const create = useCreatePage();
   const createAndOpen = useCreatePageAndOpen();
   const updateView = useUpdateView();
+  const createView = useCreateView();
   const forkView = useForkView();
   const publishView = usePublishView();
   const deleteView = useDeleteView();
@@ -797,12 +826,17 @@ export function MainView({ selection }: { selection: Selection }) {
   const view = selection.kind === "view" ? views.find((v) => v.id === selection.id) ?? null : null;
   const isOwnerOfView = !!view && view.owner_id === user?.id && view.scope === "personal";
   const isTeamView = !!view && view.scope === "team";
+  const isWorkspaceOwner = !!user?.id && members.some(
+    (m) => m.user_id === user.id && m.role === "owner",
+  );
 
   // Local session-only overrides layered on top of the view/area base.
   const [localFilters, setLocalFilters] = useState<Filter[] | null>(null);
   const [localSort, setLocalSort] = useState<SortSpec | null>(null);
   const [localLayout, setLocalLayout] = useState<Layout | null>(null);
   const [localGroupBy, setLocalGroupBy] = useState<string | null | undefined>(undefined);
+  const [renaming, setRenaming] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   // Header ⋯ menu is now handled by the unified RowMenu popover; no local anchor state.
 
   const baseFilters: Filter[] = useMemo(() => {
@@ -922,17 +956,84 @@ export function MainView({ selection }: { selection: Selection }) {
   };
   const doPublish = () => {
     if (!view) return;
-    if (
-      !window.confirm(
-        `Publish "${view.name}" to Team views? It moves out of My views into Team views for all ${memberCount} people at ${workspace?.name ?? "the workspace"}. Publishing is the only way a view becomes shared.`,
-      )
-    )
-      return;
     publishView.mutate(view.id);
+  };
+  const doUnpublish = () => {
+    if (!view) return;
+    updateView.mutate({ id: view.id, patch: { scope: "personal" } });
   };
   const doDelete = () => {
     if (!view) return;
-    if (window.confirm(`Delete view "${view.name}"?`)) deleteView.mutate(view.id);
+    deleteView.mutate(view.id, {
+      onSuccess: () => {
+        // Navigate to the first remaining personal view owned by me.
+        const first = views
+          .filter(
+            (v) =>
+              v.id !== view.id &&
+              v.scope === "personal" &&
+              v.owner_id === user?.id,
+          )
+          .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))[0];
+        if (first) navigate({ to: "/v/$viewId", params: { viewId: first.id } });
+        else navigate({ to: "/" });
+      },
+    });
+  };
+  const doDuplicatePersonal = () => {
+    if (!view) return;
+    createView.mutate(
+      {
+        name: `${view.name} copy`,
+        icon: view.icon,
+        filter: (view.filter ?? []) as Filter[],
+        sort: (view.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
+        layout: view.layout as Layout,
+      },
+      {
+        onSuccess: (row) =>
+          navigate({ to: "/v/$viewId", params: { viewId: row.id } }),
+      },
+    );
+  };
+  const doDuplicateTeam = () => {
+    if (!view) return;
+    forkView.mutate(
+      {
+        viewId: view.id,
+        name: `${view.name} copy`,
+        filter: (view.filter ?? []) as Filter[],
+        sort: (view.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
+        layout: view.layout as Layout,
+      },
+      {
+        onSuccess: (row) =>
+          navigate({ to: "/v/$viewId", params: { viewId: row.id } }),
+      },
+    );
+  };
+  const doAreaSaveAsView = () => {
+    if (selection.kind !== "area") return;
+    createView.mutate(
+      {
+        name: selection.area,
+        filter: [{ op: "eq", prop: "area", value: selection.area }],
+        sort: { prop: "edited", dir: "desc" },
+        layout: "table",
+      },
+      {
+        onSuccess: (row) =>
+          navigate({ to: "/v/$viewId", params: { viewId: row.id } }),
+      },
+    );
+  };
+  const doRenameCommit = (v: string) => {
+    setRenaming(false);
+    if (!view) return;
+    const next = v.trim();
+    if (next && next !== view.name) {
+      updateView.mutate({ id: view.id, patch: { name: next } });
+    }
   };
 
 
@@ -1015,16 +1116,26 @@ export function MainView({ selection }: { selection: Selection }) {
         onNewPage={onNewPage}
         layout={layout}
         onChangeLayout={onChangeLayout}
+        renaming={renaming}
+        onRenameCommit={doRenameCommit}
+        onRenameCancel={() => setRenaming(false)}
         menuBuild={() => (
           <ViewHeaderMenu
             view={view}
             selection={selection}
-            canPublish={isOwnerOfView}
-            canDelete={isOwnerOfView}
-            canSaveAs={isTeamView}
+            isWorkspaceOwner={isWorkspaceOwner}
+            isOwnerOfView={isOwnerOfView}
+            isTeamView={isTeamView}
+            workspaceName={workspace?.name ?? "the workspace"}
+            memberCount={memberCount}
+            onRename={() => setRenaming(true)}
+            onDuplicatePersonal={doDuplicatePersonal}
+            onDuplicateTeam={doDuplicateTeam}
             onPublish={doPublish}
-            onSaveAs={doSaveAsMyView}
+            onUnpublish={doUnpublish}
+            onExport={() => setExportOpen(true)}
             onDelete={doDelete}
+            onAreaSaveAsView={doAreaSaveAsView}
           />
         )}
       />
@@ -1073,6 +1184,46 @@ export function MainView({ selection }: { selection: Selection }) {
       )}
 
       {body}
+
+      {exportOpen && (
+        <ExportViewDialog
+          name={selection.kind === "area" ? selection.area : view?.name ?? "view"}
+          rows={rows.map<ExportViewRow>((p) => {
+            const pp = (p.props ?? {}) as Record<string, unknown>;
+            const area = typeof pp.area === "string" ? pp.area : null;
+            const ownerId = typeof pp.owner === "string" ? pp.owner : null;
+            const statusVal = typeof pp.status === "string" ? pp.status : null;
+            const statusOpts =
+              (statusDef?.options as unknown as Array<{
+                value: string;
+                label: string;
+              }>) ?? [];
+            const status =
+              statusOpts.find((o) => o.value === statusVal)?.label ??
+              statusVal;
+            const tags = Array.isArray(pp.tags)
+              ? (pp.tags as unknown[]).filter(
+                  (t): t is string => typeof t === "string",
+                )
+              : [];
+            return {
+              title: p.title ?? null,
+              area,
+              ownerId,
+              status,
+              tags,
+              verifiedAt: p.verified_at ?? null,
+              editedAt: p.edited_at ?? null,
+            };
+          })}
+          resolveOwner={(id) => {
+            if (!id) return "";
+            const m = members.find((mm) => mm.user_id === id);
+            return m?.profiles?.full_name || m?.profiles?.email || "";
+          }}
+          onClose={() => setExportOpen(false)}
+        />
+      )}
     </div>
     </PageOriginContext.Provider>
   );
@@ -1128,36 +1279,51 @@ function ModifiedBanner({
 function ViewHeaderMenu({
   view,
   selection,
-  canPublish,
-  canDelete,
-  canSaveAs,
+  isWorkspaceOwner,
+  isOwnerOfView,
+  isTeamView,
+  workspaceName,
+  memberCount,
+  onRename,
+  onDuplicatePersonal,
+  onDuplicateTeam,
   onPublish,
-  onSaveAs,
+  onUnpublish,
+  onExport,
   onDelete,
+  onAreaSaveAsView,
 }: {
   view: ViewRow | null;
   selection: Selection;
-  canPublish: boolean;
-  canDelete: boolean;
-  canSaveAs: boolean;
+  isWorkspaceOwner: boolean;
+  isOwnerOfView: boolean;
+  isTeamView: boolean;
+  workspaceName: string;
+  memberCount: number;
+  onRename: () => void;
+  onDuplicatePersonal: () => void;
+  onDuplicateTeam: () => void;
   onPublish: () => void;
-  onSaveAs: () => void;
+  onUnpublish: () => void;
+  onExport: () => void;
   onDelete: () => void;
+  onAreaSaveAsView: () => void;
 }) {
   const [mode, setMode] = useState<"list" | "publish" | "delete">("list");
-  const title =
-    selection.kind === "view" && view
-      ? view.scope === "team"
-        ? "Team view"
-        : "My view"
-      : "View";
+
   const name = view?.name ?? (selection.kind === "area" ? selection.area : "");
+  const title =
+    selection.kind === "area"
+      ? "Area"
+      : isTeamView
+        ? "Team view"
+        : "My view";
 
   if (mode === "publish") {
     return (
       <RowMenuConfirm
-        title={`Publish "${name}" to the team?`}
-        body="It moves out of My views into Team views for everyone in this workspace."
+        title="Publish to the whole team?"
+        body={`It moves out of My views into Team views for all ${memberCount} people at ${workspaceName}.`}
         confirmLabel="Publish"
         variant="publish"
         onConfirm={onPublish}
@@ -1175,35 +1341,103 @@ function ViewHeaderMenu({
       />
     );
   }
-  const items = [];
-  if (canSaveAs)
+
+  type Item =
+    | { kind: "divider" }
+    | {
+        id: string;
+        label: string;
+        hint?: ReactNode;
+        danger?: boolean;
+        submenu?: true;
+        keepOpen?: true;
+        disabled?: boolean;
+        onSelect?: () => void;
+      };
+  const items: Item[] = [];
+
+  if (selection.kind === "area") {
     items.push({
-      id: "save",
+      id: "save-as-view",
       label: "Save as my view",
       hint: <Val>personal</Val>,
-      onSelect: onSaveAs,
+      onSelect: onAreaSaveAsView,
     });
-  if (canPublish)
     items.push({
-      id: "publish",
-      label: "Publish to team",
-      hint: <Val>shared</Val>,
-      submenu: true as const,
-      keepOpen: true as const,
-      onSelect: () => setMode("publish"),
+      id: "export",
+      label: "Export view",
+      hint: <Val>CSV, Markdown</Val>,
+      onSelect: onExport,
     });
-  if (canDelete) {
-    if (items.length) items.push({ kind: "divider" as const });
+  } else if (isOwnerOfView) {
+    items.push({
+      id: "rename",
+      label: "Rename view",
+      onSelect: onRename,
+    });
+    items.push({
+      id: "duplicate",
+      label: "Duplicate",
+      hint: <Val>personal</Val>,
+      onSelect: onDuplicatePersonal,
+    });
+    if (isWorkspaceOwner) {
+      items.push({
+        id: "publish",
+        label: "Publish to team",
+        hint: <Val>shared</Val>,
+        submenu: true,
+        keepOpen: true,
+        onSelect: () => setMode("publish"),
+      });
+    }
+    items.push({
+      id: "export",
+      label: "Export view",
+      hint: <Val>CSV, Markdown</Val>,
+      onSelect: onExport,
+    });
+    items.push({ kind: "divider" });
     items.push({
       id: "delete",
       label: "Delete view",
       danger: true,
-      submenu: true as const,
-      keepOpen: true as const,
-      hint: <Sc>⌫</Sc>,
+      submenu: true,
+      keepOpen: true,
       onSelect: () => setMode("delete"),
     });
+  } else if (isTeamView) {
+    items.push({
+      id: "duplicate",
+      label: "Duplicate into My views",
+      hint: <Val>personal</Val>,
+      onSelect: onDuplicateTeam,
+    });
+    items.push({
+      id: "export",
+      label: "Export view",
+      hint: <Val>CSV, Markdown</Val>,
+      onSelect: onExport,
+    });
+    if (isWorkspaceOwner) {
+      items.push({ kind: "divider" });
+      items.push({
+        id: "unpublish",
+        label: "Unpublish to personal",
+        hint: <Val>personal</Val>,
+        onSelect: onUnpublish,
+      });
+      items.push({
+        id: "delete",
+        label: "Delete view",
+        danger: true,
+        submenu: true,
+        keepOpen: true,
+        onSelect: () => setMode("delete"),
+      });
+    }
   }
+
   if (!items.length)
     items.push({ id: "none", label: "No actions available", disabled: true });
   return <RowMenuList title={title} items={items} />;
