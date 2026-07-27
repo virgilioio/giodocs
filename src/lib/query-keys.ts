@@ -5,4 +5,5 @@ export const qk = {
   members: (ws: string) => ["members", ws] as const,
   propDefs: (ws: string) => ["propDefs", ws] as const,
   page: (id: string) => ["page", id] as const,
+  pageAccess: (id: string) => ["pageAccess", id] as const,
 };

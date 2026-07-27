@@ -68,12 +68,12 @@ export function useRealtimeWorkspace(workspaceId: string | undefined) {
           // Ignore our own edits — optimistic patch is authoritative.
           if (myId && newRow.edited_by === myId) return;
 
-          const softDeleted = newRow.deleted_at != null;
+          const hidden = newRow.deleted_at != null || newRow.archived_at != null;
           const id = newRow.id as string;
 
           qc.setQueryData<PageListItem[]>(key, (prev) => {
             if (!prev) return prev;
-            if (softDeleted) return prev.filter((p) => p.id !== id);
+            if (hidden) return prev.filter((p) => p.id !== id);
             const projected = projectPage(newRow);
             const idx = prev.findIndex((p) => p.id === id);
             if (idx === -1) return [projected, ...prev];

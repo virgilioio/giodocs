@@ -49,6 +49,7 @@ export function PageMoreButton({ open, onClick, className }: {
   return (
     <button
       type="button"
+      data-page-more
       onClick={(e) => { e.stopPropagation(); onClick(e); }}
       aria-label="Page actions"
       aria-expanded={open}

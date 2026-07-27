@@ -107,7 +107,7 @@ export const pageQuery = (id: string) => ({
 
 export function usePageAccess(id: string | undefined) {
   return useQuery({
-    queryKey: id ? ["pageAccess", id] : ["pageAccess", "none"],
+    queryKey: id ? qk.pageAccess(id) : ["pageAccess", "none"],
     queryFn: () => fetchPageAccess(id!),
     enabled: !!id,
     staleTime: 60_000,

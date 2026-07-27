@@ -2477,7 +2477,7 @@ function BoardBody({
   }, [rows, opts, groupBy]);
 
   return (
-    <div className="flex gap-3 overflow-x-auto pb-2">
+    <div className="flex gap-[14px] overflow-x-auto pb-2">
       {columns.map((col) => (
         <div
           key={col.value}
@@ -2514,7 +2514,7 @@ function BoardBody({
                   onDragStart={(e) => e.dataTransfer.setData("text/pageId", p.id)}
                   onClick={() => { setOrigin(p.id); navigate({ to: "/p/$pageId", params: { pageId: p.id } }); }}
 
-                  className="rounded-lg border border-line bg-surface p-2 text-left shadow-card transition hover:shadow-cardHover"
+                  className="rounded-[9px] border border-line bg-surface p-[10px] text-left shadow-card transition hover:shadow-cardHover"
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-row leading-none">{p.icon ?? "📄"}</span>

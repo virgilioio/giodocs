@@ -13,6 +13,7 @@ import { useToast } from "@/lib/toast";
 import { pageUrl } from "@/lib/slug";
 import { getPageOrigin } from "@/lib/page-origin";
 import { PageActionsMenu, PageMoreButton } from "./page-actions-menu";
+import { openPermissionsPopover } from "./permissions-popover";
 import { usePageAppearance } from "@/lib/page-appearance";
 import {
   useArchivePage,
@@ -447,16 +448,11 @@ export function PageTopbarActions({
               toast.push("Verified just now — thanks for keeping this fresh.");
             },
             onOpenPermissions: () => {
-              // No standalone permissions popover exists yet; the on-page
-              // permissions chip is the surface. Focus it so the user sees
-              // where "who can see this" lives, without building a second
-              // popover.
-              const chip = document.querySelector<HTMLElement>(
-                "[data-permissions-chip]",
+              const btn = document.querySelector<HTMLElement>(
+                "[data-page-more]",
               );
-              if (chip) {
-                chip.scrollIntoView({ block: "center", behavior: "smooth" });
-              }
+              const rect = btn?.getBoundingClientRect();
+              if (rect) openPermissionsPopover(rect);
             },
             onMoveArea: (area) => {
               setProp.mutate({ pageId: page.id, key: "area", value: area });
