@@ -248,12 +248,14 @@ export function AddMembersModal({
     hintColor = { color: "var(--color-amberInk)" };
   }
 
-  const sendReady = emails.length > 0;
-  const sendLabel = sendReady
-    ? emails.length === 1
-      ? "Send 1 invite"
-      : `Send ${emails.length} invites`
-    : "Send invites";
+  const sendReady = emails.length > 0 && !sendInvites.isPending;
+  const sendLabel = sendInvites.isPending
+    ? "Sending…"
+    : emails.length === 0
+      ? "Send invites"
+      : emails.length === 1
+        ? "Send 1 invite"
+        : `Send ${emails.length} invites`;
 
   return (
     <div
