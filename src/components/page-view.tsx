@@ -134,8 +134,13 @@ function PermissionsChip({
   return (
     <span
       data-permissions-chip
-      className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1 text-meta text-secondary"
-      style={{ borderRadius: 999 }}
+      className="inline-flex items-center gap-1.5 rounded-full border border-line text-meta text-secondary"
+      style={{
+        height: 27,
+        boxSizing: "border-box",
+        padding: "0 11px",
+        borderRadius: 999,
+      }}
     >
       <Glyph path={path} className="h-3.5 w-3.5" />
       <span>{label}</span>
