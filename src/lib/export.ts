@@ -32,6 +32,9 @@ export type ExportContext = {
   /** When false, omit YAML front matter (Markdown) and the properties/header
    * block (HTML/PDF). Title always stays. Default: true. */
   includeDetails?: boolean;
+  /** Optional workspace name shown beside the Gio Docs mark in the HTML/PDF
+   * masthead. Omitted lines just render the mark. */
+  workspaceName?: string | null;
 };
 
 /* ─────────────────────────── Logo (inlined) ─────────────────────────── */
