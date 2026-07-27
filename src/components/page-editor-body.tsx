@@ -2320,8 +2320,6 @@ function BlockContent({
   block,
   ordinal,
   locked,
-  focused,
-  onRequestFocus,
   onEditorFocus,
   onEditorBlur,
   onBlur,
@@ -2335,21 +2333,52 @@ function BlockContent({
   block: Blk;
   ordinal?: number;
   locked: boolean;
-  focused: boolean;
-  onRequestFocus: (caret: number | "end") => void;
   onEditorFocus: () => void;
   onEditorBlur: () => void;
   onBlur?: () => void;
-  registerRef: (el: HTMLTextAreaElement | HTMLInputElement | null) => void;
+  registerRef: (el: HTMLElement | null) => void;
   onChange: (patch: Partial<Blk>) => void;
   onInput: (val: string) => void;
-  onKeyDown: (e: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
+  onKeyDown: (e: ReactKeyboardEvent<HTMLElement>) => void;
   onSetIcon: (icon: string) => void;
-  onPaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
+  onPaste: (e: React.ClipboardEvent<HTMLElement>) => void;
 }) {
+  const t = block.type;
+  const rawText = block.text ?? "";
+
+  // Shared prose renderer. β: <Editable> IS the rendered view and
+  // IS the editable element — no swap, no showFormatted branch. The
+  // shared `gio-line` class survives so styles.css's parity rule
+  // still keys correctly and any future non-prose block that opts
+  // back in inherits the same metrics.
+  const editableCls = (className: string, extra?: string) =>
+    "gio-line " + className + (extra ? " " + extra : "");
+
+  const renderProse = (className: string, opts?: { placeholder?: string; extraClass?: string; ariaLabel?: string }) => (
+    <Editable
+      ref={(el) => registerRef(el)}
+      source={rawText}
+      onSourceChange={(val) => {
+        onChange({ text: val });
+        onInput(val);
+      }}
+      onKeyDown={onKeyDown as (e: ReactKeyboardEvent<HTMLDivElement>) => void}
+      onPaste={onPaste as (e: React.ClipboardEvent<HTMLDivElement>) => void}
+      onFocus={() => onEditorFocus()}
+      onBlur={() => {
+        onEditorBlur();
+        onBlur?.();
+      }}
+      locked={locked}
+      className={editableCls(className, opts?.extraClass)}
+      placeholder={opts?.placeholder}
+      ariaLabel={opts?.ariaLabel}
+    />
+  );
+
   const textareaProps = {
     ref: (el: HTMLTextAreaElement | null) => registerRef(el),
-    value: block.text ?? "",
+    value: rawText,
     onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       onChange({ text: e.target.value });
       onInput(e.target.value);
@@ -2359,83 +2388,14 @@ function BlockContent({
       onEditorBlur();
       onBlur?.();
     },
-    onKeyDown,
-    onPaste,
-    // BUG 3: readOnly (not disabled) keeps focus/selection intact but blocks
-    // typing when the page is locked. Also prevents native re-focus loss.
+    onKeyDown: onKeyDown as (e: ReactKeyboardEvent<HTMLTextAreaElement>) => void,
+    onPaste: onPaste as (e: React.ClipboardEvent<HTMLTextAreaElement>) => void,
     readOnly: locked,
     rows: 1,
     className:
       "w-full resize-none border-0 bg-transparent p-0 outline-none placeholder:text-faint",
     style: { overflow: "hidden" as const },
   };
-
-  const t = block.type;
-
-  // Rendered ↔ editable swap. Formatted view for every text-carrying block
-  // when it does not own focus (and always for locked pages). Empty blocks
-  // stay as textareas so the placeholder and click-to-type are preserved.
-  const rawText = block.text ?? "";
-  const canFormat = t !== "code" && t !== "table" && t !== "divider";
-  const showFormatted = canFormat && (locked || (!focused && rawText.length > 0));
-
-  function caretFromEvent(e: React.MouseEvent<HTMLDivElement>): number | "end" {
-    const x = e.clientX;
-    const y = e.clientY;
-    let range: Range | null = null;
-    const d = document as Document & {
-      caretRangeFromPoint?: (x: number, y: number) => Range | null;
-      caretPositionFromPoint?: (
-        x: number,
-        y: number,
-      ) => { offsetNode: Node; offset: number } | null;
-    };
-    if (typeof d.caretRangeFromPoint === "function") {
-      range = d.caretRangeFromPoint(x, y);
-    } else if (typeof d.caretPositionFromPoint === "function") {
-      const p = d.caretPositionFromPoint(x, y);
-      if (p) {
-        range = document.createRange();
-        range.setStart(p.offsetNode, p.offset);
-      }
-    }
-    if (!range) return "end";
-    let el: HTMLElement | null =
-      range.startContainer instanceof Element
-        ? (range.startContainer as HTMLElement)
-        : range.startContainer.parentElement;
-    while (el && !el.hasAttribute("data-o")) el = el.parentElement;
-    if (!el) return "end";
-    const base = parseInt(el.getAttribute("data-o") || "0", 10);
-    return Math.min(rawText.length, base + range.startOffset);
-  }
-
-  // Returns the div-or-textarea for a given wrapping className. Both
-  // branches carry `gio-line` (see styles.css) — that shared class is the
-  // ONLY guarantee that the div and the textarea measure identically.
-  // Tailwind utilities in `className` may reset border/padding too, but a
-  // separate class in a single stylesheet cannot drift as this file grows.
-  function renderSwap(className: string, extra?: string) {
-    const cls = "gio-line " + className + (extra ? " " + extra : "");
-    if (!showFormatted) {
-      return <GrowText {...textareaProps} className={cls} />;
-    }
-    return (
-      <div
-        className={cls + " cursor-text"}
-        onMouseDown={
-          locked
-            ? undefined
-            : (e) => {
-                e.preventDefault();
-                onRequestFocus(caretFromEvent(e));
-              }
-        }
-      >
-        {rawText ? renderInlineWithOffsets(rawText) : "\u200B"}
-      </div>
-    );
-  }
 
   if (t === "columns" && Array.isArray(block.cols)) {
     return (
@@ -2455,8 +2415,6 @@ function BlockContent({
     );
   }
 
-
-
   if (t === "table") {
     return (
       <TableBlock block={block} locked={locked} onChange={onChange} onBlur={onBlur} />
@@ -2464,6 +2422,9 @@ function BlockContent({
   }
 
   if (t === "code") {
+    // Code blocks stay on <textarea>: their content is literal, no
+    // inline grammar applies, and the shim keeps caret access
+    // uniform with contenteditable neighbours.
     return (
       <div className="rounded-md bg-sunken p-3">
         <GrowText
@@ -2480,8 +2441,9 @@ function BlockContent({
         className="border-l-2 border-lineStrong pl-4"
         style={{ fontFamily: "Lato, sans-serif" }}
       >
-        {renderSwap(
-          "w-full resize-none border-0 bg-transparent p-0 text-quote italic text-body outline-none placeholder:text-faint",
+        {renderProse(
+          "w-full text-quote italic text-body placeholder:text-faint",
+          { placeholder: "Write, or type / for blocks" },
         )}
       </blockquote>
     );
@@ -2494,25 +2456,24 @@ function BlockContent({
         style={{ borderRadius: 10 }}
       >
         <CalloutIconPicker icon={block.icon ?? "💡"} onPick={onSetIcon} disabled={locked} />
-        {renderSwap(
-          "w-full resize-none border-0 bg-transparent p-0 text-prose text-body outline-none placeholder:text-faint",
+        {renderProse(
+          "w-full text-prose text-body",
+          { placeholder: "Write, or type / for blocks" },
         )}
       </div>
     );
   }
 
   if (t === "toggle") {
-    // Optional heading level: 'h1' | 'h2' | 'h3' promotes the SUMMARY to
-    // heading typography. Absent = today's plain-toggle rendering (Lato).
     const level = (block as { level?: string }).level;
     const summaryCls =
       level === "h1"
-        ? "w-full resize-none border-0 bg-transparent p-0 font-display text-title text-noir outline-none placeholder:text-faint"
+        ? "w-full font-display text-title text-noir"
         : level === "h2"
-          ? "w-full resize-none border-0 bg-transparent p-0 font-display text-heading text-noir outline-none placeholder:text-faint"
+          ? "w-full font-display text-heading text-noir"
           : level === "h3"
-            ? "w-full resize-none border-0 bg-transparent p-0 font-display text-subhead text-noir outline-none placeholder:text-faint"
-            : textareaProps.className;
+            ? "w-full font-display text-subhead text-noir"
+            : "w-full text-prose text-body";
     return (
       <div className="text-prose text-body">
         <div className="flex items-start gap-1">
@@ -2529,7 +2490,7 @@ function BlockContent({
               ›
             </span>
           </button>
-          {renderSwap(summaryCls)}
+          {renderProse(summaryCls, { placeholder: "Toggle" })}
         </div>
         {block.open ? (
           <div className="ml-5 mt-1 text-meta text-muted">
@@ -2540,10 +2501,9 @@ function BlockContent({
     );
   }
 
-  // Flat outline: indent shifts only the block CONTENT for the indentable
-  // types (bullet, numbered, todo, text). Gutter stays at the row's left
-  // edge. 24px per level. Bullet glyph and numbered label cycle every 3
-  // levels for legibility.
+  // Flat outline: indent shifts only the block CONTENT for the
+  // indentable types (bullet, numbered, todo, text). Gutter stays at
+  // the row's left edge.
   const indent = typeof block.indent === "number" && block.indent > 0
     ? Math.min(6, Math.floor(block.indent))
     : 0;
@@ -2564,15 +2524,16 @@ function BlockContent({
           className="mt-2 accent-accent"
           aria-label={done ? "Done" : "Todo"}
         />
-        {renderSwap(
-          "w-full resize-none border-0 bg-transparent p-0 outline-none placeholder:text-faint",
-          done ? "text-muted line-through" : "",
+        {renderProse(
+          "w-full",
+          {
+            extraClass: done ? "text-muted line-through" : "",
+            placeholder: "To-do",
+          },
         )}
       </div>
     );
   }
-
-
 
   if (t === "bullet") {
     const glyph = BULLET_GLYPHS[indent % 3];
@@ -2581,7 +2542,7 @@ function BlockContent({
         <span aria-hidden className="mt-2 leading-none text-muted">
           {glyph}
         </span>
-        {renderSwap(textareaProps.className)}
+        {renderProse("w-full", { placeholder: "List" })}
       </div>
     );
   }
@@ -2593,44 +2554,48 @@ function BlockContent({
         <span aria-hidden className="mt-1 min-w-4 text-meta text-muted tnum">
           {label}
         </span>
-        {renderSwap(textareaProps.className)}
+        {renderProse("w-full", { placeholder: "List" })}
       </div>
     );
   }
 
   if (t === "h1") {
-    return renderSwap(
-      "w-full resize-none border-0 bg-transparent p-0 font-display text-title text-noir outline-none placeholder:text-faint",
+    return renderProse(
+      "w-full font-display text-title text-noir",
+      { placeholder: "Heading 1", ariaLabel: "Heading 1" },
     );
   }
 
   if (t === "h2") {
-    return renderSwap(
-      "w-full resize-none border-0 bg-transparent p-0 font-display text-heading text-noir outline-none placeholder:text-faint",
+    return renderProse(
+      "w-full font-display text-heading text-noir",
+      { placeholder: "Heading 2", ariaLabel: "Heading 2" },
     );
   }
 
   if (t === "h3") {
-    // Poppins 600 at 17px — text-subhead pairs with font-display. Distinct
-    // from body prose (Lato 17/400) by family and weight, so no new token.
-    return renderSwap(
-      "w-full resize-none border-0 bg-transparent p-0 font-display text-subhead text-noir outline-none placeholder:text-faint",
+    return renderProse(
+      "w-full font-display text-subhead text-noir",
+      { placeholder: "Heading 3", ariaLabel: "Heading 3" },
     );
   }
 
   if (t === "caption") {
-    // A small muted line. No other chrome. See notes in blockToMarkdown:
-    // markdown round-trip is lossy (comes back as `text`).
-    return renderSwap(
-      "w-full resize-none border-0 bg-transparent p-0 text-caption text-muted outline-none placeholder:text-faint",
+    return renderProse(
+      "w-full text-caption text-muted",
+      { placeholder: "Caption" },
     );
   }
 
   // text (default)
-  return contentWrap(renderSwap(
-    "w-full resize-none border-0 bg-transparent p-0 text-prose text-body outline-none placeholder:text-faint",
-  ));
+  return contentWrap(
+    renderProse(
+      "w-full text-prose text-body",
+      { placeholder: "Write, or type / for blocks" },
+    ),
+  );
 }
+
 
 const GrowText = function GrowText(
   props: React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
