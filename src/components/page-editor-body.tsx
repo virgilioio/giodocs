@@ -1285,7 +1285,7 @@ export function EditableBody({
               return;
             }
           }}
-          onAddBelow={() => insertAfter(b.id)}
+          onAddBelow={() => { if (!locked) insertAfter(b.id); }}
           onSetIcon={(icon) => updateBlock(b.id, { icon })}
         />
       ))}
