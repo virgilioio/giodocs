@@ -573,12 +573,14 @@ function BlockRow({
   onSetIcon: (icon: string) => void;
 }) {
   return (
-    <div className="group relative">
-      {/* Gutter: +42px left inside padding, hidden until hover. */}
+    <div className="group relative -ml-[42px] pl-[42px]">
+      {/* Gutter lives inside the row's own hover box so there is no dead
+       * zone between text and gutter. The row extends 42px to the left
+       * via negative margin + matching padding; buttons sit at left:0. */}
       {!locked ? (
         <div
-          className="absolute top-0 hidden select-none items-center gap-0.5 group-hover:flex"
-          style={{ left: -42, height: 32, width: 39 }}
+          className="pointer-events-none absolute top-0 flex select-none items-center gap-0.5 opacity-0 transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100"
+          style={{ left: 0, height: 32, width: 39 }}
         >
           <button
             type="button"
@@ -591,7 +593,7 @@ function BlockRow({
           </button>
           <span
             aria-hidden
-            title="Reordering arrives next phase"
+            title="Reordering arrives soon"
             className="grid h-6 w-6 cursor-default place-items-center rounded-md text-faint"
           >
             ⋮⋮

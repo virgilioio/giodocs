@@ -277,7 +277,7 @@ export function AppShell() {
 
   return (
     <RowMenuProvider>
-    <div className="flex min-h-screen bg-canvas">
+    <div className="flex h-screen overflow-hidden bg-canvas">
       <div
         style={{
           width: collapsed ? 0 : "var(--spacing-sidebar)",
