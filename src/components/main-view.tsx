@@ -1743,28 +1743,38 @@ export function MainView({ selection }: { selection: Selection }) {
             />
           ) : null
         }
-        menuBuild={() => (
-          <ViewHeaderMenu
-            view={view}
-            selection={selection}
-            isWorkspaceOwner={isWorkspaceOwner}
-            isOwnerOfView={isOwnerOfView}
-            isTeamView={isTeamView}
-            workspaceName={workspace?.name ?? "the workspace"}
-            memberCount={memberCount}
-            onRename={() => setRenaming(true)}
-            onChangeIcon={(icon) => {
-              if (view) updateView.mutate({ id: view.id, patch: { icon } });
-            }}
-            onDuplicatePersonal={doDuplicatePersonal}
-            onDuplicateTeam={doDuplicateTeam}
-            onPublish={doPublish}
-            onUnpublish={doUnpublish}
-            onExport={() => setExportOpen(true)}
-            onDelete={doDelete}
-            onAreaSaveAsView={doAreaSaveAsView}
-          />
-        )}
+        menuSpec={(mctx) =>
+          buildViewToolbarSpec(
+            {
+              scope,
+              isModified,
+              isWorkspaceOwner,
+              isOwnerOfView,
+              name:
+                selection.kind === "area"
+                  ? selection.area
+                  : view?.name ?? "",
+              workspaceName: workspace?.name ?? "the workspace",
+              memberCount,
+              publisherName,
+              layout,
+              rowCount: rows.length,
+              unfilteredCount,
+              sortLabel,
+              onSaveAsMyView: doSaveAsMyView,
+              onDiscard: doDiscard,
+              onDuplicateTeam: doDuplicateTeam,
+              onAreaSaveAsView: doAreaSaveAsView,
+              onChangeLayout,
+              onCopyLink: copyLinkHere,
+              onRename: () => setRenaming(true),
+              onPublish: doPublish,
+              onUnpublish: doUnpublish,
+              onDelete: doDelete,
+            },
+            mctx,
+          )
+        }
       />
 
       {isModified && base && (
