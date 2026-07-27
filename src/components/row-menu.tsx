@@ -551,7 +551,7 @@ export function MoreButton({
   className,
   visible = true,
 }: {
-  size?: "sm" | "md";
+  size?: "sm" | "md" | "view";
   ariaLabel?: string;
   build: () => ReactNode;
   width?: number;
@@ -559,7 +559,7 @@ export function MoreButton({
   visible?: boolean;
 }) {
   const { open } = useRowMenu();
-  const px = size === "md" ? 30 : 17;
+  const px = size === "md" ? 30 : size === "view" ? 26 : 17;
   return (
     <button
       type="button"

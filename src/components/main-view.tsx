@@ -146,7 +146,6 @@ function ViewHeader({
   onNewPage,
   layout,
   onChangeLayout,
-  menuBuild,
   renaming,
   onRenameCommit,
   onRenameCancel,
@@ -157,7 +156,6 @@ function ViewHeader({
   onNewPage: () => void;
   layout: Layout;
   onChangeLayout: (l: Layout) => void;
-  menuBuild: () => ReactNode;
   renaming: boolean;
   onRenameCommit: (v: string) => void;
   onRenameCancel: () => void;
@@ -242,7 +240,6 @@ function ViewHeader({
           <Glyph path="M12 5v14M5 12h14" className="h-3 w-3" />
           New page
         </button>
-        <RowMoreButton size="md" build={menuBuild} />
 
       </div>
     </div>
@@ -265,6 +262,7 @@ function QueryToolbar({
   fixedFilterIndex,
   pages,
   verbose,
+  menuBuild,
 }: {
   filters: Filter[];
   sort: SortSpec;
@@ -276,6 +274,7 @@ function QueryToolbar({
   fixedFilterIndex?: number;
   pages: PageListItem[];
   verbose: boolean;
+  menuBuild: () => ReactNode;
 }) {
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-lineSoft pb-3">
@@ -345,17 +344,11 @@ function QueryToolbar({
             <option value="title:desc">Title Z–A</option>
           </select>
         </div>
-        <button
-          type="button"
-          title="View options — coming soon"
-          aria-label="View options"
-          className="grid h-7 w-7 place-items-center rounded-sm text-muted hover:bg-sunken"
-        >
-          <Glyph
-            path="M6 12a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2zm6 0a1 1 0 100-2 1 1 0 000 2z"
-            className="h-4 w-4"
-          />
-        </button>
+        <RowMoreButton
+          size="view"
+          ariaLabel="View options"
+          build={menuBuild}
+        />
       </div>
 
     </div>
@@ -757,7 +750,7 @@ function TagsCell({
     }
     return [...s].sort();
   }, [pages, allOverride]);
-  const shown = tags.slice(0, 3);
+  const shown = tags.slice(0, 2);
   const extra = tags.length - shown.length;
   return (
     <TagsPicker
@@ -769,7 +762,7 @@ function TagsCell({
           ref={ref}
           type="button"
           onClick={onClick}
-          className="flex flex-wrap items-center gap-1"
+          className="flex flex-nowrap items-center gap-1 overflow-hidden"
         >
           {shown.map((t) => {
             const c = hashTag(t);
@@ -787,7 +780,12 @@ function TagsCell({
             );
           })}
           {extra > 0 && (
-            <span className="text-caption text-muted">+{extra}</span>
+            <span
+              className="rounded-sm px-1.5 py-0.5 text-caption"
+              style={{ color: "var(--color-whisper)" }}
+            >
+              +{extra}
+            </span>
           )}
           {tags.length === 0 && <span className="text-faint">—</span>}
         </button>
@@ -1119,6 +1117,21 @@ export function MainView({ selection }: { selection: Selection }) {
         renaming={renaming}
         onRenameCommit={doRenameCommit}
         onRenameCancel={() => setRenaming(false)}
+      />
+
+
+      <QueryToolbar
+        filters={filters}
+        sort={sort}
+
+        onChangeFilters={onChangeFilters}
+        onChangeSort={onChangeSort}
+        propDefs={propDefs}
+        staleDays={staleDays}
+        editable={editable}
+        fixedFilterIndex={fixedFilterIndex}
+        pages={pages}
+        verbose={prefs.explainQuery}
         menuBuild={() => (
           <ViewHeaderMenu
             view={view}
@@ -1138,22 +1151,6 @@ export function MainView({ selection }: { selection: Selection }) {
             onAreaSaveAsView={doAreaSaveAsView}
           />
         )}
-      />
-
-
-      <QueryToolbar
-        filters={filters}
-        sort={sort}
-
-        onChangeFilters={onChangeFilters}
-        onChangeSort={onChangeSort}
-        propDefs={propDefs}
-        staleDays={staleDays}
-        editable={editable}
-        fixedFilterIndex={fixedFilterIndex}
-        pages={pages}
-        verbose={prefs.explainQuery}
-
       />
 
       {layout === "board" && (
@@ -1850,7 +1847,8 @@ function Cell({ children, className }: { children: ReactNode; className?: string
   return (
     <div
       className={
-        "min-w-0 border-b border-lineSoft px-[11px] gio-cell-pad " + (className ?? "")
+        "min-w-0 border-b border-lineSoft px-[11px] gio-cell-pad flex items-center whitespace-nowrap overflow-hidden " +
+        (className ?? "")
       }
     >
       {children}
