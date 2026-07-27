@@ -319,7 +319,7 @@ function QueryToolbar({
   return (
     <div
       className="flex flex-wrap items-center"
-      style={{ marginTop: 14, gap: 7, height: 22 }}
+      style={{ marginTop: 14, marginBottom: 10, gap: 7, minHeight: 22 }}
     >
       {verbose && (
         <>

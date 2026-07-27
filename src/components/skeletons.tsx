@@ -74,7 +74,7 @@ export function ViewSkeleton({ layout = "table" }: { layout?: "table" | "list" }
           alignItems: "center",
           gap: 7,
           marginTop: 14,
-          height: 22,
+          minHeight: 22,
         }}
       >
         <Sk tone="soft" w={78} h={11} r={5} />
@@ -309,7 +309,7 @@ export function BoardSkeleton() {
           alignItems: "center",
           gap: 7,
           marginTop: 14,
-          height: 22,
+          minHeight: 22,
         }}
       >
         <Sk tone="soft" w={78} h={11} r={5} />
