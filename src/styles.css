@@ -5,6 +5,9 @@
 @import "@fontsource/lato/400.css";
 @import "@fontsource/lato/700.css";
 @import "@fontsource/spline-sans-mono/400.css";
+@import "@fontsource/spline-sans-mono/500.css";
+@import "@fontsource/newsreader/400.css";
+@import "@fontsource/newsreader/600.css";
 
 @theme {
   --color-canvas:#F6F5F1; --color-surface:#FFFFFF; --color-rail:#F4F3EF;
