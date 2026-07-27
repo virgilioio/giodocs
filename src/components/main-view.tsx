@@ -2718,20 +2718,58 @@ function BoardBody({
                 typeof ownerId === "string"
                   ? members.find((m) => m.user_id === ownerId)?.profiles
                   : null;
+              const isSelected = selectedSet.has(p.id);
               return (
-                <button
+                <div
                   key={p.id}
-                  type="button"
                   draggable
                   onDragStart={(e) => e.dataTransfer.setData("text/pageId", p.id)}
-                  onClick={() => { setOrigin(p.id); navigate({ to: "/p/$pageId", params: { pageId: p.id } }); }}
-
-                  className="rounded-[9px] border border-line bg-surface p-[10px] text-left shadow-card transition hover:shadow-cardHover"
+                  onClick={(e) => {
+                    // Skip when the click originated inside the checkbox or menu.
+                    const t = e.target as HTMLElement;
+                    if (
+                      t.closest("[data-row-checkbox]") ||
+                      t.closest("[data-row-more]") ||
+                      t.closest('[aria-label="Page actions"]')
+                    ) return;
+                    if (anySelection) {
+                      onCheckboxClick(p.id, e.shiftKey);
+                      return;
+                    }
+                    setOrigin(p.id);
+                    navigate({ to: "/p/$pageId", params: { pageId: p.id } });
+                  }}
+                  className={
+                    "group rounded-[9px] bg-surface p-[10px] text-left shadow-card transition hover:shadow-cardHover cursor-pointer " +
+                    (isSelected
+                      ? "border-[1.5px] border-blue"
+                      : "border border-line")
+                  }
                 >
                   <div className="flex items-center gap-2">
-                    <span className="text-row leading-none">{p.icon ?? "📄"}</span>
+                    {(anySelection || isSelected) ? (
+                      <span className="mt-[2px]" data-row-checkbox>
+                        <RowCheckbox
+                          checked={isSelected}
+                          alwaysVisible
+                          onClick={(shift) => onCheckboxClick(p.id, shift)}
+                        />
+                      </span>
+                    ) : (
+                      <span className="text-row leading-none">{p.icon ?? "📄"}</span>
+                    )}
                     <span className="min-w-0 flex-1 truncate text-row font-bold text-noir">
                       {p.title || "Untitled"}
+                    </span>
+                    <span
+                      data-row-more
+                      className="opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+                    >
+                      <SpecMenuTrigger
+                        build={getPageMenuBuild(p)}
+                        size="sm"
+                        ariaLabel="Page actions"
+                      />
                     </span>
                   </div>
                   <div className="mt-2 flex items-center gap-2 text-caption">
@@ -2754,7 +2792,7 @@ function BoardBody({
                       <span className="ml-auto text-muted">{relTime(p.edited_at)}</span>
                     )}
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
