@@ -220,6 +220,66 @@ function detectCheckbox(li: Extract<Node, { type: "elem" }>): { checked: boolean
   return found;
 }
 
+/* Callout detection.
+ *
+ * Notion does NOT emit callouts as blockquotes on the clipboard — they come
+ * as a styled <div>/<figure> whose class contains "callout", or a container
+ * whose first child holds a single emoji followed by content. Detect both
+ * shapes and emit `> {emoji} {text}` so parseMarkdown's own rule turns it
+ * back into a callout block. If detection is triggered by class but no
+ * emoji is found, fall back to 💡. If nothing detects, return null and let
+ * the normal div/p handler take over — we never lose the text.
+ */
+const CALLOUT_EMOJI_ONLY =
+  /^\p{Extended_Pictographic}(\uFE0F|\u200D\p{Extended_Pictographic})*$/u;
+const CALLOUT_LEAD_EMOJI =
+  /^\s*(\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*)/u;
+
+function detectCallout(
+  el: Extract<Node, { type: "elem" }>,
+): { icon: string; text: string } | null {
+  const cls = (el.attrs.class ?? "").toLowerCase();
+  const classHit = /\bcallout\b/.test(cls);
+  const shapeCandidate = el.tag === "div" || el.tag === "figure";
+  if (!classHit && !shapeCandidate) return null;
+
+  // Non-whitespace children only.
+  const kids = el.children.filter(
+    (c) => !(c.type === "text" && /^\s*$/.test(c.text)),
+  );
+  if (kids.length === 0) return null;
+
+  let icon = "";
+  let contentKids: Node[] = kids;
+  const first = kids[0];
+
+  if (first.type === "elem") {
+    const firstText = textOnly(first.children).trim();
+    if (firstText && CALLOUT_EMOJI_ONLY.test(firstText)) {
+      icon = firstText;
+      contentKids = kids.slice(1);
+    }
+  } else if (first.type === "text") {
+    const m = first.text.match(CALLOUT_LEAD_EMOJI);
+    if (m) {
+      icon = m[1];
+      const rest = first.text.slice(m[0].length);
+      contentKids = [{ type: "text", text: rest }, ...kids.slice(1)];
+    }
+  }
+
+  // Shape-only detection needs an emoji to avoid false positives on plain
+  // <div>s. Class-based detection accepts a missing emoji and defaults.
+  if (!classHit && !icon) return null;
+  if (!icon) icon = "💡";
+
+  // Render remaining children as inline (callouts are single-line in our
+  // model). collapseWs then trim to one line.
+  const text = collapseWs(renderInlineChildren(contentKids)).trim();
+  if (!text) return null;
+  return { icon, text };
+}
+
 function renderInlineChildren(nodes: Node[]): string {
   let out = "";
   for (const n of nodes) {
@@ -312,7 +372,9 @@ function renderBlock(n: Node, ctx: WalkCtx): string {
     return `${hash} ${renderInlineChildren(el.children).trim()}`;
   }
 
-  if (t === "p" || t === "div") {
+  if (t === "p" || t === "div" || t === "figure") {
+    const co = detectCallout(el);
+    if (co) return `> ${co.icon} ${co.text}`;
     const inner = renderInlineChildren(el.children).trim();
     return inner;
   }

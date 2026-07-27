@@ -8,15 +8,25 @@
  * Precedence (longest delimiter first):
  *   `code`  →  <code>          (contents never re-parsed)
  *   **bold** →  <strong>
- *   *italic* / _italic_  →  <em>
+ *   *italic*  →  <em>
  *   ~~strike~~ →  <s>
  *   <u>…</u>   →  <u>          (markdown has no underline; inline HTML is
  *                              the convention and passes through)
  *   [label](url) → <a target=_blank rel=noopener noreferrer>
  *
+ * ⚠ DO NOT add _italic_ support. We deliberately support *italic* only.
+ * Real documents being migrated (legal contracts) contain long runs of
+ * underscores as fill-in blanks — "_____________________, sociedad …" and
+ * "Firma: ___________________________". Treating _ as an italic delimiter
+ * eats those runs and corrupts the document. Underscores must ALWAYS
+ * render as literal characters. This is safe because the other direction
+ * is fully controlled: html-to-markdown emits * for <em>/<i>, and
+ * blockToMarkdown emits * — nothing we generate ever uses _ for emphasis.
+ *
  * Rules:
  *  - Nesting at least two deep (**bold *italic* inside**) works.
- *  - Unmatched / malformed delimiters render as LITERAL characters.
+ *  - Unmatched / malformed ** ~~ * runs render as LITERAL characters and
+ *    never eat following text.
  *  - Escaping: `\*` renders a literal asterisk.
  *  - Links with dangerous URL schemes (javascript:, data:, vbscript:) are
  *    rendered as literal text, never as <a href>.
@@ -138,24 +148,27 @@ function parseNodes(
       }
     }
 
-    // Italic: *…* or _…_
-    if (c === "*" || c === "_") {
+    // Italic: *…*   — underscore is deliberately NOT supported here.
+    // See the header comment for why (legal-contract fill-in blanks).
+    if (c === "*") {
       let j = i + 1;
       while (j < text.length) {
         if (text[j] === "\\") {
           j += 2;
           continue;
         }
-        if (text[j] === c) break;
-        // Do not consume another opening ** by accident — bail out italic
-        // scan if we hit a bold delimiter of the same char.
-        if (c === "*" && text[j] === "*" && text[j + 1] === "*") {
-          j = -1;
+        if (text[j] === "*") {
+          // Do not consume another opening ** by accident — bail out italic
+          // scan if we hit a bold delimiter.
+          if (text[j + 1] === "*") {
+            j = -1;
+            break;
+          }
           break;
         }
         j++;
       }
-      if (j > i + 1 && j < text.length) {
+      if (j > i + 1 && j < text.length && text[j] === "*") {
         flush();
         out.push(
           <em
@@ -304,21 +317,24 @@ export function inlineToHtml(text: string): string {
       }
     }
 
-    if (c === "*" || c === "_") {
+    // Italic: *…* only — underscore is deliberately not a delimiter.
+    if (c === "*") {
       let j = i + 1;
       while (j < src.length) {
         if (src[j] === "\\") {
           j += 2;
           continue;
         }
-        if (src[j] === c) break;
-        if (c === "*" && src[j] === "*" && src[j + 1] === "*") {
-          j = -1;
+        if (src[j] === "*") {
+          if (src[j + 1] === "*") {
+            j = -1;
+            break;
+          }
           break;
         }
         j++;
       }
-      if (j > i + 1 && j < src.length) {
+      if (j > i + 1 && j < src.length && src[j] === "*") {
         flush();
         out += `<em>${inlineToHtml(src.slice(i + 1, j))}</em>`;
         i = j + 1;
