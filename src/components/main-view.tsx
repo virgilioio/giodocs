@@ -1771,6 +1771,7 @@ export function MainView({ selection }: { selection: Selection }) {
               onPublish: doPublish,
               onUnpublish: doUnpublish,
               onDelete: doDelete,
+              onExportView: () => setExportOpen(true),
             },
             mctx,
           )
