@@ -305,7 +305,7 @@ export function EditableBody({
     }
   }, [pageId, initialBlocks]);
 
-  const refs = useRef<Record<string, HTMLTextAreaElement | HTMLInputElement | null>>({});
+  const refs = useRef<Record<string, HTMLElement | null>>({});
   const [focusRequest, setFocusRequest] = useState<{
     id: string;
     caret?: number | "end" | "start";
@@ -984,7 +984,7 @@ export function EditableBody({
    * ordinary text (undo history stays intact). Otherwise we splice parsed
    * blocks at the caret — or replace the current block-selection run. */
   const handlePaste = useCallback(
-    (blockId: string, e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    (blockId: string, e: React.ClipboardEvent<HTMLElement>) => {
       if (locked) return;
       const htmlSrc = e.clipboardData?.getData("text/html") ?? "";
       const plainSrc = e.clipboardData?.getData("text/plain") ?? "";
@@ -2735,7 +2735,7 @@ function ColumnStack({
     return () => bridge?.registerTrack(colRef, null);
   }, [bridge, colRef]);
 
-  const refs = useRef<Record<string, HTMLTextAreaElement | HTMLInputElement | null>>({});
+  const refs = useRef<Record<string, HTMLElement | null>>({});
   const [focusRequest, setFocusRequest] = useState<{
     id: string;
     caret?: number | "end" | "start";
@@ -2829,7 +2829,7 @@ function ColumnStack({
    * Uses the same parse + splice engine as the top level. Any parsed
    * `columns` blocks are filtered out to preserve the never-nest rule. */
   const handlePaste = useCallback(
-    (blockId: string, e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    (blockId: string, e: React.ClipboardEvent<HTMLElement>) => {
       if (locked) return;
       const htmlSrc = e.clipboardData?.getData("text/html") ?? "";
       const plainSrc = e.clipboardData?.getData("text/plain") ?? "";
