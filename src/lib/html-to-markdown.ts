@@ -372,7 +372,9 @@ function renderBlock(n: Node, ctx: WalkCtx): string {
     return `${hash} ${renderInlineChildren(el.children).trim()}`;
   }
 
-  if (t === "p" || t === "div") {
+  if (t === "p" || t === "div" || t === "figure") {
+    const co = detectCallout(el);
+    if (co) return `> ${co.icon} ${co.text}`;
     const inner = renderInlineChildren(el.children).trim();
     return inner;
   }
