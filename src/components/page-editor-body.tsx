@@ -10,6 +10,7 @@ import {
 import { nanoid } from "nanoid";
 import { createPortal } from "react-dom";
 import type { Block } from "@/lib/types";
+import { moveBlock, moveRun, deleteIndices } from "@/lib/reorder";
 
 /* Editable body for a page. All blocks are auto-growing textareas
  * (or cell inputs for table). Persistence is orchestrated by the parent
@@ -212,6 +213,255 @@ export function EditableBody({
     [onChange],
   );
 
+  /* ────────── Selection & drag state ────────── */
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const anchorId = useRef<string | null>(null);
+  const rowEls = useRef<Map<string, HTMLElement>>(new Map());
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  const [dragging, setDragging] = useState<{
+    ids: string[]; // in original order
+    gap: number | null; // 0..blocks.length or null while indicator hidden
+    indicatorY: number | null; // relative to container top
+  } | null>(null);
+  const draggingRef = useRef(dragging);
+  useEffect(() => {
+    draggingRef.current = dragging;
+  }, [dragging]);
+
+  const registerRowEl = useCallback((id: string, el: HTMLElement | null) => {
+    if (el) rowEls.current.set(id, el);
+    else rowEls.current.delete(id);
+  }, []);
+
+  // Clear selection when clicking into any textarea/input.
+  const clearSelection = useCallback(() => {
+    setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
+    anchorId.current = null;
+  }, []);
+
+  const handleShiftClick = useCallback(
+    (id: string) => {
+      const ids = blocks.map((b) => b.id);
+      const targetIdx = ids.indexOf(id);
+      if (targetIdx < 0) return;
+      const anchor = anchorId.current;
+      if (!anchor || ids.indexOf(anchor) < 0) {
+        anchorId.current = id;
+        setSelectedIds(new Set([id]));
+        return;
+      }
+      const aIdx = ids.indexOf(anchor);
+      const [lo, hi] = aIdx <= targetIdx ? [aIdx, targetIdx] : [targetIdx, aIdx];
+      setSelectedIds(new Set(ids.slice(lo, hi + 1)));
+    },
+    [blocks],
+  );
+
+  const handlePlainClick = useCallback(() => {
+    // Plain click on a handle without shift clears any selection.
+    clearSelection();
+  }, [clearSelection]);
+
+  /* ────────── Drag: pointer session on a handle ────────── */
+
+  const beginDrag = useCallback(
+    (id: string, ev: React.PointerEvent<HTMLElement>) => {
+      // If the handle belongs to a multi-selected run, drag the whole run.
+      const ids = blocks.map((b) => b.id);
+      const targetIdx = ids.indexOf(id);
+      if (targetIdx < 0) return;
+      const isMulti = selectedIds.size > 1 && selectedIds.has(id);
+      const dragIds = isMulti
+        ? ids.filter((x) => selectedIds.has(x))
+        : [id];
+      if (!isMulti) {
+        // Non-selected drag clears any prior selection.
+        setSelectedIds(new Set());
+        anchorId.current = null;
+      }
+      try {
+        ev.currentTarget.setPointerCapture(ev.pointerId);
+      } catch {
+        /* ignore */
+      }
+      document.body.style.userSelect = "none";
+      setDragging({ ids: dragIds, gap: null, indicatorY: null });
+    },
+    [blocks, selectedIds],
+  );
+
+  const computeGap = useCallback(
+    (clientY: number): { gap: number; indicatorY: number } | null => {
+      const container = containerRef.current;
+      if (!container) return null;
+      const cRect = container.getBoundingClientRect();
+      const ids = blocks.map((b) => b.id);
+      // For each block, look up its row element rect.
+      const rects: Array<{ id: string; top: number; bottom: number; mid: number }> = [];
+      for (const id of ids) {
+        const el = rowEls.current.get(id);
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        rects.push({ id, top: r.top, bottom: r.bottom, mid: (r.top + r.bottom) / 2 });
+      }
+      if (rects.length === 0) return null;
+      // Above the first row?
+      if (clientY < rects[0].mid) {
+        return { gap: 0, indicatorY: rects[0].top - cRect.top - 2 };
+      }
+      for (let i = 0; i < rects.length; i++) {
+        const r = rects[i];
+        const nextTop = i + 1 < rects.length ? rects[i + 1].top : r.bottom;
+        if (clientY < r.mid) {
+          // Between prev and this row → gap = i
+          const y = ((rects[i - 1]?.bottom ?? r.top) + r.top) / 2;
+          return { gap: i, indicatorY: y - cRect.top - 1 };
+        }
+        // pointer is past this row's mid
+        const isLast = i + 1 >= rects.length;
+        if (isLast) {
+          return { gap: rects.length, indicatorY: r.bottom - cRect.top + 2 };
+        }
+        // Fall through to check next row's mid
+        void nextTop;
+      }
+      return { gap: rects.length, indicatorY: rects[rects.length - 1].bottom - cRect.top + 2 };
+    },
+    [blocks],
+  );
+
+  // Auto-scroll while dragging near edges.
+  const scrollContainerRef = useRef<HTMLElement | null>(null);
+  const scrollRafRef = useRef<number | null>(null);
+  const scrollDirRef = useRef<0 | 1 | -1>(0);
+  const tickScroll = useCallback(() => {
+    const dir = scrollDirRef.current;
+    const el = scrollContainerRef.current;
+    if (!el || dir === 0) {
+      scrollRafRef.current = null;
+      return;
+    }
+    el.scrollTop += dir * 8;
+    scrollRafRef.current = requestAnimationFrame(tickScroll);
+  }, []);
+
+  const onPointerMove = useCallback(
+    (ev: PointerEvent) => {
+      if (!draggingRef.current) return;
+      // Find scroll container lazily.
+      if (!scrollContainerRef.current) {
+        const c = containerRef.current;
+        scrollContainerRef.current = c?.closest("main") ?? null;
+      }
+      const sc = scrollContainerRef.current;
+      if (sc) {
+        const r = sc.getBoundingClientRect();
+        const near = 48;
+        if (ev.clientY < r.top + near) scrollDirRef.current = -1;
+        else if (ev.clientY > r.bottom - near) scrollDirRef.current = 1;
+        else scrollDirRef.current = 0;
+        if (scrollDirRef.current !== 0 && scrollRafRef.current == null) {
+          scrollRafRef.current = requestAnimationFrame(tickScroll);
+        }
+      }
+      const gap = computeGap(ev.clientY);
+      if (!gap) return;
+      setDragging((prev) =>
+        prev ? { ...prev, gap: gap.gap, indicatorY: gap.indicatorY } : prev,
+      );
+    },
+    [computeGap, tickScroll],
+  );
+
+  const endDrag = useCallback(
+    (commitDrop: boolean) => {
+      const d = draggingRef.current;
+      document.body.style.userSelect = "";
+      scrollDirRef.current = 0;
+      if (scrollRafRef.current != null) {
+        cancelAnimationFrame(scrollRafRef.current);
+        scrollRafRef.current = null;
+      }
+      setDragging(null);
+      if (!commitDrop || !d || d.gap == null) return;
+      const ids = blocks.map((b) => b.id);
+      if (d.ids.length === 1) {
+        const from = ids.indexOf(d.ids[0]);
+        if (from < 0) return;
+        const next = moveBlock(blocks, from, d.gap);
+        if (next === blocks || (next.length === blocks.length && next.every((x, i) => x === blocks[i]))) return;
+        commit(next);
+      } else {
+        const runIdxs = d.ids.map((x) => ids.indexOf(x)).filter((i) => i >= 0).sort((a, b) => a - b);
+        if (runIdxs.length === 0) return;
+        const runStart = runIdxs[0];
+        const runEnd = runIdxs[runIdxs.length - 1];
+        // Only handle contiguous runs; if selection got broken, bail.
+        if (runEnd - runStart + 1 !== runIdxs.length) return;
+        const next = moveRun(blocks, runStart, runEnd, d.gap);
+        if (next.length === blocks.length && next.every((x, i) => x === blocks[i])) return;
+        commit(next);
+      }
+    },
+    [blocks, commit],
+  );
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: PointerEvent) => onPointerMove(e);
+    const onUp = () => endDrag(true);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        endDrag(false);
+      }
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", () => endDrag(false));
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [dragging, onPointerMove, endDrag]);
+
+  /* ────────── Document keydown: Escape / Delete for selection ────────── */
+
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const inField =
+        !!target &&
+        (target.tagName === "TEXTAREA" ||
+          target.tagName === "INPUT" ||
+          target.isContentEditable);
+      if (e.key === "Escape") {
+        e.preventDefault();
+        clearSelection();
+        return;
+      }
+      if ((e.key === "Delete" || e.key === "Backspace") && !inField) {
+        e.preventDefault();
+        const ids = blocks.map((b) => b.id);
+        const toDrop = ids
+          .map((id, i) => (selectedIds.has(id) ? i : -1))
+          .filter((i) => i >= 0);
+        const next = deleteIndices(blocks, toDrop, () => newBlock("text"));
+        clearSelection();
+        commit(next);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedIds, blocks, commit, clearSelection]);
+
+
+
   /* ────────── Slash menu state ────────── */
   const [slash, setSlash] = useState<{
     blockId: string;
@@ -395,13 +645,51 @@ export function EditableBody({
     setFocusRequest({ id: spawn.id, caret: "start" });
   }
 
+  const draggingIdSet = useMemo(
+    () => new Set(dragging?.ids ?? []),
+    [dragging],
+  );
+  const runIdxs = useMemo(() => {
+    if (!dragging || dragging.ids.length < 2) return null;
+    const ids = blocks.map((b) => b.id);
+    const idxs = dragging.ids
+      .map((x) => ids.indexOf(x))
+      .filter((i) => i >= 0)
+      .sort((a, b) => a - b);
+    return idxs.length ? { start: idxs[0], end: idxs[idxs.length - 1] } : null;
+  }, [dragging, blocks]);
+  // Hide indicator when a run drop would land inside the run.
+  const indicatorVisible =
+    dragging &&
+    dragging.gap != null &&
+    dragging.indicatorY != null &&
+    (runIdxs
+      ? dragging.gap < runIdxs.start || dragging.gap > runIdxs.end + 1
+      : (() => {
+          const from = blocks.findIndex((b) => b.id === dragging.ids[0]);
+          return from < 0 ? true : dragging.gap !== from && dragging.gap !== from + 1;
+        })());
+
   return (
-    <div className="relative space-y-1">
+    <div
+      ref={containerRef}
+      className="relative space-y-1"
+      onFocusCapture={(e) => {
+        const t = e.target as HTMLElement;
+        if (t.tagName === "TEXTAREA" || t.tagName === "INPUT") clearSelection();
+      }}
+    >
       {blocks.map((b) => (
         <BlockRow
           key={b.id}
           block={b}
           locked={!!locked}
+          selected={selectedIds.has(b.id)}
+          dimmed={draggingIdSet.has(b.id)}
+          registerRowEl={registerRowEl}
+          onHandlePointerDown={(ev) => beginDrag(b.id, ev)}
+          onHandlePlainClick={handlePlainClick}
+          onHandleShiftClick={() => handleShiftClick(b.id)}
           onBlur={onBlur}
           registerRef={(el) => {
             if (el) refs.current[b.id] = el;
@@ -410,7 +698,6 @@ export function EditableBody({
           onChange={(patch) => updateBlock(b.id, patch)}
           onInput={(val) => {
             if (tryMarkdown(b.id, val)) return;
-            // Slash menu open on typing '/'
             const el = refs.current[b.id] as HTMLTextAreaElement | undefined;
             const caret = el?.selectionStart ?? val.length;
             const before = val.slice(0, caret);
@@ -436,7 +723,6 @@ export function EditableBody({
             const ss = el.selectionStart ?? 0;
             const se = el.selectionEnd ?? 0;
 
-            // Slash-menu keyboard capture
             if (slash?.blockId === b.id) {
               if (e.key === "ArrowDown") {
                 e.preventDefault();
@@ -468,7 +754,6 @@ export function EditableBody({
             }
 
             if (e.key === "Enter" && !e.shiftKey) {
-              // Table cells use a plain input — their handler is separate.
               e.preventDefault();
               const isEmptyListLike =
                 (b.type === "bullet" || b.type === "numbered" || b.type === "todo") &&
@@ -519,20 +804,34 @@ export function EditableBody({
         />
       ))}
 
-      {/* Trailing click zone: any click below the last block focuses it,
-       * or appends a new empty text block. Keeps the body directly
-       * clickable without any "Enter to start" ritual. */}
+      {/* Drop indicator */}
+      {indicatorVisible ? (
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            top: dragging!.indicatorY!,
+            height: 2,
+            background: "var(--color-accentDot)",
+            borderRadius: 1,
+            pointerEvents: "none",
+            zIndex: 40,
+          }}
+        />
+      ) : null}
+
+      {/* Trailing click zone */}
       <div
         aria-hidden
         onMouseDown={(e) => {
-          // Prefer default focus behaviour when clicking an actual block.
           if ((e.target as HTMLElement).closest("textarea, input")) return;
           e.preventDefault();
           onBelowClick();
         }}
         style={{ minHeight: 240 }}
       />
-
 
       {slash ? (
         <SlashMenu
@@ -545,6 +844,64 @@ export function EditableBody({
           onClose={closeSlash}
         />
       ) : null}
+
+      {selectedIds.size > 0 && !locked
+        ? createPortal(
+            <div
+              role="status"
+              aria-live="polite"
+              className="animate-toastUp"
+              style={{
+                position: "fixed",
+                bottom: 24,
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 80,
+                background: "var(--color-noir)",
+                color: "var(--color-track)",
+                borderRadius: 14,
+                padding: "10px 12px 10px 16px",
+                boxShadow: "0 12px 40px rgba(13,13,9,.35)",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                fontSize: 13.5,
+              }}
+            >
+              <span>
+                <strong>{selectedIds.size}</strong>{" "}
+                {selectedIds.size === 1 ? "block" : "blocks"} selected · drag any
+                handle to move them together
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const ids = blocks.map((b) => b.id);
+                  const toDrop = ids
+                    .map((id, i) => (selectedIds.has(id) ? i : -1))
+                    .filter((i) => i >= 0);
+                  const next = deleteIndices(blocks, toDrop, () => newBlock("text"));
+                  clearSelection();
+                  commit(next);
+                }}
+                className="rounded-md px-2 py-1 hover:bg-noirHover"
+                style={{ color: "var(--color-track)", fontWeight: 600 }}
+              >
+                Delete
+              </button>
+              <button
+                type="button"
+                aria-label="Dismiss selection"
+                onClick={clearSelection}
+                className="grid h-6 w-6 place-items-center rounded-md hover:bg-noirHover"
+                style={{ color: "var(--color-track)" }}
+              >
+                ×
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
@@ -554,6 +911,12 @@ export function EditableBody({
 function BlockRow({
   block,
   locked,
+  selected,
+  dimmed,
+  registerRowEl,
+  onHandlePointerDown,
+  onHandlePlainClick,
+  onHandleShiftClick,
   onBlur,
   registerRef,
   onChange,
@@ -564,6 +927,12 @@ function BlockRow({
 }: {
   block: Blk;
   locked: boolean;
+  selected: boolean;
+  dimmed: boolean;
+  registerRowEl: (id: string, el: HTMLElement | null) => void;
+  onHandlePointerDown: (ev: React.PointerEvent<HTMLElement>) => void;
+  onHandlePlainClick: () => void;
+  onHandleShiftClick: () => void;
   onBlur?: () => void;
   registerRef: (el: HTMLTextAreaElement | HTMLInputElement | null) => void;
   onChange: (patch: Partial<Blk>) => void;
@@ -573,14 +942,27 @@ function BlockRow({
   onSetIcon: (icon: string) => void;
 }) {
   return (
-    <div className="group relative -ml-[42px] pl-[42px]">
-      {/* Gutter lives inside the row's own hover box so there is no dead
-       * zone between text and gutter. The row extends 42px to the left
-       * via negative margin + matching padding; buttons sit at left:0. */}
+    <div
+      ref={(el) => registerRowEl(block.id, el)}
+      className="group relative -ml-[42px] pl-[42px]"
+      style={{
+        opacity: dimmed ? 0.45 : undefined,
+        background: selected ? "var(--color-blueTint)" : undefined,
+        boxShadow: selected ? "0 0 0 4px var(--color-blueTint)" : undefined,
+        borderRadius: selected ? 4 : undefined,
+        transition: "background 120ms ease, box-shadow 120ms ease",
+      }}
+    >
       {!locked ? (
         <div
           className="pointer-events-none absolute top-0 flex select-none items-center gap-0.5 opacity-0 transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100"
-          style={{ left: 0, height: 32, width: 39 }}
+          style={{
+            left: 0,
+            height: 32,
+            width: 39,
+            opacity: selected ? 1 : undefined,
+            pointerEvents: selected ? "auto" : undefined,
+          }}
         >
           <button
             type="button"
@@ -591,13 +973,36 @@ function BlockRow({
           >
             +
           </button>
-          <span
-            aria-hidden
-            title="Reordering arrives soon"
-            className="grid h-6 w-6 cursor-default place-items-center rounded-md text-faint"
+          <button
+            type="button"
+            aria-label="Drag to reorder"
+            title="Drag to reorder · shift-click to select range"
+            onPointerDown={(e) => {
+              if (e.button !== 0) return;
+              // Shift-click selects a contiguous range and does NOT start a drag.
+              if (e.shiftKey) return;
+              onHandlePointerDown(e);
+            }}
+            onClick={(e) => {
+              if (e.shiftKey) {
+                e.preventDefault();
+                onHandleShiftClick();
+                return;
+              }
+              // Plain click: clear any active selection, do nothing else.
+              onHandlePlainClick();
+            }}
+            className={
+              "grid h-6 w-6 place-items-center rounded-md hover:bg-sunken " +
+              (selected ? "text-blueInk" : "text-faint hover:text-muted")
+            }
+            style={{
+              cursor: "grab",
+              touchAction: "none",
+            }}
           >
             ⋮⋮
-          </span>
+          </button>
         </div>
       ) : null}
 
@@ -614,6 +1019,7 @@ function BlockRow({
     </div>
   );
 }
+
 
 function BlockContent({
   block,
