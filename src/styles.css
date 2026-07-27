@@ -121,21 +121,31 @@
   .gio-list-pad { padding-top: var(--gio-list-py); padding-bottom: var(--gio-list-py); }
 
   /* Page font preference — applied to page body content only. */
-  .gio-page-body[data-font="serif"] { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; }
+  .gio-page-body[data-font="serif"] { font-family: 'Newsreader', Georgia, "Iowan Old Style", "Times New Roman", serif; }
   .gio-page-body[data-font="mono"]  { font-family: var(--font-mono); }
 
-  /* Per-page appearance overrides (font/small/wide/locked). Higher-specificity
-     rules override Tailwind font-display and container max-width. */
-  .gio-page[data-font="serif"], .gio-page[data-font="serif"] * {
-    font-family: Georgia, "Iowan Old Style", "Times New Roman", serif !important;
+  /* Per-page appearance overrides (font/small/wide/locked). The font stack is
+     driven by CSS variables so serif / mono cascade into body AND headings
+     without a wildcard rule per descendant. Head weights step down for
+     Newsreader (600) and Spline Sans Mono (500) because those faces sit
+     visually heavier than Poppins 700 at the same weight. */
+  .gio-page { --pf-body: 'Lato', system-ui, sans-serif; --pf-head: 'Poppins', system-ui, sans-serif; --pf-head-weight: 700; }
+  .gio-page[data-font="serif"] { --pf-body: 'Newsreader', Georgia, serif; --pf-head: 'Newsreader', Georgia, serif; --pf-head-weight: 600; }
+  .gio-page[data-font="mono"]  { --pf-body: 'Spline Sans Mono', ui-monospace, monospace; --pf-head: 'Spline Sans Mono', ui-monospace, monospace; --pf-head-weight: 500; }
+  .gio-page, .gio-page * { font-family: var(--pf-body) !important; }
+  .gio-page :where(h1, h2, h3, h4, h5, h6, .font-display),
+  .gio-page :where(h1, h2, h3, h4, h5, h6, .font-display) * {
+    font-family: var(--pf-head) !important;
+    font-weight: var(--pf-head-weight) !important;
   }
-  .gio-page[data-font="mono"], .gio-page[data-font="mono"] * {
-    font-family: var(--font-mono) !important;
-  }
+
   .gio-page[data-wide="1"] { max-width: var(--container-pageWide) !important; }
   .gio-page[data-small="1"] .gio-page-body { font-size: 15px; line-height: 1.55; }
-  .gio-page[data-small="1"] .gio-page-body :where(h1,h2) { font-size: 19px; }
-  .gio-page[data-small="1"] .gio-page-body :where(h3) { font-size: 15.5px; }
+  .gio-page[data-small="1"] .gio-page-body :where(h1) { font-size: 25px; }
+  .gio-page[data-small="1"] .gio-page-body :where(h2) { font-size: 19.5px; }
+  .gio-page[data-small="1"] .gio-page-body :where(h3) { font-size: 17px; }
+  .gio-page[data-small="1"] .gio-page-body :where(blockquote) { font-size: 18px; }
+  .gio-page[data-small="1"] :where(.gio-title, h1.gio-title) { font-size: 34px !important; }
   .gio-page[data-locked="1"] .gio-block-gutter { opacity: 0.4; pointer-events: none; }
 }
 
