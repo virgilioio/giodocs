@@ -100,7 +100,8 @@ export function parseMarkdown(text: string): Blk[] {
       continue;
     }
 
-    // Headings: `# `, and `## ` (also `### ` and deeper collapse to h2).
+    // Headings: `# ` → h1, `## ` → h2, `### ` and deeper → h3
+    // (we have exactly three levels; anything deeper lands on the deepest).
     const h1 = line.match(/^# (.*)$/);
     if (h1) {
       flushParagraph();
@@ -108,10 +109,17 @@ export function parseMarkdown(text: string): Blk[] {
       i++;
       continue;
     }
-    const hMulti = line.match(/^#{2,6} (.*)$/);
-    if (hMulti) {
+    const h2m = line.match(/^## (.*)$/);
+    if (h2m) {
       flushParagraph();
-      out.push({ id: nanoid(10), type: "h2", text: hMulti[1] });
+      out.push({ id: nanoid(10), type: "h2", text: h2m[1] });
+      i++;
+      continue;
+    }
+    const h3plus = line.match(/^#{3,6} (.*)$/);
+    if (h3plus) {
+      flushParagraph();
+      out.push({ id: nanoid(10), type: "h3", text: h3plus[1] });
       i++;
       continue;
     }
