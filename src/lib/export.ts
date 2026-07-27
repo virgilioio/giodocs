@@ -153,7 +153,8 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
       return lines.join("\n");
     }
     default:
-      throw new Error(`blockToMarkdown: unhandled block type "${t}"`);
+      warnUnknownBlock(t);
+      return text;
   }
 }
 
