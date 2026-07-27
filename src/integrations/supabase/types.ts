@@ -619,6 +619,17 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      invite_preview: {
+        Args: { p_token: string }
+        Returns: {
+          invited_email: string
+          inviter_name: string
+          role: string
+          state: string
+          workspace_icon: string
+          workspace_name: string
+        }[]
+      }
       is_member: { Args: { p_ws: string }; Returns: boolean }
       is_owner: { Args: { p_ws: string }; Returns: boolean }
       list_areas: {
