@@ -1462,22 +1462,23 @@ export function EditableBody({
        * whether this was a click (append/focus a block) or a marquee. */}
       <div aria-hidden data-trailing-zone style={{ minHeight: 240 }} />
 
-      {/* Marquee rectangle */}
-      {marquee
-        ? createPortal(
-            <div
-              aria-hidden
-              className="marquee-rect"
-              style={{
-                left: Math.min(marquee.x1, marquee.x2),
-                top: Math.min(marquee.y1, marquee.y2),
-                width: Math.abs(marquee.x2 - marquee.x1),
-                height: Math.abs(marquee.y2 - marquee.y1),
-              }}
-            />,
-            document.body,
-          )
-        : null}
+      {/* Marquee rectangle — rendered INSIDE the container in content
+       * space (not portaled to <body> in viewport space) so the visible
+       * rect and the selection band stay in the same coordinate system
+       * as the container scrolls. */}
+      {marquee ? (
+        <div
+          aria-hidden
+          className="marquee-rect"
+          style={{
+            position: "absolute",
+            left: Math.min(marquee.x1, marquee.x2),
+            top: Math.min(marquee.y1, marquee.y2),
+            width: Math.abs(marquee.x2 - marquee.x1),
+            height: Math.abs(marquee.y2 - marquee.y1),
+          }}
+        />
+      ) : null}
 
 
       {slash ? (
