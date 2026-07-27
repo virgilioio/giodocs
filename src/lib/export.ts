@@ -84,6 +84,74 @@ function blockText(b: Block): string {
   return typeof b.text === "string" ? b.text : "";
 }
 
+/* ─────────────────────────── blockToMarkdown ───────────────────────────
+ *
+ * Per-block Markdown serialisation, extracted so the block-selection
+ * copy path can reuse the exact same output the file exporter emits.
+ * Return value is the block's content with NO trailing newline;
+ * toMarkdown joins blocks with a blank line between them.
+ */
+export function blockToMarkdown(b: Block): string {
+  const t = (b.type ?? "text") as string;
+  const text = blockText(b);
+  switch (t) {
+    case "text":
+      return text;
+    case "h1":
+      return `# ${text}`;
+    case "h2":
+      return `## ${text}`;
+    case "bullet":
+      return `- ${text}`;
+    case "numbered":
+      return `1. ${text}`;
+    case "todo":
+      return `- [${b.checked ? "x" : " "}] ${text}`;
+    case "toggle": {
+      const body = typeof b.body === "string" ? b.body : "";
+      if (!body) return `**${text}**`;
+      const indented = body.split("\n").map((line) => `  ${line}`).join("\n");
+      return `**${text}**\n${indented}`;
+    }
+    case "quote":
+      return `> ${text}`;
+    case "callout": {
+      const icon =
+        typeof b.icon === "string" && b.icon ? (b.icon as string) : "💡";
+      return `> ${icon} ${text}`;
+    }
+    case "divider":
+      return "---";
+    case "code": {
+      const lang = typeof b.lang === "string" ? (b.lang as string) : "";
+      return "```" + lang + "\n" + text + "\n```";
+    }
+    case "table": {
+      const rows = Array.isArray(b.rows)
+        ? (b.rows as unknown[][]).map((r) =>
+            Array.isArray(r) ? r.map((c) => String(c ?? "")) : [],
+          )
+        : [];
+      if (rows.length === 0) return "";
+      const width = Math.max(...rows.map((r) => r.length));
+      const padded = rows.map((r) => {
+        const copy = r.slice();
+        while (copy.length < width) copy.push("");
+        return copy;
+      });
+      const lines: string[] = [];
+      lines.push(`| ${padded[0].join(" | ")} |`);
+      lines.push(`| ${padded[0].map(() => "---").join(" | ")} |`);
+      for (let i = 1; i < padded.length; i++) {
+        lines.push(`| ${padded[i].join(" | ")} |`);
+      }
+      return lines.join("\n");
+    }
+    default:
+      throw new Error(`blockToMarkdown: unhandled block type "${t}"`);
+  }
+}
+
 /* ─────────────────────────── toMarkdown ─────────────────────────── */
 
 export function toMarkdown(ctx: ExportContext): string {
@@ -99,87 +167,11 @@ export function toMarkdown(ctx: ExportContext): string {
   if (vd) front.push(`verified: ${vd}`);
   front.push("---", "");
 
-  const out: string[] = [];
-  for (const b of ctx.blocks) {
-    const t = (b.type ?? "text") as string;
-    const text = blockText(b);
-    switch (t) {
-      case "text":
-        out.push(text, "");
-        break;
-      case "h1":
-        out.push(`# ${text}`, "");
-        break;
-      case "h2":
-        out.push(`## ${text}`, "");
-        break;
-      case "bullet":
-        out.push(`- ${text}`, "");
-        break;
-      case "numbered":
-        out.push(`1. ${text}`, "");
-        break;
-      case "todo":
-        out.push(`- [${b.checked ? "x" : " "}] ${text}`, "");
-        break;
-      case "toggle": {
-        out.push(`**${text}**`);
-        const body = typeof b.body === "string" ? b.body : "";
-        if (body) {
-          for (const line of body.split("\n")) out.push(`  ${line}`);
-        }
-        out.push("");
-        break;
-      }
-      case "quote":
-        out.push(`> ${text}`, "");
-        break;
-      case "callout": {
-        const icon =
-          typeof b.icon === "string" && b.icon ? (b.icon as string) : "💡";
-        out.push(`> ${icon} ${text}`, "");
-        break;
-      }
-      case "divider":
-        out.push("---", "");
-        break;
-      case "code": {
-        const lang =
-          typeof b.lang === "string" ? (b.lang as string) : "";
-        out.push("```" + lang, text, "```", "");
-        break;
-      }
-      case "table": {
-        const rows = Array.isArray(b.rows)
-          ? (b.rows as unknown[][]).map((r) =>
-              Array.isArray(r) ? r.map((c) => String(c ?? "")) : [],
-            )
-          : [];
-        if (rows.length === 0) {
-          out.push("", "");
-          break;
-        }
-        const width = Math.max(...rows.map((r) => r.length));
-        const padded = rows.map((r) => {
-          const copy = r.slice();
-          while (copy.length < width) copy.push("");
-          return copy;
-        });
-        out.push(`| ${padded[0].join(" | ")} |`);
-        out.push(`| ${padded[0].map(() => "---").join(" | ")} |`);
-        for (let i = 1; i < padded.length; i++) {
-          out.push(`| ${padded[i].join(" | ")} |`);
-        }
-        out.push("");
-        break;
-      }
-      default:
-        throw new Error(`toMarkdown: unhandled block type "${t}"`);
-    }
-  }
-
-  return front.join("\n") + out.join("\n").replace(/\n{3,}$/g, "\n");
+  const bodies = ctx.blocks.map(blockToMarkdown);
+  const body = bodies.map((s) => s + "\n").join("\n");
+  return front.join("\n") + body;
 }
+
 
 /* ─────────────────────────── toHtml ─────────────────────────── */
 
