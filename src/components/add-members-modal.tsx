@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "@/lib/toast";
+import { useSendInvites } from "@/hooks/use-invites";
 
 export type InviteRole = "Member" | "Owner";
 
@@ -94,15 +95,14 @@ export function AddMembersModal({
   onClose,
   workspaceName,
   allowedDomains,
-  onSend,
 }: {
   open: boolean;
   onClose: () => void;
   workspaceName: string;
   allowedDomains: string[];
-  onSend: (invites: PendingInvite[]) => void;
 }) {
   const toast = useToast();
+  const sendInvites = useSendInvites();
   const [emails, setEmails] = useState<string[]>([]);
   const [input, setInput] = useState("");
   const [role, setRole] = useState<InviteRole>("Member");
@@ -175,28 +175,36 @@ export function AddMembersModal({
     // Escape intentionally NOT handled here — global handler owns it.
   }
 
-  function handleSend() {
-    if (emails.length === 0) return;
-    const invites: PendingInvite[] = emails.map((email, i) => {
-      const idx = hashIndex(email, 6);
-      return {
-        email,
-        name: nameFromEmail(email),
-        role,
-        tint: AVATAR_TINTS[idx],
-        ink: AVATAR_INKS[idx],
-      };
-    });
-    const withNote = message.trim() ? " with your note" : "";
-    if (invites.length === 1) {
-      toast.push(`Invite sent to ${invites[0].email}${withNote}`);
-    } else {
-      toast.push(
-        `${invites.length} invites sent${withNote} — they appear below until accepted`,
-      );
+  async function handleSend() {
+    if (emails.length === 0 || sendInvites.isPending) return;
+    try {
+      const result = await sendInvites.mutateAsync({
+        invites: emails.map((email) => ({
+          email,
+          role: role === "Owner" ? "owner" : "member",
+        })),
+        message: message.trim() || undefined,
+      });
+      const withNote = message.trim() ? " with your note" : "";
+      const failed = result.results.filter((r) => !r.ok);
+      if (failed.length === 0) {
+        toast.push(
+          result.sent === 1
+            ? `Invite sent to ${result.results[0].email}${withNote}`
+            : `${result.sent} invites sent${withNote}`,
+        );
+      } else if (result.sent > 0) {
+        toast.push(
+          `${result.sent} of ${result.total} invites sent · ${failed.length} failed`,
+        );
+      } else {
+        toast.push(`Couldn't send: ${failed[0].error ?? "unknown error"}`);
+        return; // keep modal open so the user can fix and retry
+      }
+      onClose();
+    } catch (err) {
+      toast.push(`Couldn't send: ${(err as Error).message}`);
     }
-    onSend(invites);
-    onClose();
   }
 
   if (!open) return null;
