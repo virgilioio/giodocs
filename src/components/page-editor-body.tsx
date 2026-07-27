@@ -412,6 +412,7 @@ export function EditableBody({
           key={b.id}
           block={b}
           locked={!!locked}
+          onBlur={onBlur}
           registerRef={(el) => {
             if (el) refs.current[b.id] = el;
             else delete refs.current[b.id];
