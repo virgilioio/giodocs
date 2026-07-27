@@ -1171,41 +1171,46 @@ export function PageEditor({ pageId }: { pageId: string }) {
       data-locked={app.locked ? "1" : "0"}
       style={{ maxWidth: 780, padding: "42px 44px" }}
     >
-      {/* 1. Emoji icon on its own line — opens the shared emoji picker. */}
-      <Popover
-        width={264}
-        trigger={({ open, onClick, ref }) => (
-          <button
-            ref={ref}
-            type="button"
-            onClick={onClick}
-            aria-label="Change page icon"
-            aria-expanded={open}
-            className="grid select-none place-items-center rounded-md hover:bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            style={{ width: 56, height: 56, fontSize: 44, lineHeight: 1 }}
-          >
-            {page.icon || "📄"}
-          </button>
-        )}
+      {/* 1+2. Title row: emoji + editable title, side-by-side, height 51. */}
+      <div
+        style={{ display: "flex", alignItems: "center", height: 51, gap: 13 }}
       >
-        {(close) => (
-          <EmojiPicker
-            onPick={(e) => {
-              if (e) setPageIcon.mutate({ pageId: page.id, icon: e });
-              close();
-            }}
+        <Popover
+          width={264}
+          trigger={({ open, onClick, ref }) => (
+            <button
+              ref={ref}
+              type="button"
+              onClick={onClick}
+              aria-label="Change page icon"
+              aria-expanded={open}
+              className="grid select-none place-items-center rounded-md hover:bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              style={{ width: 42, height: 42, fontSize: 34, lineHeight: 1, flex: "none" }}
+            >
+              {page.icon || "📄"}
+            </button>
+          )}
+        >
+          {(close) => (
+            <EmojiPicker
+              onPick={(e) => {
+                if (e) setPageIcon.mutate({ pageId: page.id, icon: e });
+                close();
+              }}
+            />
+          )}
+        </Popover>
+
+        <div className="min-w-0 flex-1">
+          <EditableTitle
+            value={titleValue}
+            onChange={onTitleChange}
+            onEnter={focusFirstBlock}
+            autoFocus={titleAutoFocus}
+            topMarginClass=""
           />
-        )}
-      </Popover>
-
-
-      {/* 2. Editable title. */}
-      <EditableTitle
-        value={titleValue}
-        onChange={onTitleChange}
-        onEnter={focusFirstBlock}
-        autoFocus={titleAutoFocus}
-      />
+        </div>
+      </div>
 
       {/* 3. Permissions chip · edited stamp. */}
       <div className="mt-4 flex flex-wrap items-center gap-2">
