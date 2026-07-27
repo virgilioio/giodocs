@@ -1343,6 +1343,20 @@ export function MainView({ selection }: { selection: Selection }) {
     return [...s].sort();
   }, [pages]);
 
+  const people = useMemo(
+    () =>
+      members.map((m) => ({
+        id: m.user_id,
+        full_name: m.profiles?.full_name ?? null,
+      })),
+    [members],
+  );
+
+  const unfilteredCount = useMemo(
+    () => pages.filter((p) => !p.archived_at).length,
+    [pages],
+  );
+
   const staleThreshold = Date.now() - staleDays * 24 * 60 * 60 * 1000;
 
   const onChangeFilters = (next: Filter[]) => {
@@ -1598,10 +1612,13 @@ export function MainView({ selection }: { selection: Selection }) {
       <QueryToolbar
         filters={filters}
         sort={sort}
-
+        groupBy={groupBy}
+        layout={layout}
         onChangeFilters={onChangeFilters}
         onChangeSort={onChangeSort}
+        onChangeGroupBy={onChangeGroupBy}
         propDefs={propDefs}
+        people={people}
         staleDays={staleDays}
         editable={editable}
         fixedFilterIndex={fixedFilterIndex}
@@ -1628,23 +1645,19 @@ export function MainView({ selection }: { selection: Selection }) {
         )}
       />
 
-      {layout === "board" && (
-        <div className="-mt-1 mb-4 flex items-center gap-2 text-meta text-muted">
-          <span>Grouped by</span>
-          <select
-            className="rounded-sm border border-line bg-surface px-2 py-1 text-meta text-body focus:outline-none"
-            value={groupBy}
-            onChange={(e) => onChangeGroupBy(e.target.value)}
-          >
-            {groupableDefs.map((d) => (
-              <option key={d.id} value={d.key}>
-                {d.label}
-              </option>
-            ))}
-            {groupableDefs.length === 0 && <option value="status">Status</option>}
-          </select>
+      {rows.length < unfilteredCount && (
+        <div
+          style={{
+            marginTop: 6,
+            marginBottom: 4,
+            fontSize: 12.5,
+            color: "var(--color-whisper)",
+          }}
+        >
+          {rows.length} of {unfilteredCount} pages
         </div>
       )}
+
 
       {isModified && (
         <ModifiedBanner

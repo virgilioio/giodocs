@@ -14,7 +14,7 @@ import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { useCreatePage } from "@/hooks/use-page-mutations";
 import { setPageOrigin } from "@/lib/page-origin";
 
-import { describeFilter } from "./main-view";
+import { filterLabel } from "@/lib/filter-label";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
 import type { Filter } from "@/lib/run-view";
