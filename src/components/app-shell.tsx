@@ -1188,17 +1188,23 @@ function MyViewRow({
         to="/v/$viewId"
         params={{ viewId: v.id }}
         style={{ height: "var(--spacing-rowMy)" }}
-        className={rowClass(active)}
+        className={rowClass(active) + " min-w-0"}
       >
         <ViewIconSlot
           view={v}
           effectiveLayout={effectiveLayout}
           onSet={(icon) => updateView.mutate({ id: v.id, patch: { icon } })}
         />
-        <span className="min-w-0 flex-1 truncate text-row">{v.name}</span>
         <span
-          className="relative flex items-center justify-end"
-          style={{ height: 17, minWidth: 17 }}
+          className="min-w-0 flex-1 truncate text-row"
+          style={{ flex: "1 1 auto" }}
+          title={v.name}
+        >
+          {v.name}
+        </span>
+        <span
+          className="relative flex shrink-0 items-center justify-end"
+          style={{ height: 17, minWidth: 17, flex: "none" }}
         >
           {hover ? (
             <SpecMenuTrigger size="sm" build={build} />
@@ -1207,6 +1213,7 @@ function MyViewRow({
           )}
         </span>
       </Link>
+
     </li>
   );
 }
