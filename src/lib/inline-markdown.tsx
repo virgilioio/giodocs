@@ -35,7 +35,7 @@
 import type { ReactNode } from "react";
 import { Fragment } from "react";
 
-const ESC_PUNCT = /[\\*`~<>\[\]()]/;
+const ESC_PUNCT = /[\\*_`~<>\[\]()]/;
 
 function safeUrl(url: string): string | null {
   const trimmed = url.trim();
