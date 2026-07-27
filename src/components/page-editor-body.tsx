@@ -2637,14 +2637,29 @@ function ColumnsBlock({
  * from EditableBody rather than fully sharing state — part 2 of the
  * columns task will unify these under a single BlockStack component. */
 function ColumnStack({
+  parentBlockId,
+  colIndex,
   blocks,
   setBlocks,
   locked,
 }: {
+  parentBlockId: string;
+  colIndex: number;
   blocks: Blk[];
   setBlocks: (next: Blk[]) => void;
   locked: boolean;
 }) {
+  const bridge = useContext(ColumnBridgeCtx);
+  const colRef = useMemo<ColumnRef>(
+    () => ({ blockId: parentBlockId, colIndex }),
+    [parentBlockId, colIndex],
+  );
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    bridge?.registerTrack(colRef, trackRef.current);
+    return () => bridge?.registerTrack(colRef, null);
+  }, [bridge, colRef]);
+
   const refs = useRef<Record<string, HTMLTextAreaElement | HTMLInputElement | null>>({});
   const [focusRequest, setFocusRequest] = useState<{
     id: string;
