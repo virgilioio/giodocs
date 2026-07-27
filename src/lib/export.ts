@@ -1,0 +1,354 @@
+/**
+ * Page export — pure, dependency-free, entirely in-browser.
+ *
+ * Four helpers:
+ *   slugOf   — filename slug (lowercase, non-alnum→'-', 28 char cap, "untitled" fallback)
+ *   download — Blob + synthetic <a>, URL revoked after 4s
+ *   toMarkdown — YAML front matter + all 12 block types
+ *   toHtml   — self-contained document, every interpolation escaped
+ *   printPdf — window.open + write toHtml + @page{size:paper;margin:.75in} + zoom + print
+ *
+ * No new dependencies. See CHUNK 5 spec §8.
+ */
+
+import type { Block } from "./types";
+
+/* ─────────────────────────── Context ─────────────────────────── */
+
+export type ExportContext = {
+  title: string;
+  area?: string | null;
+  status?: string | null;
+  ownerName?: string | null;
+  tags?: readonly string[];
+  verifiedAt?: string | null;
+  blocks: readonly Block[];
+};
+
+/* ─────────────────────────── slugOf ─────────────────────────── */
+
+export function slugOf(title: string | null | undefined): string {
+  const raw = (title ?? "").toLowerCase().normalize("NFKD");
+  const collapsed = raw
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const trimmed = collapsed.slice(0, 28).replace(/-+$/g, "");
+  return trimmed || "untitled";
+}
+
+/* ─────────────────────────── download ─────────────────────────── */
+
+export function download(filename: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+/* ─────────────────────────── helpers ─────────────────────────── */
+
+function esc(s: unknown): string {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function yamlString(v: string): string {
+  // Quote if contains any character that would confuse a minimal parser.
+  if (/[:#\-?&*!|>%@`{}[\],\n"']/.test(v) || v !== v.trim() || v === "") {
+    return `"${v.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  }
+  return v;
+}
+
+function verifiedDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function blockText(b: Block): string {
+  return typeof b.text === "string" ? b.text : "";
+}
+
+/* ─────────────────────────── toMarkdown ─────────────────────────── */
+
+export function toMarkdown(ctx: ExportContext): string {
+  const front: string[] = ["---"];
+  front.push(`title: ${yamlString(ctx.title || "Untitled")}`);
+  if (ctx.area) front.push(`area: ${yamlString(ctx.area)}`);
+  if (ctx.status) front.push(`status: ${yamlString(ctx.status)}`);
+  if (ctx.ownerName) front.push(`owner: ${yamlString(ctx.ownerName)}`);
+  if (ctx.tags && ctx.tags.length) {
+    front.push(`tags: [${ctx.tags.map((t) => yamlString(t)).join(", ")}]`);
+  }
+  const vd = verifiedDate(ctx.verifiedAt);
+  if (vd) front.push(`verified: ${vd}`);
+  front.push("---", "");
+
+  const out: string[] = [];
+  for (const b of ctx.blocks) {
+    const t = (b.type ?? "text") as string;
+    const text = blockText(b);
+    switch (t) {
+      case "text":
+        out.push(text, "");
+        break;
+      case "h1":
+        out.push(`# ${text}`, "");
+        break;
+      case "h2":
+        out.push(`## ${text}`, "");
+        break;
+      case "bullet":
+        out.push(`- ${text}`, "");
+        break;
+      case "numbered":
+        out.push(`1. ${text}`, "");
+        break;
+      case "todo":
+        out.push(`- [${b.checked ? "x" : " "}] ${text}`, "");
+        break;
+      case "toggle": {
+        out.push(`**${text}**`);
+        const body = typeof b.body === "string" ? b.body : "";
+        if (body) {
+          for (const line of body.split("\n")) out.push(`  ${line}`);
+        }
+        out.push("");
+        break;
+      }
+      case "quote":
+        out.push(`> ${text}`, "");
+        break;
+      case "callout": {
+        const icon =
+          typeof b.icon === "string" && b.icon ? (b.icon as string) : "💡";
+        out.push(`> ${icon} ${text}`, "");
+        break;
+      }
+      case "divider":
+        out.push("---", "");
+        break;
+      case "code": {
+        const lang =
+          typeof b.lang === "string" ? (b.lang as string) : "";
+        out.push("```" + lang, text, "```", "");
+        break;
+      }
+      case "table": {
+        const rows = Array.isArray(b.rows)
+          ? (b.rows as unknown[][]).map((r) =>
+              Array.isArray(r) ? r.map((c) => String(c ?? "")) : [],
+            )
+          : [];
+        if (rows.length === 0) {
+          out.push("", "");
+          break;
+        }
+        const width = Math.max(...rows.map((r) => r.length));
+        const padded = rows.map((r) => {
+          const copy = r.slice();
+          while (copy.length < width) copy.push("");
+          return copy;
+        });
+        out.push(`| ${padded[0].join(" | ")} |`);
+        out.push(`| ${padded[0].map(() => "---").join(" | ")} |`);
+        for (let i = 1; i < padded.length; i++) {
+          out.push(`| ${padded[i].join(" | ")} |`);
+        }
+        out.push("");
+        break;
+      }
+      default:
+        throw new Error(`toMarkdown: unhandled block type "${t}"`);
+    }
+  }
+
+  return front.join("\n") + out.join("\n").replace(/\n{3,}$/g, "\n");
+}
+
+/* ─────────────────────────── toHtml ─────────────────────────── */
+
+function blockHtml(b: Block): string {
+  const t = (b.type ?? "text") as string;
+  const text = blockText(b);
+  switch (t) {
+    case "text":
+      return `<p>${esc(text)}</p>`;
+    case "h1":
+      return `<h1>${esc(text)}</h1>`;
+    case "h2":
+      return `<h2>${esc(text)}</h2>`;
+    case "bullet":
+      return `<ul><li>${esc(text)}</li></ul>`;
+    case "numbered":
+      return `<ol><li>${esc(text)}</li></ol>`;
+    case "todo":
+      return `<p class="todo"><input type="checkbox" disabled${
+        b.checked ? " checked" : ""
+      }/> <span${b.checked ? ' class="done"' : ""}>${esc(text)}</span></p>`;
+    case "toggle": {
+      const body = typeof b.body === "string" ? b.body : "";
+      return `<details${b.open ? " open" : ""}><summary>${esc(
+        text,
+      )}</summary>${body ? `<p>${esc(body)}</p>` : ""}</details>`;
+    }
+    case "quote":
+      return `<blockquote>${esc(text)}</blockquote>`;
+    case "callout": {
+      const icon =
+        typeof b.icon === "string" && b.icon ? (b.icon as string) : "💡";
+      return `<aside><span class="ico">${esc(icon)}</span><span>${esc(
+        text,
+      )}</span></aside>`;
+    }
+    case "divider":
+      return `<hr/>`;
+    case "code": {
+      const lang = typeof b.lang === "string" ? (b.lang as string) : "";
+      return `<pre><code${
+        lang ? ` class="language-${esc(lang)}"` : ""
+      }>${esc(text)}</code></pre>`;
+    }
+    case "table": {
+      const rows = Array.isArray(b.rows)
+        ? (b.rows as unknown[][]).map((r) =>
+            Array.isArray(r) ? r.map((c) => String(c ?? "")) : [],
+          )
+        : [];
+      if (rows.length === 0) return "";
+      const width = Math.max(...rows.map((r) => r.length));
+      const pad = (r: string[]) => {
+        const c = r.slice();
+        while (c.length < width) c.push("");
+        return c;
+      };
+      const head = pad(rows[0])
+        .map((c) => `<th>${esc(c)}</th>`)
+        .join("");
+      const body = rows
+        .slice(1)
+        .map(
+          (r) => `<tr>${pad(r).map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`,
+        )
+        .join("");
+      return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+    }
+    default:
+      throw new Error(`toHtml: unhandled block type "${t}"`);
+  }
+}
+
+const HTML_CSS = `
+  :root { color-scheme: light; }
+  html, body { margin: 0; padding: 0; background: #F6F5F1; }
+  body {
+    font-family: Lato, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 17px; line-height: 1.6; color: #1A1915;
+    padding: 56px 44px; max-width: 780px; margin: 0 auto;
+  }
+  h1, h2, h3 { font-family: Poppins, -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -0.02em; color: #0D0D09; }
+  h1.title { font-size: 34px; margin: 0 0 4px; letter-spacing: -0.035em; }
+  h1 { font-size: 26px; margin: 28px 0 8px; }
+  h2 { font-size: 20px; margin: 22px 0 6px; }
+  p { margin: 0 0 10px; }
+  ul, ol { margin: 0 0 10px; padding-left: 22px; }
+  li { margin: 2px 0; }
+  hr { border: 0; border-top: 1px solid #D8D5CC; margin: 20px 0; }
+  blockquote { margin: 10px 0; padding: 4px 14px; border-left: 3px solid #C7C3B7; color: #4A4740; font-style: italic; }
+  aside { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; padding: 12px 14px; background: #EFEBDE; border-radius: 10px; }
+  aside .ico { flex: none; font-size: 18px; line-height: 1.3; }
+  pre { margin: 10px 0; padding: 12px 14px; background: #EEEBE1; border-radius: 8px; overflow: auto;
+    font-family: "Spline Sans Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; }
+  code { font-family: "Spline Sans Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+  table { border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 15px; }
+  th, td { border: 1px solid #D8D5CC; padding: 6px 10px; text-align: left; vertical-align: top; }
+  thead th { background: #EEEBE1; }
+  .todo .done { color: #7A776F; text-decoration: line-through; }
+  details { margin: 8px 0; }
+  summary { cursor: default; font-weight: 700; }
+  dl.props { display: grid; grid-template-columns: 132px 1fr; gap: 4px 16px; margin: 0 0 24px; font-size: 14px; color: #4A4740; }
+  dl.props dt { color: #7A776F; }
+  header.meta { border-bottom: 1px solid #D8D5CC; padding-bottom: 18px; margin-bottom: 22px; }
+`;
+
+export function toHtml(ctx: ExportContext): string {
+  const props: Array<[string, string]> = [];
+  if (ctx.area) props.push(["Area", ctx.area]);
+  if (ctx.status) props.push(["Status", ctx.status]);
+  if (ctx.ownerName) props.push(["Owner", ctx.ownerName]);
+  if (ctx.tags && ctx.tags.length) props.push(["Tags", ctx.tags.join(", ")]);
+  const vd = verifiedDate(ctx.verifiedAt);
+  if (vd) props.push(["Verified", vd]);
+
+  const propsHtml = props.length
+    ? `<dl class="props">${props
+        .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`)
+        .join("")}</dl>`
+    : "";
+
+  const body = ctx.blocks.map(blockHtml).join("\n");
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>${esc(ctx.title || "Untitled")}</title>
+<style>${HTML_CSS}</style>
+</head>
+<body>
+<header class="meta">
+<h1 class="title">${esc(ctx.title || "Untitled")}</h1>
+${propsHtml}
+</header>
+<main>
+${body}
+</main>
+</body>
+</html>`;
+}
+
+/* ─────────────────────────── printPdf ─────────────────────────── */
+
+export async function printPdf(
+  ctx: ExportContext,
+  paper: string,
+  scalePct: number,
+): Promise<void> {
+  const win = window.open("", "_blank", "noopener,noreferrer");
+  if (!win) throw new Error("popup-blocked");
+  const html = toHtml(ctx);
+  const zoom = Math.max(0.5, Math.min(2, scalePct / 100));
+  const augmented = html.replace(
+    "</style>",
+    `@page { size: ${paper}; margin: 0.75in; }
+     html, body { background: #ffffff; }
+     body { zoom: ${zoom}; }
+     </style>`,
+  );
+  win.document.open();
+  win.document.write(augmented);
+  win.document.close();
+  await new Promise<void>((r) => window.setTimeout(r, 280));
+  try {
+    win.focus();
+    win.print();
+  } catch {
+    /* the print dialog may be dismissed by the user; that is not an error. */
+  }
+}
