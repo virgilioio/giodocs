@@ -427,18 +427,12 @@ function EditableValue({
   /* ── Multi-select / Tags ── */
   if (def?.type === "multi_select") {
     const tags = Array.isArray(raw) ? raw.map(String) : [];
-    const all = useMemo(() => {
-      const s = new Set<string>();
-      for (const p of pages) {
-        const t = propsOf(p)[propKey];
-        if (Array.isArray(t)) t.forEach((x) => s.add(String(x)));
-      }
-      return [...s].sort();
-    }, [pages, propKey]);
     return (
       <TagsPicker
         value={tags}
-        options={all}
+        options={allTags}
+        onSet={onSet}
+        onOpenChange={onOpenChange}
         onSet={onSet}
         onOpenChange={onOpenChange}
         trigger={({ onClick, ref }) => (
