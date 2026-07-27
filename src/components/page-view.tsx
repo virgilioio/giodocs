@@ -19,6 +19,7 @@ import { qk } from "@/lib/query-keys";
 import { usePrefs } from "@/lib/preferences";
 import { usePageAppearance } from "@/lib/page-appearance";
 import { Popover } from "./popover";
+import { EmojiPicker } from "./emoji-picker";
 import {
   AreaPicker,
   OwnerPicker,
