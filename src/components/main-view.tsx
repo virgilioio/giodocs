@@ -3132,14 +3132,25 @@ function HeaderSelectAll({
 }
 
 
-function HeaderCell({ children, className }: { children: ReactNode; className?: string }) {
+function HeaderCell({
+  children,
+  className,
+  edge,
+}: {
+  children: ReactNode;
+  className?: string;
+  edge?: boolean;
+}) {
   return (
     <div
       className={
-        "flex items-center border-b border-line bg-canvas px-[11px] text-label uppercase text-faint " +
+        "flex items-center border-b border-line bg-canvas text-label uppercase text-faint " +
+        (edge
+          ? "justify-center px-0 "
+          : "px-[11px] overflow-hidden ") +
         (className ?? "")
       }
-      style={{ padding: "12px 11px 6px", lineHeight: "11px" }}
+      style={{ padding: edge ? "12px 0 6px" : "12px 11px 6px", lineHeight: "11px" }}
     >
       {children}
     </div>
@@ -3152,12 +3163,14 @@ function Cell({
   className,
   pageId,
   selected,
+  edge,
   ...rest
 }: {
   children: ReactNode;
   className?: string;
   pageId?: string;
   selected?: boolean;
+  edge?: boolean;
   [key: string]: unknown;
 }) {
   return (
@@ -3165,7 +3178,10 @@ function Cell({
       data-page-id={pageId}
       data-row-more={rest["data-row-more"] as string | undefined}
       className={
-        "min-w-0 border-b border-lineSoft px-[11px] gio-cell-pad flex items-center whitespace-nowrap overflow-hidden " +
+        "min-w-0 border-b border-lineSoft gio-cell-pad flex items-center whitespace-nowrap " +
+        (edge
+          ? "justify-center px-0 "
+          : "px-[11px] overflow-hidden ") +
         (selected ? "bg-blueTint group-hover:bg-blueWash " : "group-hover:bg-sunken ") +
         (className ?? "")
       }
