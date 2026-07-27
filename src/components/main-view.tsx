@@ -787,7 +787,10 @@ function TagsCell({
             );
           })}
           {extra > 0 && (
-            <span className="rounded-sm px-1.5 py-0.5 text-whisper text-muted">
+            <span
+              className="rounded-sm px-1.5 py-0.5 text-caption"
+              style={{ color: "var(--color-whisper)" }}
+            >
               +{extra}
             </span>
           )}
