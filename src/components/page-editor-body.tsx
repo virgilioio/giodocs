@@ -13,6 +13,8 @@ import type { Block } from "@/lib/types";
 import { moveBlock, moveRun, deleteIndices } from "@/lib/reorder";
 import { blockToMarkdown } from "@/lib/export";
 import { parseMarkdown } from "@/lib/markdown-import";
+import { htmlToMarkdown } from "@/lib/html-to-markdown";
+import { renderInlineWithOffsets } from "@/lib/inline-markdown";
 import { numberedOrdinals } from "@/lib/blocks";
 import { blockHandleFooter } from "@/lib/block-handle-footer";
 import { useToast } from "@/lib/toast";
@@ -206,6 +208,10 @@ export function EditableBody({
     id: string;
     caret?: number | "end" | "start";
   } | null>(null);
+  // Which block currently owns focus. Drives the "formatted vs raw" swap:
+  // the focused block shows a textarea with raw markdown; every other
+  // block renders renderInline(text) inside a matching-geometry div.
+  const [focusedId, setFocusedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!focusRequest) return;
@@ -544,13 +550,21 @@ export function EditableBody({
   const handlePaste = useCallback(
     (blockId: string, e: React.ClipboardEvent<HTMLTextAreaElement>) => {
       if (locked) return;
-      const raw = e.clipboardData?.getData("text/plain") ?? "";
+      // Prefer text/html when the source app (Notion, Google Docs) gave us
+      // one — convert to markdown and let the existing parser take it from
+      // there. Fall back to text/plain unchanged.
+      const htmlSrc = e.clipboardData?.getData("text/html") ?? "";
+      const plainSrc = e.clipboardData?.getData("text/plain") ?? "";
+      const raw = htmlSrc ? htmlToMarkdown(htmlSrc) : plainSrc;
       if (!raw) return;
       const hasNewline = /\r|\n/.test(raw);
       const hasMdMarker = /(^|\n)\s*(#{1,6} |[-*+] |\d+\. |> |```|---|\*\*\*|\|)/.test(
         raw,
       );
-      if (!hasNewline && !hasMdMarker) return; // plain word — let browser handle
+      // For text/plain: if there's no newline and no markdown marker, let
+      // the browser paste it as ordinary text (native undo intact). For
+      // text/html we always intercept — the source gave structure.
+      if (!htmlSrc && !hasNewline && !hasMdMarker) return;
       e.preventDefault();
 
       const parsed = parseMarkdown(raw) as unknown as Blk[];
@@ -1243,6 +1257,15 @@ export function EditableBody({
       {blocks.map((b) => (
         <BlockRow
           key={b.id}
+          focused={focusedId === b.id}
+          onRequestFocus={(caret) => {
+            setFocusedId(b.id);
+            setFocusRequest({ id: b.id, caret });
+          }}
+          onEditorFocus={() => setFocusedId(b.id)}
+          onEditorBlur={() =>
+            setFocusedId((cur) => (cur === b.id ? null : cur))
+          }
           block={b}
           ordinal={b.type === "numbered" ? (ordinalMap.get(b.id) ?? 1) : undefined}
           locked={!!locked}
@@ -1501,6 +1524,10 @@ function BlockRow({
   locked,
   selected,
   dimmed,
+  focused,
+  onRequestFocus,
+  onEditorFocus,
+  onEditorBlur,
   registerRowEl,
   onHandlePointerDown,
   onHandleClick,
@@ -1519,6 +1546,10 @@ function BlockRow({
   locked: boolean;
   selected: boolean;
   dimmed: boolean;
+  focused: boolean;
+  onRequestFocus: (caret: number | "end") => void;
+  onEditorFocus: () => void;
+  onEditorBlur: () => void;
   registerRowEl: (id: string, el: HTMLElement | null) => void;
   onHandlePointerDown: (ev: React.PointerEvent<HTMLElement>) => void;
   onHandleClick: (anchor: HTMLElement) => void;
@@ -1606,6 +1637,10 @@ function BlockRow({
         block={block}
         ordinal={ordinal}
         locked={locked}
+        focused={focused}
+        onRequestFocus={onRequestFocus}
+        onEditorFocus={onEditorFocus}
+        onEditorBlur={onEditorBlur}
         onBlur={onBlur}
         registerRef={registerRef}
         onChange={onChange}
@@ -1623,6 +1658,10 @@ function BlockContent({
   block,
   ordinal,
   locked,
+  focused,
+  onRequestFocus,
+  onEditorFocus,
+  onEditorBlur,
   onBlur,
   registerRef,
   onChange,
@@ -1634,6 +1673,10 @@ function BlockContent({
   block: Blk;
   ordinal?: number;
   locked: boolean;
+  focused: boolean;
+  onRequestFocus: (caret: number | "end") => void;
+  onEditorFocus: () => void;
+  onEditorBlur: () => void;
   onBlur?: () => void;
   registerRef: (el: HTMLTextAreaElement | HTMLInputElement | null) => void;
   onChange: (patch: Partial<Blk>) => void;
@@ -1649,7 +1692,11 @@ function BlockContent({
       onChange({ text: e.target.value });
       onInput(e.target.value);
     },
-    onBlur: onBlur,
+    onFocus: () => onEditorFocus(),
+    onBlur: () => {
+      onEditorBlur();
+      onBlur?.();
+    },
     onKeyDown,
     onPaste,
     // BUG 3: readOnly (not disabled) keeps focus/selection intact but blocks
@@ -1662,6 +1709,69 @@ function BlockContent({
   };
 
   const t = block.type;
+
+  // Rendered ↔ editable swap. Formatted view for every text-carrying block
+  // when it does not own focus (and always for locked pages). Empty blocks
+  // stay as textareas so the placeholder and click-to-type are preserved.
+  const rawText = block.text ?? "";
+  const canFormat = t !== "code" && t !== "table" && t !== "divider";
+  const showFormatted = canFormat && (locked || (!focused && rawText.length > 0));
+
+  function caretFromEvent(e: React.MouseEvent<HTMLDivElement>): number | "end" {
+    const x = e.clientX;
+    const y = e.clientY;
+    let range: Range | null = null;
+    const d = document as Document & {
+      caretRangeFromPoint?: (x: number, y: number) => Range | null;
+      caretPositionFromPoint?: (
+        x: number,
+        y: number,
+      ) => { offsetNode: Node; offset: number } | null;
+    };
+    if (typeof d.caretRangeFromPoint === "function") {
+      range = d.caretRangeFromPoint(x, y);
+    } else if (typeof d.caretPositionFromPoint === "function") {
+      const p = d.caretPositionFromPoint(x, y);
+      if (p) {
+        range = document.createRange();
+        range.setStart(p.offsetNode, p.offset);
+      }
+    }
+    if (!range) return "end";
+    let el: HTMLElement | null =
+      range.startContainer instanceof Element
+        ? (range.startContainer as HTMLElement)
+        : range.startContainer.parentElement;
+    while (el && !el.hasAttribute("data-o")) el = el.parentElement;
+    if (!el) return "end";
+    const base = parseInt(el.getAttribute("data-o") || "0", 10);
+    return Math.min(rawText.length, base + range.startOffset);
+  }
+
+  // Returns the div-or-textarea for a given wrapping className. The div and
+  // the textarea share the exact same className so font/size/line-height/
+  // padding match — the caret does not jump when swapping.
+  function renderSwap(className: string, extra?: string) {
+    const cls = className + (extra ? " " + extra : "");
+    if (!showFormatted) {
+      return <GrowText {...textareaProps} className={cls} />;
+    }
+    return (
+      <div
+        className={cls + " cursor-text whitespace-pre-wrap break-words"}
+        onMouseDown={
+          locked
+            ? undefined
+            : (e) => {
+                e.preventDefault();
+                onRequestFocus(caretFromEvent(e));
+              }
+        }
+      >
+        {rawText ? renderInlineWithOffsets(rawText) : "\u200B"}
+      </div>
+    );
+  }
 
   if (t === "divider") {
     return (
@@ -1695,10 +1805,9 @@ function BlockContent({
         className="border-l-2 border-lineStrong pl-4"
         style={{ fontFamily: "Lato, sans-serif" }}
       >
-        <GrowText
-          {...textareaProps}
-          className="w-full resize-none border-0 bg-transparent p-0 text-quote italic text-body outline-none placeholder:text-faint"
-        />
+        {renderSwap(
+          "w-full resize-none border-0 bg-transparent p-0 text-quote italic text-body outline-none placeholder:text-faint",
+        )}
       </blockquote>
     );
   }
@@ -1710,10 +1819,9 @@ function BlockContent({
         style={{ borderRadius: 10 }}
       >
         <CalloutIconPicker icon={block.icon ?? "💡"} onPick={onSetIcon} disabled={locked} />
-        <GrowText
-          {...textareaProps}
-          className="w-full resize-none border-0 bg-transparent p-0 text-prose text-body outline-none placeholder:text-faint"
-        />
+        {renderSwap(
+          "w-full resize-none border-0 bg-transparent p-0 text-prose text-body outline-none placeholder:text-faint",
+        )}
       </div>
     );
   }
@@ -1735,7 +1843,7 @@ function BlockContent({
               ›
             </span>
           </button>
-          <GrowText {...textareaProps} />
+          {renderSwap(textareaProps.className)}
         </div>
         {block.open ? (
           <div className="ml-5 mt-1 text-meta text-muted">
@@ -1757,12 +1865,10 @@ function BlockContent({
           className="mt-2 accent-accent"
           aria-label={done ? "Done" : "Todo"}
         />
-        <GrowText
-          {...textareaProps}
-          className={`w-full resize-none border-0 bg-transparent p-0 outline-none placeholder:text-faint ${
-            done ? "text-muted line-through" : ""
-          }`}
-        />
+        {renderSwap(
+          "w-full resize-none border-0 bg-transparent p-0 outline-none placeholder:text-faint",
+          done ? "text-muted line-through" : "",
+        )}
       </div>
     );
   }
@@ -1773,7 +1879,7 @@ function BlockContent({
         <span aria-hidden className="mt-2 leading-none text-muted">
           •
         </span>
-        <GrowText {...textareaProps} />
+        {renderSwap(textareaProps.className)}
       </div>
     );
   }
@@ -1784,35 +1890,26 @@ function BlockContent({
         <span aria-hidden className="mt-1 min-w-4 text-meta text-muted tnum">
           {ordinal ?? 1}.
         </span>
-        <GrowText {...textareaProps} />
+        {renderSwap(textareaProps.className)}
       </div>
     );
   }
 
   if (t === "h1") {
-    return (
-      <GrowText
-        {...textareaProps}
-        className="w-full resize-none border-0 bg-transparent p-0 font-display text-title text-noir outline-none placeholder:text-faint"
-      />
+    return renderSwap(
+      "w-full resize-none border-0 bg-transparent p-0 font-display text-title text-noir outline-none placeholder:text-faint",
     );
   }
 
   if (t === "h2") {
-    return (
-      <GrowText
-        {...textareaProps}
-        className="w-full resize-none border-0 bg-transparent p-0 font-display text-heading text-noir outline-none placeholder:text-faint"
-      />
+    return renderSwap(
+      "w-full resize-none border-0 bg-transparent p-0 font-display text-heading text-noir outline-none placeholder:text-faint",
     );
   }
 
   // text (default)
-  return (
-    <GrowText
-      {...textareaProps}
-      className="w-full resize-none border-0 bg-transparent p-0 text-prose text-body outline-none placeholder:text-faint"
-    />
+  return renderSwap(
+    "w-full resize-none border-0 bg-transparent p-0 text-prose text-body outline-none placeholder:text-faint",
   );
 }
 
