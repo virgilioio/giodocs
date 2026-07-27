@@ -1515,7 +1515,7 @@ function BlockRow({
             ⋮⋮
           </button>
         </div>
-      ) : null}
+      )}
 
       <BlockContent
         block={block}
