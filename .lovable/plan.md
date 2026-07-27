@@ -1,50 +1,32 @@
-## Goal
+## What the data says
 
-Rebrand the workspace invite email to match the Gio ATS invite design — same 560px cream card, Poppins/Inter typography, masthead + kicker + headline + preview card + "What's next" + CTA + secure-expiry line + footer — but in Gio Docs's cream/noir palette (no purple), with the Gio Docs SVG logo in the masthead and Gio Docs copy throughout.
+The latest invite row for `javier@virgilio.tech` (2026‑07‑27 18:28 UTC) is `email_status = sent`, `email_error = null`. That means Resend's API accepted the send — our edge function did its job. The email is being lost **after** hand‑off to Resend, so the fix is not in our code path. Edge function logs also show only boot/shutdown, no runtime errors.
 
-Scope: one file. Nothing else changes.
+## Most likely causes, in order
 
-## Files changed
+1. **Delivered but filtered** — landed in Spam / Promotions / a Google Groups quarantine on the recipient side. Very common for a brand‑new sender domain.
+2. **Async bounce after Resend accepted** — recipient's mail server rejected on delivery. Our code only records the synchronous API result, so a later bounce leaves `email_status = 'sent'` misleadingly. Resend's dashboard will show `bounced` for the message.
+3. **SPF/DKIM/DMARC not fully aligned** on `docs.gogio.io` even though the domain shows "verified" in Resend. Strict receivers (Google Workspace especially) can still drop mail if DMARC alignment fails.
+4. **Recipient address on Resend's suppression list** from an earlier bounce/complaint — Resend then silently drops future sends to that address. Also visible in the Resend dashboard.
 
-- `supabase/functions/_shared/memberInviteEmail.ts` — rewritten to the ATS shell adapted for Gio Docs.
+## What I need you to check (2 minutes, no code)
 
-Not touched: `send-workspace-invite/index.ts` (the existing call signature already provides every variable the new template needs — `recipient_name`, `workspace_name`, `inviter_name`, `inviter_initials`, `inviter_color`, `role_label`, `invite_url`, `expiry_date`, `personal_message`), the DB, the client, secrets, or `AGENTS.md` scope. No new dependencies. Redeploy is one command after the change lands.
+Open Resend → Emails, find the message to `javier@virgilio.tech` at 18:28 UTC and report its final status: `Delivered`, `Bounced`, `Complained`, or still `Sent`. Also check Resend → Suppressions for that address. That single lookup tells us which of the four causes it is; every fix below depends on which one.
 
-## Design decisions (locked from your answers)
+Also ask Javier to check Spam / All Mail / Promotions and search for `docs.gogio.io`.
 
-- **Palette — cream / noir only.** Background `#ECEAE2`, card `#FFFCF7`, ink `#0d0d09`, prose `#4A4A44`, meta `#8B8F9E`, hairlines `#F1F0EC` / `#EDE7DA`. No purple anywhere: kicker text becomes ink, the wordmark dot / role pill / step badges / CTA use noir on cream (same treatment ATS uses for its dark CTA), links use ink underline.
-- **Masthead logo — SVG from `https://docs.gogio.io/gio-docs-logo.svg`**, rendered as `<img height="22" alt="Gio Docs">`. Right side keeps the ATS "Members" badge, restyled as a noir chip (`#0d0d09` bg / `#fffcf9` text) with a small `+` glyph — matches the login and app tone.
-- **Footer — no help line.** Left: small Gio Docs wordmark (Poppins, same treatment as ATS) with the tagline "· Pages, views, and areas". Right side empty.
+## Then, depending on the answer
 
-## Copy (Gio Docs, not ATS)
+- **Delivered in Resend, missing in inbox** → cause 1. Nothing to fix in code. Ask him to mark as "Not spam" and add `noreply@docs.gogio.io` to contacts. If it's a Google Workspace tenant, a workspace admin can allowlist the domain.
+- **Bounced** → cause 2 or 3. Read the bounce reason string in Resend; it names the receiver's rule. Then re‑check DNS: SPF (`v=spf1 include:...`), DKIM CNAMEs, and a DMARC record on `docs.gogio.io` or `gogio.io`. If DMARC is `p=reject` without alignment, Google will drop it.
+- **On suppression list** → remove him from Resend → Suppressions, then resend from our app. He'll receive it.
+- **Still "Sent" after 10+ min** → Resend is stuck; open a Resend support ticket with the message id.
 
-- Subject: `{{inviter_name}} invited you to {{workspace_name}} on Gio Docs`
-- Preheader: `Join {{workspace_name}} on Gio Docs`
-- Kicker: `YOU'VE BEEN INVITED`
-- Headline: `Join {{workspace_name}} on Gio Docs.` (period is ink, no purple accent)
-- Intro: `Hi {{recipient_name}} — {{inviter_name}} invited you to collaborate on pages, views, and areas in {{workspace_name}}.`
-- Role pill: `Role · {{role_label}}`
-- What's next:
-  1. `Accept your invitation with the button below`
-  2. `Sign in with your workspace email`
-  3. `Start writing and organising pages`
-- CTA: `Accept invitation  →`
-- Secure line: `🔒 Your invitation is secure and expires on {{expiry_date}}.`
-- Ignore line: `If you weren't expecting this invitation, you can safely ignore this email — it expires automatically on {{expiry_date}}.`
-- Footer tagline: `Gio Docs · Pages, views, and areas`
+## Small code follow‑ups (only after we know the cause, not now)
 
-## Personal message
+- Add a Resend webhook → edge function → update `workspace_invites.email_status` to `bounced` / `complained` so the settings UI stops claiming these invites were delivered. Optional; only worth building if bounces become a recurring class of failure.
+- Nothing else in our code changes.
 
-The current caller passes `personal_message` (optional). Preserved: when present, render it as an inset quote block **above** the preview card — 3px left border in `#EDE7DA`, ink text, `white-space: pre-wrap`, HTML-escaped. When absent, the block is omitted.
+## Not in scope
 
-## Template signature
-
-Function stays `renderMemberInviteEmail(vars) → { subject, html, text }`. Field names match what `send-workspace-invite/index.ts` already passes today. `inviter_title` and `support_email` from the ATS version are dropped (unused).
-
-## Text alternative
-
-Rewritten to the Gio Docs copy (workspace, pages/views/areas, no "recruiting", no support email line). Includes the personal message when set.
-
-## After the change
-
-Run `supabase functions deploy send-workspace-invite` once. No DB migration, no secrets, no client change.
+Changing the email template, the send path, the accept flow, DNS records, or the `workspace_invites` schema. This is a delivery diagnosis, not a rebuild.
