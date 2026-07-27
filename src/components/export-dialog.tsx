@@ -154,21 +154,24 @@ export function ExportDialog({
     if (busy) return;
     setErr(null);
     setBusy(true);
+    // One flag threads through all three formats — do not branch by format
+    // to compute it. printPdf uses toHtml internally, so it inherits.
+    const exportCtx: ExportContext = { ...ctx, includeDetails };
     try {
       if (fmt === "Markdown") {
-        const text = toMarkdown(ctx);
+        const text = toMarkdown(exportCtx);
         download(filename, new Blob([text], { type: "text/markdown;charset=utf-8" }));
         toast.push(`Exported ${filename}`);
         onClose();
       } else if (fmt === "HTML") {
-        const html = toHtml(ctx);
+        const html = toHtml(exportCtx);
         download(filename, new Blob([html], { type: "text/html;charset=utf-8" }));
         toast.push(`Exported ${filename}`);
         onClose();
       } else {
         // PDF — clamp scale into 50..200 on the way in.
         const clamped = Math.max(50, Math.min(200, Number(scale) || 100));
-        await printPdf(ctx, paper, clamped);
+        await printPdf(exportCtx, paper, clamped);
         toast.push("Opening your print dialog");
         onClose();
       }
