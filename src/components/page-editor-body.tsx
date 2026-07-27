@@ -74,6 +74,11 @@ type ColumnBridge = {
    * inner block from its column first — but never below the column's
    * one-block minimum. */
   escapeColumn: (parentBlockId: string, removeBlockId: string | null) => void;
+  /** Stage-2 ⌘A from inside a column: blur the caret and promote the
+   *  selection to every top-level block on the page. Column-scoped block
+   *  selection is deliberately NOT supported — selectedIds is flat and
+   *  the bulk bar / delete / drag paths only handle top-level runs. */
+  selectAllTopLevel: () => void;
 };
 const ColumnBridgeCtx = createContext<ColumnBridge | null>(null);
 
