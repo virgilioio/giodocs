@@ -28,7 +28,9 @@ import {
   useSetPageProperty,
   useVerifyPage,
 } from "@/hooks/use-page-mutations";
-import type { PageAccessRow, PageFull, PageListItem } from "@/lib/types";
+import type { PageAccessRow, PageFull, PageListItem, Block } from "@/lib/types";
+import { ExportDialog } from "./export-dialog";
+import type { ExportContext } from "@/lib/export";
 
 /* ────────────── Glyph ────────────── */
 
