@@ -2621,6 +2621,8 @@ function ColumnsBlock({
       {cols.map((col, i) => (
         <ColumnStack
           key={i}
+          parentBlockId={block.id}
+          colIndex={i}
           blocks={col}
           setBlocks={(next) => setColumn(i, next)}
           locked={locked}
