@@ -203,6 +203,7 @@ export function PageTopbarActions({
   const accessQ = usePageAccess(pageId);
   const toast = useToast();
   const navigate = useNavigate();
+  const { app, set: setAppearance } = usePageAppearance(pageId);
 
   const pages = (shell.pages.data ?? []) as PageListItem[];
   const listRow = useMemo(
