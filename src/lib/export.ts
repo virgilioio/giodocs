@@ -164,11 +164,29 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
       }
       return lines.join("\n");
     }
+    case "columns": {
+      // Markdown has no columns. Flatten deterministically — each column's
+      // blocks in order, blank line between blocks, blank line between
+      // columns. Round-trip is intentionally lossy: columns become stacked
+      // blocks. Do NOT invent a marker; parseMarkdown must not resurrect
+      // columns from plain text.
+      const cols = Array.isArray(b.cols) ? (b.cols as Block[][]) : [];
+      const perCol = cols.map((col) => {
+        if (!Array.isArray(col)) return "";
+        const ords = numberedOrdinals(col);
+        return col
+          .map((inner) => blockToMarkdown(inner, (inner.id && ords.get(inner.id)) || 1))
+          .filter((s) => s.length > 0)
+          .join("\n\n");
+      });
+      return perCol.filter((s) => s.length > 0).join("\n\n");
+    }
     default:
       warnUnknownBlock(t);
       return text;
   }
 }
+
 
 /* ─────────────────────────── toMarkdown ─────────────────────────── */
 
