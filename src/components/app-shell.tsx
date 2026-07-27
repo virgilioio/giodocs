@@ -1358,6 +1358,7 @@ function AreaMenu({
   onOpen,
   onNewPage,
   onRename,
+  onChangeEmoji,
   onSaveAsView,
 }: {
   area: string;
@@ -1367,6 +1368,7 @@ function AreaMenu({
   onOpen: () => void;
   onNewPage: () => void;
   onRename: (to: string) => void;
+  onChangeEmoji: () => void;
   onSaveAsView: () => void;
 }) {
   const [mode, setMode] = useState<"list" | "rename">("list");
@@ -1390,22 +1392,13 @@ function AreaMenu({
   }
   const title = `${area} · ${count} ${count === 1 ? "page" : "pages"}`;
   const items: RowMenuItem[] = [
-    {
-      id: "open",
-      label: "Open area",
-      hint: <Sc>↵</Sc>,
-      onSelect: onOpen,
-    },
+    { id: "open", label: "Open area", hint: <Sc>↵</Sc>, onSelect: onOpen },
     {
       id: "toggle",
       label: open ? "Collapse pages" : "Show pages",
       onSelect: onToggle,
     },
-    {
-      id: "new",
-      label: "New page here",
-      onSelect: onNewPage,
-    },
+    { id: "new", label: "New page here", onSelect: onNewPage },
     {
       id: "rename",
       label: "Rename area",
@@ -1413,6 +1406,11 @@ function AreaMenu({
       submenu: true,
       keepOpen: true,
       onSelect: () => setMode("rename"),
+    },
+    {
+      id: "emoji",
+      label: "Change emoji",
+      onSelect: onChangeEmoji,
     },
     { kind: "divider" },
     {
@@ -1424,6 +1422,80 @@ function AreaMenu({
   ];
   return <RowMenuList title={title} items={items} />;
 }
+
+/**
+ * Emoji slot for an area row — clickable target that opens the shared
+ * picker. On rows with no emoji, a subtle dashed 18px placeholder appears
+ * only when the outer row is hovered. `emojiOpen` is controlled by the
+ * area row so the "Change emoji" menu item can open the picker without a
+ * click on the slot.
+ */
+function AreaEmojiSlot({
+  icon,
+  emojiOpen,
+  setEmojiOpen,
+  hoverRow,
+  onPick,
+}: {
+  icon: string | null;
+  emojiOpen: boolean;
+  setEmojiOpen: (v: boolean) => void;
+  hoverRow: boolean;
+  onPick: (emoji: string | null) => void;
+}) {
+  return (
+    <span
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <Popover
+        onOpenChange={setEmojiOpen}
+        width={264}
+        trigger={({ onClick, ref }) => {
+          // Sync external open request from the menu.
+          if (emojiOpen && !ref) return null;
+          return (
+            <button
+              ref={ref}
+              type="button"
+              aria-label="Change area emoji"
+              onClick={(e) => {
+                e.preventDefault();
+                onClick();
+              }}
+              className="grid place-items-center rounded-sm hover:bg-sunken"
+              style={{ width: 18, height: 18 }}
+            >
+              {icon ? (
+                <span className="text-row leading-none">{icon}</span>
+              ) : hoverRow ? (
+                <span
+                  aria-hidden
+                  className="inline-block rounded-full border border-dashed border-line"
+                  style={{ width: 12, height: 12 }}
+                />
+              ) : null}
+            </button>
+          );
+        }}
+      >
+        {(close) => (
+          <EmojiPicker
+            removable
+            onPick={(e) => {
+              onPick(e);
+              close();
+            }}
+          />
+        )}
+      </Popover>
+    </span>
+  );
+}
+
 
 /* Nested page row with hover ⋯ + full page menu (submenus swap in place). */
 function PageRowLi({
