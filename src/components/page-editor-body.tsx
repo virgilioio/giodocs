@@ -16,6 +16,7 @@ import { parseMarkdown } from "@/lib/markdown-import";
 import { htmlToMarkdown } from "@/lib/html-to-markdown";
 import { renderInlineWithOffsets } from "@/lib/inline-markdown";
 import { numberedOrdinals } from "@/lib/blocks";
+import { rowsInBand } from "@/lib/marquee";
 import { blockHandleFooter } from "@/lib/block-handle-footer";
 import { useToast } from "@/lib/toast";
 import { RowMenu, type MenuSpec, type MenuRow } from "./row-menu";
@@ -626,7 +627,17 @@ export function EditableBody({
   );
 
 
-  /* ────────── Marquee selection ────────── */
+  /* ────────── Marquee selection ──────────
+   *
+   * All coordinates below are in CONTAINER content space — the coordinate
+   * system of `containerRef` (which is `position: relative`, so rows'
+   * `offsetTop` values are naturally in this space). This is the fix for
+   * the bug where selection eroded during auto-scroll: viewport-space
+   * comparisons dropped rows as the container scrolled underneath them.
+   * Content space is scroll-invariant — a row's top does not change when
+   * the container scrolls, and neither does the anchor we captured at
+   * pointerdown, so scrolling extends the selection instead of eroding it.
+   */
 
   const [marquee, setMarquee] = useState<{
     x1: number;
@@ -636,13 +647,47 @@ export function EditableBody({
   } | null>(null);
   const marqueeRef = useRef<{
     active: boolean;
-    originX: number;
-    originY: number;
+    originX: number; // container-space
+    originY: number; // container-space
     originTarget: HTMLElement | null;
     moved: boolean;
   } | null>(null);
   const marqueeScrollDirRef = useRef<0 | 1 | -1>(0);
   const marqueeScrollRafRef = useRef<number | null>(null);
+  // Last viewport pointer, used to recompute container-space coords when
+  // auto-scroll fires without a real pointermove.
+  const marqueeLastClient = useRef<{ x: number; y: number } | null>(null);
+
+  const containerPoint = useCallback(
+    (clientX: number, clientY: number) => {
+      const c = containerRef.current;
+      if (!c) return { x: 0, y: 0 };
+      const r = c.getBoundingClientRect();
+      return { x: clientX - r.left, y: clientY - r.top };
+    },
+    [],
+  );
+
+  const selectByMarqueeY = useCallback((y1: number, y2: number) => {
+    // Build the row list in DOCUMENT ORDER (as rendered), using `offsetTop`
+    // which is container-space and scroll-invariant.
+    const rows: { id: string; top: number; height: number }[] = [];
+    rowEls.current.forEach((el, id) => {
+      rows.push({ id, top: el.offsetTop, height: el.offsetHeight });
+    });
+    rows.sort((a, b) => a.top - b.top);
+    const ids = new Set<string>(rowsInBand(rows, y1, y2));
+    setSelectedIds(ids);
+  }, []);
+
+  const applyMarqueeFromLastPointer = useCallback(() => {
+    const m = marqueeRef.current;
+    const lp = marqueeLastClient.current;
+    if (!m || !m.active || !lp) return;
+    const p = containerPoint(lp.x, lp.y);
+    setMarquee({ x1: m.originX, y1: m.originY, x2: p.x, y2: p.y });
+    selectByMarqueeY(m.originY, p.y);
+  }, [containerPoint, selectByMarqueeY]);
 
   const tickMarqueeScroll = useCallback(() => {
     const dir = marqueeScrollDirRef.current;
@@ -652,19 +697,12 @@ export function EditableBody({
       return;
     }
     sc.scrollTop += dir * 8;
+    // After the scroll, the pointer is over new content — recompute the
+    // rectangle and selection using the last known viewport pointer, so
+    // scrolling EXTENDS the band rather than freezing it.
+    applyMarqueeFromLastPointer();
     marqueeScrollRafRef.current = requestAnimationFrame(tickMarqueeScroll);
-  }, []);
-
-  const selectByMarqueeY = useCallback((y1: number, y2: number) => {
-    const top = Math.min(y1, y2);
-    const bot = Math.max(y1, y2);
-    const ids = new Set<string>();
-    rowEls.current.forEach((el, id) => {
-      const r = el.getBoundingClientRect();
-      if (r.bottom >= top && r.top <= bot) ids.add(id);
-    });
-    setSelectedIds(ids);
-  }, []);
+  }, [applyMarqueeFromLastPointer]);
 
   const onBelowClickRef = useRef<() => void>(() => {});
 
@@ -681,23 +719,27 @@ export function EditableBody({
       }
       // If a drag is in progress, do not start a marquee session.
       if (draggingRef.current) return;
+      const p = containerPoint(e.clientX, e.clientY);
       marqueeRef.current = {
         active: true,
-        originX: e.clientX,
-        originY: e.clientY,
+        originX: p.x,
+        originY: p.y,
         originTarget: t,
         moved: false,
       };
+      marqueeLastClient.current = { x: e.clientX, y: e.clientY };
     },
-    [],
+    [containerPoint],
   );
 
   useEffect(() => {
     const onMove = (ev: PointerEvent) => {
       const m = marqueeRef.current;
       if (!m || !m.active) return;
-      const dx = ev.clientX - m.originX;
-      const dy = ev.clientY - m.originY;
+      marqueeLastClient.current = { x: ev.clientX, y: ev.clientY };
+      const p = containerPoint(ev.clientX, ev.clientY);
+      const dx = p.x - m.originX;
+      const dy = p.y - m.originY;
       if (!m.moved && Math.hypot(dx, dy) < 4) return;
       if (!m.moved) {
         m.moved = true;
@@ -722,13 +764,14 @@ export function EditableBody({
           marqueeScrollRafRef.current = requestAnimationFrame(tickMarqueeScroll);
         }
       }
-      setMarquee({ x1: m.originX, y1: m.originY, x2: ev.clientX, y2: ev.clientY });
-      selectByMarqueeY(m.originY, ev.clientY);
+      setMarquee({ x1: m.originX, y1: m.originY, x2: p.x, y2: p.y });
+      selectByMarqueeY(m.originY, p.y);
     };
     const onUp = () => {
       const m = marqueeRef.current;
       if (!m || !m.active) return;
       marqueeRef.current = null;
+      marqueeLastClient.current = null;
       marqueeScrollDirRef.current = 0;
       if (marqueeScrollRafRef.current != null) {
         cancelAnimationFrame(marqueeScrollRafRef.current);
@@ -770,7 +813,8 @@ export function EditableBody({
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
-  }, [selectByMarqueeY, tickMarqueeScroll]);
+  }, [containerPoint, selectByMarqueeY, tickMarqueeScroll]);
+
 
   /* ────────── Slash menu state ────────── */
 
@@ -1418,22 +1462,23 @@ export function EditableBody({
        * whether this was a click (append/focus a block) or a marquee. */}
       <div aria-hidden data-trailing-zone style={{ minHeight: 240 }} />
 
-      {/* Marquee rectangle */}
-      {marquee
-        ? createPortal(
-            <div
-              aria-hidden
-              className="marquee-rect"
-              style={{
-                left: Math.min(marquee.x1, marquee.x2),
-                top: Math.min(marquee.y1, marquee.y2),
-                width: Math.abs(marquee.x2 - marquee.x1),
-                height: Math.abs(marquee.y2 - marquee.y1),
-              }}
-            />,
-            document.body,
-          )
-        : null}
+      {/* Marquee rectangle — rendered INSIDE the container in content
+       * space (not portaled to <body> in viewport space) so the visible
+       * rect and the selection band stay in the same coordinate system
+       * as the container scrolls. */}
+      {marquee ? (
+        <div
+          aria-hidden
+          className="marquee-rect"
+          style={{
+            position: "absolute",
+            left: Math.min(marquee.x1, marquee.x2),
+            top: Math.min(marquee.y1, marquee.y2),
+            width: Math.abs(marquee.x2 - marquee.x1),
+            height: Math.abs(marquee.y2 - marquee.y1),
+          }}
+        />
+      ) : null}
 
 
       {slash ? (
