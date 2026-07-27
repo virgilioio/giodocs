@@ -55,6 +55,7 @@ import {
 import {
   type Blk,
   type BlockType,
+  type ToggleLevel,
   type FocusReq,
   type OpResult,
   newBlock,
