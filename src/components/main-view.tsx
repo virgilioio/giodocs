@@ -1490,6 +1490,15 @@ export function MainView({ selection }: { selection: Selection }) {
     return [...s].sort();
   }, [pages]);
 
+  const tagsWs = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of pages) {
+      const t = propsOf(p)["tags"];
+      if (Array.isArray(t)) for (const x of t) if (typeof x === "string" && x) s.add(x);
+    }
+    return [...s].sort();
+  }, [pages]);
+
   const people = useMemo(
     () =>
       members.map((m) => ({
