@@ -3146,6 +3146,14 @@ function ColumnStack({
               case "exit-to-title":
                 // Not emitted for column scope; safeguard.
                 return;
+              case "indent":
+                e.preventDefault();
+                applyOp(opsIndent(blocks, b.id, 1));
+                return;
+              case "outdent":
+                e.preventDefault();
+                applyOp(opsIndent(blocks, b.id, -1));
+                return;
             }
           }}
           onAddBelow={() => {
