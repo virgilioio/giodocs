@@ -93,16 +93,18 @@ function firstName(full: string | null | undefined, email: string | null | undef
 function Glyph({
   path,
   className,
+  strokeWidth,
 }: {
   path: string;
   className?: string;
+  strokeWidth?: number;
 }) {
   return (
     <svg
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.6}
+      strokeWidth={strokeWidth ?? 1.6}
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className ?? "h-4 w-4"}
