@@ -1733,6 +1733,13 @@ export function MainView({ selection }: { selection: Selection }) {
           }
         : { kind: "search" };
 
+  if (pagesPending) {
+    if (!showSkeleton) return null;
+    if (layout === "board") return <BoardSkeleton />;
+    return <ViewSkeleton layout={layout === "list" ? "list" : "table"} />;
+  }
+
+
   return (
     <PageOriginContext.Provider value={originValue}>
     <div
