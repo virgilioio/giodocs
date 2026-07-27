@@ -147,13 +147,15 @@ export function parseMarkdown(text: string): Blk[] {
     const todo = line.match(/^([ \t]*)[-*+] \[([ xX])\] (.*)$/);
     if (todo) {
       flushParagraph();
-      out.push({
+      const ind = indentOf(todo[1]);
+      const b: Blk = {
         id: nanoid(10),
         type: "todo",
         text: todo[3],
         checked: todo[2].toLowerCase() === "x",
-        indent: indentOf(todo[1]),
-      });
+      };
+      if (ind > 0) (b as { indent?: number }).indent = ind;
+      out.push(b);
       i++;
       continue;
     }
@@ -162,12 +164,10 @@ export function parseMarkdown(text: string): Blk[] {
     const bullet = line.match(/^([ \t]*)[-*+] (.*)$/);
     if (bullet) {
       flushParagraph();
-      out.push({
-        id: nanoid(10),
-        type: "bullet",
-        text: bullet[2],
-        indent: indentOf(bullet[1]),
-      });
+      const ind = indentOf(bullet[1]);
+      const b: Blk = { id: nanoid(10), type: "bullet", text: bullet[2] };
+      if (ind > 0) (b as { indent?: number }).indent = ind;
+      out.push(b);
       i++;
       continue;
     }
@@ -176,12 +176,10 @@ export function parseMarkdown(text: string): Blk[] {
     const num = line.match(/^([ \t]*)\d+\. (.*)$/);
     if (num) {
       flushParagraph();
-      out.push({
-        id: nanoid(10),
-        type: "numbered",
-        text: num[2],
-        indent: indentOf(num[1]),
-      });
+      const ind = indentOf(num[1]);
+      const b: Blk = { id: nanoid(10), type: "numbered", text: num[2] };
+      if (ind > 0) (b as { indent?: number }).indent = ind;
+      out.push(b);
       i++;
       continue;
     }
