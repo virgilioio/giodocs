@@ -146,7 +146,6 @@ function ViewHeader({
   onNewPage,
   layout,
   onChangeLayout,
-  menuBuild,
   renaming,
   onRenameCommit,
   onRenameCancel,
@@ -157,7 +156,6 @@ function ViewHeader({
   onNewPage: () => void;
   layout: Layout;
   onChangeLayout: (l: Layout) => void;
-  menuBuild: () => ReactNode;
   renaming: boolean;
   onRenameCommit: (v: string) => void;
   onRenameCancel: () => void;
