@@ -143,7 +143,17 @@ describe("readCaretSource / writeCaretSource — source-offset round trip", () =
     // territory (outside delimiter runs). Delimiter interiors are
     // deliberately unreachable and clamp — that's covered by the
     // buildOffsetMap unit tests.
-    const positions = [0, 1, 2, 4, 10, 14, 20, src.length];
+    // Pick positions unambiguously INSIDE literal text — not on a
+    // delimiter boundary (delimiter positions are unreachable by
+    // design and clamp to the nearest rendered slot; that's covered
+    // by the buildOffsetMap unit tests).
+    //   "a **bold *and italic* end** z"
+    //    0 1 234567 8 9012345678901234567890
+    //    0         1         2
+    // Renderable literals: 0 (a), 1 (space), 5-7 (old, ld inside "bold"),
+    // 11-12 (nd inside "and"), 15-19 (talic inside "italic"),
+    // 23-24 (nd inside "end"), 27 (space), 28 (z), 29 (end sentinel).
+    const positions = [0, 1, 5, 6, 7, 11, 12, 15, 18, 19, 23, 24, 27, 28, src.length];
     for (const s of positions) {
       writeCaretSource(host, src, s);
       const read = readCaretSource(host, src);
