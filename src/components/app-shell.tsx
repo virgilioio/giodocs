@@ -539,7 +539,6 @@ function SidebarBody({
   const verifyPage = useVerifyPage();
   const setPageProperty = useSetPageProperty();
   const moveToArea = useMovePageToArea();
-  const duplicatePage = useDuplicatePage();
   const deletePage = useDeletePage();
 
   // Local "hide from my sidebar" list for team views. Persisted per-user.
