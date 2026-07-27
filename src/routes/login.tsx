@@ -4,6 +4,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 
 export const Route = createFileRoute("/login")({
+  validateSearch: (search: Record<string, unknown>): { next?: string } => {
+    const raw = search.next;
+    if (typeof raw !== "string") return {};
+    // Only accept same-origin absolute paths, never external URLs.
+    return raw.startsWith("/") && !raw.startsWith("//") ? { next: raw } : {};
+  },
   head: () => ({
     meta: [
       { title: "Sign in — Gio Docs" },
@@ -25,10 +31,12 @@ type DomainState =
 function LoginPage() {
   const { session } = useAuth();
   const navigate = useNavigate();
+  const search = Route.useSearch();
+  const next = search.next ?? "/";
 
   useEffect(() => {
-    if (session) navigate({ to: "/", replace: true });
-  }, [session, navigate]);
+    if (session) navigate({ to: next, replace: true });
+  }, [session, navigate, next]);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -84,7 +92,7 @@ function LoginPage() {
       passwordRef.current?.focus();
       return;
     }
-    navigate({ to: "/", replace: true });
+    navigate({ to: next, replace: true });
   }
 
   return (
