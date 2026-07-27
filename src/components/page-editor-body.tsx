@@ -2015,6 +2015,14 @@ export function EditableBody({
               // the resolver is broken. Fail loudly rather than swallow.
               case "escape-column":
                 return;
+              case "indent":
+                e.preventDefault();
+                applyOp(opsIndent(blocks, b.id, 1));
+                return;
+              case "outdent":
+                e.preventDefault();
+                applyOp(opsIndent(blocks, b.id, -1));
+                return;
             }
           }}
           onAddBelow={() => { if (!locked) insertAfter(b.id); }}
