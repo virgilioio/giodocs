@@ -550,10 +550,12 @@ const HTML_CSS = `
   dl.props dt { color: ${muted}; }
   header.meta { border-bottom: 1px solid ${line}; padding-bottom: 18px; margin-bottom: 22px; }
   /* Print footer — repeats on every printed page via position:fixed.
-     In screen HTML it also sits fixed at the bottom of the viewport; body's
-     bottom padding reserves the space so content never sits under it. */
+     The bottom band is reserved by @page { margin: 0 0 0.85in 0 } (applied
+     in printPdf), so every printed sheet clears the footer, not just p1.
+     Body padding NEVER reserves footer space — padding is a document-flow
+     property that only applies to the first page's content column. */
   footer.print-footer {
-    position: fixed; bottom: 0.35in; left: 0.75in; right: 0.75in;
+    position: fixed; bottom: 0.28in; left: 0.75in; right: 0.75in;
     display: flex; justify-content: space-between; align-items: center;
     gap: 24px; padding-top: 6px;
     border-top: 1px solid ${line};
@@ -561,7 +563,7 @@ const HTML_CSS = `
     font-size: 10px; color: ${muted}; letter-spacing: -0.01em;
   }
   footer.print-footer .mark { display: inline-flex; align-items: center; gap: 6px; }
-  footer.print-footer .mark img { height: 14px; width: auto; display: block; }
+  footer.print-footer .mark img { height: 18px; width: auto; display: block; }
   footer.print-footer .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; text-align: right; }
 `;
 
