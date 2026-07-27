@@ -1,7 +1,7 @@
 /**
  * parseMarkdown — inverse of blockToMarkdown in export.ts.
  *
- * Supports exactly the twelve block types: text, h1, h2, bullet, numbered,
+ * Supports the block-type set: text, h1, h2, h3, bullet, numbered,
  * todo, toggle, quote, callout, divider, code, table. Line-based scan; no
  * dependencies (no turndown, no marked, no remark).
  *
