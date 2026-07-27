@@ -8,7 +8,7 @@ import {
   deleteRow,
   normalizeTable,
 } from "./table-ops";
-import { blockToMarkdown, blockToHtml } from "./export";
+import { blockToMarkdown, toHtml } from "./export";
 
 const rect = (): string[][] => [
   ["h1", "h2", "h3"],
