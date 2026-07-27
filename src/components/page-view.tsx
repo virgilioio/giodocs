@@ -293,13 +293,45 @@ function MiniAvatar({ profile }: { profile: MemberRow["profiles"] }) {
     .toUpperCase();
   return (
     <span
-      className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-caption"
+      className="grid shrink-0 place-items-center rounded-full"
       style={{
+        width: 19,
+        height: 19,
+        fontSize: 9.5,
+        fontWeight: 700,
+        lineHeight: 1,
         background: profile?.avatar_tint ?? "var(--color-sunken)",
         color: profile?.avatar_ink ?? "var(--color-noir)",
       }}
     >
       {initials}
+    </span>
+  );
+}
+
+/* Shared classes/styles for every editable value cell in the property
+ * strip. The −7px margin-left is load-bearing: it pulls the value's
+ * hover box out to the value column's true left edge so it aligns with
+ * the strip's top hairline and never looks pinched against the label. */
+const VALUE_CELL_CLASS =
+  "gio-prop-value flex items-center rounded-md cursor-pointer text-left hover:bg-sunken";
+const VALUE_CELL_STYLE: React.CSSProperties = {
+  padding: "3px 7px",
+  marginLeft: -7,
+  minHeight: 24,
+};
+
+/* Empty-state copy varies per prop so an owner-less page reads
+ * differently from a bare tag list. */
+function emptyCopy(propKey: string, defType?: string): string {
+  if (propKey === "owner" || defType === "person") return "Unassigned";
+  if (defType === "multi_select") return "Empty — click to tag";
+  return "Empty";
+}
+function EmptyValue({ propKey, defType }: { propKey: string; defType?: string }) {
+  return (
+    <span style={{ fontSize: 14, color: "var(--color-whisper)" }}>
+      {emptyCopy(propKey, defType)}
     </span>
   );
 }
