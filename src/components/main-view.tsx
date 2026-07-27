@@ -1116,16 +1116,26 @@ export function MainView({ selection }: { selection: Selection }) {
         onNewPage={onNewPage}
         layout={layout}
         onChangeLayout={onChangeLayout}
+        renaming={renaming}
+        onRenameCommit={doRenameCommit}
+        onRenameCancel={() => setRenaming(false)}
         menuBuild={() => (
           <ViewHeaderMenu
             view={view}
             selection={selection}
-            canPublish={isOwnerOfView}
-            canDelete={isOwnerOfView}
-            canSaveAs={isTeamView}
+            isWorkspaceOwner={isWorkspaceOwner}
+            isOwnerOfView={isOwnerOfView}
+            isTeamView={isTeamView}
+            workspaceName={workspace?.name ?? "the workspace"}
+            memberCount={memberCount}
+            onRename={() => setRenaming(true)}
+            onDuplicatePersonal={doDuplicatePersonal}
+            onDuplicateTeam={doDuplicateTeam}
             onPublish={doPublish}
-            onSaveAs={doSaveAsMyView}
+            onUnpublish={doUnpublish}
+            onExport={() => setExportOpen(true)}
             onDelete={doDelete}
+            onAreaSaveAsView={doAreaSaveAsView}
           />
         )}
       />
