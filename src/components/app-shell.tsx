@@ -84,6 +84,10 @@ type Selection =
 
 const COLLAPSE_KEY = "gio.sidebar.collapsed";
 const SECTION_KEY = "gio.sidebar.sections"; // JSON { my:boolean, team:boolean, areas:boolean }
+const SIDEBAR_W_KEY = "gio.sidebarWidth";
+const SIDEBAR_MIN = 200;
+const SIDEBAR_MAX = 460;
+const SIDEBAR_DEFAULT = 240;
 
 function useSelection(): Selection {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
