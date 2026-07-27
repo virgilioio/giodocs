@@ -320,24 +320,21 @@ export function EditableBody({
     const el = refs.current[focusRequest.id];
     if (!el) return;
     el.focus({ preventScroll: true });
-    if ("setSelectionRange" in el) {
-      const v = (el as HTMLTextAreaElement).value;
-      const c =
-        focusRequest.caret === "end"
-          ? v.length
-          : focusRequest.caret === "start" || focusRequest.caret == null
-            ? 0
-            : Math.min(focusRequest.caret, v.length);
-      try {
-        (el as HTMLTextAreaElement).setSelectionRange(c, c);
-      } catch {
-        /* input types that don't support selection */
-      }
+    const src = blocks.find((b) => b.id === focusRequest.id)?.text ?? "";
+    const c =
+      focusRequest.caret === "end"
+        ? src.length
+        : focusRequest.caret === "start" || focusRequest.caret == null
+          ? 0
+          : Math.min(focusRequest.caret, src.length);
+    try {
+      writeCaret(el, src, c, c);
+    } catch {
+      /* elements that don't support caret placement */
     }
-    // Only scroll if the target is outside the visible area.
-    const rect = (el as HTMLElement).getBoundingClientRect();
+    const rect = el.getBoundingClientRect();
     if (rect.top < 0 || rect.bottom > window.innerHeight) {
-      (el as HTMLElement).scrollIntoView({ block: "nearest" });
+      el.scrollIntoView({ block: "nearest" });
     }
     setFocusRequest(null);
   }, [focusRequest, blocks]);
