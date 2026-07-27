@@ -558,7 +558,7 @@ export function SpecMenuTrigger({
   className = "",
 }: {
   build: (ctx: MenuBuildCtx) => MenuSpec;
-  size?: "sm" | "toolbar";
+  size?: "sm" | "toolbar" | "row" | "board-row";
   ariaLabel?: string;
   visible?: boolean;
   className?: string;
@@ -569,7 +569,12 @@ export function SpecMenuTrigger({
     setAnchor(null);
     setSpec(null);
   }, []);
-  const px = size === "toolbar" ? 26 : 17;
+  const px =
+    size === "toolbar" ? 26 : size === "row" ? 24 : size === "board-row" ? 22 : 17;
+  const hoverClass =
+    size === "row" || size === "board-row"
+      ? "text-faint hover:bg-line hover:text-strong"
+      : "text-whisper hover:bg-railHover hover:text-strong";
   return (
     <>
       <button
