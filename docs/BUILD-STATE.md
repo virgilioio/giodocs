@@ -73,9 +73,9 @@ Default redirect from "/" lands on /v/a11a0000-0000-4000-8000-0000000000b1 (Assi
 
 ## Phase order (remaining)
 
-team-view fork rule — MODIFIED pill + "Save as my view" from the toolbar
-(original ship gate) → command palette ⌘K → board + list layouts →
-settings → realtime.
+Remaining work is confined to this file: any items called out in
+"Next-phase acceptance" below and the parked decisions above.
+
 
 ## Page editor (Part A) — 2026-07-26
 
