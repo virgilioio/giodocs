@@ -553,13 +553,6 @@ export function EditableBody({
       if (!hasNewline && !hasMdMarker) return; // plain word — let browser handle
       e.preventDefault();
 
-      // Lazy import — keeps this file's import graph unchanged in tests
-      // that touch the editor without loading nanoid twice.
-      // (parseMarkdown already lives in @/lib/markdown-import.)
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { parseMarkdown } = require("@/lib/markdown-import") as {
-        parseMarkdown: (t: string) => Blk[];
-      };
       const parsed = parseMarkdown(raw);
       if (parsed.length === 0) return;
 
