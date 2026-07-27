@@ -145,6 +145,15 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
       return `# ${text}`;
     case "h2":
       return `## ${text}`;
+    case "h3":
+      return `### ${text}`;
+    case "caption":
+      // Markdown has no "caption" form. Emit as a plain paragraph. This is
+      // deliberately LOSSY on round-trip: a caption becomes a `text` block
+      // coming back through parseMarkdown. Do NOT invent a marker; the
+      // structured HTML importer is the only path that preserves it.
+      // Same pragma as the `columns` case below — don't "fix" it later.
+      return text;
     case "bullet":
       return `- ${text}`;
     case "numbered":
@@ -153,6 +162,14 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
       return `- [${b.checked ? "x" : " "}] ${text}`;
     case "toggle": {
       const body = typeof b.body === "string" ? b.body : "";
+      // Levelled toggle: emit summary at heading depth then body. Plain
+      // toggle: keep today's `**text**` + indented body output.
+      const level = typeof b.level === "string" ? (b.level as string) : "text";
+      if (level === "h1" || level === "h2" || level === "h3") {
+        const hash = level === "h1" ? "#" : level === "h2" ? "##" : "###";
+        if (!body) return `${hash} ${text}`;
+        return `${hash} ${text}\n\n${body}`;
+      }
       if (!body) return `**${text}**`;
       const indented = body.split("\n").map((line) => `  ${line}`).join("\n");
       return `**${text}**\n${indented}`;
