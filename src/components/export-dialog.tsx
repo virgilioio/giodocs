@@ -149,7 +149,11 @@ export function ExportDialog({
         toast.push("Opening your print dialog");
         onClose();
       }
-    } catch {
+    } catch (e) {
+      // BUG 2: previously the generic "nothing left your workspace" copy
+      // swallowed the real cause. Log the exception verbatim so the next
+      // failure is diagnosable in the console.
+      console.error("[export] failed", { format: fmt, error: e });
       setErr(true);
     } finally {
       setBusy(false);
