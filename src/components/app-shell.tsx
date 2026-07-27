@@ -1239,6 +1239,8 @@ function AreaLi({
   const createAndOpen = useCreatePageAndOpen();
   const createView = useCreateView();
   const renameArea = useRenameArea();
+  const setAreaIcon = useSetAreaIcon();
+  const [emojiOpen, setEmojiOpen] = useState(false);
 
   const buildAreaMenu = (): ReactNode => (
     <AreaMenu
@@ -1249,6 +1251,7 @@ function AreaLi({
       onOpen={() => navigate({ to: "/a/$area", params: { area } })}
       onNewPage={() => void createAndOpen({ seedProps: { area } })}
       onRename={(to) => renameArea.mutate({ from: area, to })}
+      onChangeEmoji={() => setEmojiOpen(true)}
       onSaveAsView={() =>
         createView.mutate({
           name: area,
@@ -1259,6 +1262,7 @@ function AreaLi({
       }
     />
   );
+
 
   return (
     <li
