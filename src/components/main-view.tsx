@@ -1121,6 +1121,21 @@ export function MainView({ selection }: { selection: Selection }) {
         renaming={renaming}
         onRenameCommit={doRenameCommit}
         onRenameCancel={() => setRenaming(false)}
+      />
+
+
+      <QueryToolbar
+        filters={filters}
+        sort={sort}
+
+        onChangeFilters={onChangeFilters}
+        onChangeSort={onChangeSort}
+        propDefs={propDefs}
+        staleDays={staleDays}
+        editable={editable}
+        fixedFilterIndex={fixedFilterIndex}
+        pages={pages}
+        verbose={prefs.explainQuery}
         menuBuild={() => (
           <ViewHeaderMenu
             view={view}
@@ -1140,22 +1155,6 @@ export function MainView({ selection }: { selection: Selection }) {
             onAreaSaveAsView={doAreaSaveAsView}
           />
         )}
-      />
-
-
-      <QueryToolbar
-        filters={filters}
-        sort={sort}
-
-        onChangeFilters={onChangeFilters}
-        onChangeSort={onChangeSort}
-        propDefs={propDefs}
-        staleDays={staleDays}
-        editable={editable}
-        fixedFilterIndex={fixedFilterIndex}
-        pages={pages}
-        verbose={prefs.explainQuery}
-
       />
 
       {layout === "board" && (
