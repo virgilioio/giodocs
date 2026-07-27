@@ -1122,6 +1122,14 @@ export function PageEditor({ pageId }: { pageId: string }) {
     void saverRef.current?.flush();
   }, []);
 
+  const areasList = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of (shell.pages.data ?? []) as PageListItem[]) {
+      const a = propsOf(p)["area"];
+      if (typeof a === "string" && a) s.add(a);
+    }
+    return [...s].sort();
+  }, [shell.pages.data]);
 
   if (pageQ.isLoading) {
     return (
