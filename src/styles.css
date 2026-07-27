@@ -124,6 +124,14 @@
   .gio-cell-pad { padding-top: var(--gio-cell-py); padding-bottom: var(--gio-cell-py); }
   .gio-list-pad { padding-top: var(--gio-list-py); padding-bottom: var(--gio-list-py); }
 
+  /* Property strip — rows ABUT (min-height 32, no gap); the row background
+     is the hover tint, and the value cell has its own deeper hover. The
+     remove ✕ and the "+ Add a property" trigger both shift up one grade on
+     hover so they never share ink with the values proper. */
+  .gio-prop-row:hover { background: var(--color-track); }
+  .gio-prop-remove:hover { color: var(--color-secondary); }
+  .gio-prop-add:hover { color: var(--color-secondary); }
+
   /* Page font preference — applied to page body content only. */
   .gio-page-body[data-font="serif"] { font-family: 'Newsreader', Georgia, "Iowan Old Style", "Times New Roman", serif; }
   .gio-page-body[data-font="mono"]  { font-family: var(--font-mono); }
