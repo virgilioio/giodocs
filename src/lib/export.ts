@@ -183,7 +183,7 @@ export function toMarkdown(ctx: ExportContext): string {
 
 /* ─────────────────────────── toHtml ─────────────────────────── */
 
-function blockHtml(b: Block): string {
+function blockHtml(b: Block, ordinal = 1): string {
   const t = (b.type ?? "text") as string;
   const text = blockText(b);
   switch (t) {
@@ -196,7 +196,9 @@ function blockHtml(b: Block): string {
     case "bullet":
       return `<ul><li>${esc(text)}</li></ul>`;
     case "numbered":
-      return `<ol><li>${esc(text)}</li></ol>`;
+      // Each block is its own <ol>; use `start` so the number matches the
+      // page's read of the run (see numberedOrdinals).
+      return `<ol start="${ordinal}"><li>${esc(text)}</li></ol>`;
     case "todo":
       return `<p class="todo"><input type="checkbox" disabled${
         b.checked ? " checked" : ""
@@ -315,7 +317,10 @@ export function toHtml(ctx: ExportContext): string {
         .join("")}</dl>`
     : "";
 
-  const body = ctx.blocks.map(blockHtml).join("\n");
+  const ords = numberedOrdinals(ctx.blocks);
+  const body = ctx.blocks
+    .map((b) => blockHtml(b, (b.id && ords.get(b.id)) || 1))
+    .join("\n");
 
   return `<!doctype html>
 <html lang="en">
