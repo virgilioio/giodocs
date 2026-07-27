@@ -162,13 +162,17 @@ export function EditableBody({
   onBlur?: () => void;
   locked?: boolean;
 }) {
-  const [blocks, setBlocks] = useState<Blk[]>(() => normalize(initialBlocks));
+  const [blocks, setBlocks] = useState<Blk[]>(() => {
+    const n = normalize(initialBlocks);
+    return n.length ? n : [newBlock("text")];
+  });
   // If the incoming server data changes for a different page, resync.
   const lastPage = useRef(pageId);
   useEffect(() => {
     if (lastPage.current !== pageId) {
       lastPage.current = pageId;
-      setBlocks(normalize(initialBlocks));
+      const n = normalize(initialBlocks);
+      setBlocks(n.length ? n : [newBlock("text")]);
     }
   }, [pageId, initialBlocks]);
 
