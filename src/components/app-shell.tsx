@@ -22,6 +22,8 @@ import {
   useCreateView,
   useDeleteView,
   useDeletePage,
+  useRestorePage,
+
   useDuplicatePage,
   useForkView,
   useMovePageToArea,
@@ -1385,10 +1387,28 @@ function PageRowLi({
   navigate: ReturnType<typeof useNavigate>;
 }) {
   const [hover, setHover] = useState(false);
+  const toast = useToast();
+  const restorePage = useRestorePage();
+  const onDeleteWithUndo = (row: PageListItem) => {
+    const snap = row;
+    deletePage.mutate(row.id, {
+      onSuccess: () => {
+        toast.push({
+          message: "Page deleted — it left every view at once.",
+          action: {
+            label: "Undo",
+            onClick: () => restorePage.mutate({ pageId: snap.id, row: snap }),
+          },
+          durationMs: 10_000,
+        });
+      },
+    });
+  };
   const props =
     p.props && typeof p.props === "object" && !Array.isArray(p.props)
       ? (p.props as Record<string, unknown>)
       : {};
+
   const build = (): ReactNode => (
     <PageMenu
       p={p}
@@ -1406,8 +1426,9 @@ function PageRowLi({
       }
       onMoveArea={(a) => moveToArea.mutate({ pageId: p.id, area: a })}
       onDuplicate={() => duplicatePage.mutate(p.id)}
-      onDelete={() => deletePage.mutate(p.id)}
+      onDelete={() => onDeleteWithUndo(p)}
     />
+
   );
   return (
     <li

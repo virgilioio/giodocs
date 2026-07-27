@@ -12,6 +12,7 @@ import {
   useSetPageProperty,
   useUpdateBlocks,
   useVerifyPage,
+  useArchivePage,
 } from "@/hooks/use-page-mutations";
 import { qk } from "@/lib/query-keys";
 import { usePrefs } from "@/lib/preferences";
@@ -948,6 +949,8 @@ export function PageEditor({ pageId }: { pageId: string }) {
   const verify = useVerifyPage();
   const rename = useRenamePage();
   const updateBlocks = useUpdateBlocks();
+  const archive = useArchivePage();
+
   const qc = useQueryClient();
   const { prefs } = usePrefs();
   const { app } = usePageAppearance(pageId);
@@ -1186,6 +1189,32 @@ export function PageEditor({ pageId }: { pageId: string }) {
         </span>
       </div>
 
+      {/* 4a. Archived banner — shows on the page's own route only. */}
+      {page.archived_at ? (
+        <div
+          className="mt-4 flex w-full items-center gap-2 rounded-lg border border-line bg-sunken px-3 py-2 text-row"
+          style={{ borderRadius: 10 }}
+        >
+          <Glyph
+            path="M4 7h16M6 7v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7M9 11h6M4 4h16v3H4z"
+            className="h-4 w-4 text-muted"
+          />
+          <span className="text-body">
+            This page is archived — it appears in search but in no views.
+          </span>
+          <button
+            type="button"
+            onClick={() =>
+              archive.mutate({ pageId: page.id, archived: false })
+            }
+            className="ml-auto rounded-md border border-line bg-surface px-3 text-meta text-body hover:bg-rail"
+            style={{ height: 28 }}
+          >
+            Unarchive
+          </button>
+        </div>
+      ) : null}
+
       {/* 4. Freshness banner. */}
       <div style={{ marginTop: 14 }}>
         <FreshnessRow
@@ -1197,6 +1226,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
           justVerified={justVerified}
         />
       </div>
+
 
       {/* 5. Properties strip. */}
       <div style={{ marginTop: 18 }}>

@@ -10,11 +10,15 @@ const PAGE_FULL_COLUMNS =
   "id, workspace_id, title, icon, props, blocks, access_type, verified_at, verified_by, edited_at, edited_by, created_by, created_at, deleted_at, archived_at";
 
 async function fetchPages(ws: string): Promise<PageListItem[]> {
+  // Archived pages leave every view, area list, and sidebar count. They stay
+  // reachable by direct URL and by search_pages (⌘K), which is the
+  // "stays searchable" promise.
   const { data, error } = await supabase
     .from("pages")
     .select(PAGE_LIST_COLUMNS)
     .eq("workspace_id", ws)
     .is("deleted_at", null)
+    .is("archived_at", null)
     .order("edited_at", { ascending: false })
     .limit(2000);
   if (error) throw error;
