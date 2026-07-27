@@ -1850,7 +1850,8 @@ function Cell({ children, className }: { children: ReactNode; className?: string
   return (
     <div
       className={
-        "min-w-0 border-b border-lineSoft px-[11px] gio-cell-pad " + (className ?? "")
+        "min-w-0 border-b border-lineSoft px-[11px] gio-cell-pad flex items-center whitespace-nowrap overflow-hidden " +
+        (className ?? "")
       }
     >
       {children}
