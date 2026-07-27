@@ -75,7 +75,7 @@ serve(async (req) => {
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Missing authorization header" }), {
+      return new Response(JSON.stringify({ error: "Sign in to invite people." }), {
         status: 401,
         headers: jsonHeaders,
       });
@@ -85,19 +85,23 @@ serve(async (req) => {
     const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
     const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    // Client scoped to the caller — used to verify identity and ownership via RLS.
+    // User-scoped client — bearer forwarded from the caller. Used ONLY for
+    // create_workspace_invite so auth.uid() inside the RPC resolves to the
+    // real caller and the RPC's own owner check does the authorisation.
     const asUser = createClient(SUPABASE_URL, ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false, autoRefreshToken: false },
     });
-    // Service-role client — used for the create_workspace_invite RPC and the
-    // subsequent email_status writes (bypasses RLS on purpose).
+    // Service-role client — reserved for work the user legitimately cannot do:
+    // reading workspace/profile rows for the email template and writing
+    // email_status/email_error back to workspace_invites after send.
     const asService = createClient(SUPABASE_URL, SERVICE_KEY, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
     const { data: userData, error: userErr } = await asUser.auth.getUser();
     if (userErr || !userData?.user) {
-      return new Response(JSON.stringify({ error: "Not signed in" }), {
+      return new Response(JSON.stringify({ error: "Sign in to invite people." }), {
         status: 401,
         headers: jsonHeaders,
       });
