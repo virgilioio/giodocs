@@ -276,10 +276,17 @@ function blockHtml(b: Block, ordinal = 1): string {
   switch (t) {
     case "text":
       return `<p>${inline(text)}</p>`;
+    case "caption":
+      // Muted styling comes from the `.caption` rule in HTML_CSS below.
+      return `<p class="caption">${inline(text)}</p>`;
     case "h1":
-      return `<h1>${inline(text)}</h1>`;
-    case "h2":
+      // Demote by one level so the exported page keeps a single <h1>
+      // (the page title). h1 → h2, h2 → h3, h3 → h4.
       return `<h2>${inline(text)}</h2>`;
+    case "h2":
+      return `<h3>${inline(text)}</h3>`;
+    case "h3":
+      return `<h4>${inline(text)}</h4>`;
     case "bullet":
       return `<ul><li>${inline(text)}</li></ul>`;
     case "numbered":
@@ -292,9 +299,20 @@ function blockHtml(b: Block, ordinal = 1): string {
       }/> <span${b.checked ? ' class="done"' : ""}>${inline(text)}</span></p>`;
     case "toggle": {
       const body = typeof b.body === "string" ? b.body : "";
-      return `<details${b.open ? " open" : ""}><summary>${inline(
-        text,
-      )}</summary>${body ? `<p>${inline(body)}</p>` : ""}</details>`;
+      const level = typeof b.level === "string" ? (b.level as string) : "text";
+      // Levelled toggle: wrap the summary in the demoted heading tag,
+      // matching the one-level demotion applied to standalone headings.
+      const summaryInner =
+        level === "h1"
+          ? `<h2>${inline(text)}</h2>`
+          : level === "h2"
+            ? `<h3>${inline(text)}</h3>`
+            : level === "h3"
+              ? `<h4>${inline(text)}</h4>`
+              : inline(text);
+      return `<details${b.open ? " open" : ""}><summary>${summaryInner}</summary>${
+        body ? `<p>${inline(body)}</p>` : ""
+      }</details>`;
     }
     case "quote":
       return `<blockquote>${inline(text)}</blockquote>`;
