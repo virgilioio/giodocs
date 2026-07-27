@@ -37,8 +37,8 @@ describe("toMarkdown", () => {
       blocks: [],
     });
     expect(md).toMatch(/^---\ntitle: Kickoff\narea: Ops\n/);
-    expect(md).toMatch(/status: "In progress"/);
-    expect(md).toMatch(/owner: "Dana Ruiz"/);
+    expect(md).toMatch(/status: In progress/);
+    expect(md).toMatch(/owner: Dana Ruiz/);
     expect(md).toMatch(/tags: \[urgent, q3\]/);
     expect(md).toMatch(/verified: 2026-07-25/);
   });
