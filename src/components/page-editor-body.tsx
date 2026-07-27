@@ -1876,10 +1876,11 @@ export function EditableBody({
           }}
           onKeyDown={(e) => {
             if (locked) return;
-            const el = e.currentTarget as HTMLTextAreaElement;
-            const v = el.value;
-            const ss = el.selectionStart ?? 0;
-            const se = el.selectionEnd ?? 0;
+            const el = e.currentTarget as HTMLElement;
+            const v = b.text ?? "";
+            const caret = readCaret(el, v) ?? { start: 0, end: 0 };
+            const ss = caret.start;
+            const se = caret.end;
 
             if (slash?.blockId === b.id) {
               if (e.key === "ArrowDown") {
