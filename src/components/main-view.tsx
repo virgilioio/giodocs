@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell, pageQuery } from "@/hooks/use-workspace-data";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
+import { applyFilterReplacement, filterLabel } from "@/lib/filter-label";
 import { PageOriginContext, useSetPageOrigin } from "@/lib/page-origin";
 
 import { Popover } from "./popover";
@@ -115,26 +116,9 @@ function Glyph({ path, className }: { path: string; className?: string }) {
   );
 }
 
-/* ─────────────────────────── Filter description ─────────────────────────── */
+/* describeFilter — REMOVED. Every filter chip text now flows through
+ * filterLabel() in @/lib/filter-label. See B1 spec §1. */
 
-export function describeFilter(f: Filter, propDefs: PropDef[], staleDays: number): string {
-  const def = propDefs.find((d) => d.key === f.prop);
-  const label = def?.label ?? f.prop ?? "";
-  switch (f.op) {
-    case "eq":
-      return `${label} is "${f.value}"`;
-    case "includes":
-      return `tagged "${f.value}"`;
-    case "is_me":
-      return f.prop === "owner" ? "owner is you" : `${label} is you`;
-    case "not_empty":
-      return `${label} is set`;
-    case "stale":
-      return `not verified in ${staleDays} days`;
-    case "edited_within":
-      return `edited in the last ${f.value} days`;
-  }
-}
 
 
 /* ─────────────────────────── View header ─────────────────────────── */
@@ -251,12 +235,29 @@ function ViewHeader({
 
 /* ─────────────────────────── Query toolbar ─────────────────────────── */
 
+/**
+ * QueryToolbar — the sentence. See B1 spec §2.
+ *
+ * One flex-wrap row. Order:
+ *   "Pages where" · chips · [italic empty-label] · +Filter
+ *   · vertical divider · sort · group (board only) · spacer · ⋯
+ *
+ * Chips render text via filterLabel(). Adding/replacing filters go through
+ * applyFilterReplacement — no other place computes chip text or the rule.
+ */
+
+type PersonForLabel = { id: string; full_name: string | null };
+
 function QueryToolbar({
   filters,
   sort,
+  groupBy,
+  layout,
   onChangeFilters,
   onChangeSort,
+  onChangeGroupBy,
   propDefs,
+  people,
   staleDays,
   editable,
   fixedFilterIndex,
@@ -266,9 +267,13 @@ function QueryToolbar({
 }: {
   filters: Filter[];
   sort: SortSpec;
+  groupBy: string;
+  layout: Layout;
   onChangeFilters: (next: Filter[]) => void;
   onChangeSort: (s: SortSpec) => void;
+  onChangeGroupBy: (g: string) => void;
   propDefs: PropDef[];
+  people: PersonForLabel[];
   staleDays: number;
   editable: boolean;
   fixedFilterIndex?: number;
@@ -276,114 +281,268 @@ function QueryToolbar({
   verbose: boolean;
   menuBuild: () => ReactNode;
 }) {
-  return (
-    <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-lineSoft pb-3">
-      {verbose && <span className="text-meta text-muted">Pages where</span>}
-      {verbose && filters.length === 0 && (
-        <span className="italic text-meta text-secondary">anything — every page</span>
-      )}
+  const pickFilter = (picked: Filter) =>
+    onChangeFilters(applyFilterReplacement(filters, picked));
+  const groupableDefs = propDefs.filter(
+    (d) => d.type === "select" || d.type === "status",
+  );
 
-      {filters.map((f, i) => {
-        const fixed = i === fixedFilterIndex;
-        return (
-          <span
-            key={i}
-            className="inline-flex items-center gap-1 rounded-sm border border-line bg-sunken px-2 py-0.5 text-meta"
-            title={fixed ? "This chip defines the area" : undefined}
-          >
-            {describeFilter(f, propDefs, staleDays)}
-            {editable && !fixed && (
-              <button
-                type="button"
-                aria-label="Remove filter"
-                className="text-faint hover:text-strong"
-                onClick={() =>
+  return (
+    <div
+      className="flex flex-wrap items-center"
+      style={{ marginTop: 14, gap: 7 }}
+    >
+      {verbose && (
+        <>
+          <span style={{ fontSize: 13, color: "var(--color-faint)" }}>
+            Pages where
+          </span>
+          {filters.map((f, i) => {
+            const fixed = i === fixedFilterIndex;
+            const clickable = editable && !fixed;
+            return (
+              <FilterChip
+                key={i}
+                label={filterLabel(f, { people, staleDays })}
+                clickable={clickable}
+                removable={clickable}
+                onRemove={() =>
                   onChangeFilters(filters.filter((_, idx) => idx !== i))
                 }
-              >
-                ×
-              </button>
-            )}
-          </span>
-        );
-      })}
-      {editable && (
-        <AddFilterButton
-          propDefs={propDefs}
-          pages={pages}
-          onAdd={(f) => onChangeFilters([...filters, f])}
+                renderPicker={
+                  clickable
+                    ? (close) => (
+                        <FilterBuilderContent
+                          propDefs={propDefs}
+                          pages={pages}
+                          people={people}
+                          staleDays={staleDays}
+                          startAt={{ prop: f.prop, op: f.op }}
+                          onPick={(picked) => {
+                            pickFilter(picked);
+                            close();
+                          }}
+                        />
+                      )
+                    : undefined
+                }
+              />
+            );
+          })}
+          {filters.length === 0 && (
+            <span
+              className="italic"
+              style={{ fontSize: 14, color: "var(--color-whisper)" }}
+            >
+              anything — every page
+            </span>
+          )}
+          {editable && (
+            <AddFilterButton
+              propDefs={propDefs}
+              pages={pages}
+              people={people}
+              staleDays={staleDays}
+              onPick={pickFilter}
+            />
+          )}
+        </>
+      )}
+
+      <span
+        aria-hidden
+        className="inline-block bg-line"
+        style={{ width: 1, height: 16 }}
+      />
+
+      <SortControl sort={sort} onChange={onChangeSort} />
+
+      {layout === "board" && (
+        <GroupControl
+          groupBy={groupBy}
+          defs={groupableDefs}
+          onChange={onChangeGroupBy}
         />
       )}
-      <div className="ml-auto flex items-center gap-2">
-        <span
-          aria-hidden
-          className="inline-block h-4 w-px bg-line"
-        />
-        <div className="inline-flex items-center gap-1 rounded-sm border border-line bg-surface px-2 py-1 text-meta text-secondary">
-          <Glyph
-            path="M7 4v12m0 0l-3-3m3 3l3-3M17 20V8m0 0l-3 3m3-3l3 3"
-            className="h-3.5 w-3.5 text-muted"
-          />
-          <select
-            className="bg-transparent focus:outline-none"
-            value={`${sort.prop}:${sort.dir}`}
-            disabled={!editable}
-            onChange={(e) => {
-              const [prop, dir] = e.target.value.split(":") as [
-                SortSpec["prop"],
-                SortSpec["dir"],
-              ];
-              onChangeSort({ prop, dir });
-            }}
-          >
-            <option value="edited:desc">Newest edits</option>
-            <option value="edited:asc">Oldest edits</option>
-            <option value="verified:desc">Recently verified</option>
-            <option value="verified:asc">Least recently verified</option>
-            <option value="title:asc">Title A–Z</option>
-            <option value="title:desc">Title Z–A</option>
-          </select>
-        </div>
-        <RowMoreButton
-          size="view"
-          ariaLabel="View options"
-          build={menuBuild}
-        />
-      </div>
 
+      <div style={{ flex: 1, minWidth: 8 }} />
+
+      <RowMoreButton
+        size="view"
+        ariaLabel="View options"
+        build={menuBuild}
+      />
     </div>
   );
 }
 
+/* ─────────────────────────── Filter chip ─────────────────────────── */
+
+function FilterChip({
+  label,
+  clickable,
+  removable,
+  onRemove,
+  renderPicker,
+}: {
+  label: string;
+  clickable: boolean;
+  removable: boolean;
+  onRemove: () => void;
+  renderPicker?: (close: () => void) => ReactNode;
+}) {
+  const chipStyle: React.CSSProperties = {
+    fontSize: 13,
+    color: "var(--color-secondary)",
+    padding: "3px 5px 3px 9px",
+    background: "var(--color-sunken)",
+    border: "1px solid var(--color-line)",
+    borderRadius: 7,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+  };
+
+  const removeBtn = removable ? (
+    <button
+      type="button"
+      aria-label="Remove filter"
+      title="Remove filter"
+      onClick={onRemove}
+      className="hover:bg-selected"
+      style={{
+        display: "grid",
+        placeItems: "center",
+        width: 14,
+        height: 14,
+        borderRadius: 4,
+        color: "var(--color-whisper)",
+        border: "none",
+        background: "transparent",
+      }}
+      onMouseEnter={(e) =>
+        (e.currentTarget.style.color = "var(--color-noir)")
+      }
+      onMouseLeave={(e) =>
+        (e.currentTarget.style.color = "var(--color-whisper)")
+      }
+    >
+      <svg viewBox="0 0 10 10" width={10} height={10} aria-hidden>
+        <path
+          d="M2 2 L8 8 M8 2 L2 8"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2.6}
+          strokeLinecap="round"
+        />
+      </svg>
+    </button>
+  ) : null;
+
+  if (!clickable || !renderPicker) {
+    return (
+      <span style={chipStyle}>
+        <span>{label}</span>
+        {removeBtn}
+      </span>
+    );
+  }
+
+  return (
+    <Popover
+      width={264}
+      trigger={({ onClick, ref }) => (
+        <span style={chipStyle}>
+          <button
+            ref={ref}
+            type="button"
+            onClick={onClick}
+            style={{
+              background: "transparent",
+              border: "none",
+              padding: 0,
+              font: "inherit",
+              color: "inherit",
+              cursor: "pointer",
+            }}
+          >
+            {label}
+          </button>
+          {removeBtn}
+        </span>
+      )}
+    >
+      {(close) => renderPicker(close)}
+    </Popover>
+  );
+}
+
+/* ─────────────────────────── +Filter button ─────────────────────────── */
+
 function AddFilterButton({
   propDefs,
   pages,
-  onAdd,
+  people,
+  staleDays,
+  onPick,
 }: {
   propDefs: PropDef[];
   pages: PageListItem[];
-  onAdd: (f: Filter) => void;
+  people: PersonForLabel[];
+  staleDays: number;
+  onPick: (f: Filter) => void;
 }) {
   return (
     <Popover
-      width={260}
+      width={264}
       trigger={({ onClick, ref }) => (
         <button
           ref={ref}
           type="button"
           onClick={onClick}
-          className="rounded-sm border border-dashed border-lineStrong px-2 py-0.5 text-meta text-muted hover:bg-sunken"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            fontSize: 13,
+            color: "var(--color-muted)",
+            padding: "3px 9px",
+            border: "1px dashed var(--color-lineStrong)",
+            borderRadius: 7,
+            background: "transparent",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = "var(--color-noir)";
+            e.currentTarget.style.borderColor = "var(--color-whisper)";
+            e.currentTarget.style.background = "var(--color-rail)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = "var(--color-muted)";
+            e.currentTarget.style.borderColor = "var(--color-lineStrong)";
+            e.currentTarget.style.background = "transparent";
+          }}
         >
-          + Filter
+          <svg viewBox="0 0 10 10" width={10} height={10} aria-hidden>
+            <path
+              d="M5 1v8 M1 5h8"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+            />
+          </svg>
+          Filter
         </button>
       )}
     >
       {(close) => (
-        <FilterBuilder
+        <FilterBuilderContent
           propDefs={propDefs}
           pages={pages}
+          people={people}
+          staleDays={staleDays}
           onPick={(f) => {
-            onAdd(f);
+            onPick(f);
             close();
           }}
         />
@@ -392,142 +551,457 @@ function AddFilterButton({
   );
 }
 
-function FilterBuilder({
+/* ─────────────────────────── Filter builder (two-step, in place) ─────────── */
+
+type BuilderStep = { kind: "root" } | { kind: "prop"; propKey: string };
+
+function FilterBuilderContent({
   propDefs,
   pages,
+  people,
+  staleDays,
   onPick,
+  startAt,
 }: {
   propDefs: PropDef[];
   pages: PageListItem[];
+  people: PersonForLabel[];
+  staleDays: number;
   onPick: (f: Filter) => void;
+  startAt?: { prop?: string; op?: Filter["op"] };
 }) {
-  const [step, setStep] = useState<
-    | { kind: "root" }
-    | { kind: "prop"; def: PropDef }
-    | { kind: "special"; which: "stale" | "edited_within" }
-  >({ kind: "root" });
+  // Chips reopen at their property's step 2. Freshness ops reopen at the
+  // synthetic "__freshness" group.
+  const initialStep: BuilderStep = (() => {
+    if (!startAt) return { kind: "root" };
+    if (startAt.op === "stale" || startAt.op === "edited_within") {
+      return { kind: "prop", propKey: "__freshness" };
+    }
+    if (startAt.prop) return { kind: "prop", propKey: startAt.prop };
+    return { kind: "root" };
+  })();
+  const [step, setStep] = useState<BuilderStep>(initialStep);
+
+  const rootItems: Array<{ key: string; label: string }> = [];
+  for (const k of ["area", "owner", "status", "stage", "priority", "tags"]) {
+    const def = propDefs.find((d) => d.key === k);
+    if (!def) continue;
+    rootItems.push({ key: k, label: k === "tags" ? "Tag" : def.label });
+  }
+  rootItems.push({ key: "__freshness", label: "Freshness" });
 
   if (step.kind === "root") {
     return (
-      <div className="max-h-72 overflow-y-auto">
-        {propDefs.map((d) => (
-          <button
-            key={d.id}
-            type="button"
-            className="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-meta hover:bg-rail"
-            onClick={() => setStep({ kind: "prop", def: d })}
+      <div style={{ padding: "2px 0" }}>
+        <StepTitle>Filter by</StepTitle>
+        {rootItems.map((it) => (
+          <BuilderRow
+            key={it.key}
+            onClick={() => setStep({ kind: "prop", propKey: it.key })}
+            trailing={<span style={{ color: "var(--color-whisper)" }}>›</span>}
           >
-            <span className="text-faint">{d.type[0].toUpperCase()}</span>
-            <span>{d.label}</span>
-          </button>
-        ))}
-        <div className="my-1 border-t border-lineSoft" />
-        <button
-          type="button"
-          className="w-full rounded-sm px-2 py-1 text-left text-meta hover:bg-rail"
-          onClick={() => onPick({ op: "stale", prop: "verified" })}
-        >
-          Stale (not verified recently)
-        </button>
-        <button
-          type="button"
-          className="w-full rounded-sm px-2 py-1 text-left text-meta hover:bg-rail"
-          onClick={() => setStep({ kind: "special", which: "edited_within" })}
-        >
-          Edited within…
-        </button>
-      </div>
-    );
-  }
-
-  if (step.kind === "special") {
-    return (
-      <EditedWithinPicker onPick={(days) => onPick({ op: "edited_within", prop: "edited", value: days })} />
-    );
-  }
-
-  const d = step.def;
-  if (d.type === "select" || d.type === "status") {
-    const opts = (d.options as unknown as Array<{ value: string; label: string; tint: string; ink: string }>) ?? [];
-    return (
-      <div className="max-h-72 overflow-y-auto">
-        {opts.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            className="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-meta hover:bg-rail"
-            onClick={() => onPick({ op: "eq", prop: d.key, value: o.value })}
-          >
-            <StatusChip label={o.label} tint={o.tint} ink={o.ink} />
-          </button>
+            {it.label}
+          </BuilderRow>
         ))}
       </div>
     );
   }
-  if (d.type === "person") {
+
+  const key = step.propKey;
+  const back = () => setStep({ kind: "root" });
+
+  if (key === "__freshness") {
     return (
-      <button
-        type="button"
-        className="w-full rounded-sm px-2 py-1 text-left text-meta hover:bg-rail"
-        onClick={() => onPick({ op: "is_me", prop: d.key })}
-      >
-        {d.label} is you
-      </button>
+      <div style={{ padding: "2px 0" }}>
+        <StepTitle onBack={back}>Freshness</StepTitle>
+        <BuilderRow onClick={() => onPick({ op: "stale", prop: "verified" })}>
+          Not verified in {staleDays}+ days
+        </BuilderRow>
+        <BuilderRow
+          onClick={() =>
+            onPick({ op: "edited_within", prop: "edited", value: 14 })
+          }
+        >
+          Edited in the last 14 days
+        </BuilderRow>
+      </div>
     );
   }
-  if (d.type === "multi_select") {
-    const values = new Set<string>();
+
+  const def = propDefs.find((d) => d.key === key);
+  if (!def) {
+    return (
+      <div style={{ padding: 10, fontSize: 13, color: "var(--color-muted)" }}>
+        Property no longer exists.
+      </div>
+    );
+  }
+
+  if (key === "area") {
+    const areas = new Set<string>();
     for (const p of pages) {
-      const v = propsOf(p)[d.key];
-      if (Array.isArray(v)) v.forEach((x) => values.add(String(x)));
+      const a = propsOf(p)["area"];
+      if (typeof a === "string" && a) areas.add(a);
     }
+    const list = [...areas].sort();
     return (
-      <div className="max-h-72 overflow-y-auto">
-        {[...values].sort().map((v) => (
-          <button
-            key={v}
-            type="button"
-            className="w-full rounded-sm px-2 py-1 text-left text-meta hover:bg-rail"
-            onClick={() => onPick({ op: "includes", prop: d.key, value: v })}
+      <div style={{ padding: "2px 0" }}>
+        <StepTitle onBack={back}>{def.label}</StepTitle>
+        {list.length === 0 && <EmptyValues />}
+        {list.map((a) => (
+          <BuilderRow
+            key={a}
+            onClick={() => onPick({ op: "eq", prop: "area", value: a })}
           >
-            {v}
-          </button>
+            {a}
+          </BuilderRow>
         ))}
       </div>
     );
   }
+
+  if (key === "owner") {
+    return (
+      <div style={{ padding: "2px 0" }}>
+        <StepTitle onBack={back}>{def.label}</StepTitle>
+        <BuilderRow onClick={() => onPick({ op: "is_me", prop: "owner" })}>
+          Me
+        </BuilderRow>
+        {people.map((p) => (
+          <BuilderRow
+            key={p.id}
+            onClick={() => onPick({ op: "eq", prop: "owner", value: p.id })}
+          >
+            {p.full_name ?? "Someone"}
+          </BuilderRow>
+        ))}
+      </div>
+    );
+  }
+
+  if (def.type === "select" || def.type === "status") {
+    const opts =
+      (def.options as unknown as Array<{
+        value: string;
+        label: string;
+        tint: string;
+        ink: string;
+      }>) ?? [];
+    return (
+      <div style={{ padding: "2px 0" }}>
+        <StepTitle onBack={back}>{def.label}</StepTitle>
+        {key === "stage" && (
+          <BuilderRow
+            onClick={() => onPick({ op: "not_empty", prop: "stage" })}
+          >
+            Has any stage
+          </BuilderRow>
+        )}
+        {opts.map((o) => (
+          <BuilderRow
+            key={o.value}
+            leading={
+              <span
+                aria-hidden
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 99,
+                  background: `var(--color-${o.ink})`,
+                  flex: "none",
+                }}
+              />
+            }
+            onClick={() => onPick({ op: "eq", prop: def.key, value: o.value })}
+          >
+            {o.label}
+          </BuilderRow>
+        ))}
+      </div>
+    );
+  }
+
+  if (key === "tags") {
+    const tagSet = new Set<string>();
+    for (const p of pages) {
+      const t = propsOf(p)["tags"];
+      if (Array.isArray(t)) t.forEach((x) => tagSet.add(String(x)));
+    }
+    const tags = [...tagSet].sort();
+    return (
+      <div style={{ padding: "2px 0" }}>
+        <StepTitle onBack={back}>Tag</StepTitle>
+        {tags.length === 0 && <EmptyValues />}
+        {tags.map((t) => (
+          <BuilderRow
+            key={t}
+            onClick={() => onPick({ op: "includes", prop: "tags", value: t })}
+          >
+            {t}
+          </BuilderRow>
+        ))}
+      </div>
+    );
+  }
+
+  return <EmptyValues />;
+}
+
+function EmptyValues() {
+  return (
+    <div style={{ padding: 10, fontSize: 13, color: "var(--color-muted)" }}>
+      No values yet.
+    </div>
+  );
+}
+
+function StepTitle({
+  children,
+  onBack,
+}: {
+  children: ReactNode;
+  onBack?: () => void;
+}) {
+  return (
+    <div
+      className="flex items-center gap-1"
+      style={{
+        padding: "7px 10px 3px",
+        fontFamily: "var(--font-display)",
+        fontSize: 11.5,
+        fontWeight: 700,
+        letterSpacing: ".07em",
+        textTransform: "uppercase",
+        color: "var(--color-faint)",
+      }}
+    >
+      {onBack && (
+        <button
+          type="button"
+          aria-label="Back"
+          onClick={onBack}
+          className="grid place-items-center rounded-sm hover:bg-rail"
+          style={{ width: 16, height: 16, marginRight: 2 }}
+        >
+          <svg viewBox="0 0 24 24" width={11} height={11} aria-hidden>
+            <path
+              d="M15 6l-6 6 6 6"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.4}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      )}
+      <span className="truncate">{children}</span>
+    </div>
+  );
+}
+
+function BuilderRow({
+  children,
+  leading,
+  trailing,
+  onClick,
+}: {
+  children: ReactNode;
+  leading?: ReactNode;
+  trailing?: ReactNode;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
-      className="w-full rounded-sm px-2 py-1 text-left text-meta hover:bg-rail"
-      onClick={() => onPick({ op: "not_empty", prop: d.key })}
+      onClick={onClick}
+      className="flex w-full items-center rounded-lg text-left hover:bg-rail"
+      style={{ padding: "7px 10px", gap: 9, color: "var(--color-body)" }}
     >
-      {d.label} is set
+      {leading}
+      <span
+        className="truncate"
+        style={{ flex: 1, minWidth: 0, fontSize: 14 }}
+      >
+        {children}
+      </span>
+      {trailing}
     </button>
   );
 }
 
-function EditedWithinPicker({ onPick }: { onPick: (days: number) => void }) {
-  const [n, setN] = useState(30);
+/* ─────────────────────────── Sort + Group controls ─────────────────────────── */
+
+type SortChoice = { key: string; label: string; spec: SortSpec };
+
+const SORT_CHOICES: SortChoice[] = [
+  { key: "edited:desc", label: "Newest edits", spec: { prop: "edited", dir: "desc" } },
+  { key: "edited:asc", label: "Oldest edits", spec: { prop: "edited", dir: "asc" } },
+  { key: "verified:asc", label: "Oldest verification", spec: { prop: "verified", dir: "asc" } },
+  { key: "title:asc", label: "Title A–Z", spec: { prop: "title", dir: "asc" } },
+];
+
+function SortControl({
+  sort,
+  onChange,
+}: {
+  sort: SortSpec;
+  onChange: (s: SortSpec) => void;
+}) {
+  const currentKey = `${sort.prop}:${sort.dir}`;
+  const current =
+    SORT_CHOICES.find((c) => c.key === currentKey) ?? SORT_CHOICES[0];
   return (
-    <div className="flex items-center gap-2 p-2">
-      <input
-        type="number"
-        min={1}
-        max={365}
-        value={n}
-        onChange={(e) => setN(Number(e.target.value) || 30)}
-        className="w-16 rounded-sm border border-line bg-surface px-2 py-1 text-meta"
-      />
-      <span className="text-meta text-muted">days</span>
-      <button
-        type="button"
-        onClick={() => onPick(n)}
-        className="ml-auto rounded-sm bg-noir px-2 py-1 text-meta font-bold text-canvas"
+    <Popover
+      width={220}
+      trigger={({ onClick, ref }) => (
+        <ToolbarBorderlessButton
+          innerRef={ref}
+          onClick={onClick}
+          iconPath="M7 4v12m0 0l-3-3m3 3l3-3M17 20V8m0 0l-3 3m3-3l3 3"
+          label={current.label}
+        />
+      )}
+    >
+      {(close) => (
+        <div style={{ padding: "2px 0" }}>
+          <StepTitle>Sort by</StepTitle>
+          {SORT_CHOICES.map((c) => (
+            <BuilderRow
+              key={c.key}
+              onClick={() => {
+                onChange(c.spec);
+                close();
+              }}
+              trailing={c.key === current.key ? <CheckIcon /> : null}
+            >
+              {c.label}
+            </BuilderRow>
+          ))}
+        </div>
+      )}
+    </Popover>
+  );
+}
+
+function GroupControl({
+  groupBy,
+  defs,
+  onChange,
+}: {
+  groupBy: string;
+  defs: PropDef[];
+  onChange: (key: string) => void;
+}) {
+  const current = defs.find((d) => d.key === groupBy) ?? defs[0] ?? null;
+  return (
+    <Popover
+      width={220}
+      trigger={({ onClick, ref }) => (
+        <ToolbarBorderlessButton
+          innerRef={ref}
+          onClick={onClick}
+          iconPath="M6 4v16 M12 4v16 M18 4v16"
+          label={current ? current.label : "Status"}
+        />
+      )}
+    >
+      {(close) => (
+        <div style={{ padding: "2px 0" }}>
+          <StepTitle>Group by</StepTitle>
+          {defs.length === 0 && (
+            <div
+              style={{ padding: 10, fontSize: 13, color: "var(--color-muted)" }}
+            >
+              Add a select property to group.
+            </div>
+          )}
+          {defs.map((d) => (
+            <BuilderRow
+              key={d.key}
+              onClick={() => {
+                onChange(d.key);
+                close();
+              }}
+              trailing={d.key === (current?.key ?? "") ? <CheckIcon /> : null}
+            >
+              {d.label}
+            </BuilderRow>
+          ))}
+        </div>
+      )}
+    </Popover>
+  );
+}
+
+function ToolbarBorderlessButton({
+  innerRef,
+  onClick,
+  iconPath,
+  label,
+}: {
+  innerRef: React.Ref<HTMLButtonElement>;
+  onClick: () => void;
+  iconPath: string;
+  label: string;
+}) {
+  return (
+    <button
+      ref={innerRef}
+      type="button"
+      onClick={onClick}
+      className="hover:bg-rail"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        fontSize: 13,
+        color: "var(--color-secondary)",
+        padding: "3px 8px",
+        borderRadius: 7,
+        border: "none",
+        background: "transparent",
+      }}
+      onMouseEnter={(e) =>
+        (e.currentTarget.style.color = "var(--color-noir)")
+      }
+      onMouseLeave={(e) =>
+        (e.currentTarget.style.color = "var(--color-secondary)")
+      }
+    >
+      <svg
+        viewBox="0 0 24 24"
+        width={11}
+        height={11}
+        aria-hidden
+        style={{ color: "var(--color-whisper)" }}
       >
-        Add
-      </button>
-    </div>
+        <path
+          d={iconPath}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width={13} height={13} aria-hidden>
+      <path
+        d="M5 12.5l4.5 4.5L19 7"
+        fill="none"
+        stroke="var(--color-accent)"
+        strokeWidth={2.4}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 
@@ -545,6 +1019,7 @@ function StatusChip({ label, tint, ink }: { label: string; tint: string; ink: st
     </span>
   );
 }
+
 
 /* ─────────────────────────── Table cells ─────────────────────────── */
 
@@ -868,6 +1343,20 @@ export function MainView({ selection }: { selection: Selection }) {
     return [...s].sort();
   }, [pages]);
 
+  const people = useMemo(
+    () =>
+      members.map((m) => ({
+        id: m.user_id,
+        full_name: m.profiles?.full_name ?? null,
+      })),
+    [members],
+  );
+
+  const unfilteredCount = useMemo(
+    () => pages.filter((p) => !p.archived_at).length,
+    [pages],
+  );
+
   const staleThreshold = Date.now() - staleDays * 24 * 60 * 60 * 1000;
 
   const onChangeFilters = (next: Filter[]) => {
@@ -1123,10 +1612,13 @@ export function MainView({ selection }: { selection: Selection }) {
       <QueryToolbar
         filters={filters}
         sort={sort}
-
+        groupBy={groupBy}
+        layout={layout}
         onChangeFilters={onChangeFilters}
         onChangeSort={onChangeSort}
+        onChangeGroupBy={onChangeGroupBy}
         propDefs={propDefs}
+        people={people}
         staleDays={staleDays}
         editable={editable}
         fixedFilterIndex={fixedFilterIndex}
@@ -1153,23 +1645,19 @@ export function MainView({ selection }: { selection: Selection }) {
         )}
       />
 
-      {layout === "board" && (
-        <div className="-mt-1 mb-4 flex items-center gap-2 text-meta text-muted">
-          <span>Grouped by</span>
-          <select
-            className="rounded-sm border border-line bg-surface px-2 py-1 text-meta text-body focus:outline-none"
-            value={groupBy}
-            onChange={(e) => onChangeGroupBy(e.target.value)}
-          >
-            {groupableDefs.map((d) => (
-              <option key={d.id} value={d.key}>
-                {d.label}
-              </option>
-            ))}
-            {groupableDefs.length === 0 && <option value="status">Status</option>}
-          </select>
+      {rows.length < unfilteredCount && (
+        <div
+          style={{
+            marginTop: 6,
+            marginBottom: 4,
+            fontSize: 12.5,
+            color: "var(--color-whisper)",
+          }}
+        >
+          {rows.length} of {unfilteredCount} pages
         </div>
       )}
+
 
       {isModified && (
         <ModifiedBanner

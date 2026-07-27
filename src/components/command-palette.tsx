@@ -14,7 +14,7 @@ import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { useCreatePage } from "@/hooks/use-page-mutations";
 import { setPageOrigin } from "@/lib/page-origin";
 
-import { describeFilter } from "./main-view";
+import { filterLabel } from "@/lib/filter-label";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
 import type { Filter } from "@/lib/run-view";
@@ -437,8 +437,9 @@ function PaletteRow({
   if (row.kind === "view") {
     const v = row.view;
     const filters = (v.filter ?? []) as Filter[];
+    const people = Array.from(memberBy, ([id, full_name]) => ({ id, full_name }));
     const desc = filters.length
-      ? filters.map((f) => describeFilter(f, propDefs, staleDays)).join(" · ")
+      ? filters.map((f) => filterLabel(f, { people, staleDays })).join(" · ")
       : "all pages";
     const glyph =
       v.layout === "board"
