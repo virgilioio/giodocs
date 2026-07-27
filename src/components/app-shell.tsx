@@ -22,6 +22,8 @@ import {
   useCreateView,
   useDeleteView,
   useDeletePage,
+  useRestorePage,
+
   useDuplicatePage,
   useForkView,
   useMovePageToArea,
