@@ -1755,49 +1755,121 @@ export function MainView({ selection }: { selection: Selection }) {
 
 }
 
-/* ─────────────────────────── Modified banner ─────────────────────────── */
+/* ─────────────────────────── Modified pill + band ─────────────────────────── */
 
-function ModifiedBanner({
-  viewName,
-  workspaceName,
+function ModifiedPill({
   onSave,
   onDiscard,
 }: {
-  viewName: string;
-  workspaceName: string;
   onSave: () => void;
   onDiscard: () => void;
 }) {
   return (
-    <div className="mb-4">
-      <div className="flex flex-wrap items-center gap-2 rounded-md border border-amberRing bg-amberTint px-3 py-2">
-        <span className="inline-flex h-2 w-2 rounded-full bg-amberDot" aria-hidden />
-        <span className="font-display text-label uppercase text-amberInk">MODIFIED</span>
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onSave}
-            className="rounded-md bg-noir px-3 py-1 text-meta font-bold text-canvas"
-          >
-            Save as my view
-          </button>
-          <button
-            type="button"
-            aria-label="Discard changes"
-            onClick={onDiscard}
-            className="grid h-7 w-7 place-items-center rounded-md text-amberInk hover:bg-amberRing"
-          >
-            ×
-          </button>
-        </div>
-      </div>
-      <p className="mt-1 px-1 text-caption text-amberInk">
-        You&apos;re looking at unsaved changes. <b>{viewName}</b> is untouched for everyone
-        else at {workspaceName} — saving makes a copy in <b>My views</b>.
-      </p>
+    <span
+      className="inline-flex items-center animate-fadeIn"
+      style={{
+        gap: 8,
+        background: "var(--color-amberTint)",
+        border: "1px solid var(--color-amberRing)",
+        borderRadius: 9,
+        padding: "3px 5px 3px 10px",
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: 999,
+          background: "var(--color-amberDot)",
+        }}
+      />
+      <span
+        className="font-display uppercase"
+        style={{
+          fontSize: 11.5,
+          fontWeight: 700,
+          letterSpacing: "0.05em",
+          color: "var(--color-amberInk)",
+        }}
+      >
+        MODIFIED
+      </span>
+      <button
+        type="button"
+        onClick={onSave}
+        className="font-display"
+        style={{
+          background: "var(--color-noir)",
+          color: "var(--color-track)",
+          fontSize: 12.5,
+          fontWeight: 700,
+          borderRadius: 6,
+          padding: "2px 8px",
+        }}
+      >
+        Save as my view
+      </button>
+      <button
+        type="button"
+        aria-label="Discard changes"
+        onClick={onDiscard}
+        className="grid place-items-center hover:bg-amberRing"
+        style={{
+          width: 20,
+          height: 20,
+          borderRadius: 4,
+          color: "var(--color-amberInk)",
+          fontSize: 14,
+          lineHeight: 1,
+        }}
+      >
+        ×
+      </button>
+    </span>
+  );
+}
+
+function ModifiedBand({ baseName }: { baseName: string }) {
+  return (
+    <div
+      role="status"
+      className="flex items-start animate-fadeIn"
+      style={{
+        marginTop: 10,
+        gap: 10,
+        background: "var(--color-amberTint)",
+        border: "1px solid var(--color-amberRing)",
+        borderRadius: 9,
+        padding: "9px 13px",
+        fontSize: 13.5,
+        color: "var(--color-amberInk)",
+      }}
+    >
+      <svg
+        aria-hidden
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{ flexShrink: 0, marginTop: 2 }}
+      >
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+      <span>
+        You&apos;re looking at unsaved changes. <b>{baseName}</b> is untouched for
+        everyone else — saving makes a copy in <b>My views</b>.
+      </span>
     </div>
   );
 }
+
 
 /* ─────────────────────────── Header options menu ─────────────────────────── */
 
