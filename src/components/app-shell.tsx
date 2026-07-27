@@ -24,7 +24,7 @@ import {
   useDeletePage,
   useRestorePage,
 
-  useDuplicatePage,
+  
   useForkView,
   useUnpublishView,
 
