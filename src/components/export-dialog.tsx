@@ -252,7 +252,7 @@ export function ExportDialog({
         </div>
 
         <div style={{ marginTop: 12 }}>
-          <Row label="Format" last={fmt !== "PDF"}>
+          <Row label="Format">
             <PickerButton
               ref={fmtBtn}
               value={fmt}
@@ -260,6 +260,11 @@ export function ExportDialog({
               width={160}
             />
           </Row>
+          <DetailsRow
+            value={includeDetails}
+            onChange={setIncludeDetails}
+            last={fmt !== "PDF"}
+          />
           {fmt === "PDF" && (
             <>
               <Row label="Paper size">
@@ -276,6 +281,7 @@ export function ExportDialog({
             </>
           )}
         </div>
+
 
         {err ? (
           <div
