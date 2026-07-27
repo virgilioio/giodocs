@@ -190,3 +190,12 @@
   }
 }
 
+/* Columns block: collapse to a single vertical stack below 900px so a
+ * narrow window stays readable. Above 900px, the declared count wins. */
+@media (max-width: 900px) {
+  .gio-cols {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+
