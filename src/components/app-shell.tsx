@@ -33,6 +33,8 @@ import {
   usePublishView,
   useVerifyPage,
   useSetAreaIcon,
+  useRegisterArea,
+
 } from "@/hooks/use-page-mutations";
 
 import { useToast } from "@/lib/toast";
