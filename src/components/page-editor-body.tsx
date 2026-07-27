@@ -2966,11 +2966,6 @@ function ColumnStack({
           locked={locked}
           selected={false}
           dimmed={false}
-          focused={focusedId === b.id}
-          onRequestFocus={(caret) => {
-            setFocusedId(b.id);
-            setFocusRequest({ id: b.id, caret });
-          }}
           onEditorFocus={() => setFocusedId(b.id)}
           onEditorBlur={() =>
             setFocusedId((cur) => (cur === b.id ? null : cur))
