@@ -837,6 +837,11 @@ export function EditableBody({
     commit([...blocks, spawn]);
     setFocusRequest({ id: spawn.id, caret: "start" });
   }
+  // Expose to the marquee handler so a no-drag click on the trailing zone appends.
+  useEffect(() => {
+    onBelowClickRef.current = onBelowClick;
+  });
+
 
   const draggingIdSet = useMemo(
     () => new Set(dragging?.ids ?? []),
