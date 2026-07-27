@@ -65,6 +65,10 @@ import {
   type MenuRow,
 } from "./row-menu";
 import { areaMenuFooter } from "@/lib/area-menu-footer";
+import { personalViewFooter } from "@/lib/personal-view-footer";
+import { layoutOf, type ViewLayout } from "@/lib/view-drafts";
+import { useDrafts, patchDraft as storePatchDraft } from "@/lib/view-drafts-store";
+
 
 import { useAllowedDomains, useMembers, usePropDefs } from "@/hooks/use-workspace-data";
 import { usePrefs } from "@/lib/preferences";
