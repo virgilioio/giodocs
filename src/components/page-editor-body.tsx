@@ -2112,6 +2112,7 @@ export function EditableBody({
         />
       ) : null}
     </div>
+    </ColumnBridgeCtx.Provider>
   );
 }
 
