@@ -1381,7 +1381,12 @@ export function EditableBody({
 
   function updateBlock(id: string, patch: Partial<Blk>) {
     const next = blocks.map((b) => (b.id === id ? { ...b, ...patch } : b));
-    commit(next);
+    // Text-only patch = a keystroke on this block → coalesce as typing.
+    // Every other patch shape (checked, open, icon, rows, cols, type…)
+    // is a structural op and always pushes a snapshot.
+    const keys = Object.keys(patch);
+    const isTyping = keys.length === 1 && keys[0] === "text";
+    commit(next, isTyping ? { typingKey: id } : undefined);
   }
 
   function insertAfter(id: string, type: BlockType = "text") {
