@@ -1944,6 +1944,18 @@ function ViewHeaderMenu({
       />
     );
   }
+  if (mode === "icon") {
+    return (
+      <EmojiPicker
+        removable
+        onPick={(e) => {
+          onChangeIcon(e);
+          setMode("list");
+        }}
+      />
+    );
+  }
+
 
   type Item =
     | { kind: "divider" }
