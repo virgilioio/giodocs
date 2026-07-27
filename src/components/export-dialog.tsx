@@ -25,6 +25,7 @@ const FORMATS: ExportFormat[] = ["PDF", "HTML", "Markdown"];
 const PAPERS: Paper[] = ["Letter", "A4", "Legal", "Tabloid", "A3"];
 
 const LS_KEY = "gio.exportFormat";
+const LS_DETAILS_KEY = "gio.exportDetails";
 
 function readSavedFormat(): ExportFormat {
   try {
@@ -34,6 +35,17 @@ function readSavedFormat(): ExportFormat {
     /* localStorage may be unavailable in embedded contexts. */
   }
   return "PDF";
+}
+
+function readSavedDetails(): boolean {
+  try {
+    const raw = window.localStorage.getItem(LS_DETAILS_KEY);
+    if (raw === "false") return false;
+    if (raw === "true") return true;
+  } catch {
+    /* ignore */
+  }
+  return true; // default ON
 }
 
 function defaultPaper(): Paper {
