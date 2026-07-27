@@ -103,7 +103,7 @@ function LoginPage() {
           className="animate-cardIn rounded-card border border-line bg-surface shadow-card"
           style={{ padding: "30px 32px 26px", boxShadow: "var(--shadow-card), var(--shadow-popover)" }}
         >
-          <img src="/gio-docs-logo.png" alt="Gio Docs" className="h-[58px] w-auto block mx-auto" />
+          <img src="/gio-docs-logo.svg" alt="Gio Docs" className="h-[58px] w-auto block mx-auto" />
 
 
           <h1 className="mt-5 font-display text-title text-noir">Welcome back</h1>
