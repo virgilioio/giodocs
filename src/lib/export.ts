@@ -392,16 +392,34 @@ const HTML_CSS = `
   dl.props { display: grid; grid-template-columns: 132px 1fr; gap: 4px 16px; margin: 0 0 24px; font-size: 14px; color: ${ink}; }
   dl.props dt { color: ${muted}; }
   header.meta { border-bottom: 1px solid ${line}; padding-bottom: 18px; margin-bottom: 22px; }
+  /* Print footer — repeats on every printed page via position:fixed.
+     In screen HTML it also sits fixed at the bottom of the viewport; body's
+     bottom padding reserves the space so content never sits under it. */
+  footer.print-footer {
+    position: fixed; bottom: 0.35in; left: 0.75in; right: 0.75in;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 24px; padding-top: 6px;
+    border-top: 1px solid ${line};
+    font-family: Poppins, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 10px; color: ${muted}; letter-spacing: -0.01em;
+  }
+  footer.print-footer .mark { display: inline-flex; align-items: center; gap: 6px; }
+  footer.print-footer .mark img { height: 14px; width: auto; display: block; }
+  footer.print-footer .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; text-align: right; }
 `;
 
 export function toHtml(ctx: ExportContext): string {
+  const includeDetails = ctx.includeDetails !== false;
+
   const props: Array<[string, string]> = [];
-  if (ctx.area) props.push(["Area", ctx.area]);
-  if (ctx.status) props.push(["Status", ctx.status]);
-  if (ctx.ownerName) props.push(["Owner", ctx.ownerName]);
-  if (ctx.tags && ctx.tags.length) props.push(["Tags", ctx.tags.join(", ")]);
-  const vd = verifiedDate(ctx.verifiedAt);
-  if (vd) props.push(["Verified", vd]);
+  if (includeDetails) {
+    if (ctx.area) props.push(["Area", ctx.area]);
+    if (ctx.status) props.push(["Status", ctx.status]);
+    if (ctx.ownerName) props.push(["Owner", ctx.ownerName]);
+    if (ctx.tags && ctx.tags.length) props.push(["Tags", ctx.tags.join(", ")]);
+    const vd = verifiedDate(ctx.verifiedAt);
+    if (vd) props.push(["Verified", vd]);
+  }
 
   const propsHtml = props.length
     ? `<dl class="props">${props
@@ -409,27 +427,49 @@ export function toHtml(ctx: ExportContext): string {
         .join("")}</dl>`
     : "";
 
+  const titleEsc = esc(ctx.title || "Untitled");
+
+  // With details: wrap title + <dl> in <header class="meta"> (the rule sits
+  // under the header). Without details: bare <h1> — no wrapper, no orphaned
+  // divider. Title always renders.
+  const headerHtml = includeDetails
+    ? `<header class="meta">
+<h1 class="title">${titleEsc}</h1>
+${propsHtml}
+</header>`
+    : `<h1 class="title">${titleEsc}</h1>`;
+
   const ords = numberedOrdinals(ctx.blocks);
   const body = ctx.blocks
     .map((b) => blockHtml(b, (b.id && ords.get(b.id)) || 1))
     .join("\n");
+
+  // Footer: logo (data URI) left, page title right. If the logo failed to
+  // inline (very unlikely — module init exception), fall back to a text
+  // wordmark so the mark still reads. Both branches keep the file
+  // self-contained.
+  const markHtml = GIO_DOCS_LOGO_DATA_URI
+    ? `<span class="mark"><img src="${GIO_DOCS_LOGO_DATA_URI}" alt="Gio Docs"/></span>`
+    : `<span class="mark" style="font-weight:700;letter-spacing:-0.02em;color:${noir};">Gio Docs</span>`;
+  const footerHtml = `<footer class="print-footer">
+${markHtml}
+<span class="title">${titleEsc}</span>
+</footer>`;
 
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>${esc(ctx.title || "Untitled")}</title>
+<title>${titleEsc}</title>
 <style>${HTML_CSS}</style>
 </head>
 <body>
-<header class="meta">
-<h1 class="title">${esc(ctx.title || "Untitled")}</h1>
-${propsHtml}
-</header>
+${headerHtml}
 <main>
 ${body}
 </main>
+${footerHtml}
 </body>
 </html>`;
 }
@@ -451,11 +491,15 @@ export async function printPdf(
   const win = window.open("", "_blank");
   if (!win) throw new Error("popup-blocked");
   const zoom = Math.max(0.5, Math.min(2, scalePct / 100));
+  // @page margin: 0 removes Chrome's print chrome (about:blank / page
+  // numbers) — the tradeoff explained in the export spec. Our own footer
+  // is fixed-positioned inside 0.35in from the bottom, and the body's
+  // 0.9in bottom padding reserves space so content never overlaps it.
   const augmented = html.replace(
     "</style>",
-    `@page { size: ${paper}; margin: 0.75in; }
+    `@page { size: ${paper}; margin: 0; }
      html, body { background: #ffffff; }
-     body { zoom: ${zoom}; }
+     body { padding: 0.6in 0.75in 0.9in; max-width: none; zoom: ${zoom}; }
      </style>`,
   );
   win.document.open();
