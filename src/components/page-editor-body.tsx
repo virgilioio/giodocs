@@ -322,8 +322,7 @@ export function EditableBody({
   useEffect(() => {
     focusedIdRef.current = focusedId;
   }, [focusedId]);
-  const refsBag = useRef<Record<string, HTMLTextAreaElement | HTMLInputElement | null>>({});
-  // Legacy alias: `refs` above is the same object; we track through it.
+  // (undo state below)
   const undoStateRef = useRef<UndoState<Blk>>(createUndoState<Blk>());
   const lastTypingAtRef = useRef<number | null>(null);
   const lastTypingKeyRef = useRef<string | null>(null);
