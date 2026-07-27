@@ -445,3 +445,105 @@ export function htmlToMarkdown(html: string): string {
   }
   return parts.join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
 }
+
+/* ─────────────────────── Structured Notion importer ───────────────────────
+ *
+ * Notion's clipboard HTML emits column layouts as nested divs whose class
+ * contains "column_list" and "column". Markdown cannot express columns, so
+ * this structured path returns Blk[] directly, feeding real columns blocks
+ * into paste — bypassing the markdown round-trip.
+ *
+ * Returns null when NO column_list shape is found: callers fall back to
+ * htmlToMarkdown + parseMarkdown, so no content is ever lost.
+ *
+ * We intentionally keep the block "type" typing loose (string) to avoid a
+ * cross-file dep on the editor's BlockType union. The editor's normalize()
+ * accepts these shapes.
+ */
+
+import { nanoid } from "nanoid";
+import { parseMarkdown, type Blk } from "./markdown-import";
+import { MAX_COLS, MIN_COLS } from "./columns";
+
+function hasClass(el: Extract<Node, { type: "elem" }>, needle: string): boolean {
+  const cls = (el.attrs.class ?? "").toLowerCase();
+  return cls.split(/\s+/).some((c) => c.includes(needle));
+}
+
+function serializeChildrenToHtml(nodes: Node[]): string {
+  // Minimal serialiser: we only need round-trippable text so htmlToMarkdown
+  // can consume the inner content. Attributes we care about (href, src,
+  // alt, type, class for language-*, data-checked) are preserved verbatim.
+  const out: string[] = [];
+  for (const n of nodes) out.push(serializeNode(n));
+  return out.join("");
+}
+
+function serializeNode(n: Node): string {
+  if (n.type === "text") {
+    return n.text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+  const attrs = Object.entries(n.attrs)
+    .map(([k, v]) => ` ${k}="${String(v).replace(/"/g, "&quot;")}"`)
+    .join("");
+  if (VOID.has(n.tag)) return `<${n.tag}${attrs}/>`;
+  return `<${n.tag}${attrs}>${serializeChildrenToHtml(n.children)}</${n.tag}>`;
+}
+
+function findFirstColumnList(nodes: Node[]): Extract<Node, { type: "elem" }> | null {
+  for (const n of nodes) {
+    if (n.type !== "elem") continue;
+    if (hasClass(n, "column_list")) return n;
+    const found = findFirstColumnList(n.children);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** Structured HTML → Blk[]. Returns null if the fragment does not contain
+ * a Notion-shaped column_list; callers should then fall back to
+ * htmlToMarkdown + parseMarkdown. */
+export function htmlToBlocks(html: string): Blk[] | null {
+  const roots = parseHtmlFragment(html);
+  const colList = findFirstColumnList(roots);
+  if (!colList) return null;
+
+  // Direct children whose class contains "column". Notion also wraps each
+  // column in a block_column div; accept either as long as the class hits.
+  const colEls: Array<Extract<Node, { type: "elem" }>> = [];
+  for (const c of colList.children) {
+    if (c.type === "elem" && hasClass(c, "column")) colEls.push(c);
+  }
+  if (colEls.length < MIN_COLS) return null;
+
+  // Clamp N to MAX_COLS: content from overflow columns is flattened into
+  // the last kept column so nothing is lost.
+  const kept = colEls.slice(0, MAX_COLS);
+  const overflow = colEls.slice(MAX_COLS);
+
+  const cols: Blk[][] = kept.map((colEl) => {
+    const inner = serializeChildrenToHtml(colEl.children);
+    return parseMarkdown(htmlToMarkdown(inner));
+  });
+  if (overflow.length > 0 && cols.length > 0) {
+    for (const el of overflow) {
+      const inner = serializeChildrenToHtml(el.children);
+      cols[cols.length - 1].push(...parseMarkdown(htmlToMarkdown(inner)));
+    }
+  }
+  // Ensure every column has at least one block so the editor can seed a
+  // caret target.
+  for (let i = 0; i < cols.length; i++) {
+    if (cols[i].length === 0) {
+      cols[i] = [{ id: nanoid(10), type: "text", text: "" } as Blk];
+    }
+  }
+
+  return [
+    { id: nanoid(10), type: "columns", cols } as Blk,
+  ];
+}
+
