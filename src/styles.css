@@ -287,13 +287,13 @@
   /* Small-text mode scales the rhythm with the type, or the page reads
      loose at a size chosen to be tighter. */
   .gio-page[data-small="1"] .gio-page-body {
-    --gio-block-gap: 8px;
-    --gio-h1-above: 28px;
-    --gio-h2-above: 22px;
-    --gio-h3-above: 17px;
-    --gio-head-below: 6px;
-    --gio-block-y: 13px;
-    --gio-divider-y: 23px;
+    --gio-block-gap: 11px;
+    --gio-h1-above: 38px;
+    --gio-h2-above: 28px;
+    --gio-h3-above: 22px;
+    --gio-head-below: 8px;
+    --gio-block-y: 17px;
+    --gio-divider-y: 28px;
   }
 }
 
