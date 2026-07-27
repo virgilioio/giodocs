@@ -12,6 +12,7 @@ import { createPortal } from "react-dom";
 import type { Block } from "@/lib/types";
 import { moveBlock, moveRun, deleteIndices } from "@/lib/reorder";
 import { blockToMarkdown } from "@/lib/export";
+import { parseMarkdown } from "@/lib/markdown-import";
 import { numberedOrdinals } from "@/lib/blocks";
 import { blockHandleFooter } from "@/lib/block-handle-footer";
 import { useToast } from "@/lib/toast";
@@ -534,6 +535,82 @@ export function EditableBody({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [selectedIds, blocks, commit, clearSelection, locked, toast]);
+
+  /* ────────── Paste Markdown → real blocks ──────────
+   * Inverse of the copy path above. If the pasted text has no newline and
+   * no markdown markers, we DO NOTHING and let the browser paste it as
+   * ordinary text (undo history stays intact). Otherwise we splice parsed
+   * blocks at the caret — or replace the current block-selection run. */
+  const handlePaste = useCallback(
+    (blockId: string, e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      if (locked) return;
+      const raw = e.clipboardData?.getData("text/plain") ?? "";
+      if (!raw) return;
+      const hasNewline = /\r|\n/.test(raw);
+      const hasMdMarker = /(^|\n)\s*(#{1,6} |[-*+] |\d+\. |> |```|---|\*\*\*|\|)/.test(
+        raw,
+      );
+      if (!hasNewline && !hasMdMarker) return; // plain word — let browser handle
+      e.preventDefault();
+
+      const parsed = parseMarkdown(raw) as unknown as Blk[];
+      if (parsed.length === 0) return;
+
+      const idx = blocks.findIndex((b) => b.id === blockId);
+      if (idx === -1) return;
+
+      let next: Blk[];
+      let focusId = parsed[parsed.length - 1].id;
+
+      // If a block-selection is active, replace the selected run.
+      if (selectedIds.size > 0) {
+        const keep: Blk[] = [];
+        let inserted = false;
+        for (const b of blocks) {
+          if (selectedIds.has(b.id)) {
+            if (!inserted) {
+              keep.push(...parsed);
+              inserted = true;
+            }
+          } else {
+            keep.push(b);
+          }
+        }
+        if (!inserted) keep.push(...parsed);
+        next = keep.length ? keep : [newBlock("text")];
+        clearSelection();
+      } else {
+        // Splice at caret within the target block.
+        const ta = e.currentTarget as HTMLTextAreaElement;
+        const caret = ta.selectionStart ?? (blocks[idx].text ?? "").length;
+        const cur = blocks[idx];
+        const full = cur.text ?? "";
+        const before = full.slice(0, caret);
+        const after = full.slice(caret);
+        const head = [...blocks.slice(0, idx)];
+        const tail = [...blocks.slice(idx + 1)];
+        const inserts: Blk[] = [...parsed];
+
+        // If current block is empty AND untouched, replace it — do not
+        // leave a blank above the pasted content.
+        if (full === "") {
+          next = [...head, ...inserts, ...tail];
+        } else {
+          const currentPatched: Blk = { ...cur, text: before };
+          const trailing: Blk[] = after
+            ? [{ id: nanoid(10), type: "text", text: after } as Blk]
+            : [];
+          next = [...head, currentPatched, ...inserts, ...trailing, ...tail];
+        }
+      }
+
+      commit(next);
+      setFocusRequest({ id: focusId, caret: "end" });
+      if (parsed.length > 1) toast.push(`Pasted ${parsed.length} blocks`);
+    },
+    [blocks, commit, locked, selectedIds, clearSelection, toast],
+  );
+
 
   /* ────────── Marquee selection ────────── */
 
@@ -1292,6 +1369,7 @@ export function EditableBody({
           }}
           onAddBelow={() => { if (!locked) insertAfter(b.id); }}
           onSetIcon={(icon) => updateBlock(b.id, { icon })}
+          onPaste={(e) => handlePaste(b.id, e)}
         />
       ))}
 
@@ -1434,6 +1512,7 @@ function BlockRow({
   onKeyDown,
   onAddBelow,
   onSetIcon,
+  onPaste,
 }: {
   block: Blk;
   ordinal?: number;
@@ -1451,6 +1530,7 @@ function BlockRow({
   onKeyDown: (e: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
   onAddBelow: () => void;
   onSetIcon: (icon: string) => void;
+  onPaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
 }) {
   const noEditor = block.type === "divider";
   return (
@@ -1532,6 +1612,7 @@ function BlockRow({
         onInput={onInput}
         onKeyDown={onKeyDown}
         onSetIcon={onSetIcon}
+        onPaste={onPaste}
       />
     </div>
   );
@@ -1548,6 +1629,7 @@ function BlockContent({
   onInput,
   onKeyDown,
   onSetIcon,
+  onPaste,
 }: {
   block: Blk;
   ordinal?: number;
@@ -1558,6 +1640,7 @@ function BlockContent({
   onInput: (val: string) => void;
   onKeyDown: (e: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
   onSetIcon: (icon: string) => void;
+  onPaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
 }) {
   const textareaProps = {
     ref: (el: HTMLTextAreaElement | null) => registerRef(el),
@@ -1568,6 +1651,7 @@ function BlockContent({
     },
     onBlur: onBlur,
     onKeyDown,
+    onPaste,
     // BUG 3: readOnly (not disabled) keeps focus/selection intact but blocks
     // typing when the page is locked. Also prevents native re-focus loss.
     readOnly: locked,
