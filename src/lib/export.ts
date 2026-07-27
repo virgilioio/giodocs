@@ -218,6 +218,19 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
 /* ─────────────────────────── toMarkdown ─────────────────────────── */
 
 export function toMarkdown(ctx: ExportContext): string {
+  const includeDetails = ctx.includeDetails !== false;
+  const ords = numberedOrdinals(ctx.blocks);
+  const bodies = ctx.blocks.map((b) =>
+    blockToMarkdown(b, (b.id && ords.get(b.id)) || 1),
+  );
+  const body = bodies.map((s) => s + "\n").join("\n");
+
+  if (!includeDetails) {
+    // No front matter. Title becomes an H1 at the top so the file still
+    // opens with a heading — mirrors what the HTML export does.
+    return `# ${ctx.title || "Untitled"}\n\n` + body;
+  }
+
   const front: string[] = ["---"];
   front.push(`title: ${yamlString(ctx.title || "Untitled")}`);
   if (ctx.area) front.push(`area: ${yamlString(ctx.area)}`);
@@ -230,11 +243,6 @@ export function toMarkdown(ctx: ExportContext): string {
   if (vd) front.push(`verified: ${vd}`);
   front.push("---", "");
 
-  const ords = numberedOrdinals(ctx.blocks);
-  const bodies = ctx.blocks.map((b) =>
-    blockToMarkdown(b, (b.id && ords.get(b.id)) || 1),
-  );
-  const body = bodies.map((s) => s + "\n").join("\n");
   return front.join("\n") + body;
 }
 
