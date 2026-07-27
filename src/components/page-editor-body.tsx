@@ -2488,6 +2488,12 @@ function ColumnStack({
   }, [focusRequest, blocks]);
 
   function updateBlock(id: string, patch: Partial<Blk>) {
+    // Signal the outer commit (via the module-local bridge) that this
+    // propagating `{ cols: … }` patch represents a keystroke on the inner
+    // block `id`, so the outer undo stack coalesces the burst.
+    const keys = Object.keys(patch);
+    const isTyping = keys.length === 1 && keys[0] === "text";
+    if (isTyping) columnTypingHint.key = id;
     setBlocks(blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)));
   }
   function splitBlock(id: string, caret: number) {
