@@ -37,7 +37,7 @@ import { Fragment } from "react";
 
 const ESC_PUNCT = /[\\*_`~<>\[\]()]/;
 
-function safeUrl(url: string): string | null {
+export function safeUrl(url: string): string | null {
   const trimmed = url.trim();
   if (!trimmed) return null;
   // Scheme test — case-insensitive, ignore surrounding whitespace.
@@ -142,6 +142,30 @@ function parseNodes(
           >
             {parseNodes(text.slice(i + 2, end), base + i + 2, ctx, withOffsets)}
           </s>,
+        );
+        i = end + 2;
+        continue;
+      }
+    }
+
+    // Highlight: ==...==   (after ** and ~~, before single *)
+    if (c === "=" && text[i + 1] === "=") {
+      const end = text.indexOf("==", i + 2);
+      if (end > i + 1) {
+        flush();
+        out.push(
+          <mark
+            key={ctx.keyCounter++}
+            data-o={withOffsets ? base + i : undefined}
+            style={{
+              background: "var(--color-highlight)",
+              color: "var(--color-noir)",
+              padding: "0 2px",
+              borderRadius: 2,
+            }}
+          >
+            {parseNodes(text.slice(i + 2, end), base + i + 2, ctx, withOffsets)}
+          </mark>,
         );
         i = end + 2;
         continue;
@@ -312,6 +336,18 @@ export function inlineToHtml(text: string): string {
       if (end > i + 1) {
         flush();
         out += `<s>${inlineToHtml(src.slice(i + 2, end))}</s>`;
+        i = end + 2;
+        continue;
+      }
+    }
+
+    // Highlight: ==...==  — escape-first: inner text is re-run through
+    // inlineToHtml (which HTML-escapes), never inserted as raw HTML.
+    if (c === "=" && src[i + 1] === "=") {
+      const end = src.indexOf("==", i + 2);
+      if (end > i + 1) {
+        flush();
+        out += `<mark>${inlineToHtml(src.slice(i + 2, end))}</mark>`;
         i = end + 2;
         continue;
       }

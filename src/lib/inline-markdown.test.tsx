@@ -131,3 +131,33 @@ describe("renderInline — underscore runs (legal-contract fill-ins)", () => {
     expect(html("a ** b c")).toContain("a ** b c");
   });
 });
+
+describe("renderInline / inlineToHtml — highlight ==…==", () => {
+  it("renders ==text== as <mark>", () => {
+    const s = html("hello ==world== end");
+    expect(s).toContain("<mark");
+    expect(s).toContain("world");
+    expect(s).not.toContain("==world==");
+  });
+  it("unmatched == renders literally", () => {
+    const s = html("a == b");
+    expect(s).not.toContain("<mark");
+    expect(s).toContain("==");
+  });
+  it("== inside `code` is NOT parsed", () => {
+    const s = html("`==literal==`");
+    expect(s).toContain("<code");
+    expect(s).toContain("==literal==");
+    expect(s).not.toContain("<mark");
+  });
+  it("inlineToHtml emits <mark> and escapes user text inside", () => {
+    const out = inlineToHtml("==<script>==");
+    expect(out).toContain("<mark>");
+    expect(out).toContain("&lt;script&gt;");
+    expect(out).not.toContain("<script>");
+  });
+  it("bold can nest inside highlight", () => {
+    const s = html("==a **b** c==");
+    expect(s).toMatch(/<mark[^>]*>.*<strong[^>]*>b<\/strong>.*<\/mark>/);
+  });
+});

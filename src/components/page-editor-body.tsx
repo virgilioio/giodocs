@@ -73,6 +73,8 @@ import {
   reclampIndents,
 } from "@/lib/block-ops";
 import { resolveKey, type Op as KeyOp } from "@/lib/block-key-handler";
+import { toggleWrap } from "@/lib/toggle-wrap";
+import { FloatingToolbar } from "./floating-toolbar";
 import { ordinalLabel } from "@/lib/blocks";
 
 /** Module-local bridge: nested ColumnStack keystrokes set this before
@@ -1815,6 +1817,7 @@ export function EditableBody({
     <ColumnBridgeCtx.Provider value={columnBridge}>
     <div
       ref={containerRef}
+      data-gio-page-body
       className="gio-page-body relative"
       onPointerDown={handleContainerPointerDown}
       onFocusCapture={(e) => {
@@ -2027,6 +2030,22 @@ export function EditableBody({
                 e.preventDefault();
                 applyOp(opsIndent(blocks, b.id, -1));
                 return;
+              case "wrap": {
+                e.preventDefault();
+                const r = toggleWrap(v, ss, se, op.open, op.close);
+                updateBlock(b.id, { text: r.text });
+                requestAnimationFrame(() => {
+                  const cur = refs.current[b.id] as HTMLTextAreaElement | undefined;
+                  if (!cur) return;
+                  try {
+                    cur.focus({ preventScroll: true });
+                    cur.setSelectionRange(r.start, r.end);
+                  } catch {
+                    /* noop */
+                  }
+                });
+                return;
+              }
             }
           }}
           onAddBelow={() => { if (!locked) insertAfter(b.id); }}
@@ -2152,6 +2171,7 @@ export function EditableBody({
           onClose={closeHandleMenu}
         />
       ) : null}
+      <FloatingToolbar />
     </div>
     </ColumnBridgeCtx.Provider>
   );
@@ -3176,6 +3196,22 @@ function ColumnStack({
                 e.preventDefault();
                 applyOp(opsIndent(blocks, b.id, -1));
                 return;
+              case "wrap": {
+                e.preventDefault();
+                const r = toggleWrap(v, ss, se, op.open, op.close);
+                updateBlock(b.id, { text: r.text });
+                requestAnimationFrame(() => {
+                  const cur = refs.current[b.id] as HTMLTextAreaElement | undefined;
+                  if (!cur) return;
+                  try {
+                    cur.focus({ preventScroll: true });
+                    cur.setSelectionRange(r.start, r.end);
+                  } catch {
+                    /* noop */
+                  }
+                });
+                return;
+              }
             }
           }}
           onAddBelow={() => {
