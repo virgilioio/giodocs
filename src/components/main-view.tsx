@@ -1316,10 +1316,9 @@ export function MainView({ selection }: { selection: Selection }) {
     (m) => m.user_id === user.id && m.role === "owner",
   );
 
-  // Per-view drafts (session-only, keyed by base id). Toolbar edits on
-  // team/area views land here; personal-owned views bypass drafts and
-  // persist directly to the row.
-  const [drafts, setDrafts] = useState<Record<string, ViewDraft>>({});
+  // Per-view drafts live in a module-level store so the sidebar row menu
+  // and this component agree on the effective layout/sort/filter.
+  const drafts = useDrafts();
   const [renaming, setRenaming] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
 
@@ -1353,31 +1352,19 @@ export function MainView({ selection }: { selection: Selection }) {
   const fixedFilterIndex = selection.kind === "area" ? 0 : undefined;
 
   const patchDraft = (id: string, patch: ViewDraft) => {
-    setDrafts((prev) => {
-      const next: Record<string, ViewDraft> = { ...prev };
-      const merged: ViewDraft = { ...(next[id] ?? {}), ...patch };
-      // Prune fields that now match the base — a fully-equal draft is
-      // indistinguishable from having none, so drop the key entirely.
-      if (base && id === base.id) {
-        const drop = (k: keyof ViewDraft, eq: () => boolean) => {
-          if (k in merged && eq()) delete merged[k];
-        };
-        drop("filter", () => JSON.stringify(merged.filter) === JSON.stringify(base.filter));
-        drop("sort", () => JSON.stringify(merged.sort) === JSON.stringify(base.sort));
-        drop("layout", () => merged.layout === base.layout);
-        drop("group_by", () => (merged.group_by ?? null) === (base.group_by ?? null));
-      }
-      if (Object.keys(merged).length === 0) delete next[id];
-      else next[id] = merged;
-      return next;
-    });
+    if (base && id === base.id) {
+      storePatchDraft(id, patch, {
+        filter: base.filter,
+        sort: base.sort,
+        layout: base.layout,
+        group_by: base.group_by,
+      });
+    } else {
+      storePatchDraft(id, patch);
+    }
   };
-  const clearDraft = (id: string) =>
-    setDrafts((prev) => {
-      if (!(id in prev)) return prev;
-      const { [id]: _drop, ...rest } = prev;
-      return rest;
-    });
+  const clearDraft = (id: string) => storeClearDraft(id);
+
 
   const rows = useMemo(
     () => runView(pages, { filter: filters, sort }, { me: user?.id ?? "", staleDays }),
