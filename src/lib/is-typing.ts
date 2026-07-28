@@ -46,3 +46,25 @@ export function shouldSelectAllBlocks(
 ): boolean {
   return selectionStart === 0 && selectionEnd === valueLength;
 }
+
+/**
+ * Copy/cut scope for the block-selection ⌘C / ⌘X handlers.
+ *
+ * When a block selection is active (size > 0) the shortcut ALWAYS operates
+ * on the selection — even if focus is still inside a contenteditable block,
+ * which was the phase-2b regression this rule fixes. When no selection is
+ * active the native focus-target rules apply and the handler yields to the
+ * browser (so copying selected text inside a block works normally).
+ *
+ * Symmetric with the marquee/shift-click paths, which blur the focused
+ * editable and clear the DOM selection at the moment they set a block
+ * selection — so "block selection active" and "caret in a block" are
+ * mutually exclusive by design.
+ */
+export function shouldCopyBlocks(
+  selectionSize: number,
+  target: EventTarget | null,
+): boolean {
+  if (selectionSize > 0) return true;
+  return !isTypingTarget(target);
+}
