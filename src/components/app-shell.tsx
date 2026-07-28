@@ -74,6 +74,7 @@ import { useDrafts, patchDraft as storePatchDraft } from "@/lib/view-drafts-stor
 
 import { useAllowedDomains, useMembers, usePropDefs } from "@/hooks/use-workspace-data";
 import { usePrefs } from "@/lib/preferences";
+import { isTypingTarget } from "@/lib/is-typing";
 
 
 type Selection =
