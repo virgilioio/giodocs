@@ -258,30 +258,47 @@ export function EmojiPicker({
             />
           )
         ) : (
-          sections.map(({ cat, items }, sectionIdx) => {
-            // Compute the highlight index offset for this section within the flat list.
-            const offset = sections
-              .slice(0, sectionIdx)
-              .reduce((n, s) => n + s.items.length, 0);
-            return (
-              <div
-                key={cat}
-                ref={(el) => { sectionRefs.current[cat] = el; }}
-              >
-                <div
-                  className="sticky top-0 z-[1] bg-surface pb-1 pt-2 text-label uppercase text-faint"
-                >
-                  {CATEGORY_LABEL[cat]}
+          <>
+            {usedItems.length > 0 ? (
+              <div>
+                <div className="sticky top-0 z-[1] bg-surface pb-1 pt-2 text-label uppercase text-faint">
+                  Used in this workspace
                 </div>
                 <EmojiGrid
-                  items={items}
-                  highlight={highlight - offset}
+                  items={usedItems}
+                  highlight={highlight}
                   onPick={pick}
-                  onHover={(i) => setHighlight(offset + i)}
+                  onHover={(i) => setHighlight(i)}
                 />
               </div>
-            );
-          })
+            ) : null}
+            {sections.map(({ cat, items }, sectionIdx) => {
+              // Compute the highlight index offset for this section within the flat list.
+              const offset =
+                usedItems.length +
+                sections
+                  .slice(0, sectionIdx)
+                  .reduce((n, s) => n + s.items.length, 0);
+              return (
+                <div
+                  key={cat}
+                  ref={(el) => { sectionRefs.current[cat] = el; }}
+                >
+                  <div
+                    className="sticky top-0 z-[1] bg-surface pb-1 pt-2 text-label uppercase text-faint"
+                  >
+                    {CATEGORY_LABEL[cat]}
+                  </div>
+                  <EmojiGrid
+                    items={items}
+                    highlight={highlight - offset}
+                    onPick={pick}
+                    onHover={(i) => setHighlight(offset + i)}
+                  />
+                </div>
+              );
+            })}
+          </>
         )}
       </div>
 
