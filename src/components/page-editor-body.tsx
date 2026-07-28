@@ -1997,7 +1997,6 @@ export function EditableBody({
           {
             kind: "row",
             label: "Copy",
-            icon: "copy",
             hint: { text: "⌘C", mono: true },
             onPick: () => {
               closeSelMenu();
@@ -2007,7 +2006,6 @@ export function EditableBody({
           {
             kind: "row",
             label: "Cut",
-            icon: "scissors",
             hint: { text: "⌘X", mono: true },
             onPick: () => {
               closeSelMenu();
@@ -2017,7 +2015,7 @@ export function EditableBody({
           {
             kind: "row",
             label: "Duplicate",
-            icon: "duplicate",
+            icon: "dup",
             hint: { text: "⌘D", mono: true },
             onPick: () => {
               closeSelMenu();
