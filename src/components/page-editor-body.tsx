@@ -3681,6 +3681,7 @@ function TableBlock({
                       onChange={(e) => setCell(ri, ci, e.target.value)}
                       onBlur={onBlur}
                       className="w-full border-0 bg-transparent px-2 py-1 outline-none"
+                      style={{ textAlign: align[ci] ?? "left" }}
                     />
                   </Tag>
                 );
