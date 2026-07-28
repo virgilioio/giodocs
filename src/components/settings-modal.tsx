@@ -784,7 +784,7 @@ function PeoplePane({
         <div className="flex flex-wrap gap-3">
           <StatCard label={membersLabel} value={members.length} />
           <StatCard label="Guests" value={guestEmails.size} />
-          <StatCard
+          <ProfileStatCard
             label="Pages with an owner"
             value={`${withOwner} of ${pages.length}`}
           />
@@ -1370,7 +1370,7 @@ function EmojiPane() {
 
 /* ─────────────────────────── My profile ─────────────────────────── */
 
-function SectionHeading({ children }: { children: ReactNode }) {
+function ProfileSectionHeading({ children }: { children: ReactNode }) {
   return (
     <h3
       className="font-display text-strong"
@@ -1566,7 +1566,7 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
 
       <div style={{ maxWidth: 620, padding: "0 32px 40px" }}>
         {/* §2 YOU */}
-        <SectionHeading>You</SectionHeading>
+        <ProfileSectionHeading>You</ProfileSectionHeading>
         <div className="flex" style={{ gap: 20, alignItems: "flex-start" }}>
           <div
             className="grid place-items-center rounded-full font-display shrink-0"
@@ -1610,7 +1610,7 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* §3 SIGN-IN */}
-        <SectionHeading>Sign-in</SectionHeading>
+        <ProfileSectionHeading>Sign-in</ProfileSectionHeading>
         <div>
           <div
             className="grid items-center"
@@ -1727,7 +1727,7 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* §4 YOUR ROLE */}
-        <SectionHeading>Your role</SectionHeading>
+        <ProfileSectionHeading>Your role</ProfileSectionHeading>
         <div className="flex" style={{ gap: 12, alignItems: "flex-start" }}>
           <span
             className={
@@ -1756,9 +1756,9 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* §5 YOUR WORK HERE */}
-        <SectionHeading>Your work here</SectionHeading>
+        <ProfileSectionHeading>Your work here</ProfileSectionHeading>
         <div className="flex" style={{ gap: 12, flexWrap: "wrap" }}>
-          <StatCard
+          <ProfileStatCard
             interactive
             n={ownedCount}
             label="pages you own"
@@ -1770,7 +1770,7 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
               )
             }
           />
-          <StatCard
+          <ProfileStatCard
             interactive
             n={staleOwned}
             amber={staleOwned > 0}
@@ -1783,7 +1783,7 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
               )
             }
           />
-          <StatCard
+          <ProfileStatCard
             interactive={false}
             n={verifiedByMe}
             label="pages you last verified"
@@ -1794,7 +1794,7 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
         </p>
 
         {/* §6 LEAVE */}
-        <SectionHeading>Leave {workspaceName}</SectionHeading>
+        <ProfileSectionHeading>Leave {workspaceName}</ProfileSectionHeading>
         <div className="flex" style={{ gap: 12, alignItems: "flex-start" }}>
           <p className="flex-1 text-secondary" style={{ fontSize: 13.5, lineHeight: 1.55 }}>
             {ownedCount > 0
@@ -1825,7 +1825,7 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
   );
 }
 
-function StatCard({
+function ProfileStatCard({
   n,
   label,
   interactive,
