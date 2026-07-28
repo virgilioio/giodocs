@@ -26,7 +26,7 @@ export function blocksToClipboard(
   const ords = numberedOrdinals(blocks);
   const markdown = blocks
     .map((b) => {
-      const ord = b.type === "numbered" ? (ords.get(b.id) ?? 1) : 1;
+      const ord = b.type === "numbered" && b.id ? (ords.get(b.id) ?? 1) : 1;
       return blockToMarkdown(b, ord);
     })
     .join("\n\n");
