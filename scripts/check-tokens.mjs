@@ -27,6 +27,7 @@ const EXEMPT = new Set([
   "src/styles.css",
   "src/lib/export.ts",
   "src/lib/avatar.ts",
+  "src/lib/avatar.test.ts",
 ]);
 const EXT = /\.(?:tsx?|jsx?|mjs|cjs|css)$/;
 
