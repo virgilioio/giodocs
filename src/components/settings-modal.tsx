@@ -1434,7 +1434,7 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
         toast.push(error.message);
         return;
       }
-      qc.setQueryData<unknown>(qk.members(ws), (old) => {
+      qc.setQueryData<unknown>(qk.members(ws), (old: unknown) => {
         if (!Array.isArray(old)) return old;
         return old.map((m) => {
           const row = m as { user_id: string; profiles?: { full_name?: string } | null };
