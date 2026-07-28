@@ -161,6 +161,7 @@ export function SettingsModal({
               <path d={ICON_CLOSE} />
             </svg>
           </button>
+          {pane === "profile" && <MyProfilePane onClose={onClose} />}
           {pane === "preferences" && <PreferencesPane />}
           {pane === "general" && <GeneralPane />}
           {pane === "people" && (
