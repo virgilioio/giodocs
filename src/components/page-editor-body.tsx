@@ -1298,6 +1298,8 @@ export function EditableBody({
       document.body.style.userSelect = "";
       if (m.moved) {
         setMarquee(null);
+        // Marquee drop ends with a real selection — banish the caret.
+        blurAndClearDomSelection();
         return;
       }
       // Click branch (no drag past threshold).
@@ -1316,6 +1318,7 @@ export function EditableBody({
         if (id) {
           anchorId.current = id;
           setSelectedIds(new Set([id]));
+          blurAndClearDomSelection();
           return;
         }
       }
