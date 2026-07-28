@@ -1654,12 +1654,11 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
             style={{
               width: 64,
               height: 64,
-              backgroundColor: avatarTint,
-              color: avatarInk,
+              background: discBg,
+              color: discInk,
               fontSize: 22,
               fontWeight: 700,
             }}
-            aria-hidden
           >
             {initials}
           </div>
@@ -1690,7 +1689,29 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        {/* §3 SIGN-IN */}
+        {/* Avatar picker — colour, portrait, skin tone */}
+        <AvatarPicker
+          initials={initials}
+          tint={avaTint}
+          ink={avaInk}
+          face={avaFace}
+          skin={avaSkin}
+          onPickColour={(p) => {
+            setAvaTint(p.tint);
+            setAvaInk(p.ink);
+            saveAvatar({ tint: p.tint, ink: p.ink, face: avaFace, skin: avaSkin });
+          }}
+          onPickFace={(f) => {
+            setAvaFace(f);
+            saveAvatar({ tint: avaTint, ink: avaInk, face: f, skin: avaSkin });
+          }}
+          onPickSkin={(s) => {
+            setAvaSkin(s);
+            saveAvatar({ tint: avaTint, ink: avaInk, face: avaFace, skin: s });
+          }}
+        />
+
+        {/* §4 SIGN-IN */}
         <ProfileSectionHeading>Sign-in</ProfileSectionHeading>
         <div>
           <div
