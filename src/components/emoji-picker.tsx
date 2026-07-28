@@ -9,6 +9,49 @@ import {
   type Emoji,
   type EmojiCategory,
 } from "@/lib/emoji-data";
+import { useWorkspaceId } from "@/lib/workspace-context";
+import { usePages, usePropDefs, useViews } from "@/hooks/use-workspace-data";
+
+/**
+ * Derive the "used in this workspace" set from already-cached data — same
+ * discipline as areas being derived from the pages cache. Sources:
+ *   - pages.icon (live pages only)
+ *   - the `area` property_def's options[].icon
+ *   - views.icon (non-null)
+ * Ordered by frequency desc, then by emoji for stability, capped at 16.
+ * Hidden when fewer than 3 distinct icons — a two-entry "frequently used"
+ * row is noise.
+ */
+function useUsedInWorkspace(): string[] {
+  const ws = useWorkspaceId();
+  const pagesQ = usePages(ws);
+  const propDefsQ = usePropDefs(ws);
+  const viewsQ = useViews(ws);
+
+  return useMemo(() => {
+    const counts = new Map<string, number>();
+    const bump = (raw: unknown) => {
+      if (typeof raw !== "string") return;
+      const g = firstGrapheme(raw);
+      if (!g) return;
+      counts.set(g, (counts.get(g) ?? 0) + 1);
+    };
+    for (const p of pagesQ.data ?? []) bump(p.icon);
+    const areaDef = (propDefsQ.data ?? []).find(
+      (d) => (d as { key?: string }).key === "area",
+    ) as { options?: unknown } | undefined;
+    const options = Array.isArray(areaDef?.options)
+      ? (areaDef!.options as Array<{ icon?: unknown }>)
+      : [];
+    for (const opt of options) bump(opt?.icon);
+    for (const v of viewsQ.data ?? []) bump((v as { icon?: unknown }).icon);
+
+    const entries = [...counts.entries()];
+    if (entries.length < 3) return [];
+    entries.sort((a, b) => (b[1] - a[1]) || (a[0] < b[0] ? -1 : 1));
+    return entries.slice(0, 16).map(([e]) => e);
+  }, [pagesQ.data, propDefsQ.data, viewsQ.data]);
+}
 
 /**
  * Shared emoji picker — one component, three sites (page icon, view icon,
