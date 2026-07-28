@@ -132,15 +132,17 @@ export function AppShell() {
   }, [rawSelection, pagesForResolve]);
   const navigate = useNavigate();
 
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem(COLLAPSE_KEY) === "1";
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    // Default OPEN when the key is absent — new users see the rail.
+    const raw = window.localStorage.getItem(SIDEBAR_OPEN_KEY);
+    return raw === null ? true : raw === "1";
   });
   useEffect(() => {
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
+      window.localStorage.setItem(SIDEBAR_OPEN_KEY, sidebarOpen ? "1" : "0");
     }
-  }, [collapsed]);
+  }, [sidebarOpen]);
 
   // Resizable sidebar. Width lives in ONE CSS variable (--gio-sidebar-w) that
   // both the pane and the main column read; clamp to [MIN,MAX] during the
