@@ -27,6 +27,7 @@ import { usePrefs, type FontFamily, type Density, type DateFormatMode, type Them
 import { useToast } from "@/lib/toast";
 import { useFormatDate } from "@/lib/format";
 import type { PageListItem } from "@/lib/types";
+import { PALETTE, SKIN, FACES, avaBg, DEFAULT_TINT, DEFAULT_INK } from "@/lib/avatar";
 import type { PendingInvite } from "./add-members-modal";
 
 export type SettingsPane = "profile" | "preferences" | "general" | "people" | "emoji";
@@ -1389,6 +1390,155 @@ function ProfileSectionHeading({ children }: { children: ReactNode }) {
   );
 }
 
+/* Avatar picker — three composed axes.
+ * Each colour swatch previews in the user's current portrait, and each
+ * portrait swatch previews in their current colour, so the axes visibly
+ * compose rather than reading as three unrelated pickers. The skin-tone
+ * row only renders when a portrait is selected. */
+function AvatarPicker({
+  initials,
+  tint,
+  ink,
+  face,
+  skin,
+  onPickColour,
+  onPickFace,
+  onPickSkin,
+}: {
+  initials: string;
+  tint: string;
+  ink: string;
+  face: number;
+  skin: number;
+  onPickColour: (p: { tint: string; ink: string }) => void;
+  onPickFace: (f: number) => void;
+  onPickSkin: (s: number) => void;
+}) {
+  const selRing =
+    "0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-accent)";
+  const swatchBase: React.CSSProperties = {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    display: "grid",
+    placeItems: "center",
+    fontFamily: "var(--font-display)",
+    fontWeight: 700,
+    fontSize: 13,
+    cursor: "pointer",
+  };
+  const rowLabel: React.CSSProperties = {
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    marginBottom: 8,
+  };
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div style={{ marginBottom: 16 }}>
+        <div className="text-muted" style={rowLabel}>Colour</div>
+        <div className="flex" style={{ gap: 10, flexWrap: "wrap" }}>
+          {PALETTE.map((p) => {
+            const selected = p.tint === tint;
+            return (
+              <button
+                key={p.name}
+                type="button"
+                aria-label={p.name}
+                aria-pressed={selected}
+                onClick={() => onPickColour({ tint: p.tint, ink: p.ink })}
+                style={{
+                  ...swatchBase,
+                  background: avaBg(p.tint, face, skin),
+                  color: face > 0 ? "transparent" : p.ink,
+                  boxShadow: selected ? selRing : undefined,
+                  border: "none",
+                }}
+              >
+                {initials}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: face > 0 ? 16 : 4 }}>
+        <div className="text-muted" style={rowLabel}>Portrait</div>
+        <div className="flex" style={{ gap: 10, flexWrap: "wrap" }}>
+          {FACES.map((f, i) => {
+            const selected = i === face;
+            return (
+              <div
+                key={f.name}
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, width: 44 }}
+              >
+                <button
+                  type="button"
+                  aria-label={f.name}
+                  aria-pressed={selected}
+                  onClick={() => onPickFace(i)}
+                  style={{
+                    ...swatchBase,
+                    background: avaBg(tint, i, skin),
+                    color: i > 0 ? "transparent" : ink,
+                    boxShadow: selected ? selRing : undefined,
+                    border: "none",
+                  }}
+                >
+                  {initials}
+                </button>
+                <span
+                  className={selected ? "text-strong" : "text-muted"}
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: selected ? 700 : 400,
+                    textAlign: "center",
+                    lineHeight: 1.1,
+                  }}
+                >
+                  {f.name}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {face > 0 ? (
+        <div style={{ marginBottom: 12 }}>
+          <div className="text-muted" style={rowLabel}>Skin tone</div>
+          <div className="flex" style={{ gap: 10, flexWrap: "wrap" }}>
+            {SKIN.map((_, i) => {
+              const selected = i === skin;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  aria-label={`Skin tone ${i + 1}`}
+                  aria-pressed={selected}
+                  onClick={() => onPickSkin(i)}
+                  style={{
+                    ...swatchBase,
+                    background: avaBg(tint, face, i),
+                    color: "transparent",
+                    boxShadow: selected ? selRing : undefined,
+                    border: "none",
+                  }}
+                />
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      <p className="text-muted" style={{ fontSize: 13.5, lineHeight: 1.5, marginTop: 12 }}>
+        Eight portraits by hair, not by gender — pick the one that looks like you. Six colours and five skin tones sit behind them, and Initials stays the default, because no drawn set of people is ever finished. A portrait keeps its own light disc in both themes — like a photograph, which does not dim at dusk. Initials do theme, because they are type, not a picture.
+      </p>
+    </div>
+  );
+}
+
 function MyProfilePane({ onClose }: { onClose: () => void }) {
   const { user, profile } = useAuth();
   const ws = useWorkspaceId();
@@ -1460,8 +1610,88 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
   }, []);
 
   const initials = initialsOf(name || user?.email || "?");
-  const avatarTint = profile?.avatar_tint ?? "var(--color-sunken)";
-  const avatarInk = profile?.avatar_ink ?? "var(--color-secondary)";
+
+  // ── §3 avatar (raw axes; disc renders live from local state) ──
+  // We fetch the RAW row directly because AuthProvider's `profile` has been
+  // transformed by applyAvatarRender — its avatar_tint is the composed url,
+  // not the palette hex we need to highlight the selected swatch.
+  const [avaTint, setAvaTint] = useState<string>(DEFAULT_TINT);
+  const [avaInk, setAvaInk] = useState<string>(DEFAULT_INK);
+  const [avaFace, setAvaFace] = useState<number>(0);
+  const [avaSkin, setAvaSkin] = useState<number>(0);
+  const avatarLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!myId || avatarLoadedRef.current) return;
+    avatarLoadedRef.current = true;
+    let active = true;
+    supabase
+      .from("profiles")
+      .select("avatar_tint, avatar_ink, avatar_face, avatar_skin")
+      .eq("id", myId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!active || !data) return;
+        setAvaTint(data.avatar_tint ?? DEFAULT_TINT);
+        setAvaInk(data.avatar_ink ?? DEFAULT_INK);
+        setAvaFace(data.avatar_face ?? 0);
+        setAvaSkin(data.avatar_skin ?? 0);
+      });
+    return () => { active = false; };
+  }, [myId]);
+
+  const avaTimer = useRef<number | null>(null);
+  function saveAvatar(next: {
+    tint: string; ink: string; face: number; skin: number;
+  }) {
+    if (avaTimer.current) window.clearTimeout(avaTimer.current);
+    avaTimer.current = window.setTimeout(async () => {
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          avatar_tint: next.tint,
+          avatar_ink: next.ink,
+          avatar_face: next.face,
+          avatar_skin: next.skin,
+        })
+        .eq("id", myId);
+      if (error) {
+        toast.push(error.message);
+        return;
+      }
+      // Optimistic: patch members cache so all 12 avatar sites update at once.
+      qc.setQueryData<unknown>(qk.members(ws), (old: unknown) => {
+        if (!Array.isArray(old)) return old;
+        const composedTint = next.face > 0
+          ? avaBg(next.tint, next.face, next.skin)
+          : next.tint;
+        const composedInk = next.face > 0 ? "transparent" : next.ink;
+        return old.map((m) => {
+          const row = m as {
+            user_id: string;
+            profiles?: Record<string, unknown> | null;
+          };
+          if (row.user_id !== myId) return m;
+          return {
+            ...row,
+            profiles: {
+              ...(row.profiles ?? {}),
+              avatar_tint: composedTint,
+              avatar_ink: composedInk,
+              avatar_face: next.face,
+              avatar_skin: next.skin,
+            },
+          };
+        });
+      });
+    }, 220);
+  }
+  useEffect(() => () => {
+    if (avaTimer.current) window.clearTimeout(avaTimer.current);
+  }, []);
+
+  // Live preview values for the 64px disc.
+  const discBg = avaBg(avaTint, avaFace, avaSkin);
+  const discInk = avaFace > 0 ? "transparent" : avaInk;
 
   // ── §3 password ──
   const [pwOpen, setPwOpen] = useState(false);
@@ -1573,12 +1803,11 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
             style={{
               width: 64,
               height: 64,
-              backgroundColor: avatarTint,
-              color: avatarInk,
+              background: discBg,
+              color: discInk,
               fontSize: 22,
               fontWeight: 700,
             }}
-            aria-hidden
           >
             {initials}
           </div>
@@ -1609,7 +1838,29 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
-        {/* §3 SIGN-IN */}
+        {/* Avatar picker — colour, portrait, skin tone */}
+        <AvatarPicker
+          initials={initials}
+          tint={avaTint}
+          ink={avaInk}
+          face={avaFace}
+          skin={avaSkin}
+          onPickColour={(p) => {
+            setAvaTint(p.tint);
+            setAvaInk(p.ink);
+            saveAvatar({ tint: p.tint, ink: p.ink, face: avaFace, skin: avaSkin });
+          }}
+          onPickFace={(f) => {
+            setAvaFace(f);
+            saveAvatar({ tint: avaTint, ink: avaInk, face: f, skin: avaSkin });
+          }}
+          onPickSkin={(s) => {
+            setAvaSkin(s);
+            saveAvatar({ tint: avaTint, ink: avaInk, face: avaFace, skin: s });
+          }}
+        />
+
+        {/* §4 SIGN-IN */}
         <ProfileSectionHeading>Sign-in</ProfileSectionHeading>
         <div>
           <div

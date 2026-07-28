@@ -17,7 +17,18 @@ const ROOT = join(CWD, "src");
 // cannot reference Tailwind tokens. Its hex values ARE the design tokens,
 // serialized for the outside world — they must match src/styles.css @theme
 // exactly. If you change a token there, change it here.
-const EXEMPT = new Set(["src/styles.css", "src/lib/export.ts"]);
+//
+// avatar.ts is exempt: it ships ten literal skin/hair hexes for the portrait
+// system. These are not brand tokens — they render a human face and must stay
+// byte-identical in light and dark themes (see the theming rule in avatar.ts).
+// A worn portrait's disc is also fixed to a light pastel literal there, for
+// the same reason: hair contrast on the disc must not collapse in dark mode.
+const EXEMPT = new Set([
+  "src/styles.css",
+  "src/lib/export.ts",
+  "src/lib/avatar.ts",
+  "src/lib/avatar.test.ts",
+]);
 const EXT = /\.(?:tsx?|jsx?|mjs|cjs|css)$/;
 
 const CHECKS = [
