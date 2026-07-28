@@ -98,6 +98,12 @@ import { FloatingToolbar } from "./floating-toolbar";
 import { Editable } from "./editable";
 import { readCaret, writeCaret } from "@/lib/caret-shim";
 import { ordinalLabel } from "@/lib/blocks";
+import {
+  CALLOUT_COLORS,
+  type CalloutColor,
+  calloutBg,
+  calloutLabel,
+} from "@/lib/callout-color";
 
 /** Module-local bridge: nested ColumnStack keystrokes set this before
  *  bubbling their new blocks up, so EditableBody.commit knows the
