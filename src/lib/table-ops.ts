@@ -61,6 +61,41 @@ export function normalizeAlign(align: AlignList | undefined, width: number): Ali
   return out;
 }
 
+/** Force `widths` to length `width`, clamping every entry to [MIN, MAX]
+ *  and padding shortfalls with WIDTH_DEFAULT. Absence propagates —
+ *  passing `undefined` returns `undefined`, so a table without explicit
+ *  widths (today's auto layout) stays that way through normalisation. */
+export function normalizeWidths(
+  widths: WidthList | undefined,
+  width: number,
+): WidthList | undefined {
+  if (widths == null) return undefined;
+  if (!Array.isArray(widths)) return undefined;
+  const w = Math.max(1, width | 0);
+  const out: WidthList = [];
+  for (let i = 0; i < w; i++) {
+    const v = widths[i];
+    out.push(clampWidth(typeof v === "number" ? v : WIDTH_DEFAULT));
+  }
+  return out;
+}
+
+/** Set `widths[index]` to `px`, clamping to [WIDTH_MIN, WIDTH_MAX].
+ *  Out-of-range index returns a clone. Widths is required — callers seed
+ *  the array from measured column widths BEFORE the first setWidth call
+ *  so nothing jumps mid-drag. */
+export function setWidth(
+  widths: WidthList,
+  index: number,
+  px: number,
+): WidthList {
+  const src = normalizeWidths(widths, widths.length) ?? [];
+  if (index < 0 || index >= src.length) return src.slice();
+  const next = src.slice();
+  next[index] = clampWidth(px);
+  return next;
+}
+
 /** Force `rows` to a rectangle with at least 1×1 shape. Pads short rows
  *  with "", truncates long ones. If `align` is passed, it is normalised to
  *  match the resulting column count. Returns rows only (unchanged API);
