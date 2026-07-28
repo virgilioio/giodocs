@@ -352,3 +352,55 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
   pointer-events: none;
 }
 
+
+/* ─────────────────────────── TABLE VIEW: CONTAINER QUERIES ───────────────────────────
+ *
+ * The table's responsive column set responds to the WIDTH OF ITS OWN
+ * CONTAINER, not the viewport. This is what makes the table give back
+ * columns automatically when the sidebar collapses (or when the window
+ * resizes, or when a print stylesheet narrows the page column — same
+ * mechanism, no JS, no coupling to any sidebar flag).
+ *
+ * Container thresholds mirror Tailwind's viewport breakpoints only
+ * because the original design used them; nothing about container
+ * queries requires the two to agree.
+ *
+ * Track order matches the DOM: [16px checkbox], Page, [Area?], Owner,
+ * Status, [Tags?], [Verified?], Edited, [24px menu]. The bracketed
+ * columns drop in reverse discovery order — verified → tags → area —
+ * so the checkbox and menu tracks are the LAST to give up space.
+ */
+.gio-tbl-cq { container-type: inline-size; container-name: tbl; }
+
+.gio-tbl-grid {
+  --gio-tbl-cols:
+    16px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.9fr) 24px;
+}
+.gio-tbl-area { display: none; }
+.gio-tbl-tags { display: none; }
+.gio-tbl-verified { display: none; }
+
+@container tbl (min-width: 480px) {
+  .gio-tbl-grid {
+    --gio-tbl-cols:
+      16px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)
+      minmax(0, 0.9fr) 24px;
+  }
+  .gio-tbl-area { display: block; }
+}
+@container tbl (min-width: 640px) {
+  .gio-tbl-grid {
+    --gio-tbl-cols:
+      16px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)
+      minmax(0, 1.2fr) minmax(0, 0.9fr) 24px;
+  }
+  .gio-tbl-tags { display: block; }
+}
+@container tbl (min-width: 768px) {
+  .gio-tbl-grid {
+    --gio-tbl-cols:
+      16px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)
+      minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 0.9fr) 24px;
+  }
+  .gio-tbl-verified { display: block; }
+}

@@ -74,6 +74,7 @@ import { useDrafts, patchDraft as storePatchDraft } from "@/lib/view-drafts-stor
 
 import { useAllowedDomains, useMembers, usePropDefs } from "@/hooks/use-workspace-data";
 import { usePrefs } from "@/lib/preferences";
+import { isTypingTarget } from "@/lib/is-typing";
 
 
 type Selection =
@@ -82,7 +83,12 @@ type Selection =
   | { kind: "page"; id: string }
   | null;
 
-const COLLAPSE_KEY = "gio.sidebar.collapsed";
+// gio.sidebarOpen — boolean, default true. Renamed from an earlier
+// "collapsed" flag: the topbar toggle and ⌘\ keybind read/write this,
+// and the rendered rail width is `open ? sidebarWidth : 0`. Preserving
+// the user's chosen width across a collapse is the point — see R1 in
+// the task brief.
+const SIDEBAR_OPEN_KEY = "gio.sidebarOpen";
 const SECTION_KEY = "gio.sidebar.sections"; // JSON { my:boolean, team:boolean, areas:boolean }
 const SIDEBAR_W_KEY = "gio.sidebarWidth";
 const SIDEBAR_MIN = 200;
@@ -126,15 +132,17 @@ export function AppShell() {
   }, [rawSelection, pagesForResolve]);
   const navigate = useNavigate();
 
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem(COLLAPSE_KEY) === "1";
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    // Default OPEN when the key is absent — new users see the rail.
+    const raw = window.localStorage.getItem(SIDEBAR_OPEN_KEY);
+    return raw === null ? true : raw === "1";
   });
   useEffect(() => {
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
+      window.localStorage.setItem(SIDEBAR_OPEN_KEY, sidebarOpen ? "1" : "0");
     }
-  }, [collapsed]);
+  }, [sidebarOpen]);
 
   // Resizable sidebar. Width lives in ONE CSS variable (--gio-sidebar-w) that
   // both the pane and the main column read; clamp to [MIN,MAX] during the
@@ -186,6 +194,17 @@ export function AppShell() {
       if ((e.metaKey || e.ctrlKey) && e.key === ",") {
         e.preventDefault();
         setSettingsOpen((v) => !v);
+        return;
+      }
+      // ⌘\ toggles the sidebar. Guard against typing targets so it does
+      // not fire while editing text — same rule as every other global
+      // shortcut in this handler.
+      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
+        if (isTypingTarget(e.target)) return;
+        e.preventDefault();
+        setSidebarPopover(null);
+        setAccountMenu(false);
+        setSidebarOpen((v) => !v);
         return;
       }
       if (e.key === "Escape") {
@@ -323,7 +342,7 @@ export function AppShell() {
     shell.pages.isLoading || shell.views.isLoading || shell.workspace.isLoading;
 
   const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (collapsed) return;
+    if (!sidebarOpen) return;
     e.preventDefault();
     const startX = e.clientX;
     const startW = sidebarWidth;
@@ -369,7 +388,7 @@ export function AppShell() {
     >
       <div
         style={{
-          width: collapsed ? 0 : "var(--gio-sidebar-w)",
+          width: sidebarOpen ? "var(--gio-sidebar-w)" : 0,
           transition: resizing ? "none" : "width 180ms ease",
         }}
         className="relative shrink-0 overflow-hidden border-r border-line bg-rail"
@@ -409,7 +428,7 @@ export function AppShell() {
             onCloseSidebarPopover={() => setSidebarPopover(null)}
           />
         </div>
-        {!collapsed && (
+        {sidebarOpen && (
           <div
             role="separator"
             aria-orientation="vertical"
@@ -444,13 +463,38 @@ export function AppShell() {
           style={{ height: "var(--spacing-topbar)" }}
           className="flex shrink-0 items-center gap-3 border-b border-line bg-surface px-3"
         >
+          {/* Sidebar toggle — first child, present on views AND pages, never
+              moves. Same panel glyph in both states: a chevron would
+              promise a direction the button does not deliver. */}
           <button
             type="button"
-            onClick={() => setCollapsed((v) => !v)}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="grid h-7 w-7 place-items-center rounded-md text-secondary hover:bg-rail hover:text-strong"
+            onClick={() => {
+              // Close popovers anchored to sidebar rows — their anchor is
+              // about to move or vanish.
+              setSidebarPopover(null);
+              setAccountMenu(false);
+              setSidebarOpen((v) => !v);
+            }}
+            aria-expanded={sidebarOpen}
+            aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+            title={sidebarOpen ? "Hide sidebar  ⌘\\" : "Show sidebar  ⌘\\"}
+            className="inline-flex items-center justify-center rounded-md text-muted hover:bg-sunken hover:text-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            style={{ width: 26, height: 26, flex: "none", cursor: "pointer" }}
           >
-            <Glyph path="M4 6h16M4 12h16M4 18h16" />
+            <svg
+              width={15}
+              height={15}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <path d="M9 4v16" />
+            </svg>
           </button>
           {pageBack ? (
             <Link
