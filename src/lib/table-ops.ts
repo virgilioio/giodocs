@@ -25,6 +25,24 @@
 export type TableRows = string[][];
 export type Align = "left" | "center" | "right";
 export type AlignList = Align[];
+export type WidthList = number[];
+
+/** Pixel bounds for a resizable column. MIN keeps a column addressable
+ *  by the mouse; MAX prevents a stray drag from producing an unusable,
+ *  page-wide monstrosity. Both are enforced in every widths-splicing op
+ *  so a bad value stored in the past (or received over realtime) is
+ *  clamped on the way in, not just at drag time. */
+export const WIDTH_MIN = 56;
+export const WIDTH_MAX = 1200;
+/** Fallback used when a widths op has to invent a value (a new column
+ *  spliced into an existing widths array). Chosen to match the typical
+ *  auto-share of a mid-page table so newly-inserted columns don't jump. */
+export const WIDTH_DEFAULT = 160;
+
+function clampWidth(px: number): number {
+  const n = Number.isFinite(px) ? Math.round(px) : WIDTH_DEFAULT;
+  return Math.max(WIDTH_MIN, Math.min(WIDTH_MAX, n));
+}
 
 function clone(rows: TableRows): TableRows {
   return rows.map((r) => r.slice());
