@@ -62,7 +62,12 @@ async function fetchMembers(ws: string) {
     .eq("workspace_id", ws)
     .limit(500);
   if (error) throw error;
-  return data ?? [];
+  // Compose portraits into profiles.avatar_tint / avatar_ink so every avatar
+  // call site works with zero changes — see src/lib/avatar.ts.
+  return (data ?? []).map((row) => ({
+    ...row,
+    profiles: applyAvatarRender(row.profiles),
+  }));
 }
 
 async function fetchPropDefs(ws: string) {
