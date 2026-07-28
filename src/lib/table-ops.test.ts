@@ -2,22 +2,32 @@ import { describe, expect, it } from "vitest";
 import {
   addColumn,
   addAlign,
+  addWidth,
   addRow,
   clearColumn,
   clearRow,
   deleteColumn,
   deleteAlign,
+  deleteWidth,
   deleteRow,
   duplicateColumn,
   duplicateAlign,
+  duplicateWidth,
   duplicateRow,
   moveColumn,
   moveAlign,
+  moveWidth,
   moveRow,
   normalizeAlign,
   normalizeTable,
+  normalizeWidths,
   setAlign,
+  setWidth,
+  WIDTH_MIN,
+  WIDTH_MAX,
+  WIDTH_DEFAULT,
   type AlignList,
+  type WidthList,
 } from "./table-ops";
 import { blockToMarkdown, toHtml } from "./export";
 import { parseMarkdown } from "./markdown-import";
@@ -364,5 +374,128 @@ describe("markdown alignment round-trip", () => {
     expect(html).toContain('<th style="text-align:left">a</th>');
     expect(html).toContain('<th style="text-align:right">b</th>');
     expect(html).toContain('<td style="text-align:right">2</td>');
+  });
+});
+
+describe("normalizeWidths", () => {
+  it("absent stays absent (auto layout survives normalisation)", () => {
+    expect(normalizeWidths(undefined, 3)).toBeUndefined();
+  });
+  it("pads short arrays with WIDTH_DEFAULT", () => {
+    const out = normalizeWidths([200], 3)!;
+    expect(out).toEqual([200, WIDTH_DEFAULT, WIDTH_DEFAULT]);
+  });
+  it("truncates long arrays to width", () => {
+    const out = normalizeWidths([200, 300, 400, 500], 2)!;
+    expect(out).toEqual([200, 300]);
+  });
+  it("clamps to [WIDTH_MIN, WIDTH_MAX]", () => {
+    const out = normalizeWidths([10, 9999, 200], 3)!;
+    expect(out).toEqual([WIDTH_MIN, WIDTH_MAX, 200]);
+  });
+});
+
+describe("setWidth", () => {
+  it("changes exactly one entry, clamped", () => {
+    expect(setWidth([100, 100, 100], 1, 250)).toEqual([100, 250, 100]);
+    expect(setWidth([100, 100, 100], 1, 9999)).toEqual([100, WIDTH_MAX, 100]);
+    expect(setWidth([100, 100, 100], 1, 5)).toEqual([100, WIDTH_MIN, 100]);
+  });
+  it("out-of-range index returns a clone", () => {
+    const src: WidthList = [100, 200];
+    const out = setWidth(src, 99, 300);
+    expect(out).toEqual(src);
+    expect(out).not.toBe(src);
+  });
+});
+
+describe("widths tracks column ops (absent-stays-absent contract)", () => {
+  it("addWidth on undefined stays undefined (matches addColumn on absent widths)", () => {
+    expect(addWidth(undefined, 0)).toBeUndefined();
+  });
+  it("addWidth inserts a default in step with addColumn", () => {
+    const rows = addColumn(rect(), 1);
+    const widths = addWidth([200, 300, 400], 1);
+    expect(rows[0].length).toBe(4);
+    expect(widths).toEqual([200, WIDTH_DEFAULT, 300, 400]);
+  });
+  it("deleteWidth drops the right index in step with deleteColumn", () => {
+    const rows = deleteColumn(rect(), 1);
+    const widths = deleteWidth([200, 300, 400], 1);
+    expect(rows[0].length).toBe(2);
+    expect(widths).toEqual([200, 400]);
+  });
+  it("deleteWidth refuses at one entry (returns clone)", () => {
+    expect(deleteWidth([200], 0)).toEqual([200]);
+  });
+  it("duplicateWidth copies in place", () => {
+    expect(duplicateWidth([100, 200, 300], 1)).toEqual([100, 200, 200, 300]);
+  });
+  it("moveWidth reorders in step with moveColumn", () => {
+    expect(moveWidth([100, 200, 300], 2, 0)).toEqual([300, 100, 200]);
+  });
+  it("all ops preserve undefined when widths is undefined", () => {
+    expect(deleteWidth(undefined, 0)).toBeUndefined();
+    expect(duplicateWidth(undefined, 0)).toBeUndefined();
+    expect(moveWidth(undefined, 0, 1)).toBeUndefined();
+  });
+});
+
+describe("normalizeTable independence from widths", () => {
+  it("normalizeTable does not care about widths (widths is a sibling array)", () => {
+    // The rows structural invariant stays rectangular regardless of widths.
+    expect(normalizeTable([["a", "b"], ["x"]])).toEqual([
+      ["a", "b"],
+      ["x", ""],
+    ]);
+  });
+});
+
+describe("colgroup in HTML export", () => {
+  it("emits <colgroup> with per-col widths when block.widths is present", () => {
+    const html = toHtml({
+      title: "T",
+      area: null,
+      status: null,
+      ownerName: null,
+      tags: [],
+      verifiedAt: null,
+      blocks: [
+        {
+          id: "t",
+          type: "table",
+          rows: [
+            ["a", "b"],
+            ["1", "2"],
+          ],
+          widths: [200, 300],
+        } as never,
+      ],
+    });
+    expect(html).toContain("<colgroup>");
+    expect(html).toContain('<col style="width:200px"/>');
+    expect(html).toContain('<col style="width:300px"/>');
+    expect(html).toContain('table-layout:fixed;width:500px');
+  });
+  it("omits <colgroup> when block.widths is absent (auto layout unchanged)", () => {
+    const html = toHtml({
+      title: "T",
+      area: null,
+      status: null,
+      ownerName: null,
+      tags: [],
+      verifiedAt: null,
+      blocks: [
+        {
+          id: "t",
+          type: "table",
+          rows: [
+            ["a", "b"],
+            ["1", "2"],
+          ],
+        } as never,
+      ],
+    });
+    expect(html).not.toContain("<colgroup>");
   });
 });

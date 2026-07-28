@@ -59,6 +59,14 @@ import {
   setAlign,
   clearRow,
   clearColumn,
+  type WidthList,
+  addWidth,
+  deleteWidth,
+  duplicateWidth,
+  moveWidth,
+  normalizeWidths,
+  WIDTH_MIN,
+  WIDTH_MAX,
 } from "@/lib/table-ops";
 // The shared block-editor primitives — ONE implementation used by both
 // EditableBody (top-level) and ColumnStack (per-column). See:
@@ -3254,9 +3262,22 @@ function TableBlock({
     () => normalizeTable(block.rows ?? [["", "", ""], ["", "", ""]]),
     [block.rows],
   );
+  const nCols = rows[0]?.length ?? 0;
+  const nRows = rows.length;
   const align = useMemo<AlignList>(
-    () => normalizeAlign(block.align as AlignList | undefined, rows[0]?.length ?? 0),
-    [block.align, rows],
+    () => normalizeAlign(block.align as AlignList | undefined, nCols),
+    [block.align, nCols],
+  );
+  // Widths is a strict opt-in: absent means "auto/equal" (today's
+  // behaviour). Only normalise WHEN present, so a table without an
+  // explicit widths array keeps its w-full / equal-share render path
+  // completely unchanged and export omits the <colgroup>.
+  const widths = useMemo<WidthList | undefined>(
+    () =>
+      Array.isArray(block.widths)
+        ? normalizeWidths(block.widths as WidthList, nCols)
+        : undefined,
+    [block.widths, nCols],
   );
   useEffect(() => {
     const rowsChanged =
@@ -3264,10 +3285,14 @@ function TableBlock({
     const alignChanged =
       Array.isArray(block.align) &&
       JSON.stringify(block.align) !== JSON.stringify(align);
-    if (rowsChanged || alignChanged) {
+    const widthsChanged =
+      Array.isArray(block.widths) &&
+      JSON.stringify(block.widths) !== JSON.stringify(widths);
+    if (rowsChanged || alignChanged || widthsChanged) {
       const patch: Partial<Blk> = {};
       if (rowsChanged) patch.rows = rows;
       if (alignChanged) patch.align = align;
+      if (widthsChanged) patch.widths = widths;
       onChange(patch);
     }
     // Only fire on mount / when the persisted shape needs repair.
@@ -3279,6 +3304,9 @@ function TableBlock({
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [menuSpec, setMenuSpec] = useState<MenuSpec | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+
   // First-contact hint: shown beneath a hovered table while nothing is
   // selected. Suppressed permanently after the first menu open on any table
   // in this browser. Read from localStorage on mount so the flag survives
@@ -3305,15 +3333,74 @@ function TableBlock({
     }
   }, []);
 
-  const nCols = rows[0]?.length ?? 0;
-  const nRows = rows.length;
+  // Live drag override — while a resize is in flight we render
+  // `dragWidths` locally and DO NOT call onChange, so pointermove never
+  // pushes an undo snapshot. On pointerup we call onChange exactly once
+  // with the final widths, which produces ONE undo entry per drag (the
+  // snapshot captured at that call reflects the pre-drag block, so the
+  // effect is "snapshot on pointerdown" as specified). `dragRef` holds
+  // the drag's origin so we can recompute width from the pointer delta
+  // rather than accumulate float error over many moves.
+  const [dragWidths, setDragWidths] = useState<WidthList | null>(null);
+  const dragRef = useRef<{
+    index: number;
+    startX: number;
+    startWidth: number;
+    base: WidthList;
+    pointerId: number;
+    handle: HTMLElement;
+  } | null>(null);
 
-  // Any structural op commits rows and (when it changed) align, in one
-  // onChange call so the outer undo stack sees one entry per user action.
+  // Horizontal-overflow fades — visible only when there is scroll to do
+  // in that direction. Recomputed on scroll, on wrapper resize, and after
+  // any widths change (dragging shrinks the table's scrollWidth in real
+  // time). A fade stuck on with nothing to reveal is worse than no fade.
+  const [showFadeL, setShowFadeL] = useState(false);
+  const [showFadeR, setShowFadeR] = useState(false);
+  const updateFades = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) {
+      setShowFadeL(false);
+      setShowFadeR(false);
+      return;
+    }
+    setShowFadeL(el.scrollLeft > 0);
+    setShowFadeR(el.scrollLeft < el.scrollWidth - el.clientWidth - 1);
+  }, []);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    updateFades();
+    const onScroll = () => updateFades();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    const ro = new ResizeObserver(updateFades);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      ro.disconnect();
+    };
+  }, [updateFades]);
+  useEffect(() => {
+    updateFades();
+  }, [widths, dragWidths, nCols, nRows, updateFades]);
+
+  // Any structural op commits rows and (when they changed) align and
+  // widths, in ONE onChange call — the outer undo stack sees a single
+  // entry per user action. `nextWidths === null` explicitly clears the
+  // widths array (double-click a handle with Alt); passing undefined
+  // means "don't touch". Splitting these two is the only way to
+  // distinguish "no change" from "restore auto layout" through a single
+  // patch merge.
   const commit = useCallback(
-    (next: string[][], nextAlign?: AlignList) => {
+    (
+      next: string[][],
+      nextAlign?: AlignList,
+      nextWidths?: WidthList | undefined | null,
+    ) => {
       const patch: Partial<Blk> = { rows: next };
       if (nextAlign) patch.align = nextAlign;
+      if (nextWidths === null) patch.widths = undefined;
+      else if (nextWidths) patch.widths = nextWidths;
       onChange(patch);
     },
     [onChange],
@@ -3421,7 +3508,7 @@ function TableBlock({
           label: "Insert left",
           icon: "plus",
           onPick: () => {
-            commit(addColumn(rows, index), addAlign(align, index));
+            commit(addColumn(rows, index), addAlign(align, index), addWidth(widths, index));
             setSel({ kind: "col", index });
             closeMenu();
           },
@@ -3431,7 +3518,7 @@ function TableBlock({
           label: "Insert right",
           icon: "plus",
           onPick: () => {
-            commit(addColumn(rows, index + 1), addAlign(align, index + 1));
+            commit(addColumn(rows, index + 1), addAlign(align, index + 1), addWidth(widths, index + 1));
             setSel({ kind: "col", index: index + 1 });
             closeMenu();
           },
@@ -3442,7 +3529,7 @@ function TableBlock({
           icon: "dup",
           hint: { text: "with values" },
           onPick: () => {
-            commit(duplicateColumn(rows, index), duplicateAlign(align, index));
+            commit(duplicateColumn(rows, index), duplicateAlign(align, index), duplicateWidth(widths, index));
             setSel({ kind: "col", index: index + 1 });
             closeMenu();
           },
@@ -3455,7 +3542,7 @@ function TableBlock({
           hint: isFirst ? { text: "at start" } : undefined,
           onPick: () => {
             if (isFirst) return;
-            commit(moveColumn(rows, index, index - 1), moveAlign(align, index, index - 1));
+            commit(moveColumn(rows, index, index - 1), moveAlign(align, index, index - 1), moveWidth(widths, index, index - 1));
             setSel({ kind: "col", index: index - 1 });
             closeMenu();
           },
@@ -3467,7 +3554,7 @@ function TableBlock({
           hint: isLast ? { text: "at end" } : undefined,
           onPick: () => {
             if (isLast) return;
-            commit(moveColumn(rows, index, index + 1), moveAlign(align, index, index + 1));
+            commit(moveColumn(rows, index, index + 1), moveAlign(align, index, index + 1), moveWidth(widths, index, index + 1));
             setSel({ kind: "col", index: index + 1 });
             closeMenu();
           },
@@ -3509,7 +3596,7 @@ function TableBlock({
           hint: isOnlyCol ? { text: "last column" } : undefined,
           onPick: () => {
             if (isOnlyCol) return;
-            commit(deleteColumn(rows, index), deleteAlign(align, index));
+            commit(deleteColumn(rows, index), deleteAlign(align, index), deleteWidth(widths, index));
             setSel(null);
             closeMenu();
           },
@@ -3728,146 +3815,320 @@ function TableBlock({
     if (sel) setSel(null);
   };
 
+  // Effective widths for render: while a drag is in flight we show
+  // dragWidths (never persisted); otherwise the stored widths (or
+  // undefined for auto layout).
+  const effectiveWidths = dragWidths ?? widths;
+  const contentWidth = effectiveWidths
+    ? effectiveWidths.reduce((a, n) => a + n, 0)
+    : null;
+
+  const beginResize = (e: React.PointerEvent<HTMLDivElement>, colIndex: number) => {
+    // Seed a widths array on first drag from the currently-rendered
+    // column widths, so nothing jumps when we flip from auto layout to
+    // fixed. Measurement happens ONCE per drag — subsequent moves
+    // reference the sealed `base` copy so the other columns don't
+    // rebalance as this one grows.
+    const measure = (i: number): number => {
+      const el = tableRef.current?.querySelector<HTMLElement>(`th[data-col="${i}"]`);
+      const w = el ? Math.round(el.getBoundingClientRect().width) : 160;
+      return Math.max(WIDTH_MIN, Math.min(WIDTH_MAX, w));
+    };
+    const base: WidthList = effectiveWidths
+      ? effectiveWidths.slice()
+      : Array.from({ length: nCols }, (_, i) => measure(i));
+    const startWidth = base[colIndex] ?? 160;
+    const handleEl = e.currentTarget;
+    try {
+      handleEl.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore — non-mouse pointers still work without capture */
+    }
+    dragRef.current = {
+      index: colIndex,
+      startX: e.clientX,
+      startWidth,
+      base,
+      pointerId: e.pointerId,
+      handle: handleEl,
+    };
+    setDragWidths(base);
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  const onResizeMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = e.clientX - d.startX;
+    const nextW = Math.max(WIDTH_MIN, Math.min(WIDTH_MAX, d.startWidth + dx));
+    const next = d.base.slice();
+    next[d.index] = nextW;
+    setDragWidths(next);
+  };
+  const onResizeUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    try {
+      d.handle.releasePointerCapture?.(d.pointerId);
+    } catch {
+      /* ignore */
+    }
+    const final = dragRef.current
+      ? (dragWidths ?? d.base)
+      : null;
+    dragRef.current = null;
+    setDragWidths(null);
+    if (final) onChange({ widths: final });
+    e.stopPropagation();
+  };
+  const resetColumn = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.altKey) {
+      // Alt: clear widths entirely — restore auto/equal layout.
+      onChange({ widths: undefined });
+      return;
+    }
+    // Plain double-click: equal-share across all columns, using the
+    // rendered table's current width as the total. Falls back to the
+    // average of any current widths when the table isn't measurable.
+    const measured = tableRef.current?.getBoundingClientRect().width ?? 0;
+    const total = measured > 0
+      ? measured
+      : (widths ? widths.reduce((a, n) => a + n, 0) : nCols * 160);
+    const share = Math.max(WIDTH_MIN, Math.min(WIDTH_MAX, Math.round(total / nCols)));
+    const equal: WidthList = Array.from({ length: nCols }, () => share);
+    onChange({ widths: equal });
+  };
+
   return (
-    <div
-      ref={rootRef}
-      className="group/table relative"
-      style={{ paddingTop: 23, paddingLeft: 23, paddingRight: 23, paddingBottom: 23 }}
-      onMouseDown={clearSelIfBodyClick}
-      onContextMenu={onTableContextMenu}
-    >
-      <table className="w-full border-collapse text-meta" style={{ tableLayout: "fixed" }}>
-        <tbody>
-          {rows.map((row, ri) => (
-            <tr key={ri}>
-              {row.map((cell, ci) => {
-                const Tag: "th" | "td" = ri === 0 ? "th" : "td";
-                const selected =
-                  (sel?.kind === "row" && sel.index === ri) ||
-                  (sel?.kind === "col" && sel.index === ci);
-                return (
-                  <Tag
-                    key={ci}
-                    className={
-                      "border border-line p-0 " +
-                      (ri === 0 ? "text-label uppercase text-secondary" : "text-body")
-                    }
-                    style={selected ? { background: "var(--color-blueTint)" } : undefined}
-                  >
-                    <input
-                      type="text"
-                      value={cell ?? ""}
-                      disabled={locked}
-                      data-table-cell={`${ri},${ci}`}
-                      onFocus={() => setSel(null)}
-                      onChange={(e) => setCell(ri, ci, e.target.value)}
-                      onBlur={onBlur}
-                      className="w-full border-0 bg-transparent px-2 py-1 outline-none"
-                      style={{ textAlign: align[ci] ?? "left" }}
-                    />
-                  </Tag>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {!locked && (
-        <>
-          {/* Column handles — 16px hit strip whose visible 6/8px pill sits
-              flush at the bottom edge of the container, 7px above the
-              header row (paddingTop 23 − 16 hit = 7px gap).           */}
-          <div
-            aria-hidden={false}
-            className="pointer-events-none absolute opacity-0 transition-opacity group-hover/table:opacity-100"
-            style={{ top: 0, left: 23, right: 23, height: 16 }}
-          >
-            <div className="pointer-events-auto flex h-full items-stretch gap-0">
-              {Array.from({ length: nCols }, (_, ci) => {
-                const active = sel?.kind === "col" && sel.index === ci;
-                return (
-                  <ColumnHandle
-                    key={ci}
-                    ci={ci}
-                    active={active}
-                    onClick={onColumnHandleClick}
-                  />
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Row handles — mirror of the column strip on the left edge.
-              paddingLeft 23 − 16 hit = 7px gap to the first cell. */}
-          <div
-            aria-hidden={false}
-            className="pointer-events-none absolute opacity-0 transition-opacity group-hover/table:opacity-100"
-            style={{ left: 0, top: 23, bottom: 23, width: 16 }}
-          >
-            <div className="pointer-events-auto flex h-full flex-col items-stretch gap-0">
-              {rows.map((_, ri) => {
-                const active = sel?.kind === "row" && sel.index === ri;
-                return (
-                  <RowHandle
-                    key={ri}
-                    ri={ri}
-                    active={active}
-                    onClick={onRowHandleClick}
-                  />
-                );
-              })}
-            </div>
-          </div>
-
-          {/* +column pill on the right edge, sibling of the column handle. */}
-          <AddPill
-            axis="col"
-            onClick={() => {
-              commit(addColumn(rows, nCols), addAlign(align, nCols));
-              requestAnimationFrame(() => {
-                const el = rootRef.current?.querySelector<HTMLInputElement>(
-                  `input[data-table-cell="0,${nCols}"]`,
-                );
-                el?.focus();
-              });
+    <div ref={rootRef} className="group/table relative" onContextMenu={onTableContextMenu}>
+      <div
+        ref={scrollRef}
+        style={{ overflowX: "auto", overflowY: "hidden" }}
+        onMouseDown={clearSelIfBodyClick}
+      >
+        <div
+          style={{
+            position: "relative",
+            padding: 23,
+            display: "inline-block",
+            minWidth: "100%",
+            boxSizing: "border-box",
+            verticalAlign: "top",
+          }}
+        >
+          <table
+            ref={tableRef}
+            className={
+              "border-collapse text-meta " + (effectiveWidths ? "" : "w-full")
+            }
+            style={{
+              tableLayout: "fixed",
+              ...(contentWidth != null ? { width: contentWidth } : {}),
             }}
-          />
+          >
+            {effectiveWidths && (
+              <colgroup>
+                {effectiveWidths.map((w, ci) => (
+                  <col key={ci} style={{ width: w }} />
+                ))}
+              </colgroup>
+            )}
+            <tbody>
+              {rows.map((row, ri) => (
+                <tr key={ri}>
+                  {row.map((cell, ci) => {
+                    const Tag: "th" | "td" = ri === 0 ? "th" : "td";
+                    const selected =
+                      (sel?.kind === "row" && sel.index === ri) ||
+                      (sel?.kind === "col" && sel.index === ci);
+                    return (
+                      <Tag
+                        key={ci}
+                        data-col={ci}
+                        className={
+                          "relative border border-line p-0 " +
+                          (ri === 0
+                            ? "text-label uppercase text-secondary"
+                            : "text-body")
+                        }
+                        style={
+                          selected ? { background: "var(--color-blueTint)" } : undefined
+                        }
+                      >
+                        <input
+                          type="text"
+                          value={cell ?? ""}
+                          disabled={locked}
+                          data-table-cell={`${ri},${ci}`}
+                          onFocus={() => setSel(null)}
+                          onChange={(e) => setCell(ri, ci, e.target.value)}
+                          onBlur={onBlur}
+                          className="w-full border-0 bg-transparent px-2 py-1 outline-none"
+                          style={{ textAlign: align[ci] ?? "left" }}
+                        />
+                        {ri === 0 && !locked && (
+                          // Resize grip on the right border of each
+                          // header cell. 8px wide, centred on the
+                          // border via translateX(4px). Pointer capture
+                          // keeps the drag alive even when the pointer
+                          // strays outside the handle mid-drag.
+                          <div
+                            role="separator"
+                            aria-label={`Resize column ${ci + 1}`}
+                            aria-orientation="vertical"
+                            onPointerDown={(e) => beginResize(e, ci)}
+                            onPointerMove={onResizeMove}
+                            onPointerUp={onResizeUp}
+                            onPointerCancel={onResizeUp}
+                            onDoubleClick={resetColumn}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                              position: "absolute",
+                              top: 0,
+                              right: 0,
+                              height: "100%",
+                              width: 8,
+                              transform: "translateX(4px)",
+                              cursor: "col-resize",
+                              zIndex: 2,
+                              touchAction: "none",
+                            }}
+                          />
+                        )}
+                      </Tag>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
 
-          {/* +row pill on the bottom edge, sibling of the row handle. */}
-          <AddPill
-            axis="row"
-            onClick={() => {
-              commit(addRow(rows, nRows));
-              requestAnimationFrame(() => {
-                const el = rootRef.current?.querySelector<HTMLInputElement>(
-                  `input[data-table-cell="${nRows},0"]`,
-                );
-                el?.focus();
-              });
-            }}
-          />
+          {!locked && (
+            <>
+              {/* Column handles — 16px hit strip whose visible pill sits
+                  7px above the header row (padding 23 − 16 hit = 7). */}
+              <div
+                aria-hidden={false}
+                className="pointer-events-none absolute opacity-0 transition-opacity group-hover/table:opacity-100"
+                style={{ top: 0, left: 23, right: 23, height: 16 }}
+              >
+                <div className="pointer-events-auto flex h-full items-stretch gap-0">
+                  {Array.from({ length: nCols }, (_, ci) => {
+                    const active = sel?.kind === "col" && sel.index === ci;
+                    return (
+                      <ColumnHandle
+                        key={ci}
+                        ci={ci}
+                        active={active}
+                        onClick={onColumnHandleClick}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
 
-          {/* First-contact hint — shown once, beneath the hovered table
-              while nothing is selected. Suppressed permanently after the
-              first menu open (localStorage: gio.tableHintSeen). */}
-          {!hintSeen && !sel && !menuSpec && (
-            <div
-              aria-hidden
-              className="pointer-events-none absolute opacity-0 transition-opacity group-hover/table:opacity-100"
-              style={{
-                left: 23,
-                right: 23,
-                bottom: -18,
-                fontSize: 12.5,
-                lineHeight: "16px",
-                color: "var(--color-faint)",
-              }}
-            >
-              Click a row or column handle for options
-            </div>
+              {/* Row handles — mirror on the left edge. */}
+              <div
+                aria-hidden={false}
+                className="pointer-events-none absolute opacity-0 transition-opacity group-hover/table:opacity-100"
+                style={{ left: 0, top: 23, bottom: 23, width: 16 }}
+              >
+                <div className="pointer-events-auto flex h-full flex-col items-stretch gap-0">
+                  {rows.map((_, ri) => {
+                    const active = sel?.kind === "row" && sel.index === ri;
+                    return (
+                      <RowHandle
+                        key={ri}
+                        ri={ri}
+                        active={active}
+                        onClick={onRowHandleClick}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* +column pill on the right edge of the content wrapper. */}
+              <AddPill
+                axis="col"
+                onClick={() => {
+                  commit(addColumn(rows, nCols), addAlign(align, nCols), addWidth(widths, nCols));
+                  requestAnimationFrame(() => {
+                    const el = rootRef.current?.querySelector<HTMLInputElement>(
+                      `input[data-table-cell="0,${nCols}"]`,
+                    );
+                    el?.focus();
+                  });
+                }}
+              />
+
+              {/* +row pill on the bottom edge of the content wrapper. */}
+              <AddPill
+                axis="row"
+                onClick={() => {
+                  commit(addRow(rows, nRows));
+                  requestAnimationFrame(() => {
+                    const el = rootRef.current?.querySelector<HTMLInputElement>(
+                      `input[data-table-cell="${nRows},0"]`,
+                    );
+                    el?.focus();
+                  });
+                }}
+              />
+            </>
           )}
-        </>
+        </div>
+      </div>
+
+      {/* Horizontal-overflow fades. Pinned to the OUTER root so they sit
+          on top of the scrolling content, not inside it — otherwise they
+          would scroll off with the table. Only rendered when there is
+          content to reveal in that direction. */}
+      {showFadeL && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 left-0"
+          style={{
+            width: 40,
+            zIndex: 3,
+            background:
+              "linear-gradient(to right, var(--color-canvas), transparent)",
+          }}
+        />
+      )}
+      {showFadeR && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0"
+          style={{
+            width: 40,
+            zIndex: 3,
+            background:
+              "linear-gradient(to left, var(--color-canvas), transparent)",
+          }}
+        />
+      )}
+
+      {/* First-contact hint — shown once, beneath the hovered table
+          while nothing is selected. Suppressed permanently after the
+          first menu open (localStorage: gio.tableHintSeen). */}
+      {!locked && !hintSeen && !sel && !menuSpec && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute opacity-0 transition-opacity group-hover/table:opacity-100"
+          style={{
+            left: 23,
+            right: 23,
+            bottom: -6,
+            fontSize: 12.5,
+            lineHeight: "16px",
+            color: "var(--color-faint)",
+          }}
+        >
+          Click a row or column handle for options
+        </div>
       )}
 
       <RowMenu spec={menuSpec} anchor={menuAnchor} onClose={closeMenu} />

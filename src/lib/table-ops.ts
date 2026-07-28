@@ -25,6 +25,24 @@
 export type TableRows = string[][];
 export type Align = "left" | "center" | "right";
 export type AlignList = Align[];
+export type WidthList = number[];
+
+/** Pixel bounds for a resizable column. MIN keeps a column addressable
+ *  by the mouse; MAX prevents a stray drag from producing an unusable,
+ *  page-wide monstrosity. Both are enforced in every widths-splicing op
+ *  so a bad value stored in the past (or received over realtime) is
+ *  clamped on the way in, not just at drag time. */
+export const WIDTH_MIN = 56;
+export const WIDTH_MAX = 1200;
+/** Fallback used when a widths op has to invent a value (a new column
+ *  spliced into an existing widths array). Chosen to match the typical
+ *  auto-share of a mid-page table so newly-inserted columns don't jump. */
+export const WIDTH_DEFAULT = 160;
+
+function clampWidth(px: number): number {
+  const n = Number.isFinite(px) ? Math.round(px) : WIDTH_DEFAULT;
+  return Math.max(WIDTH_MIN, Math.min(WIDTH_MAX, n));
+}
 
 function clone(rows: TableRows): TableRows {
   return rows.map((r) => r.slice());
@@ -41,6 +59,41 @@ export function normalizeAlign(align: AlignList | undefined, width: number): Ali
   const out: AlignList = [];
   for (let i = 0; i < w; i++) out.push(isAlign(src[i]) ? src[i] : "left");
   return out;
+}
+
+/** Force `widths` to length `width`, clamping every entry to [MIN, MAX]
+ *  and padding shortfalls with WIDTH_DEFAULT. Absence propagates —
+ *  passing `undefined` returns `undefined`, so a table without explicit
+ *  widths (today's auto layout) stays that way through normalisation. */
+export function normalizeWidths(
+  widths: WidthList | undefined,
+  width: number,
+): WidthList | undefined {
+  if (widths == null) return undefined;
+  if (!Array.isArray(widths)) return undefined;
+  const w = Math.max(1, width | 0);
+  const out: WidthList = [];
+  for (let i = 0; i < w; i++) {
+    const v = widths[i];
+    out.push(clampWidth(typeof v === "number" ? v : WIDTH_DEFAULT));
+  }
+  return out;
+}
+
+/** Set `widths[index]` to `px`, clamping to [WIDTH_MIN, WIDTH_MAX].
+ *  Out-of-range index returns a clone. Widths is required — callers seed
+ *  the array from measured column widths BEFORE the first setWidth call
+ *  so nothing jumps mid-drag. */
+export function setWidth(
+  widths: WidthList,
+  index: number,
+  px: number,
+): WidthList {
+  const src = normalizeWidths(widths, widths.length) ?? [];
+  if (index < 0 || index >= src.length) return src.slice();
+  const next = src.slice();
+  next[index] = clampWidth(px);
+  return next;
 }
 
 /** Force `rows` to a rectangle with at least 1×1 shape. Pads short rows
@@ -179,6 +232,72 @@ export function setAlign(
   if (index < 0 || index >= src.length) return src;
   const next = src.slice();
   next[index] = value;
+  return next;
+}
+
+/* ────────── Widths companions ──────────
+ *
+ * Each op mirrors its align counterpart, and callers thread them through
+ * the same commit path so widths never falls out of step with the column
+ * count. Every companion is a no-op (returns undefined) when `widths` is
+ * undefined — "no explicit widths" survives structural edits, matching
+ * the "absent stays absent" contract stated by the test suite. */
+
+/** Companion to addColumn: insert a fresh entry at `atIndex`. */
+export function addWidth(
+  widths: WidthList | undefined,
+  atIndex: number,
+  px: number = WIDTH_DEFAULT,
+): WidthList | undefined {
+  if (!widths) return undefined;
+  const src = normalizeWidths(widths, widths.length) ?? [];
+  const idx = Math.max(0, Math.min(atIndex, src.length));
+  const next = src.slice();
+  next.splice(idx, 0, clampWidth(px));
+  return next;
+}
+
+/** Companion to deleteColumn: drop `widths[index]`. Refuses at one entry. */
+export function deleteWidth(
+  widths: WidthList | undefined,
+  index: number,
+): WidthList | undefined {
+  if (!widths) return undefined;
+  const src = normalizeWidths(widths, widths.length) ?? [];
+  if (src.length <= 1) return src;
+  if (index < 0 || index >= src.length) return src;
+  const next = src.slice();
+  next.splice(index, 1);
+  return next;
+}
+
+/** Companion to duplicateColumn: copy `widths[index]` in place. */
+export function duplicateWidth(
+  widths: WidthList | undefined,
+  index: number,
+): WidthList | undefined {
+  if (!widths) return undefined;
+  const src = normalizeWidths(widths, widths.length) ?? [];
+  if (index < 0 || index >= src.length) return src;
+  const next = src.slice();
+  next.splice(index + 1, 0, src[index]);
+  return next;
+}
+
+/** Companion to moveColumn: reorder widths in step. */
+export function moveWidth(
+  widths: WidthList | undefined,
+  from: number,
+  to: number,
+): WidthList | undefined {
+  if (!widths) return undefined;
+  const src = normalizeWidths(widths, widths.length) ?? [];
+  if (from < 0 || from >= src.length) return src;
+  const dst = Math.max(0, Math.min(to, src.length - 1));
+  if (dst === from) return src;
+  const next = src.slice();
+  const [v] = next.splice(from, 1);
+  next.splice(dst, 0, v);
   return next;
 }
 
