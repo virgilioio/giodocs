@@ -119,7 +119,7 @@ const THEME_BOOT_SCRIPT = `(function(){try{var t=localStorage.getItem('gio.theme
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
         <HeadContent />

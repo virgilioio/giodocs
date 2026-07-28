@@ -1730,8 +1730,8 @@ export function EditableBody({
   );
 
   /* ────────── Markdown shortcuts on input (single source of truth) ────────── */
-  function tryMarkdown(id: string, val: string): boolean {
-    const r = tryMarkdownShortcut(blocks, id, val);
+  function tryMarkdown(id: string, val: string, caret: number): boolean {
+    const r = tryMarkdownShortcut(blocks, id, val, caret);
     if (!r) return false;
     applyOp(r);
     return true;
@@ -1934,18 +1934,12 @@ export function EditableBody({
           }}
           onChange={(patch) => updateBlock(b.id, patch)}
           onInput={(val) => {
-            // TEMP-INSTRUMENT: markdown-shortcut regression probe.
-            // Remove once the real-browser DOM shape is known.
-            // eslint-disable-next-line no-console
-            console.debug("[gio.shortcut.probe top]", {
-              val: JSON.stringify(val),
-              codes: [...val].map((c) => c.charCodeAt(0)),
-              blockType: blocks.find((x) => x.id === b.id)?.type,
-            });
             // Shortcut FIRST — on match, apply the structural op and skip
             // the text update, so a single keystroke produces exactly one
             // commit (one undo entry) and the caret lands per applyOp.
-            if (tryMarkdown(b.id, val)) return;
+            const el0 = refs.current[b.id];
+            const caret0 = el0 ? (readCaret(el0, val)?.start ?? val.length) : val.length;
+            if (tryMarkdown(b.id, val, caret0)) return;
             // Otherwise: commit the text update.
             updateBlock(b.id, { text: val });
 
@@ -3107,17 +3101,12 @@ function ColumnStack({
           }}
           onChange={(patch) => updateBlock(b.id, patch)}
           onInput={(val) => {
-            // TEMP-INSTRUMENT: markdown-shortcut regression probe (cols).
-            // eslint-disable-next-line no-console
-            console.debug("[gio.shortcut.probe col]", {
-              val: JSON.stringify(val),
-              codes: [...val].map((c) => c.charCodeAt(0)),
-              blockType: blocks.find((x) => x.id === b.id)?.type,
-            });
             // Same single-commit shape as top-level: shortcut first, then
             // the text update. Column scope goes through the same pure
             // op so the two paths cannot drift.
-            const mr = tryMarkdownShortcut(blocks, b.id, val);
+            const el0 = refs.current[b.id];
+            const caret0 = el0 ? (readCaret(el0, val)?.start ?? val.length) : val.length;
+            const mr = tryMarkdownShortcut(blocks, b.id, val, caret0);
             if (mr) {
               applyOp(mr);
               return;
