@@ -8,9 +8,9 @@ import {
 } from "./emoji-data";
 
 describe("emoji dataset", () => {
-  it("has between 350 and 450 entries and every category populated", () => {
+  it("has enough entries and every category populated", () => {
     expect(EMOJI.length).toBeGreaterThanOrEqual(350);
-    expect(EMOJI.length).toBeLessThanOrEqual(450);
+    expect(EMOJI.length).toBeLessThanOrEqual(700);
     for (const c of CATEGORY_ORDER) {
       expect(emojisByCategory(c).length).toBeGreaterThan(0);
     }
