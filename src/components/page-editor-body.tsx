@@ -1730,8 +1730,8 @@ export function EditableBody({
   );
 
   /* ────────── Markdown shortcuts on input (single source of truth) ────────── */
-  function tryMarkdown(id: string, val: string): boolean {
-    const r = tryMarkdownShortcut(blocks, id, val);
+  function tryMarkdown(id: string, val: string, caret: number): boolean {
+    const r = tryMarkdownShortcut(blocks, id, val, caret);
     if (!r) return false;
     applyOp(r);
     return true;
