@@ -2525,7 +2525,7 @@ function BlockContent({
   if (t === "callout") {
     return (
       <div
-        className="flex items-start gap-2 rounded-lg p-3"
+        className="group flex items-start gap-2 rounded-lg p-3"
         style={{
           borderRadius: 10,
           // Colour comes from a token resolved by name — never a stored hex.
