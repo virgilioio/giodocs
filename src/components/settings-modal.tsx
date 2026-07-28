@@ -411,7 +411,11 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
 /* ─────────────────────────── Preferences pane ─────────────────────────── */
 
 function PreferencesPane() {
-  const { prefs, set } = usePrefs();
+  const { prefs, set, theme, setTheme, resolvedTheme, systemPrefersDark } = usePrefs();
+  const appearanceHelp =
+    theme === "system"
+      ? `Following your device, which is currently ${systemPrefersDark ? "dark" : "light"}. Changes the moment your device does.`
+      : `Always ${resolvedTheme}, whatever your device is set to.`;
   return (
     <div>
       <PaneHeader
@@ -419,6 +423,17 @@ function PreferencesPane() {
         sub="How Gio Docs looks and behaves for you. These settings are yours alone."
       />
       <div style={{ padding: "0 30px 30px" }}>
+        <Row label="Appearance" help={appearanceHelp}>
+          <Segmented<ThemePref>
+            value={theme}
+            onChange={(v) => setTheme(v)}
+            options={[
+              { value: "light", label: "Light" },
+              { value: "dark", label: "Dark" },
+              { value: "system", label: "System" },
+            ]}
+          />
+        </Row>
         <Row label="Default page font" help="Applies to page body and headings.">
           <Segmented<FontFamily>
             value={prefs.fontFamily}
@@ -460,6 +475,7 @@ function PreferencesPane() {
     </div>
   );
 }
+
 
 /* ─────────────────────────── General pane ─────────────────────────── */
 
