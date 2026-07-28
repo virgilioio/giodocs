@@ -1934,7 +1934,12 @@ export function EditableBody({
           }}
           onChange={(patch) => updateBlock(b.id, patch)}
           onInput={(val) => {
+            // Shortcut FIRST — on match, apply the structural op and skip
+            // the text update, so a single keystroke produces exactly one
+            // commit (one undo entry) and the caret lands per applyOp.
             if (tryMarkdown(b.id, val)) return;
+            // Otherwise: commit the text update.
+            updateBlock(b.id, { text: val });
             const el = refs.current[b.id];
             const caret = el ? (readCaret(el, val)?.start ?? val.length) : val.length;
             const before = val.slice(0, caret);
@@ -2432,7 +2437,10 @@ function BlockContent({
       ref={(el) => registerRef(el)}
       source={rawText}
       onSourceChange={(val) => {
-        onChange({ text: val });
+        // Single-commit path. The block layer's onInput decides between
+        // a markdown-shortcut structural op and a text-only update, so a
+        // keystroke never fires two commits (which would push two undo
+        // entries for one action). See tryMarkdownShortcut wiring.
         onInput(val);
       }}
       onKeyDown={onKeyDown as (e: ReactKeyboardEvent<HTMLDivElement>) => void}
@@ -3090,11 +3098,15 @@ function ColumnStack({
           }}
           onChange={(patch) => updateBlock(b.id, patch)}
           onInput={(val) => {
+            // Same single-commit shape as top-level: shortcut first, then
+            // the text update. Column scope goes through the same pure
+            // op so the two paths cannot drift.
             const mr = tryMarkdownShortcut(blocks, b.id, val);
             if (mr) {
               applyOp(mr);
               return;
             }
+            updateBlock(b.id, { text: val });
             const el = refs.current[b.id];
             const caret = el ? (readCaret(el, val)?.start ?? val.length) : val.length;
             const before = val.slice(0, caret);
