@@ -1982,6 +1982,66 @@ export function EditableBody({
         const t = e.target as HTMLElement;
         if (t.tagName === "TEXTAREA" || t.tagName === "INPUT") clearSelection();
       }}
+      onContextMenu={(e) => {
+        // Right-click INSIDE a selected block opens the multi-block menu.
+        // Anywhere else the native context menu wins (no interference).
+        if (selectedIds.size === 0) return;
+        const t = e.target as HTMLElement | null;
+        const row = t?.closest?.("[data-block-id]") as HTMLElement | null;
+        if (!row) return;
+        const id = row.getAttribute("data-block-id");
+        if (!id || !selectedIds.has(id)) return;
+        e.preventDefault();
+        const n = selectedIds.size;
+        const rows: MenuRow[] = [
+          {
+            kind: "row",
+            label: "Copy",
+            icon: "copy",
+            hint: { text: "⌘C", mono: true },
+            onPick: () => {
+              closeSelMenu();
+              runCopySelection({ cut: false });
+            },
+          },
+          {
+            kind: "row",
+            label: "Cut",
+            icon: "scissors",
+            hint: { text: "⌘X", mono: true },
+            onPick: () => {
+              closeSelMenu();
+              runCopySelection({ cut: true });
+            },
+          },
+          {
+            kind: "row",
+            label: "Duplicate",
+            icon: "duplicate",
+            hint: { text: "⌘D", mono: true },
+            onPick: () => {
+              closeSelMenu();
+              runDuplicateSelected();
+            },
+          },
+          { kind: "sep" },
+          {
+            kind: "row",
+            label: "Delete",
+            icon: "trash",
+            danger: true,
+            hint: { text: "Del", mono: true },
+            onPick: () => {
+              closeSelMenu();
+              runDeleteSelected();
+            },
+          },
+        ];
+        setSelMenu({
+          anchor: row,
+          spec: { title: `${n} ${n === 1 ? "block" : "blocks"} selected`, rows },
+        });
+      }}
     >
 
       {blocks.map((b) => (
