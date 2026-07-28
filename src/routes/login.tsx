@@ -183,8 +183,9 @@ function LoginPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-noir font-bold text-ui"
-            style={{ height: 44, color: submitting ? "var(--color-secondary)" : "var(--color-track)" }}
+            className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-btn font-bold text-ui"
+            style={{ height: 44, color: submitting ? "var(--color-secondary)" : "var(--color-btnFg)" }}
+
           >
             {submitting ? (
               <>
