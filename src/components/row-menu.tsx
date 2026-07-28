@@ -37,9 +37,13 @@ export type MenuRow =
       label: string;
       /** 15px single-path icon key (from `IC`) or explicit path string. */
       icon?: string;
-      /** 8px status dot — mutually exclusive with icon/person. */
+      /** 8px status dot — mutually exclusive with icon/person/swatch. */
       dot?: string;
-      /** 20px pastel avatar — mutually exclusive with icon/dot. */
+      /** 14px filled circle with a 1px inset border. Replaces the icon
+       *  slot when a colour is the row's own mark (per menu spec — never
+       *  an icon AND a swatch). Mutually exclusive with icon/dot/person. */
+      swatch?: string;
+      /** 20px pastel avatar — mutually exclusive with icon/dot/swatch. */
       person?: { initials: string; tint: string; ink: string };
       hint?: MenuHint;
       checked?: boolean;
