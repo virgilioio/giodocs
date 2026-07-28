@@ -596,6 +596,28 @@ export function EditableBody({
     anchorId.current = null;
   }, []);
 
+  /* When a block selection is created (marquee / shift-click on a handle /
+   * click on a no-editor row) we blur any focused contenteditable and drop
+   * the browser's own DOM selection. Otherwise the native selection lingers
+   * invisibly next to ours and competes with ⌘C — this is the second half
+   * of the "selection beats focus" rule in shouldCopyBlocks. */
+  const blurAndClearDomSelection = useCallback(() => {
+    if (typeof document === "undefined") return;
+    const active = document.activeElement as HTMLElement | null;
+    if (active && (active.isContentEditable || active.tagName === "TEXTAREA" || active.tagName === "INPUT")) {
+      try {
+        active.blur();
+      } catch {
+        /* ignore */
+      }
+    }
+    try {
+      window.getSelection?.()?.removeAllRanges();
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const handleShiftClick = useCallback(
     (id: string) => {
       const ids = blocks.map((b) => b.id);
@@ -605,13 +627,15 @@ export function EditableBody({
       if (!anchor || ids.indexOf(anchor) < 0) {
         anchorId.current = id;
         setSelectedIds(new Set([id]));
+        blurAndClearDomSelection();
         return;
       }
       const aIdx = ids.indexOf(anchor);
       const [lo, hi] = aIdx <= targetIdx ? [aIdx, targetIdx] : [targetIdx, aIdx];
       setSelectedIds(new Set(ids.slice(lo, hi + 1)));
+      blurAndClearDomSelection();
     },
-    [blocks],
+    [blocks, blurAndClearDomSelection],
   );
 
   const [handleMenu, setHandleMenu] = useState<{
