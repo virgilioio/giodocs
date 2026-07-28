@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isTypingTarget, shouldSelectAllBlocks } from "./is-typing";
+import { isTypingTarget, shouldSelectAllBlocks, shouldCopyBlocks } from "./is-typing";
 
 // Minimal fake element implementing the tiny surface isTypingTarget uses:
 // `closest(selector)` returning self on match, walking up the parent chain,
@@ -79,5 +79,33 @@ describe("shouldSelectAllBlocks", () => {
   });
   it("selection from 0 but short of end → false", () => {
     expect(shouldSelectAllBlocks(0, 9, 10)).toBe(false);
+  });
+});
+
+describe("shouldCopyBlocks", () => {
+  const typing = fake({ tag: "textarea" }) as unknown as EventTarget;
+  const editable = fake({
+    tag: "div",
+    contenteditable: true,
+    isContentEditable: true,
+  }) as unknown as EventTarget;
+  const plain = fake({ tag: "div" }) as unknown as EventTarget;
+
+  it("selection > 0 → true regardless of target (contenteditable)", () => {
+    expect(shouldCopyBlocks(3, editable)).toBe(true);
+  });
+  it("selection > 0 → true regardless of target (textarea)", () => {
+    expect(shouldCopyBlocks(1, typing)).toBe(true);
+  });
+  it("selection > 0 → true even with null target", () => {
+    expect(shouldCopyBlocks(2, null)).toBe(true);
+  });
+  it("selection === 0 and target is typing → false", () => {
+    expect(shouldCopyBlocks(0, typing)).toBe(false);
+    expect(shouldCopyBlocks(0, editable)).toBe(false);
+  });
+  it("selection === 0 and target is non-typing → false (nothing to copy)", () => {
+    expect(shouldCopyBlocks(0, plain)).toBe(false);
+    expect(shouldCopyBlocks(0, null)).toBe(false);
   });
 });
