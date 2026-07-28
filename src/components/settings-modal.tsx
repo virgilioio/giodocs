@@ -29,7 +29,7 @@ import { useFormatDate } from "@/lib/format";
 import type { PageListItem } from "@/lib/types";
 import type { PendingInvite } from "./add-members-modal";
 
-export type SettingsPane = "preferences" | "general" | "people" | "emoji";
+export type SettingsPane = "profile" | "preferences" | "general" | "people" | "emoji";
 
 type MemberRow = {
   user_id: string;
