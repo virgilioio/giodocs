@@ -235,6 +235,72 @@ export function setAlign(
   return next;
 }
 
+/* ────────── Widths companions ──────────
+ *
+ * Each op mirrors its align counterpart, and callers thread them through
+ * the same commit path so widths never falls out of step with the column
+ * count. Every companion is a no-op (returns undefined) when `widths` is
+ * undefined — "no explicit widths" survives structural edits, matching
+ * the "absent stays absent" contract stated by the test suite. */
+
+/** Companion to addColumn: insert a fresh entry at `atIndex`. */
+export function addWidth(
+  widths: WidthList | undefined,
+  atIndex: number,
+  px: number = WIDTH_DEFAULT,
+): WidthList | undefined {
+  if (!widths) return undefined;
+  const src = normalizeWidths(widths, widths.length) ?? [];
+  const idx = Math.max(0, Math.min(atIndex, src.length));
+  const next = src.slice();
+  next.splice(idx, 0, clampWidth(px));
+  return next;
+}
+
+/** Companion to deleteColumn: drop `widths[index]`. Refuses at one entry. */
+export function deleteWidth(
+  widths: WidthList | undefined,
+  index: number,
+): WidthList | undefined {
+  if (!widths) return undefined;
+  const src = normalizeWidths(widths, widths.length) ?? [];
+  if (src.length <= 1) return src;
+  if (index < 0 || index >= src.length) return src;
+  const next = src.slice();
+  next.splice(index, 1);
+  return next;
+}
+
+/** Companion to duplicateColumn: copy `widths[index]` in place. */
+export function duplicateWidth(
+  widths: WidthList | undefined,
+  index: number,
+): WidthList | undefined {
+  if (!widths) return undefined;
+  const src = normalizeWidths(widths, widths.length) ?? [];
+  if (index < 0 || index >= src.length) return src;
+  const next = src.slice();
+  next.splice(index + 1, 0, src[index]);
+  return next;
+}
+
+/** Companion to moveColumn: reorder widths in step. */
+export function moveWidth(
+  widths: WidthList | undefined,
+  from: number,
+  to: number,
+): WidthList | undefined {
+  if (!widths) return undefined;
+  const src = normalizeWidths(widths, widths.length) ?? [];
+  if (from < 0 || from >= src.length) return src;
+  const dst = Math.max(0, Math.min(to, src.length - 1));
+  if (dst === from) return src;
+  const next = src.slice();
+  const [v] = next.splice(from, 1);
+  next.splice(dst, 0, v);
+  return next;
+}
+
 /** Insert a fresh empty row at `atIndex` (clamped to [0, rows.length]). */
 export function addRow(rows: TableRows, atIndex: number): TableRows {
   const src = normalizeTable(rows);
