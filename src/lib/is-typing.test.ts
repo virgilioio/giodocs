@@ -104,8 +104,8 @@ describe("shouldCopyBlocks", () => {
     expect(shouldCopyBlocks(0, typing)).toBe(false);
     expect(shouldCopyBlocks(0, editable)).toBe(false);
   });
-  it("selection === 0 and target is non-typing → false (nothing to copy)", () => {
-    expect(shouldCopyBlocks(0, plain)).toBe(false);
-    expect(shouldCopyBlocks(0, null)).toBe(false);
+  it("selection === 0 and target is non-typing → true (handler decides what to do)", () => {
+    expect(shouldCopyBlocks(0, plain)).toBe(true);
+    expect(shouldCopyBlocks(0, null)).toBe(true);
   });
 });
