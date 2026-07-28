@@ -25,9 +25,10 @@ export function blocksToClipboard(
 ): { markdown: string; html: string } {
   const ords = numberedOrdinals(blocks);
   const markdown = blocks
-    .map((b) =>
-      blockToMarkdown(b, b.type === "numbered" ? (ords.get(b.id) ?? 1) : 1),
-    )
+    .map((b) => {
+      const ord = b.type === "numbered" ? (ords.get(b.id) ?? 1) : 1;
+      return blockToMarkdown(b, ord);
+    })
     .join("\n\n");
   const html = blocksHtmlFragment(blocks);
   return { markdown, html };
