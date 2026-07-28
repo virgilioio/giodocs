@@ -106,7 +106,9 @@
 @keyframes shake   { 0%,100% { transform:translateX(0) } 25% { transform:translateX(-3px) } 75% { transform:translateX(3px) } }
 @keyframes skShimmer { from { background-position: 100% 0 } to { background-position: -100% 0 } }
 
-}
+@media (prefers-reduced-motion: reduce) { .animate-skShimmer { animation: none } }
+
+
 
 /* ─────────────────────────── THEME RESOLUTION ───────────────────────────
    Light values live on :root via @theme. Dark values override each
