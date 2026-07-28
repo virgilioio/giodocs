@@ -14,6 +14,7 @@
 import type { Block } from "./types";
 import { numberedOrdinals } from "./blocks";
 import { inlineToHtml } from "./inline-markdown";
+import { calloutBg } from "./callout-color";
 // Logo is inlined as a data URI so the exported HTML file is self-contained
 // (zero network requests). Vite `?raw` reads the file at build time; vitest
 // resolves the same way, so tests see the same string as the browser.
@@ -173,7 +174,8 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
       // deliberately LOSSY on round-trip: a caption becomes a `text` block
       // coming back through parseMarkdown. Do NOT invent a marker; the
       // structured HTML importer is the only path that preserves it.
-      // Same pragma as the `columns` case below — don't "fix" it later.
+      // Same pragma as the `columns` and `callout` (colour) cases below —
+      // three attributes Markdown cannot carry. Don't "fix" it later.
       return text;
     case "bullet":
       return `${pad}- ${text}`;
@@ -200,6 +202,9 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
     case "callout": {
       const icon =
         typeof b.icon === "string" && b.icon ? (b.icon as string) : "💡";
+      // A stored `color` is intentionally dropped here — see the note on
+      // the `caption` case for the same lossy pragma. HTML/PDF carry it
+      // via an inline background style in blockHtml.
       return `> ${icon} ${text}`;
     }
     case "divider":
@@ -354,7 +359,12 @@ function blockHtml(b: Block, ordinal = 1): string {
     case "callout": {
       const icon =
         typeof b.icon === "string" && b.icon ? (b.icon as string) : "💡";
-      return `<aside><span class="ico">${esc(icon)}</span><span>${inline(
+      // Callout colour survives to HTML/PDF as an inline background style
+      // pulled from the same token as the on-screen render. Markdown has
+      // no equivalent — the round-trip loss is documented in blockToMarkdown
+      // alongside caption and columns.
+      const bg = calloutBg((b as { color?: unknown }).color);
+      return `<aside style="background:${bg}"><span class="ico">${esc(icon)}</span><span>${inline(
         text,
       )}</span></aside>`;
     }

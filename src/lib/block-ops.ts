@@ -16,6 +16,7 @@ import { parseMarkdown } from "@/lib/markdown-import";
 import { htmlToMarkdown, htmlToBlocks } from "@/lib/html-to-markdown";
 import { emptyColumns } from "@/lib/columns";
 import { clampIndent } from "@/lib/blocks";
+import type { CalloutColor } from "@/lib/callout-color";
 
 /** Block types that participate in list indentation. Headings, quotes,
  *  callouts, code, tables, dividers, columns, captions, and toggles do
@@ -69,6 +70,10 @@ export type Blk = {
   language?: string;
   /** Only meaningful when type === "toggle". Absent = today's plain toggle. */
   level?: ToggleLevel;
+  /** Only meaningful when type === "callout". Absent === "neutral" (today's
+   *  appearance). Stored as a semantic name; the token mapping lives in
+   *  src/lib/callout-color.ts so a theme swap survives. */
+  color?: CalloutColor;
   /** Only meaningful when type === "columns". Never nested. */
   cols?: Blk[][];
   /** Flat outline level for list-like blocks (bullet, numbered, todo, text).

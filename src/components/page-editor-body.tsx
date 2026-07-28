@@ -98,6 +98,12 @@ import { FloatingToolbar } from "./floating-toolbar";
 import { Editable } from "./editable";
 import { readCaret, writeCaret } from "@/lib/caret-shim";
 import { ordinalLabel } from "@/lib/blocks";
+import {
+  CALLOUT_COLORS,
+  type CalloutColor,
+  calloutBg,
+  calloutLabel,
+} from "@/lib/callout-color";
 
 /** Module-local bridge: nested ColumnStack keystrokes set this before
  *  bubbling their new blocks up, so EditableBody.commit knows the
@@ -1531,7 +1537,56 @@ export function EditableBody({
         })),
       ];
 
+      // Colour is a per-callout attribute. Show ONLY when every block in
+      // the run is a callout — a colour row that silently skips non-
+      // callouts is worse than no row.
+      const allCallout = run.every((i) => blocks[i]?.type === "callout");
+      const currentColor: CalloutColor =
+        (target && (target as { color?: unknown }).color &&
+          (CALLOUT_COLORS as readonly string[]).includes(
+            (target as { color?: string }).color as string,
+          )
+          ? ((target as { color?: string }).color as CalloutColor)
+          : "neutral");
+      const colorSub: MenuRow[] = CALLOUT_COLORS.map((c) => ({
+        kind: "row" as const,
+        label: calloutLabel(c),
+        swatch: calloutBg(c),
+        checked: c === currentColor,
+        onPick: () => {
+          const next = [...blocks];
+          for (const i of run) {
+            if (next[i]?.type !== "callout") continue;
+            const nb: Blk = { ...next[i] };
+            if (c === "neutral") delete nb.color;
+            else nb.color = c;
+            next[i] = nb;
+          }
+          commit(next);
+          mctx.close();
+        },
+      }));
+
       const rows: MenuRow[] = [
+        ...(allCallout
+          ? ([
+              {
+                kind: "row" as const,
+                label: "Colour",
+                icon: "dot",
+                hint: { text: calloutLabel(currentColor) },
+                onPick: () =>
+                  mctx.setSpec({
+                    title: isMulti ? `${run.length} blocks` : "Colour",
+                    rows: colorSub,
+                    footer:
+                      "Backgrounds only — the text stays readable on all eight.",
+                    onBack: () => mctx.setSpec(buildBlockHandleSpec(blockId, mctx)),
+                  }),
+              },
+              { kind: "sep" as const },
+            ] as MenuRow[])
+          : []),
         {
           kind: "row",
           label: "Turn into",
@@ -2467,8 +2522,13 @@ function BlockContent({
   if (t === "callout") {
     return (
       <div
-        className="flex items-start gap-2 rounded-lg bg-sunken p-3"
-        style={{ borderRadius: 10 }}
+        className="flex items-start gap-2 rounded-lg p-3"
+        style={{
+          borderRadius: 10,
+          // Colour comes from a token resolved by name — never a stored hex.
+          // Absent === neutral === today's bg-sunken.
+          background: calloutBg((block as { color?: unknown }).color),
+        }}
       >
         <CalloutIconPicker icon={block.icon ?? "💡"} onPick={onSetIcon} disabled={locked} />
         {renderProse(

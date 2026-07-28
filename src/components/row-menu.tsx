@@ -37,9 +37,13 @@ export type MenuRow =
       label: string;
       /** 15px single-path icon key (from `IC`) or explicit path string. */
       icon?: string;
-      /** 8px status dot — mutually exclusive with icon/person. */
+      /** 8px status dot — mutually exclusive with icon/person/swatch. */
       dot?: string;
-      /** 20px pastel avatar — mutually exclusive with icon/dot. */
+      /** 14px filled circle with a 1px inset border. Replaces the icon
+       *  slot when a colour is the row's own mark (per menu spec — never
+       *  an icon AND a swatch). Mutually exclusive with icon/dot/person. */
+      swatch?: string;
+      /** 20px pastel avatar — mutually exclusive with icon/dot/swatch. */
       person?: { initials: string; tint: string; ink: string };
       hint?: MenuHint;
       checked?: boolean;
@@ -296,6 +300,22 @@ function SpecRow({ row }: { row: Extract<MenuRow, { kind: "row" }> }) {
         >
           {row.person.initials}
         </span>
+      ) : row.swatch ? (
+        <span
+          aria-hidden
+          style={{
+            width: 14,
+            height: 14,
+            borderRadius: 99,
+            background: row.swatch,
+            // A 1px INSET border keeps the swatch visible against the
+            // white panel even for the palest tints.
+            boxShadow: "inset 0 0 0 1px var(--color-line)",
+            flex: "none",
+            marginLeft: 0,
+            marginRight: 1,
+          }}
+        />
       ) : row.dot ? (
         <span
           aria-hidden
