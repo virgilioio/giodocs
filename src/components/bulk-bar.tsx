@@ -478,8 +478,8 @@ export function BulkBar(props: {
           display: "flex",
           alignItems: "center",
           gap: 10,
-          background: "var(--color-noir)",
-          color: "var(--color-track)",
+          background: "var(--color-btn)",
+          color: "var(--color-btnFg)",
           borderRadius: 9,
           padding: "7px 8px 7px 13px",
           boxShadow: "0 8px 24px rgba(13,13,9,.22)",
@@ -550,7 +550,7 @@ export function BulkBar(props: {
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = "rgba(255,255,255,.08)";
-            e.currentTarget.style.color = "var(--color-track)";
+            e.currentTarget.style.color = "var(--color-btnFg)";
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = "transparent";

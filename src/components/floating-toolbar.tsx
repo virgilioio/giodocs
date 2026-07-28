@@ -192,7 +192,7 @@ export function FloatingToolbar() {
     display: "grid",
     placeItems: "center",
     borderRadius: 6,
-    color: "var(--color-track)",
+    color: "var(--color-btnFg)",
     fontSize: 15,
     fontFamily: "Lato, sans-serif",
     lineHeight: 1,
@@ -243,9 +243,9 @@ export function FloatingToolbar() {
     height: 34,
     padding: "0 4px",
     borderRadius: 9,
-    background: "var(--color-noir)",
+    background: "var(--color-btn)",
     boxShadow: "0 8px 24px rgba(13,13,9,.22)",
-    color: "var(--color-track)",
+    color: "var(--color-btnFg)",
     zIndex: 70,
     display: "flex",
     alignItems: "center",
@@ -315,7 +315,7 @@ export function FloatingToolbar() {
               background: linkError
                 ? "rgba(255,80,80,.18)"
                 : "rgba(255,255,255,.10)",
-              color: "var(--color-track)",
+              color: "var(--color-btnFg)",
               border: 0,
               outline: "none",
               borderRadius: 6,
@@ -395,7 +395,7 @@ export function FloatingToolbar() {
               <span
                 style={{
                   background: activeHighlight ? undefined : "var(--color-highlight)",
-                  color: activeHighlight ? undefined : "var(--color-noir)",
+                  color: activeHighlight ? undefined : "var(--color-btn)",
                   padding: "1px 4px",
                   borderRadius: 3,
                   fontWeight: 600,
