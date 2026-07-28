@@ -169,3 +169,40 @@ describe("Editable — locked", () => {
     expect(el.getAttribute("contenteditable")).toBe("false");
   });
 });
+
+/* DOM→source boundary — the layer that was untested and the layer that
+ * broke markdown shortcuts. When a user types a trailing space in a
+ * contenteditable, browsers insert U+00A0 (non-breaking space). Every
+ * MARKDOWN_SHORTCUTS pattern ends in a regular space; if the nbsp is
+ * not normalised at the boundary, "1.\u00A0" never matches /^\d+\. $/
+ * and no shortcut fires. These tests assert the exact DOM shape a
+ * browser produces after those keystrokes commits a normalised source.
+ */
+describe("Editable — DOM→source boundary normalises U+00A0", () => {
+  it('typing "1." then space commits exactly "1. " (regular space)', () => {
+    const changes: string[] = [];
+    const el = mount({ source: "", onSourceChange: (s) => changes.push(s) });
+    el.innerHTML = "1.\u00a0";
+    fireInput(el);
+    expect(changes.at(-1)).toBe("1. ");
+    expect(changes.at(-1)!.charCodeAt(2)).toBe(0x20);
+  });
+
+  it('typing "*" then space commits exactly "* "', () => {
+    const changes: string[] = [];
+    const el = mount({ source: "", onSourceChange: (s) => changes.push(s) });
+    el.innerHTML = "*\u00a0";
+    fireInput(el);
+    expect(changes.at(-1)).toBe("* ");
+    expect(changes.at(-1)!.charCodeAt(1)).toBe(0x20);
+  });
+
+  it("mid-text nbsp is normalised to a regular space", () => {
+    const changes: string[] = [];
+    const el = mount({ source: "", onSourceChange: (s) => changes.push(s) });
+    el.innerHTML = "a\u00a0b";
+    fireInput(el);
+    expect(changes.at(-1)).toBe("a b");
+  });
+});
+
