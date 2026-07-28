@@ -21,13 +21,14 @@ import {
   type ColumnRef,
 } from "@/lib/reorder";
 import { blockToMarkdown } from "@/lib/export";
+import { writeBlocksClipboard } from "@/lib/blocks-clipboard";
 import { renderInlineWithOffsets } from "@/lib/inline-markdown";
 import { numberedOrdinals } from "@/lib/blocks";
 import { rowsInBand } from "@/lib/marquee";
 import { blockHandleFooter } from "@/lib/block-handle-footer";
 import { useToast } from "@/lib/toast";
 import { RowMenu, type MenuSpec, type MenuRow } from "./row-menu";
-import { isTypingTarget } from "@/lib/is-typing";
+import { isTypingTarget, shouldCopyBlocks } from "@/lib/is-typing";
 import { nextEditableIndex } from "@/lib/block-nav";
 import { stripNestedColumns } from "@/lib/columns";
 import {
