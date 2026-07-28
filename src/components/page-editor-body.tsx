@@ -2728,7 +2728,7 @@ function CalloutIconPicker({
             aria-label="Change icon"
             aria-expanded={open}
             title="Change icon"
-            className="grid place-items-center cursor-pointer callout-icon-btn"
+            className="grid place-items-center cursor-pointer transition-colors group-hover:bg-sunken/60 hover:bg-sunken/60"
             style={{ width: 24, height: 24, fontSize: 18, lineHeight: 1, borderRadius: 4 }}
           >
             {icon}
