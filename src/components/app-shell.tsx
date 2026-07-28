@@ -83,7 +83,12 @@ type Selection =
   | { kind: "page"; id: string }
   | null;
 
-const COLLAPSE_KEY = "gio.sidebar.collapsed";
+// gio.sidebarOpen — boolean, default true. Renamed from an earlier
+// "collapsed" flag: the topbar toggle and ⌘\ keybind read/write this,
+// and the rendered rail width is `open ? sidebarWidth : 0`. Preserving
+// the user's chosen width across a collapse is the point — see R1 in
+// the task brief.
+const SIDEBAR_OPEN_KEY = "gio.sidebarOpen";
 const SECTION_KEY = "gio.sidebar.sections"; // JSON { my:boolean, team:boolean, areas:boolean }
 const SIDEBAR_W_KEY = "gio.sidebarWidth";
 const SIDEBAR_MIN = 200;
