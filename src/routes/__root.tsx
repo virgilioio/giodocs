@@ -111,10 +111,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   errorComponent: ErrorComponent,
 });
 
+// Runs BEFORE React hydrates, so a dark-mode user never sees a white flash
+// on load. Reads gio.theme from localStorage (falling back to matchMedia)
+// and sets data-theme on <html> before body content paints. Deliberately
+// minified and quote-safe for inline injection.
+const THEME_BOOT_SCRIPT = `(function(){try{var t=localStorage.getItem('gio.theme');if(t!=='light'&&t!=='dark'&&t!=='system')t='system';var d=t==='system'?(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches):t==='dark';document.documentElement.setAttribute('data-theme',d?'dark':'light');}catch(e){}})();`;
+
 function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
         <HeadContent />
       </head>
       <body>
@@ -124,6 +131,7 @@ function RootShell({ children }: { children: ReactNode }) {
     </html>
   );
 }
+
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
