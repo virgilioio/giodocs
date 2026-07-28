@@ -2397,6 +2397,13 @@ export function EditableBody({
           onClose={closeHandleMenu}
         />
       ) : null}
+      {selMenu ? (
+        <RowMenu
+          spec={selMenu.spec}
+          anchor={selMenu.anchor}
+          onClose={closeSelMenu}
+        />
+      ) : null}
       <FloatingToolbar />
     </div>
     </ColumnBridgeCtx.Provider>
