@@ -14,6 +14,7 @@
 import type { Block } from "./types";
 import { numberedOrdinals } from "./blocks";
 import { inlineToHtml } from "./inline-markdown";
+import { calloutBg } from "./callout-color";
 // Logo is inlined as a data URI so the exported HTML file is self-contained
 // (zero network requests). Vite `?raw` reads the file at build time; vitest
 // resolves the same way, so tests see the same string as the browser.
