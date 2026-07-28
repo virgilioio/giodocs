@@ -40,11 +40,23 @@ import {
   type UndoEntry,
 } from "@/lib/undo-stack";
 import {
+  type Align,
+  type AlignList,
   normalizeTable,
+  normalizeAlign,
   addColumn,
+  addAlign,
   addRow,
   deleteColumn,
+  deleteAlign,
   deleteRow,
+  duplicateColumn,
+  duplicateAlign,
+  duplicateRow,
+  moveColumn,
+  moveAlign,
+  moveRow,
+  setAlign,
   clearRow,
   clearColumn,
 } from "@/lib/table-ops";
