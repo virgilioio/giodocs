@@ -3878,8 +3878,12 @@ function TableBlock({
 /* ────────────── Table handle components ──────────────
    Split out so we can attach local hover state (for the grip glyph)
    without re-rendering every handle whenever a sibling row/column is
-   hovered. Both handles use the same 16px hit target with a 10px visible
-   strip aligned to the table edge; they only differ in axis. */
+   hovered. Both handles share a 16px hit target; the visible pill is
+   6px thick at rest/hover and 8px while selected. All three sit 7px
+   from the table (paddingLeft/Top/Right/Bottom 23 − 16 hit = 7). */
+
+const HANDLE_TRANSITION =
+  "background 90ms ease, height 90ms ease, width 90ms ease";
 
 function ColumnHandle({
   ci,
@@ -3894,8 +3898,9 @@ function ColumnHandle({
   const bg = active
     ? "var(--color-blue)"
     : hover
-      ? "var(--color-lineStrong)"
-      : "var(--color-lineSoft)";
+      ? "var(--color-rule)"
+      : "var(--color-line)";
+  const thickness = active ? 8 : 6;
   return (
     <button
       type="button"
@@ -3911,21 +3916,20 @@ function ColumnHandle({
         aria-hidden
         style={{
           position: "absolute",
-          left: 1,
-          right: 1,
+          left: 3,
+          right: 3,
           bottom: 0,
-          height: 10,
-          borderRadius: 2,
+          height: thickness,
+          borderRadius: 999,
           background: bg,
-          transition: "background 90ms ease",
+          transition: HANDLE_TRANSITION,
         }}
       />
       {hover && !active && (
         <svg
           aria-hidden
-          viewBox="0 0 24 24"
-          width={16}
-          height={10}
+          width={12}
+          height={thickness}
           style={{
             position: "absolute",
             left: "50%",
@@ -3934,9 +3938,8 @@ function ColumnHandle({
             pointerEvents: "none",
           }}
         >
-          <circle cx={6} cy={12} r={1.7} fill="var(--color-surface)" />
-          <circle cx={12} cy={12} r={1.7} fill="var(--color-surface)" />
-          <circle cx={18} cy={12} r={1.7} fill="var(--color-surface)" />
+          <circle cx={3.5} cy={thickness / 2} r={1.35} fill="var(--color-surface)" />
+          <circle cx={8.5} cy={thickness / 2} r={1.35} fill="var(--color-surface)" />
         </svg>
       )}
     </button>
@@ -3956,8 +3959,9 @@ function RowHandle({
   const bg = active
     ? "var(--color-blue)"
     : hover
-      ? "var(--color-lineStrong)"
-      : "var(--color-lineSoft)";
+      ? "var(--color-rule)"
+      : "var(--color-line)";
+  const thickness = active ? 8 : 6;
   return (
     <button
       type="button"
@@ -3973,21 +3977,20 @@ function RowHandle({
         aria-hidden
         style={{
           position: "absolute",
-          top: 1,
-          bottom: 1,
+          top: 3,
+          bottom: 3,
           right: 0,
-          width: 10,
-          borderRadius: 2,
+          width: thickness,
+          borderRadius: 999,
           background: bg,
-          transition: "background 90ms ease",
+          transition: HANDLE_TRANSITION,
         }}
       />
       {hover && !active && (
         <svg
           aria-hidden
-          viewBox="0 0 24 24"
-          width={10}
-          height={16}
+          width={thickness}
+          height={12}
           style={{
             position: "absolute",
             top: "50%",
@@ -3996,11 +3999,74 @@ function RowHandle({
             pointerEvents: "none",
           }}
         >
-          <circle cx={12} cy={6} r={1.7} fill="var(--color-surface)" />
-          <circle cx={12} cy={12} r={1.7} fill="var(--color-surface)" />
-          <circle cx={12} cy={18} r={1.7} fill="var(--color-surface)" />
+          <circle cx={thickness / 2} cy={3.5} r={1.35} fill="var(--color-surface)" />
+          <circle cx={thickness / 2} cy={8.5} r={1.35} fill="var(--color-surface)" />
         </svg>
       )}
+    </button>
+  );
+}
+
+/* AddPill — sibling of the handle pills on the right (col) and bottom
+   (row) edges. Same 16px hit target, same 6px pill, same colour treatment;
+   only difference is the + glyph rendered on top in faint→muted. */
+function AddPill({
+  axis,
+  onClick,
+}: {
+  axis: "row" | "col";
+  onClick: () => void;
+}) {
+  const [hover, setHover] = useState(false);
+  const bg = hover ? "var(--color-rule)" : "var(--color-line)";
+  const glyph = hover ? "var(--color-muted)" : "var(--color-faint)";
+  const isCol = axis === "col";
+  return (
+    <button
+      type="button"
+      aria-label={isCol ? "Add column" : "Add row"}
+      title={isCol ? "Add column" : "Add row"}
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      className="absolute hidden group-hover/table:block"
+      style={{
+        cursor: "pointer",
+        background: "transparent",
+        ...(isCol
+          ? { right: 0, top: 23, bottom: 23, width: 16 }
+          : { bottom: 0, left: 23, right: 23, height: 16 }),
+      }}
+    >
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          borderRadius: 999,
+          background: bg,
+          transition: HANDLE_TRANSITION,
+          ...(isCol
+            ? { top: 3, bottom: 3, left: 0, width: 6 }
+            : { left: 3, right: 3, top: 0, height: 6 }),
+        }}
+      />
+      <svg
+        aria-hidden
+        width={10}
+        height={10}
+        viewBox="0 0 10 10"
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          transform: "translate(-50%, -50%)",
+          pointerEvents: "none",
+          color: glyph,
+          transition: "color 90ms ease",
+        }}
+      >
+        <path d="M5 1v8M1 5h8" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" />
+      </svg>
     </button>
   );
 }
