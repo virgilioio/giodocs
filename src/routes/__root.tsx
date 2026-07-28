@@ -34,7 +34,7 @@ function NotFoundComponent() {
         <div className="mt-6">
           <Link
             to="/"
-            className="inline-flex items-center justify-center rounded-md bg-noir px-4 py-2 text-ui font-bold text-canvas transition-colors hover:bg-strong"
+            className="inline-flex items-center justify-center rounded-md bg-btn px-4 py-2 text-ui font-bold text-btnFg transition-colors hover:bg-strong"
           >
             Go home
           </Link>
@@ -66,7 +66,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
               router.invalidate();
               reset();
             }}
-            className="inline-flex items-center justify-center rounded-md bg-noir px-4 py-2 text-ui font-bold text-canvas transition-colors hover:bg-strong"
+            className="inline-flex items-center justify-center rounded-md bg-btn px-4 py-2 text-ui font-bold text-btnFg transition-colors hover:bg-strong"
           >
             Try again
           </button>
@@ -111,10 +111,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   errorComponent: ErrorComponent,
 });
 
+// Runs BEFORE React hydrates, so a dark-mode user never sees a white flash
+// on load. Reads gio.theme from localStorage (falling back to matchMedia)
+// and sets data-theme on <html> before body content paints. Deliberately
+// minified and quote-safe for inline injection.
+const THEME_BOOT_SCRIPT = `(function(){try{var t=localStorage.getItem('gio.theme');if(t!=='light'&&t!=='dark'&&t!=='system')t='system';var d=t==='system'?(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches):t==='dark';document.documentElement.setAttribute('data-theme',d?'dark':'light');}catch(e){}})();`;
+
 function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
         <HeadContent />
       </head>
       <body>
@@ -124,6 +131,7 @@ function RootShell({ children }: { children: ReactNode }) {
     </html>
   );
 }
+
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();

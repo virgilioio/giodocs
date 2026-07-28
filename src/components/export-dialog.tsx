@@ -305,7 +305,7 @@ export function ExportDialog({
             style={{
               marginTop: 14,
               padding: "10px 12px",
-              background: "var(--color-track)",
+              background: "var(--color-btnFg)",
               border: "1px solid var(--color-line)",
               borderRadius: 9,
               display: "flex",
@@ -368,8 +368,8 @@ export function ExportDialog({
               borderRadius: 9,
               background: busy
                 ? "var(--color-secondary)"
-                : "var(--color-noir)",
-              color: "var(--color-track)",
+                : "var(--color-btn)",
+              color: "var(--color-btnFg)",
             }}
           >
             {busy ? "Preparing…" : "Export"}
@@ -495,7 +495,7 @@ const PickerButton = forwardRef<
       style={{
         width,
         padding: "6px 10px",
-        background: "var(--color-track)",
+        background: "var(--color-btnFg)",
         border: "1px solid var(--color-line)",
         borderRadius: 8,
         fontSize: 14,
@@ -527,7 +527,7 @@ function ScaleInput({
         display: "flex",
         alignItems: "center",
         gap: 4,
-        background: "var(--color-track)",
+        background: "var(--color-btnFg)",
         border: "1px solid var(--color-line)",
         borderRadius: 8,
         padding: "4px 8px",

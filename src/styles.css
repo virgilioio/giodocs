@@ -30,9 +30,15 @@
   --color-yellowInk:#7A6A10; --color-yellowTint:#FAF4C4;
   --color-highlight:#FFF4B8;
 
+  /* Role tokens that resolve OPPOSITELY to noir/track in dark mode.
+     --color-btn / --color-btnFg are the surface + label for primary
+     buttons; --color-knob is toggle-knob white in both themes. */
+  --color-btn:#0d0d09; --color-btnFg:#FAFAF7; --color-knob:#FFFFFF;
+
   --font-display: "Poppins", system-ui, sans-serif;
   --font-sans: "Lato", system-ui, sans-serif;
   --font-mono: "Spline Sans Mono", ui-monospace, monospace;
+
 
   --text-display: 38px;
   --text-display--line-height: 1.10;
@@ -101,6 +107,75 @@
 @keyframes skShimmer { from { background-position: 100% 0 } to { background-position: -100% 0 } }
 
 @media (prefers-reduced-motion: reduce) { .animate-skShimmer { animation: none } }
+
+
+
+/* ─────────────────────────── THEME RESOLUTION ───────────────────────────
+   Light values live on :root via @theme. Dark values override each
+   --color-* token on [data-theme="dark"]. Every utility class in the app
+   resolves var(--color-*) at use time, so a single override block
+   themes every existing component with no component changes.
+
+   color-scheme controls native chrome (scrollbars, form checkboxes,
+   default caret colour) — decorative-looking but essential.
+
+   Two role tokens are separate from the palette because they must move
+   in OPPOSITE directions from --color-noir / --color-track under dark:
+     --color-btn   — primary-button background (dark on light, light on dark)
+     --color-btnFg — primary-button label     (light on light, dark on dark)
+   --color-knob stays white in both themes (toggle knobs must not invert).
+   ────────────────────────────────────────────────────────────────────── */
+
+:root { color-scheme: light; }
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-canvas:#171613; --color-surface:#201E1B; --color-rail:#1B1A17;
+  --color-sunken:#262420; --color-track:#1E1D19; --color-railHover:#2C2A25;
+  --color-selected:#38352E;
+  --color-line:#302D27; --color-lineSoft:#262420; --color-lineStrong:#3E3A33;
+  --color-rule:#524C44;
+
+  --color-noir:#F5F3EE; --color-body:#E3E0D8; --color-strong:#ECE9E1;
+  --color-secondary:#B3AFA6; --color-muted:#9A958C; --color-faint:#8A857D;
+  --color-whisper:#6F6A62;
+
+  --color-accent:#34C68D; --color-accentHover:#4FD6A0; --color-accentDot:#3ED89B;
+  --color-accentTint:#12352A; --color-accentWash:#16412F; --color-accentRing:#1E5A44;
+
+  --color-amber:#E4A64A; --color-amberInk:#F2BE6B; --color-amberDot:#F0A93E;
+  --color-amberTint:#3A2D11; --color-amberRing:#57431A;
+
+  --color-danger:#F08A7E; --color-dangerDot:#F0958A;
+  --color-dangerTint:#3A1917; --color-dangerRing:#58251F;
+
+  --color-blue:#7FA6FF; --color-blueInk:#A8C0FF;
+  --color-blueTint:#17233D; --color-blueWash:#1B2A47;
+
+  --color-purple:#C3A6F5; --color-purpleTint:#241A3A;
+  --color-pink:#F58FBB; --color-pinkInk:#F58FBB; --color-pinkTint:#3A182A;
+
+  --color-yellowInk:#DCCB6A; --color-yellowTint:#332D0F;
+  --color-highlight:#6B5A18;
+
+  /* Primary-button roles invert. Knob stays white. */
+  --color-btn:#F0EDE6; --color-btnFg:#171613;
+
+  /* Noir-tinted shadows disappear on a dark surface — override with true
+     black at higher alpha so cards and popovers still lift off the page. */
+  --shadow-card: 0 1px 2px rgba(0,0,0,.35);
+  --shadow-cardHover: 0 3px 10px rgba(0,0,0,.45);
+  --shadow-popover: 0 18px 48px rgba(0,0,0,.55);
+  --shadow-modal: 0 30px 80px rgba(0,0,0,.65);
+  --shadow-toast: 0 10px 30px rgba(0,0,0,.6);
+}
+
+/* The wordmark is a near-black single-colour SVG and vanishes on a dark
+   surface. Invert only this asset — nothing else. */
+[data-theme="dark"] img[alt="Gio Docs"] { filter: invert(1); }
+
+
 
 @layer base {
   html { -webkit-font-smoothing: antialiased; }

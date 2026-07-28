@@ -42,7 +42,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {items.map((t) => (
           <div
             key={t.id}
-            className="pointer-events-auto flex max-w-md items-center gap-3 rounded-lg bg-noir px-4 py-2 text-meta text-canvas shadow-toast animate-toastUp"
+            className="pointer-events-auto flex max-w-md items-center gap-3 rounded-lg bg-btn px-4 py-2 text-meta text-btnFg shadow-toast animate-toastUp"
           >
             <span>{t.message}</span>
             {t.action ? (
@@ -52,7 +52,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   t.action!.onClick();
                   dismiss(t.id);
                 }}
-                className="rounded-md px-2 py-0.5 text-meta font-bold text-canvas hover:bg-white/10"
+                className="rounded-md px-2 py-0.5 text-meta font-bold text-btnFg hover:bg-white/10"
               >
                 {t.action.label}
               </button>

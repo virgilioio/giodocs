@@ -245,7 +245,7 @@ function ViewHeader({
         <button
           type="button"
           onClick={onNewPage}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-noir text-track"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-btn text-btnFg"
           style={{ height: 30, padding: "0 13px", fontSize: 13.5, fontWeight: 700 }}
         >
           <Glyph path="M12 5v14M5 12h14" className="h-3 w-3" />

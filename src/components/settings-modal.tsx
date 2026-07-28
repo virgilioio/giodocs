@@ -19,7 +19,7 @@ import {
   useRemoveMember,
 } from "@/hooks/use-workspace-mutations";
 import { useCreateView } from "@/hooks/use-page-mutations";
-import { usePrefs, type FontFamily, type Density, type DateFormatMode } from "@/lib/preferences";
+import { usePrefs, type FontFamily, type Density, type DateFormatMode, type ThemePref } from "@/lib/preferences";
 import { useToast } from "@/lib/toast";
 import { useFormatDate } from "@/lib/format";
 import type { PageListItem } from "@/lib/types";
@@ -411,7 +411,11 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
 /* ─────────────────────────── Preferences pane ─────────────────────────── */
 
 function PreferencesPane() {
-  const { prefs, set } = usePrefs();
+  const { prefs, set, theme, setTheme, resolvedTheme, systemPrefersDark } = usePrefs();
+  const appearanceHelp =
+    theme === "system"
+      ? `Following your device, which is currently ${systemPrefersDark ? "dark" : "light"}. Changes the moment your device does.`
+      : `Always ${resolvedTheme}, whatever your device is set to.`;
   return (
     <div>
       <PaneHeader
@@ -419,6 +423,17 @@ function PreferencesPane() {
         sub="How Gio Docs looks and behaves for you. These settings are yours alone."
       />
       <div style={{ padding: "0 30px 30px" }}>
+        <Row label="Appearance" help={appearanceHelp}>
+          <Segmented<ThemePref>
+            value={theme}
+            onChange={(v) => setTheme(v)}
+            options={[
+              { value: "light", label: "Light" },
+              { value: "dark", label: "Dark" },
+              { value: "system", label: "System" },
+            ]}
+          />
+        </Row>
         <Row label="Default page font" help="Applies to page body and headings.">
           <Segmented<FontFamily>
             value={prefs.fontFamily}
@@ -460,6 +475,7 @@ function PreferencesPane() {
     </div>
   );
 }
+
 
 /* ─────────────────────────── General pane ─────────────────────────── */
 
@@ -825,7 +841,7 @@ function PeoplePane({
           <button
             type="button"
             onClick={onOpenInvite}
-            className="inline-flex items-center gap-1 bg-noir text-track"
+            className="inline-flex items-center gap-1 bg-btn text-btnFg"
             style={{ borderRadius: 10, padding: "6px 13px", fontSize: 13.5, fontWeight: 700 }}
           >
             <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
