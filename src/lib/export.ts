@@ -202,6 +202,9 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
     case "callout": {
       const icon =
         typeof b.icon === "string" && b.icon ? (b.icon as string) : "💡";
+      // A stored `color` is intentionally dropped here — see the note on
+      // the `caption` case for the same lossy pragma. HTML/PDF carry it
+      // via an inline background style in blockHtml.
       return `> ${icon} ${text}`;
     }
     case "divider":
