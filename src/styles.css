@@ -30,9 +30,15 @@
   --color-yellowInk:#7A6A10; --color-yellowTint:#FAF4C4;
   --color-highlight:#FFF4B8;
 
+  /* Role tokens that resolve OPPOSITELY to noir/track in dark mode.
+     --color-btn / --color-btnFg are the surface + label for primary
+     buttons; --color-knob is toggle-knob white in both themes. */
+  --color-btn:#0d0d09; --color-btnFg:#FAFAF7; --color-knob:#FFFFFF;
+
   --font-display: "Poppins", system-ui, sans-serif;
   --font-sans: "Lato", system-ui, sans-serif;
   --font-mono: "Spline Sans Mono", ui-monospace, monospace;
+
 
   --text-display: 38px;
   --text-display--line-height: 1.10;
