@@ -354,7 +354,12 @@ function blockHtml(b: Block, ordinal = 1): string {
     case "callout": {
       const icon =
         typeof b.icon === "string" && b.icon ? (b.icon as string) : "💡";
-      return `<aside><span class="ico">${esc(icon)}</span><span>${inline(
+      // Callout colour survives to HTML/PDF as an inline background style
+      // pulled from the same token as the on-screen render. Markdown has
+      // no equivalent — the round-trip loss is documented in blockToMarkdown
+      // alongside caption and columns.
+      const bg = calloutBg((b as { color?: unknown }).color);
+      return `<aside style="background:${bg}"><span class="ico">${esc(icon)}</span><span>${inline(
         text,
       )}</span></aside>`;
     }
