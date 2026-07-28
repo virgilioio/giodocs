@@ -96,6 +96,8 @@ import { resolveKey, type Op as KeyOp } from "@/lib/block-key-handler";
 import { toggleWrap } from "@/lib/toggle-wrap";
 import { FloatingToolbar } from "./floating-toolbar";
 import { Editable } from "./editable";
+import { EmojiPicker } from "./emoji-picker";
+import { Popover } from "./popover";
 import { readCaret, writeCaret } from "@/lib/caret-shim";
 import { ordinalLabel } from "@/lib/blocks";
 import {
