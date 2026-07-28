@@ -3656,28 +3656,71 @@ function TableBlock({
   function openRowMenu(anchor: HTMLElement, index: number) {
     setMenuSpec(buildRowSpec(index));
     setMenuAnchor(anchor);
+    suppressHint();
   }
 
+  // Right-click chooser: two rows that swap the panel in place to the row
+  // or column menu, sharing the anchor. Used by the cell context-menu path
+  // where we do not yet know which axis the user wants.
+  function buildChooserSpec(rowIndex: number, colIndex: number): MenuSpec {
+    return {
+      title: `Row ${rowIndex + 1} · Column ${colIndex + 1}`,
+      rows: [
+        {
+          kind: "row",
+          label: "Row actions",
+          icon: "list",
+          hint: { text: "›" },
+          onPick: () => setMenuSpec(buildRowSpec(rowIndex)),
+        },
+        {
+          kind: "row",
+          label: "Column actions",
+          icon: "board",
+          hint: { text: "›" },
+          onPick: () => setMenuSpec(buildColumnSpec(colIndex)),
+        },
+      ],
+    };
+  }
+
+  // One click on a handle now selects AND opens the menu in the same
+  // gesture. Two clicks to reach a menu is a hunt; one is a control.
   function onColumnHandleClick(e: React.MouseEvent<HTMLButtonElement>, index: number) {
     e.stopPropagation();
     if (locked) return;
-    if (sel && sel.kind === "col" && sel.index === index) {
-      openColumnMenu(e.currentTarget, index);
-    } else {
-      setSel({ kind: "col", index });
-      closeMenu();
-    }
+    setSel({ kind: "col", index });
+    openColumnMenu(e.currentTarget, index);
   }
 
   function onRowHandleClick(e: React.MouseEvent<HTMLButtonElement>, index: number) {
     e.stopPropagation();
     if (locked) return;
-    if (sel && sel.kind === "row" && sel.index === index) {
-      openRowMenu(e.currentTarget, index);
-    } else {
-      setSel({ kind: "row", index });
-      closeMenu();
-    }
+    setSel({ kind: "row", index });
+    openRowMenu(e.currentTarget, index);
+  }
+
+  // Right-click inside a cell — read the cell's row/col off the input's
+  // data attribute, preventDefault only within this table so the browser's
+  // own menu still works everywhere else, and open the chooser anchored to
+  // the cell.
+  function onTableContextMenu(e: React.MouseEvent<HTMLDivElement>) {
+    if (locked) return;
+    const el = (e.target as HTMLElement | null)?.closest?.(
+      "input[data-table-cell]",
+    ) as HTMLInputElement | null;
+    if (!el) return;
+    const attr = el.getAttribute("data-table-cell");
+    if (!attr) return;
+    const [rStr, cStr] = attr.split(",");
+    const r = Number(rStr);
+    const c = Number(cStr);
+    if (!Number.isFinite(r) || !Number.isFinite(c)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setMenuSpec(buildChooserSpec(r, c));
+    setMenuAnchor(el);
+    suppressHint();
   }
 
   // Click into any cell deselects the row/column selection.
