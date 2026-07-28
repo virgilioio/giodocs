@@ -64,7 +64,6 @@ import {
   deleteWidth,
   duplicateWidth,
   moveWidth,
-  setWidth,
   normalizeWidths,
   WIDTH_MIN,
   WIDTH_MAX,
