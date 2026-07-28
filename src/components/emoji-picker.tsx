@@ -211,7 +211,7 @@ export function EmojiPicker({
             return (
               <div
                 key={cat}
-                ref={(el) => (sectionRefs.current[cat] = el)}
+                ref={(el) => { sectionRefs.current[cat] = el; }}
               >
                 <div
                   className="sticky top-0 z-[1] bg-surface pb-1 pt-2 text-label uppercase text-faint"
