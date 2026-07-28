@@ -331,7 +331,7 @@ export function AppShell() {
     shell.pages.isLoading || shell.views.isLoading || shell.workspace.isLoading;
 
   const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (collapsed) return;
+    if (!sidebarOpen) return;
     e.preventDefault();
     const startX = e.clientX;
     const startW = sidebarWidth;
@@ -377,7 +377,7 @@ export function AppShell() {
     >
       <div
         style={{
-          width: collapsed ? 0 : "var(--gio-sidebar-w)",
+          width: sidebarOpen ? "var(--gio-sidebar-w)" : 0,
           transition: resizing ? "none" : "width 180ms ease",
         }}
         className="relative shrink-0 overflow-hidden border-r border-line bg-rail"
@@ -417,7 +417,7 @@ export function AppShell() {
             onCloseSidebarPopover={() => setSidebarPopover(null)}
           />
         </div>
-        {!collapsed && (
+        {sidebarOpen && (
           <div
             role="separator"
             aria-orientation="vertical"
