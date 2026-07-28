@@ -20,7 +20,6 @@ import {
   type Path as ReorderPath,
   type ColumnRef,
 } from "@/lib/reorder";
-import { blockToMarkdown } from "@/lib/export";
 import { writeBlocksClipboard } from "@/lib/blocks-clipboard";
 import { renderInlineWithOffsets } from "@/lib/inline-markdown";
 import { numberedOrdinals } from "@/lib/blocks";
