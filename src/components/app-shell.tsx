@@ -196,6 +196,17 @@ export function AppShell() {
         setSettingsOpen((v) => !v);
         return;
       }
+      // ⌘\ toggles the sidebar. Guard against typing targets so it does
+      // not fire while editing text — same rule as every other global
+      // shortcut in this handler.
+      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
+        if (isTypingTarget(e.target)) return;
+        e.preventDefault();
+        setSidebarPopover(null);
+        setAccountMenu(false);
+        setSidebarOpen((v) => !v);
+        return;
+      }
       if (e.key === "Escape") {
         // Ordered dismissal — topmost layer first.
         if (inviteOpen) {
