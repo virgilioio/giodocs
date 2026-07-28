@@ -16,6 +16,7 @@ import { parseMarkdown } from "@/lib/markdown-import";
 import { htmlToMarkdown, htmlToBlocks } from "@/lib/html-to-markdown";
 import { emptyColumns } from "@/lib/columns";
 import { clampIndent } from "@/lib/blocks";
+import type { CalloutColor } from "@/lib/callout-color";
 
 /** Block types that participate in list indentation. Headings, quotes,
  *  callouts, code, tables, dividers, columns, captions, and toggles do
