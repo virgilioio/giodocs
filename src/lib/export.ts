@@ -380,13 +380,24 @@ function blockHtml(b: Block, ordinal = 1): string {
         while (c.length < width) c.push("");
         return c;
       };
+      // Per-column text-align, defaulting to left. Emitting the style on
+      // every th/td keeps HTML and PDF matching the on-screen table.
+      const alignArr = Array.isArray(b.align) ? (b.align as unknown[]) : [];
+      const alignAt = (i: number): string => {
+        const a = alignArr[i];
+        return a === "center" || a === "right" ? String(a) : "left";
+      };
+      const styleFor = (i: number) => ` style="text-align:${alignAt(i)}"`;
       const head = pad(rows[0])
-        .map((c) => `<th>${esc(c)}</th>`)
+        .map((c, i) => `<th${styleFor(i)}>${esc(c)}</th>`)
         .join("");
       const body = rows
         .slice(1)
         .map(
-          (r) => `<tr>${pad(r).map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`,
+          (r) =>
+            `<tr>${pad(r)
+              .map((c, i) => `<td${styleFor(i)}>${esc(c)}</td>`)
+              .join("")}</tr>`,
         )
         .join("");
       return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
