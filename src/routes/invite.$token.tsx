@@ -143,7 +143,7 @@ function InviteCard({
         <button
           type="button"
           onClick={onGoLogin}
-          className="mt-5 inline-flex h-11 items-center justify-center rounded-lg bg-noir px-5 font-bold text-ui text-track"
+          className="mt-5 inline-flex h-11 items-center justify-center rounded-lg bg-btn px-5 font-bold text-ui text-btnFg"
         >
           Go to sign in
         </button>
@@ -250,7 +250,7 @@ function MismatchCase({
           await supabase.auth.signOut();
           // Component will re-render into SignupCase once session flips to null.
         }}
-        className="mt-5 flex w-full items-center justify-center rounded-lg bg-noir font-bold text-ui text-track"
+        className="mt-5 flex w-full items-center justify-center rounded-lg bg-btn font-bold text-ui text-btnFg"
         style={{ height: 44 }}
       >
         Sign out and continue
@@ -298,7 +298,7 @@ function JoinCase({
           }
           onAccepted();
         }}
-        className="mt-6 flex w-full items-center justify-center rounded-lg bg-noir font-bold text-ui text-track"
+        className="mt-6 flex w-full items-center justify-center rounded-lg bg-btn font-bold text-ui text-btnFg"
         style={{ height: 44, color: busy ? "var(--color-secondary)" : "var(--color-track)" }}
       >
         {busy ? "Joining…" : `Join ${preview.workspace_name}`}
@@ -381,7 +381,7 @@ function SignupCase({
         <button
           type="button"
           onClick={onSwitchToLogin}
-          className="mt-5 flex w-full items-center justify-center rounded-lg bg-noir font-bold text-ui text-track"
+          className="mt-5 flex w-full items-center justify-center rounded-lg bg-btn font-bold text-ui text-btnFg"
           style={{ height: 44 }}
         >
           Go to sign in
@@ -451,7 +451,7 @@ function SignupCase({
       <button
         type="submit"
         disabled={!canSubmit || busy}
-        className="mt-5 flex w-full items-center justify-center rounded-lg bg-noir font-bold text-ui text-track disabled:opacity-60"
+        className="mt-5 flex w-full items-center justify-center rounded-lg bg-btn font-bold text-ui text-btnFg disabled:opacity-60"
         style={{ height: 44, color: busy || !canSubmit ? "var(--color-secondary)" : "var(--color-track)" }}
       >
         {busy ? "Creating your account…" : `Join ${preview.workspace_name}`}

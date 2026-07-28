@@ -34,7 +34,7 @@ function NotFoundComponent() {
         <div className="mt-6">
           <Link
             to="/"
-            className="inline-flex items-center justify-center rounded-md bg-noir px-4 py-2 text-ui font-bold text-canvas transition-colors hover:bg-strong"
+            className="inline-flex items-center justify-center rounded-md bg-btn px-4 py-2 text-ui font-bold text-btnFg transition-colors hover:bg-strong"
           >
             Go home
           </Link>
@@ -66,7 +66,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
               router.invalidate();
               reset();
             }}
-            className="inline-flex items-center justify-center rounded-md bg-noir px-4 py-2 text-ui font-bold text-canvas transition-colors hover:bg-strong"
+            className="inline-flex items-center justify-center rounded-md bg-btn px-4 py-2 text-ui font-bold text-btnFg transition-colors hover:bg-strong"
           >
             Try again
           </button>

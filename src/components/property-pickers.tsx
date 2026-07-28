@@ -183,7 +183,7 @@ function AreaPickerBody({
             onPick(neu.trim());
             close();
           }}
-          className="rounded-sm bg-noir px-2 text-meta font-bold text-canvas disabled:opacity-40"
+          className="rounded-sm bg-btn px-2 text-meta font-bold text-btnFg disabled:opacity-40"
         >
           Set
         </button>
@@ -417,7 +417,7 @@ function TagsPickerBody({
             setNeu("");
             close();
           }}
-          className="rounded-sm bg-noir px-2 text-meta font-bold text-canvas disabled:opacity-40"
+          className="rounded-sm bg-btn px-2 text-meta font-bold text-btnFg disabled:opacity-40"
         >
           Add
         </button>

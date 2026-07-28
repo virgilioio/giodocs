@@ -523,7 +523,7 @@ export function AddMembersModal({
             type="button"
             onClick={handleSend}
             disabled={!sendReady}
-            className={sendReady ? "bg-noir text-track" : "bg-sunken text-whisper"}
+            className={sendReady ? "bg-btn text-btnFg" : "bg-sunken text-whisper"}
             style={{
               height: 42,
               borderRadius: 10,
