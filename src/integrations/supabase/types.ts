@@ -261,7 +261,9 @@ export type Database = {
       }
       profiles: {
         Row: {
+          avatar_face: number
           avatar_ink: string
+          avatar_skin: number
           avatar_tint: string
           created_at: string
           email: string
@@ -269,7 +271,9 @@ export type Database = {
           id: string
         }
         Insert: {
+          avatar_face?: number
           avatar_ink?: string
+          avatar_skin?: number
           avatar_tint?: string
           created_at?: string
           email: string
@@ -277,7 +281,9 @@ export type Database = {
           id: string
         }
         Update: {
+          avatar_face?: number
           avatar_ink?: string
+          avatar_skin?: number
           avatar_tint?: string
           created_at?: string
           email?: string
@@ -632,6 +638,7 @@ export type Database = {
       }
       is_member: { Args: { p_ws: string }; Returns: boolean }
       is_owner: { Args: { p_ws: string }; Returns: boolean }
+      leave_workspace: { Args: { p_workspace: string }; Returns: undefined }
       list_areas: {
         Args: { p_workspace: string }
         Returns: {

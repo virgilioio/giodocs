@@ -1,9 +1,13 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { qk } from "@/lib/query-keys";
 import { useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
@@ -25,7 +29,7 @@ import { useFormatDate } from "@/lib/format";
 import type { PageListItem } from "@/lib/types";
 import type { PendingInvite } from "./add-members-modal";
 
-export type SettingsPane = "preferences" | "general" | "people" | "emoji";
+export type SettingsPane = "profile" | "preferences" | "general" | "people" | "emoji";
 
 type MemberRow = {
   user_id: string;
@@ -84,6 +88,8 @@ const ICON_PEOPLE =
   "M9 3.6a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2zM2 20.4v-1.8a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v1.8M16.5 3.9a3.6 3.6 0 0 1 0 7M22 20.4v-1.8a4 4 0 0 0-3-3.8";
 const ICON_SMILEY =
   "M12 3.2a8.8 8.8 0 1 0 0 17.6 8.8 8.8 0 0 0 0-17.6zM8.7 14.4a4.4 4.4 0 0 0 6.6 0M9.2 9.6h.01M14.8 9.6h.01";
+const ICON_PERSON =
+  "M12 3.4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 20.6v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2";
 const ICON_CLOSE = "M6 6l12 12M18 6L6 18";
 const ICON_PLUS = "M12 5v14M5 12h14";
 
@@ -155,6 +161,7 @@ export function SettingsModal({
               <path d={ICON_CLOSE} />
             </svg>
           </button>
+          {pane === "profile" && <MyProfilePane onClose={onClose} />}
           {pane === "preferences" && <PreferencesPane />}
           {pane === "general" && <GeneralPane />}
           {pane === "people" && (
@@ -184,6 +191,7 @@ function SettingsNav({ pane, onPick }: { pane: SettingsPane; onPick: (p: Setting
 
   type NavItem = { key: SettingsPane; label: string; path: string; group: "ACCOUNT" | "WORKSPACE" };
   const items: NavItem[] = [
+    { key: "profile", label: "My profile", path: ICON_PERSON, group: "ACCOUNT" },
     { key: "preferences", label: "Preferences", path: ICON_SLIDERS, group: "ACCOUNT" },
     { key: "general", label: "General", path: ICON_GEAR, group: "WORKSPACE" },
     { key: "people", label: "People", path: ICON_PEOPLE, group: "WORKSPACE" },
@@ -1356,6 +1364,522 @@ function EmojiPane() {
           Derived from what your pages, areas and views actually use — nothing to configure.
         </p>
       </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────── My profile ─────────────────────────── */
+
+function ProfileSectionHeading({ children }: { children: ReactNode }) {
+  return (
+    <h3
+      className="font-display text-strong"
+      style={{
+        fontSize: 17,
+        fontWeight: 600,
+        letterSpacing: "-0.02em",
+        borderBottom: "1px solid var(--color-line)",
+        paddingBottom: 8,
+        marginBottom: 14,
+        marginTop: 26,
+      }}
+    >
+      {children}
+    </h3>
+  );
+}
+
+function MyProfilePane({ onClose }: { onClose: () => void }) {
+  const { user, profile } = useAuth();
+  const ws = useWorkspaceId();
+  const shell = useWorkspaceShell(ws);
+  const workspace = shell.workspace.data;
+  const members = (shell.members.data ?? []) as unknown as MemberRow[];
+  const pages = (shell.pages.data ?? []) as PageListItem[];
+  const toast = useToast();
+  const navigate = useNavigate();
+  const createView = useCreateView();
+  const qc = useQueryClient();
+
+  const myId = user?.id ?? "";
+  const myRow = members.find((m) => m.user_id === myId);
+  const role = (myRow?.role as "owner" | "member" | undefined) ?? "member";
+  const workspaceName = workspace?.name ?? "this workspace";
+
+  // ── §2 name (debounced, drop-and-replace, one in-flight) ──
+  const [name, setName] = useState(profile?.full_name ?? "");
+  const initialLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!initialLoadedRef.current && profile?.full_name != null) {
+      setName(profile.full_name);
+      initialLoadedRef.current = true;
+    }
+  }, [profile?.full_name]);
+
+  const timerRef = useRef<number | null>(null);
+  const inflightRef = useRef<Promise<void> | null>(null);
+  const nextRef = useRef<string | null>(null);
+
+  async function runSave() {
+    if (inflightRef.current) return;
+    const value = nextRef.current;
+    if (value === null) return;
+    nextRef.current = null;
+    const p = (async () => {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ full_name: value })
+        .eq("id", myId);
+      if (error) {
+        toast.push(error.message);
+        return;
+      }
+      qc.setQueryData<unknown>(qk.members(ws), (old: unknown) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((m) => {
+          const row = m as { user_id: string; profiles?: { full_name?: string } | null };
+          if (row.user_id !== myId) return m;
+          return { ...row, profiles: { ...(row.profiles ?? {}), full_name: value } };
+        });
+      });
+    })();
+    inflightRef.current = p.finally(() => {
+      inflightRef.current = null;
+      if (nextRef.current !== null) runSave();
+    });
+  }
+
+  function scheduleSave(next: string) {
+    nextRef.current = next;
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(runSave, 500);
+  }
+
+  useEffect(() => () => {
+    if (timerRef.current) window.clearTimeout(timerRef.current);
+  }, []);
+
+  const initials = initialsOf(name || user?.email || "?");
+  const avatarTint = profile?.avatar_tint ?? "var(--color-sunken)";
+  const avatarInk = profile?.avatar_ink ?? "var(--color-secondary)";
+
+  // ── §3 password ──
+  const [pwOpen, setPwOpen] = useState(false);
+  const [curPw, setCurPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [pwErr, setPwErr] = useState<string | null>(null);
+  const [pwBusy, setPwBusy] = useState(false);
+  const newLen = newPw.length;
+  const newLongEnough = newLen >= 10;
+  const canSubmit = curPw.length > 0 && newLongEnough && !pwBusy;
+  const hintText =
+    newLen === 0
+      ? "At least 10 characters. Longer beats complicated."
+      : !newLongEnough
+        ? `${10 - newLen} more character${10 - newLen === 1 ? "" : "s"}`
+        : "Long enough.";
+  const hintClass =
+    newLen === 0 || !newLongEnough ? "text-faint" : "text-accent";
+
+  async function submitPassword() {
+    if (!canSubmit || !user?.email) return;
+    setPwBusy(true);
+    setPwErr(null);
+    const { error: signErr } = await supabase.auth.signInWithPassword({
+      email: user.email,
+      password: curPw,
+    });
+    if (signErr) {
+      setPwBusy(false);
+      setPwErr("That current password did not match.");
+      return;
+    }
+    const { error: upErr } = await supabase.auth.updateUser({ password: newPw });
+    setPwBusy(false);
+    if (upErr) {
+      setPwErr(upErr.message);
+      return;
+    }
+    setCurPw("");
+    setNewPw("");
+    setPwOpen(false);
+    toast.push("Password updated — you stay signed in on this device");
+  }
+
+  // ── §5 stats ──
+  const stateDays = workspace?.stale_days ?? 90;
+  const staleThreshold = Date.now() - stateDays * 24 * 60 * 60 * 1000;
+  const ownedPages = useMemo(
+    () => pages.filter((p) => propsOf(p)["owner"] === myId),
+    [pages, myId],
+  );
+  const staleOwned = ownedPages.filter(
+    (p) => new Date(p.verified_at).getTime() < staleThreshold,
+  ).length;
+  const verifiedByMe = pages.filter((p) => p.verified_by === myId).length;
+
+  function openView(name: string, filter: unknown, sort: unknown) {
+    createView.mutate(
+      {
+        name,
+        filter: filter as never,
+        sort: sort as never,
+        layout: "table",
+      },
+      {
+        onSuccess: (row) => {
+          onClose();
+          navigate({ to: "/v/$viewId", params: { viewId: row.id } });
+          toast.push(`Saved '${name}' to My views`);
+        },
+      },
+    );
+  }
+
+  // ── §6 leave ──
+  const ownedCount = ownedPages.length;
+  const [leaving, setLeaving] = useState(false);
+  async function onLeave() {
+    if (ownedCount > 0) {
+      toast.push(
+        `Reassign your ${ownedCount} page${ownedCount === 1 ? "" : "s"} first — set a new owner on each`,
+      );
+      return;
+    }
+    setLeaving(true);
+    const { error } = await supabase.rpc("leave_workspace", { p_workspace: ws });
+    setLeaving(false);
+    if (error) {
+      toast.push(error.message);
+      return;
+    }
+    await supabase.auth.signOut();
+    navigate({ to: "/login", replace: true });
+  }
+
+  return (
+    <div>
+      <PaneHeader
+        title="My profile"
+        sub={`Your name and avatar, as everyone at ${workspaceName} sees them.`}
+      />
+
+      <div style={{ maxWidth: 620, padding: "0 32px 40px" }}>
+        {/* §2 YOU */}
+        <ProfileSectionHeading>You</ProfileSectionHeading>
+        <div className="flex" style={{ gap: 20, alignItems: "flex-start" }}>
+          <div
+            className="grid place-items-center rounded-full font-display shrink-0"
+            style={{
+              width: 64,
+              height: 64,
+              backgroundColor: avatarTint,
+              color: avatarInk,
+              fontSize: 22,
+              fontWeight: 700,
+            }}
+            aria-hidden
+          >
+            {initials}
+          </div>
+          <div className="min-w-0 flex-1">
+            <label
+              className="block text-strong"
+              style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 6 }}
+            >
+              Name
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                scheduleSave(e.target.value);
+              }}
+              className="w-full bg-track border border-line text-strong"
+              style={{
+                borderRadius: 9,
+                padding: "8px 10px",
+                fontSize: 14.5,
+              }}
+            />
+            <p className="text-muted" style={{ fontSize: 13.5, marginTop: 8 }}>
+              Everyone sees this on pages you own and pages you verify. Your initials come from it.
+            </p>
+          </div>
+        </div>
+
+        {/* §3 SIGN-IN */}
+        <ProfileSectionHeading>Sign-in</ProfileSectionHeading>
+        <div>
+          <div
+            className="grid items-center"
+            style={{
+              gridTemplateColumns: "150px 1fr",
+              gap: 12,
+              padding: "10px 0",
+              borderBottom: "1px solid var(--color-lineSoft)",
+            }}
+          >
+            <div className="text-strong" style={{ fontSize: 13.5, fontWeight: 700 }}>
+              Email
+            </div>
+            <div>
+              <div className="text-strong" style={{ fontSize: 14.5 }}>
+                {user?.email}
+              </div>
+              <div className="text-faint" style={{ fontSize: 12.5, marginTop: 4 }}>
+                This is how you sign in, and its domain is what put you in {workspaceName}. An owner changes it.
+              </div>
+            </div>
+          </div>
+
+          <div
+            className="grid items-start"
+            style={{
+              gridTemplateColumns: "150px 1fr",
+              gap: 12,
+              padding: "12px 0",
+            }}
+          >
+            <div className="text-strong" style={{ fontSize: 13.5, fontWeight: 700, paddingTop: 6 }}>
+              Password
+            </div>
+            <div>
+              {!pwOpen ? (
+                <button
+                  type="button"
+                  onClick={() => setPwOpen(true)}
+                  className="border border-line text-strong hover:bg-sunken hover:border-rule"
+                  style={{
+                    borderRadius: 8,
+                    padding: "6px 12px",
+                    fontSize: 13.5,
+                  }}
+                >
+                  Change password
+                </button>
+              ) : (
+                <div className="flex flex-col" style={{ gap: 10 }}>
+                  <input
+                    type="password"
+                    autoComplete="current-password"
+                    placeholder="Current password"
+                    value={curPw}
+                    onChange={(e) => setCurPw(e.target.value)}
+                    className="w-full bg-track border border-line text-strong"
+                    style={{ borderRadius: 9, padding: "8px 10px", fontSize: 14.5 }}
+                  />
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="New password"
+                    value={newPw}
+                    onChange={(e) => setNewPw(e.target.value)}
+                    className="w-full bg-track border border-line text-strong"
+                    style={{ borderRadius: 9, padding: "8px 10px", fontSize: 14.5 }}
+                  />
+                  <div className={hintClass} style={{ fontSize: 12.5 }}>
+                    {hintText}
+                  </div>
+                  {pwErr ? (
+                    <div className="text-danger" style={{ fontSize: 12.5 }}>
+                      {pwErr}
+                    </div>
+                  ) : null}
+                  <div className="flex items-center" style={{ gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={submitPassword}
+                      disabled={!canSubmit}
+                      className={
+                        canSubmit
+                          ? "bg-btn text-btnFg"
+                          : "bg-sunken text-whisper cursor-not-allowed"
+                      }
+                      style={{
+                        borderRadius: 8,
+                        padding: "6px 14px",
+                        fontSize: 13.5,
+                        fontWeight: 700,
+                      }}
+                    >
+                      Update password
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPwOpen(false);
+                        setCurPw("");
+                        setNewPw("");
+                        setPwErr(null);
+                      }}
+                      className="text-muted hover:text-strong"
+                      style={{ fontSize: 13.5, padding: "6px 4px" }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* §4 YOUR ROLE */}
+        <ProfileSectionHeading>Your role</ProfileSectionHeading>
+        <div className="flex" style={{ gap: 12, alignItems: "flex-start" }}>
+          <span
+            className={
+              role === "owner"
+                ? "bg-accentTint text-accent font-display"
+                : "bg-sunken text-secondary font-display"
+            }
+            style={{
+              fontSize: 11.5,
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              borderRadius: 6,
+              padding: "4px 9px",
+              flexShrink: 0,
+            }}
+          >
+            {role === "owner" ? "Owner" : "Member"}
+          </span>
+          <p className="text-secondary" style={{ fontSize: 13.5, lineHeight: 1.55 }}>
+            {role === "owner"
+              ? "You can publish team views, invite people, and change workspace settings. "
+              : "You can read and edit every open page, create views, and verify pages. Publishing a team view and changing workspace settings are owner-only. "}
+            Only an owner can change this, in People.
+          </p>
+        </div>
+
+        {/* §5 YOUR WORK HERE */}
+        <ProfileSectionHeading>Your work here</ProfileSectionHeading>
+        <div className="flex" style={{ gap: 12, flexWrap: "wrap" }}>
+          <ProfileStatCard
+            interactive
+            n={ownedCount}
+            label="pages you own"
+            onClick={() =>
+              openView(
+                "Owned by me",
+                [{ op: "is_me", prop: "owner" }],
+                { prop: "edited", dir: "desc" },
+              )
+            }
+          />
+          <ProfileStatCard
+            interactive
+            n={staleOwned}
+            amber={staleOwned > 0}
+            label="of them need re-verifying"
+            onClick={() =>
+              openView(
+                "Mine, needs review",
+                [{ op: "is_me", prop: "owner" }, { op: "stale" }],
+                { prop: "verified", dir: "asc" },
+              )
+            }
+          />
+          <ProfileStatCard
+            interactive={false}
+            n={verifiedByMe}
+            label="pages you last verified"
+          />
+        </div>
+        <p className="text-muted" style={{ fontSize: 13.5, marginTop: 14, lineHeight: 1.55 }}>
+          Owning a page means keeping it true, not writing all of it. That middle number is the only one worth acting on.
+        </p>
+
+        {/* §6 LEAVE */}
+        <ProfileSectionHeading>Leave {workspaceName}</ProfileSectionHeading>
+        <div className="flex" style={{ gap: 12, alignItems: "flex-start" }}>
+          <p className="flex-1 text-secondary" style={{ fontSize: 13.5, lineHeight: 1.55 }}>
+            {ownedCount > 0
+              ? `You own ${ownedCount} page${ownedCount === 1 ? "" : "s"}. Reassign them before you go — no page is left without an owner.`
+              : "You own nothing here, so nothing is left behind. An owner has to invite you back."}
+          </p>
+          <button
+            type="button"
+            onClick={onLeave}
+            disabled={leaving}
+            className={
+              ownedCount > 0
+                ? "border border-line text-whisper hover:bg-dangerTint hover:border-dangerRing shrink-0"
+                : "border border-line text-danger hover:bg-dangerTint hover:border-dangerRing shrink-0"
+            }
+            style={{
+              borderRadius: 8,
+              padding: "6px 12px",
+              fontSize: 13.5,
+              fontWeight: 700,
+            }}
+          >
+            Leave workspace
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProfileStatCard({
+  n,
+  label,
+  interactive,
+  amber,
+  onClick,
+}: {
+  n: number;
+  label: string;
+  interactive: boolean;
+  amber?: boolean;
+  onClick?: () => void;
+}) {
+  const content = (
+    <>
+      <div
+        className={amber ? "text-amberInk font-display tnum" : "text-strong font-display tnum"}
+        style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.04em", lineHeight: 1 }}
+      >
+        {n}
+      </div>
+      <div className="text-muted" style={{ fontSize: 12.5, marginTop: 6 }}>
+        {label}
+      </div>
+      {interactive ? (
+        <div
+          className="text-accent"
+          style={{ fontSize: 12, fontWeight: 700, marginTop: 10 }}
+        >
+          Save as my view →
+        </div>
+      ) : null}
+    </>
+  );
+  const base = {
+    flex: "1 1 0",
+    minWidth: 150,
+    borderRadius: 11,
+    padding: "12px 14px",
+  } as const;
+  if (interactive) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="text-left border border-line bg-surface hover:bg-track hover:border-rule"
+        style={base}
+      >
+        {content}
+      </button>
+    );
+  }
+  return (
+    <div className="border border-line bg-track" style={base}>
+      {content}
     </div>
   );
 }
