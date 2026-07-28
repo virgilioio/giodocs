@@ -198,7 +198,8 @@ const COLUMNS_MENU: MenuItem[] = [
   { type: "columns", name: "6 columns", desc: "Six across.", icon: "▥", count: 6 },
 ];
 
-const CALLOUT_ICONS = ["💡", "⚠️", "✅", "❌", "ℹ️", "📌", "🔥", "⭐", "🎯", "🧠", "🚧", "🧪"];
+
+
 
 
 function normalize(raw: unknown[]): Blk[] {
