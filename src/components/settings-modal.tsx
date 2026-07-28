@@ -19,7 +19,7 @@ import {
   useRemoveMember,
 } from "@/hooks/use-workspace-mutations";
 import { useCreateView } from "@/hooks/use-page-mutations";
-import { usePrefs, type FontFamily, type Density, type DateFormatMode } from "@/lib/preferences";
+import { usePrefs, type FontFamily, type Density, type DateFormatMode, type ThemePref } from "@/lib/preferences";
 import { useToast } from "@/lib/toast";
 import { useFormatDate } from "@/lib/format";
 import type { PageListItem } from "@/lib/types";
