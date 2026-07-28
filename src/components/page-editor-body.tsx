@@ -2473,8 +2473,13 @@ function BlockContent({
   if (t === "callout") {
     return (
       <div
-        className="flex items-start gap-2 rounded-lg bg-sunken p-3"
-        style={{ borderRadius: 10 }}
+        className="flex items-start gap-2 rounded-lg p-3"
+        style={{
+          borderRadius: 10,
+          // Colour comes from a token resolved by name — never a stored hex.
+          // Absent === neutral === today's bg-sunken.
+          background: calloutBg((block as { color?: unknown }).color),
+        }}
       >
         <CalloutIconPicker icon={block.icon ?? "💡"} onPick={onSetIcon} disabled={locked} />
         {renderProse(
