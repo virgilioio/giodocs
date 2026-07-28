@@ -948,27 +948,29 @@ export function EditableBody({
     return () => window.removeEventListener("keydown", onKey);
   }, [selectedIds, blocks, commit, clearSelection]);
 
-  /* ────────── Copy / Cut a block selection as Markdown ────────── */
+  /* ────────── Copy / Cut a block selection ──────────
+   *
+   * Writes TWO representations onto the clipboard (Markdown + HTML) so
+   * pasting into Notion, Word, or Google Docs arrives formatted rather
+   * than as literal `**` and `#`. Guard uses `shouldCopyBlocks`, not the
+   * bare `isTypingTarget` — after phase 2b the focused element inside a
+   * selected block is a contenteditable, so a plain typing-target guard
+   * would silently swallow every ⌘C. See is-typing.ts for the contract. */
 
   const toast = useToast();
 
-  useEffect(() => {
-    if (selectedIds.size === 0) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey)) return;
-      const key = e.key.toLowerCase();
-      if (key !== "c" && key !== "x") return;
-      // Native copy/cut must win while the caret is in a text field.
-      if (isTypingTarget(e.target)) return;
-      e.preventDefault();
+  const runCopySelection = useCallback(
+    (opts: { cut: boolean }) => {
+      if (selectedIds.size === 0) return;
       const selected = blocks.filter((b) => selectedIds.has(b.id));
-      const md = selected.map(blockToMarkdown).join("\n\n");
-      const write = navigator.clipboard?.writeText?.(md);
+      const p = writeBlocksClipboard(selected as unknown as Parameters<
+        typeof writeBlocksClipboard
+      >[0]);
       const after = () => {
         toast.push(
-          `Copied ${selected.length} ${selected.length === 1 ? "block" : "blocks"} as Markdown`,
+          `Copied ${selected.length} ${selected.length === 1 ? "block" : "blocks"}`,
         );
-        if (key === "x" && !locked) {
+        if (opts.cut && !locked) {
           const ids = blocks.map((b) => b.id);
           const toDrop = ids
             .map((id, i) => (selectedIds.has(id) ? i : -1))
@@ -978,15 +980,27 @@ export function EditableBody({
           commit(next);
         }
       };
-      if (write && typeof (write as Promise<void>).then === "function") {
-        (write as Promise<void>).then(after).catch(() => after());
-      } else {
-        after();
-      }
+      if (p && typeof p.then === "function") p.then(after).catch(() => after());
+      else after();
+    },
+    [selectedIds, blocks, commit, clearSelection, locked, toast],
+  );
+
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const key = e.key.toLowerCase();
+      if (key !== "c" && key !== "x") return;
+      // Selection beats focus: with a block selection active, always
+      // operate on the selection regardless of what has focus.
+      if (!shouldCopyBlocks(selectedIds.size, e.target)) return;
+      e.preventDefault();
+      runCopySelection({ cut: key === "x" });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedIds, blocks, commit, clearSelection, locked, toast]);
+  }, [selectedIds, runCopySelection]);
 
   /* ────────── ⌘A — select all blocks (block-selection scope) ──────────
    * The in-textarea two-stage behaviour lives in the textarea onKeyDown.
