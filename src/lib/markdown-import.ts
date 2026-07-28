@@ -93,13 +93,26 @@ export function parseMarkdown(text: string): Blk[] {
           .replace(/\|$/, "")
           .split("|")
           .map((c) => c.trim());
+      // GFM separator encodes per-column alignment:
+      //   ":---:" center · "---:" right · ":---" left · plain "---" default.
+      // We record only the intentional ones; plain "---" falls back to
+      // "left" (also the runtime default), so a table without alignment
+      // round-trips as an all-left align array.
+      const sepCells = parseRow(lines[i + 1]);
+      const align = sepCells.map((c): "left" | "center" | "right" => {
+        const left = c.startsWith(":");
+        const right = c.endsWith(":");
+        if (left && right) return "center";
+        if (right) return "right";
+        return "left";
+      });
       const rows: string[][] = [parseRow(line)];
       i += 2; // skip header + separator
       while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
         rows.push(parseRow(lines[i]));
         i++;
       }
-      out.push({ id: nanoid(10), type: "table", text: "", rows });
+      out.push({ id: nanoid(10), type: "table", text: "", rows, align });
       continue;
     }
 
