@@ -3509,7 +3509,7 @@ function TableBlock({
           label: "Insert left",
           icon: "plus",
           onPick: () => {
-            commit(addColumn(rows, index), addAlign(align, index));
+            commit(addColumn(rows, index), addAlign(align, index), addWidth(widths, index));
             setSel({ kind: "col", index });
             closeMenu();
           },
@@ -3519,7 +3519,7 @@ function TableBlock({
           label: "Insert right",
           icon: "plus",
           onPick: () => {
-            commit(addColumn(rows, index + 1), addAlign(align, index + 1));
+            commit(addColumn(rows, index + 1), addAlign(align, index + 1), addWidth(widths, index + 1));
             setSel({ kind: "col", index: index + 1 });
             closeMenu();
           },
@@ -3530,7 +3530,7 @@ function TableBlock({
           icon: "dup",
           hint: { text: "with values" },
           onPick: () => {
-            commit(duplicateColumn(rows, index), duplicateAlign(align, index));
+            commit(duplicateColumn(rows, index), duplicateAlign(align, index), duplicateWidth(widths, index));
             setSel({ kind: "col", index: index + 1 });
             closeMenu();
           },
@@ -3543,7 +3543,7 @@ function TableBlock({
           hint: isFirst ? { text: "at start" } : undefined,
           onPick: () => {
             if (isFirst) return;
-            commit(moveColumn(rows, index, index - 1), moveAlign(align, index, index - 1));
+            commit(moveColumn(rows, index, index - 1), moveAlign(align, index, index - 1), moveWidth(widths, index, index - 1));
             setSel({ kind: "col", index: index - 1 });
             closeMenu();
           },
@@ -3555,7 +3555,7 @@ function TableBlock({
           hint: isLast ? { text: "at end" } : undefined,
           onPick: () => {
             if (isLast) return;
-            commit(moveColumn(rows, index, index + 1), moveAlign(align, index, index + 1));
+            commit(moveColumn(rows, index, index + 1), moveAlign(align, index, index + 1), moveWidth(widths, index, index + 1));
             setSel({ kind: "col", index: index + 1 });
             closeMenu();
           },
@@ -3597,7 +3597,7 @@ function TableBlock({
           hint: isOnlyCol ? { text: "last column" } : undefined,
           onPick: () => {
             if (isOnlyCol) return;
-            commit(deleteColumn(rows, index), deleteAlign(align, index));
+            commit(deleteColumn(rows, index), deleteAlign(align, index), deleteWidth(widths, index));
             setSel(null);
             closeMenu();
           },
@@ -3912,7 +3912,7 @@ function TableBlock({
           <AddPill
             axis="col"
             onClick={() => {
-              commit(addColumn(rows, nCols), addAlign(align, nCols));
+              commit(addColumn(rows, nCols), addAlign(align, nCols), addWidth(widths, nCols));
               requestAnimationFrame(() => {
                 const el = rootRef.current?.querySelector<HTMLInputElement>(
                   `input[data-table-cell="0,${nCols}"]`,
