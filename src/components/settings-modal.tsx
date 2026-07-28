@@ -1615,8 +1615,8 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
   // We fetch the RAW row directly because AuthProvider's `profile` has been
   // transformed by applyAvatarRender — its avatar_tint is the composed url,
   // not the palette hex we need to highlight the selected swatch.
-  const [avaTint, setAvaTint] = useState<string>("#DCEAFE");
-  const [avaInk, setAvaInk] = useState<string>("#2563EB");
+  const [avaTint, setAvaTint] = useState<string>(DEFAULT_TINT);
+  const [avaInk, setAvaInk] = useState<string>(DEFAULT_INK);
   const [avaFace, setAvaFace] = useState<number>(0);
   const [avaSkin, setAvaSkin] = useState<number>(0);
   const avatarLoadedRef = useRef(false);
@@ -1631,8 +1631,8 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
       .maybeSingle()
       .then(({ data }) => {
         if (!active || !data) return;
-        setAvaTint(data.avatar_tint ?? "#DCEAFE");
-        setAvaInk(data.avatar_ink ?? "#2563EB");
+        setAvaTint(data.avatar_tint ?? DEFAULT_TINT);
+        setAvaInk(data.avatar_ink ?? DEFAULT_INK);
         setAvaFace(data.avatar_face ?? 0);
         setAvaSkin(data.avatar_skin ?? 0);
       });
