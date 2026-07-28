@@ -1,14 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
   addColumn,
+  addAlign,
   addRow,
   clearColumn,
   clearRow,
   deleteColumn,
+  deleteAlign,
   deleteRow,
+  duplicateColumn,
+  duplicateAlign,
+  duplicateRow,
+  moveColumn,
+  moveAlign,
+  moveRow,
+  normalizeAlign,
   normalizeTable,
+  setAlign,
+  type AlignList,
 } from "./table-ops";
 import { blockToMarkdown, toHtml } from "./export";
+import { parseMarkdown } from "./markdown-import";
 
 const rect = (): string[][] => [
   ["h1", "h2", "h3"],
