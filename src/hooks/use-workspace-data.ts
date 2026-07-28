@@ -1,6 +1,7 @@
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { qk } from "@/lib/query-keys";
+import { applyAvatarRender } from "@/lib/avatar";
 import type { PageListItem, PageFull, PageAccessRow } from "@/lib/types";
 
 const PAGE_LIST_COLUMNS =
