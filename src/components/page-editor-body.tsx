@@ -96,6 +96,8 @@ import { resolveKey, type Op as KeyOp } from "@/lib/block-key-handler";
 import { toggleWrap } from "@/lib/toggle-wrap";
 import { FloatingToolbar } from "./floating-toolbar";
 import { Editable } from "./editable";
+import { EmojiPicker } from "./emoji-picker";
+import { Popover } from "./popover";
 import { readCaret, writeCaret } from "@/lib/caret-shim";
 import { ordinalLabel } from "@/lib/blocks";
 import {
@@ -196,7 +198,8 @@ const COLUMNS_MENU: MenuItem[] = [
   { type: "columns", name: "6 columns", desc: "Six across.", icon: "▥", count: 6 },
 ];
 
-const CALLOUT_ICONS = ["💡", "⚠️", "✅", "❌", "ℹ️", "📌", "🔥", "⭐", "🎯", "🧠", "🚧", "🧪"];
+
+
 
 
 function normalize(raw: unknown[]): Blk[] {
@@ -2522,7 +2525,7 @@ function BlockContent({
   if (t === "callout") {
     return (
       <div
-        className="flex items-start gap-2 rounded-lg p-3"
+        className="group flex items-start gap-2 rounded-lg p-3"
         style={{
           borderRadius: 10,
           // Colour comes from a token resolved by name — never a stored hex.
@@ -2701,37 +2704,54 @@ function CalloutIconPicker({
   onPick: (i: string) => void;
   disabled?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="relative shrink-0">
-      <button
-        type="button"
-        onClick={() => !disabled && setOpen((v) => !v)}
-        className="text-row hover:bg-rail rounded-sm px-1"
+  // A locked page's callout icon is not interactive — render as plain glyph.
+  if (disabled) {
+    return (
+      <div
+        className="shrink-0 grid place-items-center"
+        style={{ width: 24, height: 24, fontSize: 18, lineHeight: 1 }}
         aria-label="Callout icon"
       >
         {icon}
-      </button>
-      {open ? (
-        <div className="absolute left-0 top-full z-40 mt-1 grid w-52 grid-cols-6 gap-1 rounded-lg border border-line bg-surface p-2 shadow-popover">
-          {CALLOUT_ICONS.map((i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => {
-                onPick(i);
-                setOpen(false);
-              }}
-              className="grid h-7 place-items-center rounded-sm hover:bg-sunken"
-            >
-              {i}
-            </button>
-          ))}
-        </div>
-      ) : null}
+      </div>
+    );
+  }
+  return (
+    <div className="shrink-0">
+      <Popover
+        width={320}
+        trigger={({ open, onClick, ref }) => (
+          <button
+            ref={ref}
+            type="button"
+            onClick={onClick}
+            aria-label="Change icon"
+            aria-expanded={open}
+            title="Change icon"
+            className="grid place-items-center cursor-pointer transition-colors group-hover:bg-sunken/60 hover:bg-sunken/60"
+            style={{ width: 24, height: 24, fontSize: 18, lineHeight: 1, borderRadius: 4 }}
+          >
+            {icon}
+          </button>
+        )}
+      >
+        {(close) => (
+          <EmojiPicker
+            removable
+            onPick={(e) => {
+              // Remove restores the default 💡 rather than clearing —
+              // a callout without an icon has a ragged left edge and
+              // the layout assumes one is present.
+              onPick(e ?? "💡");
+              close();
+            }}
+          />
+        )}
+      </Popover>
     </div>
   );
 }
+
 
 /* ────────────── Columns block ──────────────
  *
