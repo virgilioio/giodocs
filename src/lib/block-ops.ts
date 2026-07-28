@@ -53,6 +53,11 @@ export type Blk = {
   open?: boolean;
   icon?: string;
   rows?: string[][];
+  /** Only meaningful when type === "table". One entry per column; absent or
+   *  short means every remaining column is "left". Kept in sync with the
+   *  column count by the pure ops in src/lib/table-ops.ts — a stale align
+   *  is the silent-corruption failure mode for the block. */
+  align?: ("left" | "center" | "right")[];
   language?: string;
   /** Only meaningful when type === "toggle". Absent = today's plain toggle. */
   level?: ToggleLevel;

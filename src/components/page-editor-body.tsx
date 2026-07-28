@@ -40,11 +40,23 @@ import {
   type UndoEntry,
 } from "@/lib/undo-stack";
 import {
+  type Align,
+  type AlignList,
   normalizeTable,
+  normalizeAlign,
   addColumn,
+  addAlign,
   addRow,
   deleteColumn,
+  deleteAlign,
   deleteRow,
+  duplicateColumn,
+  duplicateAlign,
+  duplicateRow,
+  moveColumn,
+  moveAlign,
+  moveRow,
+  setAlign,
   clearRow,
   clearColumn,
 } from "@/lib/table-ops";
@@ -3234,16 +3246,29 @@ function TableBlock({
   onChange: (patch: Partial<Blk>) => void;
   onBlur?: () => void;
 }) {
-  // Repair-on-load: any ragged import gets rectangularised here. When the
+  // Repair-on-load: any ragged import gets rectangularised here, and the
+  // align shadow array is normalised to the resulting column count. When the
   // stored shape differs from the normalised one we surface it as a patch
   // so the persisted matrix converges to rectangular immediately.
   const rows = useMemo(
     () => normalizeTable(block.rows ?? [["", "", ""], ["", "", ""]]),
     [block.rows],
   );
+  const align = useMemo<AlignList>(
+    () => normalizeAlign(block.align as AlignList | undefined, rows[0]?.length ?? 0),
+    [block.align, rows],
+  );
   useEffect(() => {
-    if (block.rows && JSON.stringify(block.rows) !== JSON.stringify(rows)) {
-      onChange({ rows });
+    const rowsChanged =
+      block.rows && JSON.stringify(block.rows) !== JSON.stringify(rows);
+    const alignChanged =
+      Array.isArray(block.align) &&
+      JSON.stringify(block.align) !== JSON.stringify(align);
+    if (rowsChanged || alignChanged) {
+      const patch: Partial<Blk> = {};
+      if (rowsChanged) patch.rows = rows;
+      if (alignChanged) patch.align = align;
+      onChange(patch);
     }
     // Only fire on mount / when the persisted shape needs repair.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3258,9 +3283,13 @@ function TableBlock({
   const nCols = rows[0]?.length ?? 0;
   const nRows = rows.length;
 
+  // Any structural op commits rows and (when it changed) align, in one
+  // onChange call so the outer undo stack sees one entry per user action.
   const commit = useCallback(
-    (next: string[][]) => {
-      onChange({ rows: next });
+    (next: string[][], nextAlign?: AlignList) => {
+      const patch: Partial<Blk> = { rows: next };
+      if (nextAlign) patch.align = nextAlign;
+      onChange(patch);
     },
     [onChange],
   );
@@ -3270,7 +3299,22 @@ function TableBlock({
     setMenuSpec(null);
   }, []);
 
-  // Escape deselects; Delete/Backspace with focus outside a cell clears.
+  // Copy the current selection as text. Rows join with tabs so a paste into
+  // a spreadsheet lands as cells; columns join with newlines (one value per
+  // line). The mono hint on the menu row says "⌘C" — this handler is what
+  // makes that hint honest.
+  const copySelection = useCallback(() => {
+    if (!sel) return;
+    let text = "";
+    if (sel.kind === "row") text = rows[sel.index].join("\t");
+    else text = rows.map((r) => r[sel.index] ?? "").join("\n");
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      void navigator.clipboard.writeText(text);
+    }
+  }, [sel, rows]);
+
+  // Escape deselects; Delete/Backspace with focus outside a cell clears;
+  // ⌘C / Ctrl-C copies the selection.
   useEffect(() => {
     if (!sel) return;
     const onKey = (e: KeyboardEvent) => {
@@ -3279,9 +3323,16 @@ function TableBlock({
         closeMenu();
         return;
       }
+      const t = e.target as HTMLElement | null;
+      const inCell = !!(t && rootRef.current?.contains(t) && t.tagName === "INPUT");
+      if ((e.metaKey || e.ctrlKey) && (e.key === "c" || e.key === "C")) {
+        if (inCell) return;
+        e.preventDefault();
+        copySelection();
+        return;
+      }
       if (e.key === "Delete" || e.key === "Backspace") {
-        const t = e.target as HTMLElement | null;
-        if (t && rootRef.current?.contains(t) && t.tagName === "INPUT") return;
+        if (inCell) return;
         e.preventDefault();
         if (sel.kind === "row") commit(clearRow(rows, sel.index));
         else commit(clearColumn(rows, sel.index));
@@ -3289,7 +3340,7 @@ function TableBlock({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sel, rows, commit, closeMenu]);
+  }, [sel, rows, commit, closeMenu, copySelection]);
 
   function setCell(r: number, c: number, v: string) {
     const next = rows.map((row) => row.slice());
@@ -3297,96 +3348,275 @@ function TableBlock({
     commit(next);
   }
 
-  function openColumnMenu(anchor: HTMLElement, index: number) {
+  // Column menu. Structural operations only — sort/filter/formula/convert-
+  // to-database are VIEW concepts and never appear here.
+  function buildColumnSpec(index: number): MenuSpec {
     const isOnlyCol = nCols <= 1;
-    const cellCount = nRows;
+    const isFirst = index === 0;
+    const isLast = index === nCols - 1;
+    const currentAlign = align[index] ?? "left";
+    const alignLabel =
+      currentAlign === "center" ? "Center" : currentAlign === "right" ? "Right" : "Left";
+    const colCells = nRows;
+    const openSubmenu = (parent: MenuSpec) => {
+      const submenu: MenuSpec = {
+        title: "Align",
+        onBack: () => setMenuSpec(parent),
+        rows: (["left", "center", "right"] as Align[]).map((a) => ({
+          kind: "row",
+          label: a === "left" ? "Left" : a === "center" ? "Center" : "Right",
+          checked: currentAlign === a,
+          onPick: () => {
+            commit(rows, setAlign(align, index, a));
+            closeMenu();
+          },
+        })),
+        footer: `Column ${index + 1}`,
+      };
+      setMenuSpec(submenu);
+    };
     const spec: MenuSpec = {
       title: `Column ${index + 1}`,
-      footer: `${cellCount} cell${cellCount === 1 ? "" : "s"}`,
+      footer: `${nRows} row${nRows === 1 ? "" : "s"} · column ${index + 1} of ${nCols}`,
       rows: [
         {
           kind: "row",
           label: "Insert left",
+          icon: "plus",
           onPick: () => {
-            commit(addColumn(rows, index));
+            commit(addColumn(rows, index), addAlign(align, index));
             setSel({ kind: "col", index });
+            closeMenu();
           },
         },
         {
           kind: "row",
           label: "Insert right",
+          icon: "plus",
           onPick: () => {
-            commit(addColumn(rows, index + 1));
+            commit(addColumn(rows, index + 1), addAlign(align, index + 1));
             setSel({ kind: "col", index: index + 1 });
+            closeMenu();
           },
         },
         {
           kind: "row",
+          label: "Duplicate column",
+          icon: "dup",
+          hint: { text: "with values" },
+          onPick: () => {
+            commit(duplicateColumn(rows, index), duplicateAlign(align, index));
+            setSel({ kind: "col", index: index + 1 });
+            closeMenu();
+          },
+        },
+        { kind: "sep" },
+        {
+          kind: "row",
+          label: "Move left",
+          icon: "arrow",
+          hint: isFirst ? { text: "at start" } : undefined,
+          onPick: () => {
+            if (isFirst) return;
+            commit(moveColumn(rows, index, index - 1), moveAlign(align, index, index - 1));
+            setSel({ kind: "col", index: index - 1 });
+            closeMenu();
+          },
+        },
+        {
+          kind: "row",
+          label: "Move right",
+          icon: "arrow",
+          hint: isLast ? { text: "at end" } : undefined,
+          onPick: () => {
+            if (isLast) return;
+            commit(moveColumn(rows, index, index + 1), moveAlign(align, index, index + 1));
+            setSel({ kind: "col", index: index + 1 });
+            closeMenu();
+          },
+        },
+        { kind: "sep" },
+        {
+          kind: "row",
+          label: "Align",
+          icon: "layout",
+          hint: { text: alignLabel },
+          onPick: () => openSubmenu(spec),
+        },
+        {
+          kind: "row",
           label: "Clear contents",
-          onPick: () => commit(clearColumn(rows, index)),
+          icon: "clear",
+          hint: { text: `${colCells} cell${colCells === 1 ? "" : "s"}` },
+          onPick: () => {
+            commit(clearColumn(rows, index));
+            closeMenu();
+          },
+        },
+        {
+          kind: "row",
+          label: "Copy as text",
+          icon: "dup",
+          hint: { text: "⌘C", mono: true },
+          onPick: () => {
+            copySelection();
+            closeMenu();
+          },
         },
         { kind: "sep" },
         {
           kind: "row",
           label: "Delete column",
+          icon: "trash",
           danger: true,
           hint: isOnlyCol ? { text: "last column" } : undefined,
           onPick: () => {
             if (isOnlyCol) return;
-            commit(deleteColumn(rows, index));
+            commit(deleteColumn(rows, index), deleteAlign(align, index));
             setSel(null);
+            closeMenu();
           },
         },
       ],
     };
-    setMenuSpec(spec);
+    return spec;
+  }
+
+  function openColumnMenu(anchor: HTMLElement, index: number) {
+    setMenuSpec(buildColumnSpec(index));
     setMenuAnchor(anchor);
   }
 
-  function openRowMenu(anchor: HTMLElement, index: number) {
+  function buildRowSpec(index: number): MenuSpec {
     const isOnlyRow = nRows <= 1;
+    const isFirst = index === 0;
+    const isLast = index === nRows - 1;
+    const rowCells = nCols;
     const isHeader = index === 0;
-    const cellCount = nCols;
-    const spec: MenuSpec = {
+    const footer =
+      `${nCols} column${nCols === 1 ? "" : "s"} · row ${index + 1} of ${nRows}` +
+      (isHeader ? " · header" : "");
+    return {
       title: isHeader ? "Header row" : `Row ${index + 1}`,
-      footer: `${cellCount} cell${cellCount === 1 ? "" : "s"}`,
+      footer,
       rows: [
         {
           kind: "row",
           label: "Insert above",
+          icon: "plus",
           onPick: () => {
             commit(addRow(rows, index));
             setSel({ kind: "row", index });
+            closeMenu();
           },
         },
         {
           kind: "row",
           label: "Insert below",
+          icon: "plus",
           onPick: () => {
             commit(addRow(rows, index + 1));
             setSel({ kind: "row", index: index + 1 });
+            closeMenu();
           },
         },
         {
           kind: "row",
+          label: "Duplicate row",
+          icon: "dup",
+          hint: { text: "with values" },
+          onPick: () => {
+            commit(duplicateRow(rows, index));
+            setSel({ kind: "row", index: index + 1 });
+            closeMenu();
+          },
+        },
+        { kind: "sep" },
+        {
+          kind: "row",
+          label: "Move up",
+          icon: "chevUp",
+          hint: isFirst ? { text: "at top" } : undefined,
+          onPick: () => {
+            if (isFirst) return;
+            commit(moveRow(rows, index, index - 1));
+            setSel({ kind: "row", index: index - 1 });
+            closeMenu();
+          },
+        },
+        {
+          kind: "row",
+          label: "Move down",
+          icon: "chevDown",
+          hint: isLast ? { text: "at end" } : undefined,
+          onPick: () => {
+            if (isLast) return;
+            commit(moveRow(rows, index, index + 1));
+            setSel({ kind: "row", index: index + 1 });
+            closeMenu();
+          },
+        },
+        { kind: "sep" },
+        {
+          kind: "row",
           label: "Clear contents",
-          onPick: () => commit(clearRow(rows, index)),
+          icon: "clear",
+          hint: { text: `${rowCells} cell${rowCells === 1 ? "" : "s"}` },
+          onPick: () => {
+            commit(clearRow(rows, index));
+            closeMenu();
+          },
+        },
+        {
+          kind: "row",
+          label: "Copy as text",
+          icon: "dup",
+          hint: { text: "⌘C", mono: true },
+          onPick: () => {
+            copySelection();
+            closeMenu();
+          },
         },
         { kind: "sep" },
         {
           kind: "row",
           label: "Delete row",
+          icon: "trash",
           danger: true,
           hint: isOnlyRow ? { text: "last row" } : undefined,
           onPick: () => {
             if (isOnlyRow) return;
+            // Deleting row 0 promotes the next row to header positionally;
+            // header is not stored, only render-order. Confirm this out loud
+            // so the operator isn't surprised by row 1's new styling.
+            if (isHeader) {
+              setMenuSpec({
+                title: "Delete header row",
+                rows: [],
+                confirm: {
+                  title: "Delete header row?",
+                  body: "The next row becomes the header.",
+                  cta: "Delete row",
+                  danger: true,
+                  onConfirm: () => {
+                    commit(deleteRow(rows, index));
+                    setSel(null);
+                  },
+                },
+              });
+              return;
+            }
             commit(deleteRow(rows, index));
             setSel(null);
+            closeMenu();
           },
         },
       ],
     };
-    setMenuSpec(spec);
+  }
+
+  function openRowMenu(anchor: HTMLElement, index: number) {
+    setMenuSpec(buildRowSpec(index));
     setMenuAnchor(anchor);
   }
 
@@ -3451,6 +3681,7 @@ function TableBlock({
                       onChange={(e) => setCell(ri, ci, e.target.value)}
                       onBlur={onBlur}
                       className="w-full border-0 bg-transparent px-2 py-1 outline-none"
+                      style={{ textAlign: align[ci] ?? "left" }}
                     />
                   </Tag>
                 );

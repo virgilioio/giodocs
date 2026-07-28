@@ -1,14 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
   addColumn,
+  addAlign,
   addRow,
   clearColumn,
   clearRow,
   deleteColumn,
+  deleteAlign,
   deleteRow,
+  duplicateColumn,
+  duplicateAlign,
+  duplicateRow,
+  moveColumn,
+  moveAlign,
+  moveRow,
+  normalizeAlign,
   normalizeTable,
+  setAlign,
+  type AlignList,
 } from "./table-ops";
 import { blockToMarkdown, toHtml } from "./export";
+import { parseMarkdown } from "./markdown-import";
 
 const rect = (): string[][] => [
   ["h1", "h2", "h3"],
@@ -176,5 +188,181 @@ describe("export round-trip after column ops", () => {
     expect(cols(lines[0])).toBe(5);
     expect(cols(lines[1])).toBe(5);
     expect(htmlOf(rows1)).toContain("<table>");
+  });
+});
+
+describe("duplicateColumn / duplicateRow", () => {
+  it("duplicateColumn copies values and lands immediately after source", () => {
+    const out = duplicateColumn(rect(), 1);
+    expect(out).toEqual([
+      ["h1", "h2", "h2", "h3"],
+      ["a", "b", "b", "c"],
+      ["d", "e", "e", "f"],
+    ]);
+  });
+  it("duplicateColumn refuses on out-of-range index (returns clone)", () => {
+    const src = rect();
+    expect(duplicateColumn(src, 99)).toEqual(src);
+  });
+  it("duplicateRow copies values and lands immediately after source", () => {
+    const out = duplicateRow(rect(), 1);
+    expect(out).toEqual([
+      ["h1", "h2", "h3"],
+      ["a", "b", "c"],
+      ["a", "b", "c"],
+      ["d", "e", "f"],
+    ]);
+  });
+});
+
+describe("moveColumn / moveRow", () => {
+  it("moveColumn to first position", () => {
+    expect(moveColumn(rect(), 2, 0)).toEqual([
+      ["h3", "h1", "h2"],
+      ["c", "a", "b"],
+      ["f", "d", "e"],
+    ]);
+  });
+  it("moveColumn to last position", () => {
+    expect(moveColumn(rect(), 0, 2)).toEqual([
+      ["h2", "h3", "h1"],
+      ["b", "c", "a"],
+      ["e", "f", "d"],
+    ]);
+  });
+  it("moveColumn to own index is a no-op (but returns fresh matrix)", () => {
+    const src = rect();
+    const out = moveColumn(src, 1, 1);
+    expect(out).toEqual(src);
+    expect(out).not.toBe(src);
+  });
+  it("moveRow to first position promotes to header", () => {
+    const out = moveRow(rect(), 2, 0);
+    expect(out[0]).toEqual(["d", "e", "f"]);
+  });
+});
+
+describe("delete refuses at minimums", () => {
+  it("deleteRow refuses when only one row", () => {
+    const src = [["a", "b"]];
+    expect(deleteRow(src, 0)).toEqual(src);
+  });
+  it("deleteColumn refuses when only one column", () => {
+    const src = [["a"], ["b"]];
+    expect(deleteColumn(src, 0)).toEqual(src);
+  });
+});
+
+describe("normalizeAlign", () => {
+  it("pads with left up to width", () => {
+    expect(normalizeAlign(["right"], 3)).toEqual(["right", "left", "left"]);
+  });
+  it("truncates to width", () => {
+    expect(normalizeAlign(["right", "center", "left", "right"], 2)).toEqual([
+      "right",
+      "center",
+    ]);
+  });
+  it("coerces invalid entries to left", () => {
+    // deliberately loose input to prove the guard
+    expect(
+      normalizeAlign(["weird" as unknown as "left", "right"], 2),
+    ).toEqual(["left", "right"]);
+  });
+});
+
+describe("align tracks column ops", () => {
+  it("addAlign inserts a default left in step with addColumn", () => {
+    const rows = addColumn(rect(), 1);
+    const align = addAlign(["right", "center", "left"], 1);
+    expect(rows[0].length).toBe(4);
+    expect(align).toEqual(["right", "left", "center", "left"]);
+  });
+  it("deleteAlign drops the right index in step with deleteColumn", () => {
+    const rows = deleteColumn(rect(), 1);
+    const align = deleteAlign(["right", "center", "left"], 1);
+    expect(rows[0].length).toBe(2);
+    expect(align).toEqual(["right", "left"]);
+  });
+  it("duplicateAlign duplicates in place", () => {
+    expect(duplicateAlign(["left", "right", "center"], 1)).toEqual([
+      "left",
+      "right",
+      "right",
+      "center",
+    ]);
+  });
+  it("moveAlign reorders in step with moveColumn", () => {
+    expect(moveAlign(["left", "right", "center"], 2, 0)).toEqual([
+      "center",
+      "left",
+      "right",
+    ]);
+  });
+  it("setAlign changes exactly one entry", () => {
+    expect(setAlign(["left", "left", "left"], 1, "center")).toEqual([
+      "left",
+      "center",
+      "left",
+    ]);
+  });
+  it("deleteAlign refuses at one entry (returns clone)", () => {
+    const src: AlignList = ["right"];
+    expect(deleteAlign(src, 0)).toEqual(src);
+  });
+});
+
+describe("markdown alignment round-trip", () => {
+  it("emits :---: / ---: / :--- separators per column", () => {
+    const block = {
+      type: "table",
+      rows: [
+        ["a", "b", "c"],
+        ["1", "2", "3"],
+      ],
+      align: ["left", "center", "right"] as AlignList,
+    };
+    const md = blockToMarkdown(block as never, 1);
+    const sep = md.split("\n")[1];
+    expect(sep).toBe("| :--- | :---: | ---: |");
+  });
+  it("parseMarkdown reads separator alignment back into align", () => {
+    const md = "| a | b | c |\n| :--- | :---: | ---: |\n| 1 | 2 | 3 |";
+    const [b] = parseMarkdown(md);
+    expect(b.type).toBe("table");
+    expect((b as { align?: AlignList }).align).toEqual([
+      "left",
+      "center",
+      "right",
+    ]);
+  });
+  it("plain --- separator produces no align field (round-trips as default)", () => {
+    const md = "| a | b |\n| --- | --- |\n| 1 | 2 |";
+    const [b] = parseMarkdown(md);
+    expect((b as { align?: AlignList }).align).toBeUndefined();
+  });
+  it("HTML export writes text-align per th/td", () => {
+    const html = toHtml({
+      title: "T",
+      area: null,
+      status: null,
+      ownerName: null,
+      tags: [],
+      verifiedAt: null,
+      blocks: [
+        {
+          id: "t",
+          type: "table",
+          rows: [
+            ["a", "b"],
+            ["1", "2"],
+          ],
+          align: ["left", "right"],
+        } as never,
+      ],
+    });
+    expect(html).toContain('<th style="text-align:left">a</th>');
+    expect(html).toContain('<th style="text-align:right">b</th>');
+    expect(html).toContain('<td style="text-align:right">2</td>');
   });
 });
