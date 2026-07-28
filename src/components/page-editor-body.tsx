@@ -3279,6 +3279,31 @@ function TableBlock({
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [menuSpec, setMenuSpec] = useState<MenuSpec | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  // First-contact hint: shown beneath a hovered table while nothing is
+  // selected. Suppressed permanently after the first menu open on any table
+  // in this browser. Read from localStorage on mount so the flag survives
+  // reloads; ignored under SSR.
+  const [hintSeen, setHintSeen] = useState<boolean>(false);
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        setHintSeen(localStorage.getItem("gio.tableHintSeen") === "1");
+      }
+    } catch {
+      /* private-mode / disabled storage — hint just stays visible until a
+         menu is opened, which is still fine. */
+    }
+  }, []);
+  const suppressHint = useCallback(() => {
+    setHintSeen(true);
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("gio.tableHintSeen", "1");
+      }
+    } catch {
+      /* noop */
+    }
+  }, []);
 
   const nCols = rows[0]?.length ?? 0;
   const nRows = rows.length;
@@ -3313,16 +3338,28 @@ function TableBlock({
     }
   }, [sel, rows]);
 
-  // Escape deselects; Delete/Backspace with focus outside a cell clears;
-  // ⌘C / Ctrl-C copies the selection.
+  // Escape is layered: an open menu closes first, then a second Escape
+  // deselects. This effect stays attached whenever either is present so the
+  // second Escape lands even after `menuSpec` transitions to null.
   useEffect(() => {
-    if (!sel) return;
+    if (!menuSpec && !sel) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setSel(null);
+      if (e.key !== "Escape") return;
+      if (menuSpec) {
         closeMenu();
         return;
       }
+      if (sel) setSel(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuSpec, sel, closeMenu]);
+
+  // Delete/Backspace clears; ⌘C copies. Bound only while a row/column is
+  // selected — cell typing must never trigger these.
+  useEffect(() => {
+    if (!sel) return;
+    const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       const inCell = !!(t && rootRef.current?.contains(t) && t.tagName === "INPUT");
       if ((e.metaKey || e.ctrlKey) && (e.key === "c" || e.key === "C")) {
@@ -3340,7 +3377,7 @@ function TableBlock({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sel, rows, commit, closeMenu, copySelection]);
+  }, [sel, rows, commit, copySelection]);
 
   function setCell(r: number, c: number, v: string) {
     const next = rows.map((row) => row.slice());
