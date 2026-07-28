@@ -20,14 +20,14 @@ import {
   type Path as ReorderPath,
   type ColumnRef,
 } from "@/lib/reorder";
-import { blockToMarkdown } from "@/lib/export";
+import { writeBlocksClipboard } from "@/lib/blocks-clipboard";
 import { renderInlineWithOffsets } from "@/lib/inline-markdown";
 import { numberedOrdinals } from "@/lib/blocks";
 import { rowsInBand } from "@/lib/marquee";
 import { blockHandleFooter } from "@/lib/block-handle-footer";
 import { useToast } from "@/lib/toast";
 import { RowMenu, type MenuSpec, type MenuRow } from "./row-menu";
-import { isTypingTarget } from "@/lib/is-typing";
+import { isTypingTarget, shouldCopyBlocks } from "@/lib/is-typing";
 import { nextEditableIndex } from "@/lib/block-nav";
 import { stripNestedColumns } from "@/lib/columns";
 import {
@@ -596,6 +596,28 @@ export function EditableBody({
     anchorId.current = null;
   }, []);
 
+  /* When a block selection is created (marquee / shift-click on a handle /
+   * click on a no-editor row) we blur any focused contenteditable and drop
+   * the browser's own DOM selection. Otherwise the native selection lingers
+   * invisibly next to ours and competes with ⌘C — this is the second half
+   * of the "selection beats focus" rule in shouldCopyBlocks. */
+  const blurAndClearDomSelection = useCallback(() => {
+    if (typeof document === "undefined") return;
+    const active = document.activeElement as HTMLElement | null;
+    if (active && (active.isContentEditable || active.tagName === "TEXTAREA" || active.tagName === "INPUT")) {
+      try {
+        active.blur();
+      } catch {
+        /* ignore */
+      }
+    }
+    try {
+      window.getSelection?.()?.removeAllRanges();
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const handleShiftClick = useCallback(
     (id: string) => {
       const ids = blocks.map((b) => b.id);
@@ -605,13 +627,15 @@ export function EditableBody({
       if (!anchor || ids.indexOf(anchor) < 0) {
         anchorId.current = id;
         setSelectedIds(new Set([id]));
+        blurAndClearDomSelection();
         return;
       }
       const aIdx = ids.indexOf(anchor);
       const [lo, hi] = aIdx <= targetIdx ? [aIdx, targetIdx] : [targetIdx, aIdx];
       setSelectedIds(new Set(ids.slice(lo, hi + 1)));
+      blurAndClearDomSelection();
     },
-    [blocks],
+    [blocks, blurAndClearDomSelection],
   );
 
   const [handleMenu, setHandleMenu] = useState<{
@@ -623,6 +647,15 @@ export function EditableBody({
   const setHandleMenuSpec = useCallback((spec: MenuSpec) => {
     setHandleMenu((cur) => (cur ? { ...cur, spec } : cur));
   }, []);
+
+  /* Right-click-on-a-selected-block menu — a small standalone RowMenu that
+   * lives at container level, not per-block, because the surface it anchors
+   * to is the block the user right-clicked, not a handle. */
+  const [selMenu, setSelMenu] = useState<{
+    anchor: HTMLElement;
+    spec: MenuSpec;
+  } | null>(null);
+  const closeSelMenu = useCallback(() => setSelMenu(null), []);
 
 
 
@@ -947,27 +980,29 @@ export function EditableBody({
     return () => window.removeEventListener("keydown", onKey);
   }, [selectedIds, blocks, commit, clearSelection]);
 
-  /* ────────── Copy / Cut a block selection as Markdown ────────── */
+  /* ────────── Copy / Cut a block selection ──────────
+   *
+   * Writes TWO representations onto the clipboard (Markdown + HTML) so
+   * pasting into Notion, Word, or Google Docs arrives formatted rather
+   * than as literal `**` and `#`. Guard uses `shouldCopyBlocks`, not the
+   * bare `isTypingTarget` — after phase 2b the focused element inside a
+   * selected block is a contenteditable, so a plain typing-target guard
+   * would silently swallow every ⌘C. See is-typing.ts for the contract. */
 
   const toast = useToast();
 
-  useEffect(() => {
-    if (selectedIds.size === 0) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey)) return;
-      const key = e.key.toLowerCase();
-      if (key !== "c" && key !== "x") return;
-      // Native copy/cut must win while the caret is in a text field.
-      if (isTypingTarget(e.target)) return;
-      e.preventDefault();
+  const runCopySelection = useCallback(
+    (opts: { cut: boolean }) => {
+      if (selectedIds.size === 0) return;
       const selected = blocks.filter((b) => selectedIds.has(b.id));
-      const md = selected.map(blockToMarkdown).join("\n\n");
-      const write = navigator.clipboard?.writeText?.(md);
+      const p = writeBlocksClipboard(selected as unknown as Parameters<
+        typeof writeBlocksClipboard
+      >[0]);
       const after = () => {
         toast.push(
-          `Copied ${selected.length} ${selected.length === 1 ? "block" : "blocks"} as Markdown`,
+          `Copied ${selected.length} ${selected.length === 1 ? "block" : "blocks"}`,
         );
-        if (key === "x" && !locked) {
+        if (opts.cut && !locked) {
           const ids = blocks.map((b) => b.id);
           const toDrop = ids
             .map((id, i) => (selectedIds.has(id) ? i : -1))
@@ -977,15 +1012,27 @@ export function EditableBody({
           commit(next);
         }
       };
-      if (write && typeof (write as Promise<void>).then === "function") {
-        (write as Promise<void>).then(after).catch(() => after());
-      } else {
-        after();
-      }
+      if (p && typeof p.then === "function") p.then(after).catch(() => after());
+      else after();
+    },
+    [selectedIds, blocks, commit, clearSelection, locked, toast],
+  );
+
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const key = e.key.toLowerCase();
+      if (key !== "c" && key !== "x") return;
+      // Selection beats focus: with a block selection active, always
+      // operate on the selection regardless of what has focus.
+      if (!shouldCopyBlocks(selectedIds.size, e.target)) return;
+      e.preventDefault();
+      runCopySelection({ cut: key === "x" });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedIds, blocks, commit, clearSelection, locked, toast]);
+  }, [selectedIds, runCopySelection]);
 
   /* ────────── ⌘A — select all blocks (block-selection scope) ──────────
    * The in-textarea two-stage behaviour lives in the textarea onKeyDown.
@@ -1260,6 +1307,8 @@ export function EditableBody({
       document.body.style.userSelect = "";
       if (m.moved) {
         setMarquee(null);
+        // Marquee drop ends with a real selection — banish the caret.
+        blurAndClearDomSelection();
         return;
       }
       // Click branch (no drag past threshold).
@@ -1278,6 +1327,7 @@ export function EditableBody({
         if (id) {
           anchorId.current = id;
           setSelectedIds(new Set([id]));
+          blurAndClearDomSelection();
           return;
         }
       }
@@ -1293,7 +1343,7 @@ export function EditableBody({
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
-  }, [containerPoint, selectByMarqueeY, tickMarqueeScroll]);
+  }, [containerPoint, selectByMarqueeY, tickMarqueeScroll, blurAndClearDomSelection]);
 
 
   /* ────────── Slash menu state ────────── */
@@ -1480,6 +1530,37 @@ export function EditableBody({
     [blocks, pageId, toast, getRunIndicesForBlock],
   );
 
+  /* Duplicate and delete acting on the whole active block-selection —
+   * used by both the ⌘D shortcut and the right-click "n blocks selected"
+   * menu, so both paths stay in sync. Duplicating N selected blocks
+   * splices N copies contiguously right after the last selected index;
+   * delete drops every selected index in one commit. */
+  const runDuplicateSelected = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    const idxs: number[] = [];
+    blocks.forEach((b, i) => {
+      if (selectedIds.has(b.id)) idxs.push(i);
+    });
+    if (!idxs.length) return;
+    const copies: Blk[] = idxs.map((i) => ({ ...blocks[i], id: nanoid(10) }));
+    const insertAt = idxs[idxs.length - 1] + 1;
+    const next = [...blocks];
+    next.splice(insertAt, 0, ...copies);
+    commit(next);
+  }, [blocks, commit, selectedIds]);
+
+  const runDeleteSelected = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    const idxs: number[] = [];
+    blocks.forEach((b, i) => {
+      if (selectedIds.has(b.id)) idxs.push(i);
+    });
+    if (!idxs.length) return;
+    const next = deleteIndices(blocks, idxs, () => newBlock("text"));
+    clearSelection();
+    commit(next);
+  }, [blocks, commit, clearSelection, selectedIds]);
+
   // ⌘D duplicates the current block-selection run. Yields to text fields
   // — inside a textarea the browser's native ⌘D (or nothing) wins.
   useEffect(() => {
@@ -1489,14 +1570,12 @@ export function EditableBody({
       if (e.key.toLowerCase() !== "d") return;
       if (isTypingTarget(e.target)) return;
       if (selectedIds.size === 0) return;
-      const anchorId = blocks.find((b) => selectedIds.has(b.id))?.id ?? null;
-      if (!anchorId) return;
       e.preventDefault();
-      runDuplicate(anchorId);
+      runDuplicateSelected();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [locked, blocks, selectedIds, runDuplicate]);
+  }, [locked, selectedIds, runDuplicateSelected]);
 
   const buildBlockHandleSpec = useCallback(
     (
@@ -1903,6 +1982,64 @@ export function EditableBody({
         const t = e.target as HTMLElement;
         if (t.tagName === "TEXTAREA" || t.tagName === "INPUT") clearSelection();
       }}
+      onContextMenu={(e) => {
+        // Right-click INSIDE a selected block opens the multi-block menu.
+        // Anywhere else the native context menu wins (no interference).
+        if (selectedIds.size === 0) return;
+        const t = e.target as HTMLElement | null;
+        const row = t?.closest?.("[data-block-id]") as HTMLElement | null;
+        if (!row) return;
+        const id = row.getAttribute("data-block-id");
+        if (!id || !selectedIds.has(id)) return;
+        e.preventDefault();
+        const n = selectedIds.size;
+        const rows: MenuRow[] = [
+          {
+            kind: "row",
+            label: "Copy",
+            hint: { text: "⌘C", mono: true },
+            onPick: () => {
+              closeSelMenu();
+              runCopySelection({ cut: false });
+            },
+          },
+          {
+            kind: "row",
+            label: "Cut",
+            hint: { text: "⌘X", mono: true },
+            onPick: () => {
+              closeSelMenu();
+              runCopySelection({ cut: true });
+            },
+          },
+          {
+            kind: "row",
+            label: "Duplicate",
+            icon: "dup",
+            hint: { text: "⌘D", mono: true },
+            onPick: () => {
+              closeSelMenu();
+              runDuplicateSelected();
+            },
+          },
+          { kind: "sep" },
+          {
+            kind: "row",
+            label: "Delete",
+            icon: "trash",
+            danger: true,
+            hint: { text: "Del", mono: true },
+            onPick: () => {
+              closeSelMenu();
+              runDeleteSelected();
+            },
+          },
+        ];
+        setSelMenu({
+          anchor: row,
+          spec: { title: `${n} ${n === 1 ? "block" : "blocks"} selected`, rows },
+        });
+      }}
     >
 
       {blocks.map((b) => (
@@ -2256,6 +2393,13 @@ export function EditableBody({
           spec={handleMenu.spec}
           anchor={handleMenu.anchor}
           onClose={closeHandleMenu}
+        />
+      ) : null}
+      {selMenu ? (
+        <RowMenu
+          spec={selMenu.spec}
+          anchor={selMenu.anchor}
+          onClose={closeSelMenu}
         />
       ) : null}
       <FloatingToolbar />
