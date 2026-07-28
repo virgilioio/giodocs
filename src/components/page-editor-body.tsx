@@ -1521,6 +1521,37 @@ export function EditableBody({
     [blocks, pageId, toast, getRunIndicesForBlock],
   );
 
+  /* Duplicate and delete acting on the whole active block-selection —
+   * used by both the ⌘D shortcut and the right-click "n blocks selected"
+   * menu, so both paths stay in sync. Duplicating N selected blocks
+   * splices N copies contiguously right after the last selected index;
+   * delete drops every selected index in one commit. */
+  const runDuplicateSelected = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    const idxs: number[] = [];
+    blocks.forEach((b, i) => {
+      if (selectedIds.has(b.id)) idxs.push(i);
+    });
+    if (!idxs.length) return;
+    const copies: Blk[] = idxs.map((i) => ({ ...blocks[i], id: nanoid(10) }));
+    const insertAt = idxs[idxs.length - 1] + 1;
+    const next = [...blocks];
+    next.splice(insertAt, 0, ...copies);
+    commit(next);
+  }, [blocks, commit, selectedIds]);
+
+  const runDeleteSelected = useCallback(() => {
+    if (selectedIds.size === 0) return;
+    const idxs: number[] = [];
+    blocks.forEach((b, i) => {
+      if (selectedIds.has(b.id)) idxs.push(i);
+    });
+    if (!idxs.length) return;
+    const next = deleteIndices(blocks, idxs, () => newBlock("text"));
+    clearSelection();
+    commit(next);
+  }, [blocks, commit, clearSelection, selectedIds]);
+
   // ⌘D duplicates the current block-selection run. Yields to text fields
   // — inside a textarea the browser's native ⌘D (or nothing) wins.
   useEffect(() => {
@@ -1530,14 +1561,12 @@ export function EditableBody({
       if (e.key.toLowerCase() !== "d") return;
       if (isTypingTarget(e.target)) return;
       if (selectedIds.size === 0) return;
-      const anchorId = blocks.find((b) => selectedIds.has(b.id))?.id ?? null;
-      if (!anchorId) return;
       e.preventDefault();
-      runDuplicate(anchorId);
+      runDuplicateSelected();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [locked, blocks, selectedIds, runDuplicate]);
+  }, [locked, selectedIds, runDuplicateSelected]);
 
   const buildBlockHandleSpec = useCallback(
     (
