@@ -556,6 +556,18 @@ function renderBlocksHtml(
   return parts.join("\n");
 }
 
+/**
+ * HTML fragment for an arbitrary subset of blocks — used by the block-
+ * selection clipboard path so `text/html` matches what the exporter would
+ * produce for the same blocks. Ordinals are computed against THIS list
+ * only (a selection of two numbered items starts at 1., 2. regardless of
+ * their absolute position in the page).
+ */
+export function blocksHtmlFragment(blocks: readonly Block[]): string {
+  const ords = numberedOrdinals(blocks);
+  return renderBlocksHtml(blocks, ords);
+}
+
 
 /* ─────────────────────────── Design tokens ───────────────────────────
  * These hex values are the design-system tokens serialized for exported
