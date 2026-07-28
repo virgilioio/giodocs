@@ -109,16 +109,18 @@ export function newColumnsBlock(n: number): Blk {
  *  `# ` → h1, `## ` → h2, `### `+ → h3 (we have exactly three levels; any
  *  deeper input lands on the deepest we have). `!> ` opens a callout. */
 export const MARKDOWN_SHORTCUTS: ReadonlyArray<{ pat: RegExp; type: BlockType }> = [
-  { pat: /^#{3,6} $/, type: "h3" },
+  { pat: /^#{3,} $/, type: "h3" },
   { pat: /^## $/, type: "h2" },
   { pat: /^# $/, type: "h1" },
   { pat: /^- $/, type: "bullet" },
   { pat: /^\* $/, type: "bullet" },
-  { pat: /^1\. $/, type: "numbered" },
+  { pat: /^\+ $/, type: "bullet" },
+  { pat: /^\d+\. $/, type: "numbered" },
   { pat: /^\[\] $/, type: "todo" },
   { pat: /^\[ \] $/, type: "todo" },
   { pat: /^> $/, type: "quote" },
   { pat: /^``` $/, type: "code" },
+  { pat: /^--- $/, type: "divider" },
   { pat: /^!> $/, type: "callout" },
 ];
 
@@ -133,6 +135,16 @@ export function tryMarkdownShortcut(
   if (cur.type !== "text") return null;
   for (const m of MARKDOWN_SHORTCUTS) {
     if (m.pat.test(val)) {
+      // Divider is non-editable — convert this block AND spawn a fresh
+      // text block after so the caret has somewhere to land.
+      if (m.type === "divider") {
+        const nb: Blk = { ...cur, type: "divider", text: "" };
+        const spawn = newBlock("text");
+        const next = list.slice();
+        next[idx] = nb;
+        next.splice(idx + 1, 0, spawn);
+        return { next, focus: { id: spawn.id, caret: "start" } };
+      }
       const nb: Blk = { ...cur, type: m.type, text: "" };
       if (m.type === "todo") nb.checked = false;
       if (m.type === "callout" && !nb.icon) nb.icon = "💡";
