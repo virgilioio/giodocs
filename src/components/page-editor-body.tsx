@@ -1934,12 +1934,21 @@ export function EditableBody({
           }}
           onChange={(patch) => updateBlock(b.id, patch)}
           onInput={(val) => {
+            // TEMP-INSTRUMENT: markdown-shortcut regression probe.
+            // Remove once the real-browser DOM shape is known.
+            // eslint-disable-next-line no-console
+            console.debug("[gio.shortcut.probe top]", {
+              val: JSON.stringify(val),
+              codes: [...val].map((c) => c.charCodeAt(0)),
+              blockType: blocks.find((x) => x.id === b.id)?.type,
+            });
             // Shortcut FIRST — on match, apply the structural op and skip
             // the text update, so a single keystroke produces exactly one
             // commit (one undo entry) and the caret lands per applyOp.
             if (tryMarkdown(b.id, val)) return;
             // Otherwise: commit the text update.
             updateBlock(b.id, { text: val });
+
             const el = refs.current[b.id];
             const caret = el ? (readCaret(el, val)?.start ?? val.length) : val.length;
             const before = val.slice(0, caret);
@@ -3098,6 +3107,13 @@ function ColumnStack({
           }}
           onChange={(patch) => updateBlock(b.id, patch)}
           onInput={(val) => {
+            // TEMP-INSTRUMENT: markdown-shortcut regression probe (cols).
+            // eslint-disable-next-line no-console
+            console.debug("[gio.shortcut.probe col]", {
+              val: JSON.stringify(val),
+              codes: [...val].map((c) => c.charCodeAt(0)),
+              blockType: blocks.find((x) => x.id === b.id)?.type,
+            });
             // Same single-commit shape as top-level: shortcut first, then
             // the text update. Column scope goes through the same pure
             // op so the two paths cannot drift.
@@ -3106,6 +3122,7 @@ function ColumnStack({
               applyOp(mr);
               return;
             }
+
             updateBlock(b.id, { text: val });
             const el = refs.current[b.id];
             const caret = el ? (readCaret(el, val)?.start ?? val.length) : val.length;
