@@ -3279,6 +3279,31 @@ function TableBlock({
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [menuSpec, setMenuSpec] = useState<MenuSpec | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  // First-contact hint: shown beneath a hovered table while nothing is
+  // selected. Suppressed permanently after the first menu open on any table
+  // in this browser. Read from localStorage on mount so the flag survives
+  // reloads; ignored under SSR.
+  const [hintSeen, setHintSeen] = useState<boolean>(false);
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        setHintSeen(localStorage.getItem("gio.tableHintSeen") === "1");
+      }
+    } catch {
+      /* private-mode / disabled storage — hint just stays visible until a
+         menu is opened, which is still fine. */
+    }
+  }, []);
+  const suppressHint = useCallback(() => {
+    setHintSeen(true);
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("gio.tableHintSeen", "1");
+      }
+    } catch {
+      /* noop */
+    }
+  }, []);
 
   const nCols = rows[0]?.length ?? 0;
   const nRows = rows.length;
@@ -3313,16 +3338,28 @@ function TableBlock({
     }
   }, [sel, rows]);
 
-  // Escape deselects; Delete/Backspace with focus outside a cell clears;
-  // ⌘C / Ctrl-C copies the selection.
+  // Escape is layered: an open menu closes first, then a second Escape
+  // deselects. This effect stays attached whenever either is present so the
+  // second Escape lands even after `menuSpec` transitions to null.
   useEffect(() => {
-    if (!sel) return;
+    if (!menuSpec && !sel) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setSel(null);
+      if (e.key !== "Escape") return;
+      if (menuSpec) {
         closeMenu();
         return;
       }
+      if (sel) setSel(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuSpec, sel, closeMenu]);
+
+  // Delete/Backspace clears; ⌘C copies. Bound only while a row/column is
+  // selected — cell typing must never trigger these.
+  useEffect(() => {
+    if (!sel) return;
+    const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       const inCell = !!(t && rootRef.current?.contains(t) && t.tagName === "INPUT");
       if ((e.metaKey || e.ctrlKey) && (e.key === "c" || e.key === "C")) {
@@ -3340,7 +3377,7 @@ function TableBlock({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sel, rows, commit, closeMenu, copySelection]);
+  }, [sel, rows, commit, copySelection]);
 
   function setCell(r: number, c: number, v: string) {
     const next = rows.map((row) => row.slice());
@@ -3485,6 +3522,7 @@ function TableBlock({
   function openColumnMenu(anchor: HTMLElement, index: number) {
     setMenuSpec(buildColumnSpec(index));
     setMenuAnchor(anchor);
+    suppressHint();
   }
 
   function buildRowSpec(index: number): MenuSpec {
@@ -3618,28 +3656,71 @@ function TableBlock({
   function openRowMenu(anchor: HTMLElement, index: number) {
     setMenuSpec(buildRowSpec(index));
     setMenuAnchor(anchor);
+    suppressHint();
   }
 
+  // Right-click chooser: two rows that swap the panel in place to the row
+  // or column menu, sharing the anchor. Used by the cell context-menu path
+  // where we do not yet know which axis the user wants.
+  function buildChooserSpec(rowIndex: number, colIndex: number): MenuSpec {
+    return {
+      title: `Row ${rowIndex + 1} · Column ${colIndex + 1}`,
+      rows: [
+        {
+          kind: "row",
+          label: "Row actions",
+          icon: "list",
+          hint: { text: "›" },
+          onPick: () => setMenuSpec(buildRowSpec(rowIndex)),
+        },
+        {
+          kind: "row",
+          label: "Column actions",
+          icon: "board",
+          hint: { text: "›" },
+          onPick: () => setMenuSpec(buildColumnSpec(colIndex)),
+        },
+      ],
+    };
+  }
+
+  // One click on a handle now selects AND opens the menu in the same
+  // gesture. Two clicks to reach a menu is a hunt; one is a control.
   function onColumnHandleClick(e: React.MouseEvent<HTMLButtonElement>, index: number) {
     e.stopPropagation();
     if (locked) return;
-    if (sel && sel.kind === "col" && sel.index === index) {
-      openColumnMenu(e.currentTarget, index);
-    } else {
-      setSel({ kind: "col", index });
-      closeMenu();
-    }
+    setSel({ kind: "col", index });
+    openColumnMenu(e.currentTarget, index);
   }
 
   function onRowHandleClick(e: React.MouseEvent<HTMLButtonElement>, index: number) {
     e.stopPropagation();
     if (locked) return;
-    if (sel && sel.kind === "row" && sel.index === index) {
-      openRowMenu(e.currentTarget, index);
-    } else {
-      setSel({ kind: "row", index });
-      closeMenu();
-    }
+    setSel({ kind: "row", index });
+    openRowMenu(e.currentTarget, index);
+  }
+
+  // Right-click inside a cell — read the cell's row/col off the input's
+  // data attribute, preventDefault only within this table so the browser's
+  // own menu still works everywhere else, and open the chooser anchored to
+  // the cell.
+  function onTableContextMenu(e: React.MouseEvent<HTMLDivElement>) {
+    if (locked) return;
+    const el = (e.target as HTMLElement | null)?.closest?.(
+      "input[data-table-cell]",
+    ) as HTMLInputElement | null;
+    if (!el) return;
+    const attr = el.getAttribute("data-table-cell");
+    if (!attr) return;
+    const [rStr, cStr] = attr.split(",");
+    const r = Number(rStr);
+    const c = Number(cStr);
+    if (!Number.isFinite(r) || !Number.isFinite(c)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setMenuSpec(buildChooserSpec(r, c));
+    setMenuAnchor(el);
+    suppressHint();
   }
 
   // Click into any cell deselects the row/column selection.
@@ -3653,6 +3734,7 @@ function TableBlock({
       className="group/table relative"
       style={{ paddingTop: 8, paddingLeft: 8, paddingRight: 20, paddingBottom: 20 }}
       onMouseDown={clearSelIfBodyClick}
+      onContextMenu={onTableContextMenu}
     >
       <table className="w-full border-collapse text-meta" style={{ tableLayout: "fixed" }}>
         <tbody>
@@ -3693,73 +3775,46 @@ function TableBlock({
 
       {!locked && (
         <>
-          {/* Column handles — above each column, 4px tall, span col width. */}
+          {/* Column handles — a 16px hit strip whose bottom 10px are visible
+              directly above the header row. Rest state (with the table
+              hovered): lineSoft. Handle hover: lineStrong plus 3-dot grip.
+              Selected: blue. */}
           <div
-            aria-hidden={sel?.kind !== "col"}
-            className="pointer-events-none absolute inset-x-2 opacity-0 transition-opacity group-hover/table:opacity-100"
-            style={{ top: 0, height: 8, right: 20 }}
+            aria-hidden={false}
+            className="pointer-events-none absolute opacity-0 transition-opacity group-hover/table:opacity-100"
+            style={{ top: -8, left: 8, right: 20, height: 16 }}
           >
-            <div className="pointer-events-auto flex h-full items-center gap-0">
+            <div className="pointer-events-auto flex h-full items-stretch gap-0">
               {Array.from({ length: nCols }, (_, ci) => {
                 const active = sel?.kind === "col" && sel.index === ci;
                 return (
-                  <button
+                  <ColumnHandle
                     key={ci}
-                    type="button"
-                    aria-label={active ? `Column ${ci + 1} actions` : "Select column"}
-                    title="Select column"
-                    onClick={(e) => onColumnHandleClick(e, ci)}
-                    className="grid place-items-center"
-                    style={{ flex: 1, height: 8, background: "transparent" }}
-                  >
-                    <span
-                      style={{
-                        display: "block",
-                        width: "calc(100% - 4px)",
-                        height: 4,
-                        borderRadius: 2,
-                        background: active
-                          ? "var(--color-blue)"
-                          : "var(--color-lineStrong)",
-                      }}
-                    />
-                  </button>
+                    ci={ci}
+                    active={active}
+                    onClick={onColumnHandleClick}
+                  />
                 );
               })}
             </div>
           </div>
 
-          {/* Row handles — left of each row, 4px wide, span row height. */}
+          {/* Row handles — mirror of the column strip on the left edge. */}
           <div
-            aria-hidden={sel?.kind !== "row"}
-            className="pointer-events-none absolute inset-y-2 opacity-0 transition-opacity group-hover/table:opacity-100"
-            style={{ left: 0, width: 8, bottom: 20 }}
+            aria-hidden={false}
+            className="pointer-events-none absolute opacity-0 transition-opacity group-hover/table:opacity-100"
+            style={{ left: -8, top: 8, bottom: 20, width: 16 }}
           >
-            <div className="pointer-events-auto flex h-full flex-col gap-0">
+            <div className="pointer-events-auto flex h-full flex-col items-stretch gap-0">
               {rows.map((_, ri) => {
                 const active = sel?.kind === "row" && sel.index === ri;
                 return (
-                  <button
+                  <RowHandle
                     key={ri}
-                    type="button"
-                    aria-label={active ? `Row ${ri + 1} actions` : "Select row"}
-                    title="Select row"
-                    onClick={(e) => onRowHandleClick(e, ri)}
-                    className="grid place-items-center"
-                    style={{ flex: 1, width: 8, background: "transparent" }}
-                  >
-                    <span
-                      style={{
-                        display: "block",
-                        height: "calc(100% - 4px)",
-                        width: 4,
-                        borderRadius: 2,
-                        background: active
-                          ? "var(--color-blue)"
-                          : "var(--color-lineStrong)",
-                      }}
-                    />
-                  </button>
+                    ri={ri}
+                    active={active}
+                    onClick={onRowHandleClick}
+                  />
                 );
               })}
             </div>
@@ -3771,7 +3826,7 @@ function TableBlock({
             aria-label="Add column"
             title="Add column"
             onClick={() => {
-              commit(addColumn(rows, nCols));
+              commit(addColumn(rows, nCols), addAlign(align, nCols));
               // Focus the new cell in the first row.
               requestAnimationFrame(() => {
                 const el = rootRef.current?.querySelector<HTMLInputElement>(
@@ -3805,11 +3860,161 @@ function TableBlock({
           >
             +
           </button>
+
+          {/* First-contact hint — shown once, beneath the hovered table
+              while nothing is selected. Suppressed permanently after the
+              first menu open (localStorage: gio.tableHintSeen). */}
+          {!hintSeen && !sel && !menuSpec && (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute opacity-0 transition-opacity group-hover/table:opacity-100"
+              style={{
+                left: 8,
+                right: 20,
+                bottom: -18,
+                fontSize: 12.5,
+                lineHeight: "16px",
+                color: "var(--color-faint)",
+              }}
+            >
+              Click a row or column handle for options
+            </div>
+          )}
         </>
       )}
 
       <RowMenu spec={menuSpec} anchor={menuAnchor} onClose={closeMenu} />
     </div>
+  );
+}
+
+/* ────────────── Table handle components ──────────────
+   Split out so we can attach local hover state (for the grip glyph)
+   without re-rendering every handle whenever a sibling row/column is
+   hovered. Both handles use the same 16px hit target with a 10px visible
+   strip aligned to the table edge; they only differ in axis. */
+
+function ColumnHandle({
+  ci,
+  active,
+  onClick,
+}: {
+  ci: number;
+  active: boolean;
+  onClick: (e: React.MouseEvent<HTMLButtonElement>, index: number) => void;
+}) {
+  const [hover, setHover] = useState(false);
+  const bg = active
+    ? "var(--color-blue)"
+    : hover
+      ? "var(--color-lineStrong)"
+      : "var(--color-lineSoft)";
+  return (
+    <button
+      type="button"
+      aria-label={`Column ${ci + 1} actions`}
+      title="Column actions"
+      onClick={(e) => onClick(e, ci)}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      className="relative"
+      style={{ flex: 1, height: 16, background: "transparent", cursor: "pointer" }}
+    >
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          left: 1,
+          right: 1,
+          bottom: 0,
+          height: 10,
+          borderRadius: 2,
+          background: bg,
+          transition: "background 90ms ease",
+        }}
+      />
+      {hover && !active && (
+        <svg
+          aria-hidden
+          viewBox="0 0 24 24"
+          width={16}
+          height={10}
+          style={{
+            position: "absolute",
+            left: "50%",
+            bottom: 0,
+            transform: "translateX(-50%)",
+            pointerEvents: "none",
+          }}
+        >
+          <circle cx={6} cy={12} r={1.7} fill="var(--color-surface)" />
+          <circle cx={12} cy={12} r={1.7} fill="var(--color-surface)" />
+          <circle cx={18} cy={12} r={1.7} fill="var(--color-surface)" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+function RowHandle({
+  ri,
+  active,
+  onClick,
+}: {
+  ri: number;
+  active: boolean;
+  onClick: (e: React.MouseEvent<HTMLButtonElement>, index: number) => void;
+}) {
+  const [hover, setHover] = useState(false);
+  const bg = active
+    ? "var(--color-blue)"
+    : hover
+      ? "var(--color-lineStrong)"
+      : "var(--color-lineSoft)";
+  return (
+    <button
+      type="button"
+      aria-label={`Row ${ri + 1} actions`}
+      title="Row actions"
+      onClick={(e) => onClick(e, ri)}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      className="relative"
+      style={{ flex: 1, width: 16, background: "transparent", cursor: "pointer" }}
+    >
+      <span
+        aria-hidden
+        style={{
+          position: "absolute",
+          top: 1,
+          bottom: 1,
+          right: 0,
+          width: 10,
+          borderRadius: 2,
+          background: bg,
+          transition: "background 90ms ease",
+        }}
+      />
+      {hover && !active && (
+        <svg
+          aria-hidden
+          viewBox="0 0 24 24"
+          width={10}
+          height={16}
+          style={{
+            position: "absolute",
+            top: "50%",
+            right: 0,
+            transform: "translateY(-50%)",
+            pointerEvents: "none",
+          }}
+        >
+          <circle cx={12} cy={6} r={1.7} fill="var(--color-surface)" />
+          <circle cx={12} cy={12} r={1.7} fill="var(--color-surface)" />
+          <circle cx={12} cy={18} r={1.7} fill="var(--color-surface)" />
+        </svg>
+      )}
+    </button>
   );
 }
 
