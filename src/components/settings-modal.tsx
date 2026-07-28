@@ -191,6 +191,7 @@ function SettingsNav({ pane, onPick }: { pane: SettingsPane; onPick: (p: Setting
 
   type NavItem = { key: SettingsPane; label: string; path: string; group: "ACCOUNT" | "WORKSPACE" };
   const items: NavItem[] = [
+    { key: "profile", label: "My profile", path: ICON_PERSON, group: "ACCOUNT" },
     { key: "preferences", label: "Preferences", path: ICON_SLIDERS, group: "ACCOUNT" },
     { key: "general", label: "General", path: ICON_GEAR, group: "WORKSPACE" },
     { key: "people", label: "People", path: ICON_PEOPLE, group: "WORKSPACE" },
