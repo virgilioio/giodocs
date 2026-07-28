@@ -109,48 +109,71 @@ export function newColumnsBlock(n: number): Blk {
  *  `# ` → h1, `## ` → h2, `### `+ → h3 (we have exactly three levels; any
  *  deeper input lands on the deepest we have). `!> ` opens a callout. */
 export const MARKDOWN_SHORTCUTS: ReadonlyArray<{ pat: RegExp; type: BlockType }> = [
-  { pat: /^#{3,} $/, type: "h3" },
-  { pat: /^## $/, type: "h2" },
-  { pat: /^# $/, type: "h1" },
-  { pat: /^- $/, type: "bullet" },
-  { pat: /^\* $/, type: "bullet" },
-  { pat: /^\+ $/, type: "bullet" },
-  { pat: /^\d+\. $/, type: "numbered" },
-  { pat: /^\[\] $/, type: "todo" },
-  { pat: /^\[ \] $/, type: "todo" },
-  { pat: /^> $/, type: "quote" },
-  { pat: /^``` $/, type: "code" },
-  { pat: /^--- $/, type: "divider" },
-  { pat: /^!> $/, type: "callout" },
+  { pat: /^#{3,} /, type: "h3" },
+  { pat: /^## /, type: "h2" },
+  { pat: /^# /, type: "h1" },
+  { pat: /^- /, type: "bullet" },
+  { pat: /^\* /, type: "bullet" },
+  { pat: /^\+ /, type: "bullet" },
+  { pat: /^\d+\. /, type: "numbered" },
+  { pat: /^\[\] /, type: "todo" },
+  { pat: /^\[ \] /, type: "todo" },
+  { pat: /^> /, type: "quote" },
+  { pat: /^``` /, type: "code" },
+  { pat: /^--- /, type: "divider" },
+  { pat: /^!> /, type: "callout" },
 ];
 
+/**
+ * Prefix-match a typing shortcut and keep the remainder as block text.
+ *
+ * Fires only when `caret` sits immediately after the matched prefix — the
+ * signal that the user JUST typed the trigger. This is what distinguishes
+ * "typed `1. `" (convert) from "pasted `1. Something`" or editing earlier
+ * in an existing line (leave alone). The caret argument is required for
+ * that reason; it comes from `readCaret` at the block-layer call site.
+ *
+ * Divider is block-replacing and destructive of trailing text, so it only
+ * fires when the remainder is empty. Code fence keeps the remainder as
+ * the code block's initial content.
+ */
 export function tryMarkdownShortcut(
   list: Blk[],
   id: string,
   val: string,
+  caret: number,
 ): OpResult | null {
   const idx = list.findIndex((b) => b.id === id);
   if (idx === -1) return null;
   const cur = list[idx];
   if (cur.type !== "text") return null;
   for (const m of MARKDOWN_SHORTCUTS) {
-    if (m.pat.test(val)) {
-      // Divider is non-editable — convert this block AND spawn a fresh
-      // text block after so the caret has somewhere to land.
-      if (m.type === "divider") {
-        const nb: Blk = { ...cur, type: "divider", text: "" };
-        const spawn = newBlock("text");
-        const next = list.slice();
-        next[idx] = nb;
-        next.splice(idx + 1, 0, spawn);
-        return { next, focus: { id: spawn.id, caret: "start" } };
-      }
-      const nb: Blk = { ...cur, type: m.type, text: "" };
-      if (m.type === "todo") nb.checked = false;
-      if (m.type === "callout" && !nb.icon) nb.icon = "💡";
-      const next = list.map((b, i) => (i === idx ? nb : b));
-      return { next, focus: { id, caret: "start" } };
+    const mm = m.pat.exec(val);
+    if (!mm) continue;
+    const prefixLen = mm[0].length;
+    // Caret guard: only fire when the caret is right after the prefix.
+    // "typed the trigger" ≠ "arrived by paste" ≠ "editing later in line".
+    if (caret !== prefixLen) return null;
+    const remainder = val.slice(prefixLen);
+    if (m.type === "divider") {
+      // Divider is non-editable and would destroy the trailing text; only
+      // convert when nothing follows. Spawn a fresh text block after so
+      // the caret has somewhere to land.
+      if (remainder !== "") return null;
+      const nb: Blk = { ...cur, type: "divider", text: "" };
+      const spawn = newBlock("text");
+      const next = list.slice();
+      next[idx] = nb;
+      next.splice(idx + 1, 0, spawn);
+      return { next, focus: { id: spawn.id, caret: "start" } };
     }
+    // Code keeps the remainder as its content; every other type does too —
+    // the user typed a prefix then continued into the payload.
+    const nb: Blk = { ...cur, type: m.type, text: remainder };
+    if (m.type === "todo") nb.checked = false;
+    if (m.type === "callout" && !nb.icon) nb.icon = "💡";
+    const next = list.map((b, i) => (i === idx ? nb : b));
+    return { next, focus: { id, caret: "start" } };
   }
   return null;
 }
