@@ -27,6 +27,7 @@ import { usePrefs, type FontFamily, type Density, type DateFormatMode, type Them
 import { useToast } from "@/lib/toast";
 import { useFormatDate } from "@/lib/format";
 import type { PageListItem } from "@/lib/types";
+import { PALETTE, SKIN, FACES, avaBg } from "@/lib/avatar";
 import type { PendingInvite } from "./add-members-modal";
 
 export type SettingsPane = "profile" | "preferences" | "general" | "people" | "emoji";
