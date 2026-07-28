@@ -3732,7 +3732,7 @@ function TableBlock({
     <div
       ref={rootRef}
       className="group/table relative"
-      style={{ paddingTop: 8, paddingLeft: 8, paddingRight: 20, paddingBottom: 20 }}
+      style={{ paddingTop: 23, paddingLeft: 23, paddingRight: 23, paddingBottom: 23 }}
       onMouseDown={clearSelIfBodyClick}
       onContextMenu={onTableContextMenu}
     >
@@ -3775,14 +3775,13 @@ function TableBlock({
 
       {!locked && (
         <>
-          {/* Column handles — a 16px hit strip whose bottom 10px are visible
-              directly above the header row. Rest state (with the table
-              hovered): lineSoft. Handle hover: lineStrong plus 3-dot grip.
-              Selected: blue. */}
+          {/* Column handles — 16px hit strip whose visible 6/8px pill sits
+              flush at the bottom edge of the container, 7px above the
+              header row (paddingTop 23 − 16 hit = 7px gap).           */}
           <div
             aria-hidden={false}
             className="pointer-events-none absolute opacity-0 transition-opacity group-hover/table:opacity-100"
-            style={{ top: -8, left: 8, right: 20, height: 16 }}
+            style={{ top: 0, left: 23, right: 23, height: 16 }}
           >
             <div className="pointer-events-auto flex h-full items-stretch gap-0">
               {Array.from({ length: nCols }, (_, ci) => {
@@ -3799,11 +3798,12 @@ function TableBlock({
             </div>
           </div>
 
-          {/* Row handles — mirror of the column strip on the left edge. */}
+          {/* Row handles — mirror of the column strip on the left edge.
+              paddingLeft 23 − 16 hit = 7px gap to the first cell. */}
           <div
             aria-hidden={false}
             className="pointer-events-none absolute opacity-0 transition-opacity group-hover/table:opacity-100"
-            style={{ left: -8, top: 8, bottom: 20, width: 16 }}
+            style={{ left: 0, top: 23, bottom: 23, width: 16 }}
           >
             <div className="pointer-events-auto flex h-full flex-col items-stretch gap-0">
               {rows.map((_, ri) => {
@@ -3820,14 +3820,11 @@ function TableBlock({
             </div>
           </div>
 
-          {/* +column strip at right edge, full height, 20px wide. */}
-          <button
-            type="button"
-            aria-label="Add column"
-            title="Add column"
+          {/* +column pill on the right edge, sibling of the column handle. */}
+          <AddPill
+            axis="col"
             onClick={() => {
               commit(addColumn(rows, nCols), addAlign(align, nCols));
-              // Focus the new cell in the first row.
               requestAnimationFrame(() => {
                 const el = rootRef.current?.querySelector<HTMLInputElement>(
                   `input[data-table-cell="0,${nCols}"]`,
@@ -3835,17 +3832,11 @@ function TableBlock({
                 el?.focus();
               });
             }}
-            className="absolute hidden place-items-center rounded-md text-faint hover:bg-sunken hover:text-muted group-hover/table:grid"
-            style={{ right: 0, top: 8, bottom: 20, width: 20 }}
-          >
-            +
-          </button>
+          />
 
-          {/* +row strip at bottom edge, full width, 20px tall. */}
-          <button
-            type="button"
-            aria-label="Add row"
-            title="Add row"
+          {/* +row pill on the bottom edge, sibling of the row handle. */}
+          <AddPill
+            axis="row"
             onClick={() => {
               commit(addRow(rows, nRows));
               requestAnimationFrame(() => {
@@ -3855,11 +3846,7 @@ function TableBlock({
                 el?.focus();
               });
             }}
-            className="absolute hidden place-items-center rounded-md text-faint hover:bg-sunken hover:text-muted group-hover/table:grid"
-            style={{ left: 8, right: 20, bottom: 0, height: 20 }}
-          >
-            +
-          </button>
+          />
 
           {/* First-contact hint — shown once, beneath the hovered table
               while nothing is selected. Suppressed permanently after the
@@ -3869,8 +3856,8 @@ function TableBlock({
               aria-hidden
               className="pointer-events-none absolute opacity-0 transition-opacity group-hover/table:opacity-100"
               style={{
-                left: 8,
-                right: 20,
+                left: 23,
+                right: 23,
                 bottom: -18,
                 fontSize: 12.5,
                 lineHeight: "16px",
