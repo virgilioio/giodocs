@@ -24,6 +24,10 @@ export const TINT_LIT: Record<string, string> = {
   yellowTint: "#FAF4C4",
 };
 
+/** Defaults used when a profile row is missing avatar_tint / avatar_ink. */
+export const DEFAULT_TINT = TINT_LIT.blueWash;
+export const DEFAULT_INK = "#2563EB";
+
 /** The six palette entries offered by the colour swatch row. Both raw hex
  *  values (as stored in profiles.avatar_tint / avatar_ink) and the token
  *  key are kept, so the picker can preview by either. */
