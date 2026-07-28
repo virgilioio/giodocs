@@ -1187,52 +1187,85 @@ function EmojiPane() {
   const ws = useWorkspaceId();
   const shell = useWorkspaceShell(ws);
   const pages = (shell.pages.data ?? []) as PageListItem[];
-  const members = (shell.members.data ?? []) as unknown as MemberRow[];
-  const { user } = useAuth();
-  const isOwner = members.find((m) => m.user_id === user?.id)?.role === "owner";
+  const propDefs = (shell.propDefs.data ?? []) as Array<{
+    key?: string | null;
+    options?: unknown;
+  }>;
+  const views = (shell.views.data ?? []) as Array<{
+    id: string;
+    name?: string | null;
+    icon?: string | null;
+    updated_at?: string | null;
+    created_at?: string | null;
+  }>;
   const fmt = useFormatDate();
-  const toast = useToast();
-
-  const [ownerOnlyAdd, setOwnerOnlyAdd] = useState(false);
   const [query, setQuery] = useState("");
 
+  type Usage =
+    | { kind: "page"; label: string; when: number }
+    | { kind: "area"; label: string; when: number }
+    | { kind: "view"; label: string; when: number };
+
   const inventory = useMemo(() => {
-    const m = new Map<string, PageListItem[]>();
+    const m = new Map<string, Usage[]>();
+    const push = (icon: string | null | undefined, u: Usage) => {
+      const key = (icon ?? "").trim();
+      if (!key) return;
+      const arr = m.get(key) ?? [];
+      arr.push(u);
+      m.set(key, arr);
+    };
     for (const p of pages) {
-      const icon = (p.icon ?? "").trim();
-      if (!icon) continue;
-      const arr = m.get(icon) ?? [];
-      arr.push(p);
-      m.set(icon, arr);
+      push(p.icon, {
+        kind: "page",
+        label: p.title || "Untitled",
+        when: new Date(p.edited_at).getTime(),
+      });
+    }
+    const areaDef = propDefs.find((d) => d?.key === "area");
+    const options = Array.isArray(areaDef?.options)
+      ? (areaDef!.options as Array<{ value?: string; label?: string; icon?: string }>)
+      : [];
+    for (const opt of options) {
+      push(opt?.icon, {
+        kind: "area",
+        label: opt?.label || opt?.value || "Area",
+        when: 0,
+      });
+    }
+    for (const v of views) {
+      push(v.icon, {
+        kind: "view",
+        label: v.name || "View",
+        when: new Date(v.updated_at ?? v.created_at ?? 0).getTime(),
+      });
     }
     return [...m.entries()]
-      .map(([emoji, pgs]) => {
-        const lastEdited = pgs
-          .map((p) => new Date(p.edited_at).getTime())
-          .reduce((a, b) => (a > b ? a : b), 0);
-        return { emoji, pages: pgs, count: pgs.length, lastEdited };
+      .map(([emoji, usages]) => {
+        const lastEdited = usages.reduce((a, u) => (u.when > a ? u.when : a), 0);
+        return { emoji, usages, count: usages.length, lastEdited };
       })
-      .sort((a, b) => b.count - a.count)
-      .filter((row) => !query || row.pages.some((p) => (p.title ?? "").toLowerCase().includes(query.toLowerCase())));
-  }, [pages, query]);
+      .sort((a, b) => b.count - a.count || (a.emoji < b.emoji ? -1 : 1))
+      .filter(
+        (row) =>
+          !query ||
+          row.usages.some((u) =>
+            u.label.toLowerCase().includes(query.toLowerCase()),
+          ),
+      );
+  }, [pages, propDefs, views, query]);
 
-  const canAdd = !ownerOnlyAdd || isOwner;
+  const kindLabel = (k: Usage["kind"]) =>
+    k === "page" ? "Page" : k === "area" ? "Area" : "View";
 
   return (
     <div>
       <PaneHeader
         title="Emoji"
-        sub="Every icon in use across the workspace, generated from the pages that wear them."
+        sub="Every icon in use across the workspace, generated from what pages, areas and views actually wear."
       />
       <div style={{ padding: "0 30px 30px" }}>
-        <Row
-          label="Only owners can add emoji"
-          help="Existing icons stay editable by whoever set them."
-        >
-          <Toggle value={ownerOnlyAdd} onChange={setOwnerOnlyAdd} />
-        </Row>
-
-        <div className="mt-4 flex items-center gap-3">
+        <div className="mt-2 flex items-center gap-3">
           <div className="text-secondary" style={{ fontSize: 13.5 }}>
             <b className="text-noir tnum">{inventory.length}</b> distinct emoji in use
           </div>
@@ -1240,28 +1273,17 @@ function EmojiPane() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search pages…"
+            placeholder="Search…"
             className="border border-line bg-surface rounded-md focus:outline-none"
             style={{ padding: "5px 10px", fontSize: 13.5, width: 200 }}
           />
-          <button
-            type="button"
-            disabled={!canAdd}
-            onClick={() =>
-              toast.push("Emoji are added by setting them on a page.")
-            }
-            className="bg-noir text-track disabled:opacity-40"
-            style={{ borderRadius: 10, padding: "6px 13px", fontSize: 13.5, fontWeight: 700 }}
-          >
-            Add emoji
-          </button>
         </div>
 
         <div className="mt-3 border border-line overflow-hidden" style={{ borderRadius: 10 }}>
           <div
             className="grid bg-canvas border-b border-line text-faint"
             style={{
-              gridTemplateColumns: "56px minmax(0,1.4fr) 96px minmax(0,1.3fr) 32px",
+              gridTemplateColumns: "56px minmax(0,1.6fr) 96px minmax(0,1.3fr)",
               gap: 12,
               padding: "8px 13px",
               fontSize: 11.5,
@@ -1271,14 +1293,13 @@ function EmojiPane() {
             }}
           >
             <div>EMOJI</div>
-            <div>PAGES USING IT</div>
+            <div>USED BY</div>
             <div>COUNT</div>
             <div>MOST RECENT</div>
-            <div></div>
           </div>
           {inventory.length === 0 && (
             <div className="text-secondary" style={{ padding: 20, fontSize: 13.5 }}>
-              No pages carry an emoji yet.
+              No pages, areas or views carry an emoji yet.
             </div>
           )}
           {inventory.map((it, i) => (
@@ -1286,7 +1307,7 @@ function EmojiPane() {
               key={it.emoji}
               className="grid items-center"
               style={{
-                gridTemplateColumns: "56px minmax(0,1.4fr) 96px minmax(0,1.3fr) 32px",
+                gridTemplateColumns: "56px minmax(0,1.6fr) 96px minmax(0,1.3fr)",
                 gap: 12,
                 padding: "9px 13px",
                 borderBottom: i === inventory.length - 1 ? "none" : "1px solid var(--color-lineSoft)",
@@ -1294,30 +1315,29 @@ function EmojiPane() {
             >
               <span style={{ fontSize: 21 }}>{it.emoji}</span>
               <div className="min-w-0 truncate text-secondary" style={{ fontSize: 13.5 }}>
-                {it.pages.slice(0, 4).map((p) => p.title || "Untitled").join(", ")}
-                {it.pages.length > 4 && ` +${it.pages.length - 4} more`}
+                {it.usages.slice(0, 4).map((u, idx) => (
+                  <span key={idx}>
+                    {idx > 0 ? ", " : ""}
+                    <span className="text-faint" style={{ fontSize: 11.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                      {kindLabel(u.kind)}
+                    </span>{" "}
+                    {u.label}
+                  </span>
+                ))}
+                {it.usages.length > 4 && ` +${it.usages.length - 4} more`}
               </div>
               <div className="text-noir tnum" style={{ fontSize: 13.5, fontWeight: 700 }}>
                 {it.count}
               </div>
               <div className="text-muted" style={{ fontSize: 12.5 }}>
-                {fmt(new Date(it.lastEdited).toISOString())}
+                {it.lastEdited ? fmt(new Date(it.lastEdited).toISOString()) : "—"}
               </div>
-              <button
-                type="button"
-                disabled
-                title={`${it.count} page${it.count === 1 ? "" : "s"} still use this — change them first`}
-                className="grid h-6 w-6 place-items-center text-whisper"
-                style={{ borderRadius: 6, cursor: "not-allowed" }}
-              >
-                ×
-              </button>
             </div>
           ))}
         </div>
 
-        <p className="mt-3 text-secondary" style={{ fontSize: 13 }}>
-          This list is generated from the pages themselves — an emoji exists here because a page wears it.
+        <p className="mt-3 text-caption text-muted">
+          Derived from what your pages, areas and views actually use — nothing to configure.
         </p>
       </div>
     </div>
