@@ -3522,6 +3522,7 @@ function TableBlock({
   function openColumnMenu(anchor: HTMLElement, index: number) {
     setMenuSpec(buildColumnSpec(index));
     setMenuAnchor(anchor);
+    suppressHint();
   }
 
   function buildRowSpec(index: number): MenuSpec {
