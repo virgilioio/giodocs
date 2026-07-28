@@ -59,6 +59,15 @@ import {
   setAlign,
   clearRow,
   clearColumn,
+  type WidthList,
+  addWidth,
+  deleteWidth,
+  duplicateWidth,
+  moveWidth,
+  setWidth,
+  normalizeWidths,
+  WIDTH_MIN,
+  WIDTH_MAX,
 } from "@/lib/table-ops";
 // The shared block-editor primitives — ONE implementation used by both
 // EditableBody (top-level) and ColumnStack (per-column). See:
