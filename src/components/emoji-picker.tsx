@@ -93,6 +93,18 @@ export function EmojiPicker({
     searchRef.current?.focus();
   }, []);
 
+  const usedInWorkspace = useUsedInWorkspace();
+  const usedItems = useMemo<Emoji[]>(
+    () =>
+      usedInWorkspace.map((c) => ({
+        char: c,
+        name: c,
+        keywords: [],
+        category: "symbols" as EmojiCategory,
+      })),
+    [usedInWorkspace],
+  );
+
   const sections = useMemo(
     () =>
       CATEGORY_ORDER.map((c) => ({ cat: c, items: emojisByCategory(c) })),
@@ -117,8 +129,8 @@ export function EmojiPicker({
   }, [query, searching]);
 
   const flatSectioned = useMemo<Emoji[]>(
-    () => sections.flatMap((s) => s.items),
-    [sections],
+    () => [...usedItems, ...sections.flatMap((s) => s.items)],
+    [sections, usedItems],
   );
   const flat = searching ? results : flatSectioned;
 
