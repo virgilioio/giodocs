@@ -388,6 +388,29 @@ function blockHtml(b: Block, ordinal = 1): string {
         return a === "center" || a === "right" ? String(a) : "left";
       };
       const styleFor = (i: number) => ` style="text-align:${alignAt(i)}"`;
+      // Per-column widths survive to HTML/PDF via <colgroup>. When widths
+      // are present, table-layout: fixed with a table width equal to their
+      // sum preserves proportions; the existing `img, table { max-width:
+      // 100% }` rule in HTML_CSS scales an over-wide table down for the
+      // page rather than clipping it. Absent widths keeps today's auto
+      // layout, so unrelated exports don't regress.
+      const widthsRaw = Array.isArray((b as { widths?: unknown }).widths)
+        ? ((b as { widths: unknown[] }).widths as unknown[])
+        : null;
+      let colgroup = "";
+      let tableAttrs = "";
+      if (widthsRaw && widthsRaw.length > 0) {
+        const w: number[] = [];
+        for (let i = 0; i < width; i++) {
+          const v = widthsRaw[i];
+          const n = typeof v === "number" && Number.isFinite(v) ? Math.round(v) : 160;
+          w.push(Math.max(56, Math.min(1200, n)));
+        }
+        colgroup =
+          `<colgroup>${w.map((n) => `<col style="width:${n}px"/>`).join("")}</colgroup>`;
+        const sum = w.reduce((a, n) => a + n, 0);
+        tableAttrs = ` style="table-layout:fixed;width:${sum}px"`;
+      }
       const head = pad(rows[0])
         .map((c, i) => `<th${styleFor(i)}>${esc(c)}</th>`)
         .join("");
@@ -400,7 +423,7 @@ function blockHtml(b: Block, ordinal = 1): string {
               .join("")}</tr>`,
         )
         .join("");
-      return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+      return `<table${tableAttrs}>${colgroup}<thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
     }
     case "columns": {
       // Real CSS grid. minmax(0,1fr) prevents long words from blowing the
