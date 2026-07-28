@@ -648,6 +648,15 @@ export function EditableBody({
     setHandleMenu((cur) => (cur ? { ...cur, spec } : cur));
   }, []);
 
+  /* Right-click-on-a-selected-block menu — a small standalone RowMenu that
+   * lives at container level, not per-block, because the surface it anchors
+   * to is the block the user right-clicked, not a handle. */
+  const [selMenu, setSelMenu] = useState<{
+    anchor: HTMLElement;
+    spec: MenuSpec;
+  } | null>(null);
+  const closeSelMenu = useCallback(() => setSelMenu(null), []);
+
 
 
   /* ────────── Drag: pointer session on a handle ──────────
