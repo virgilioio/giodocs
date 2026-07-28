@@ -112,7 +112,12 @@ export function parseMarkdown(text: string): Blk[] {
         rows.push(parseRow(lines[i]));
         i++;
       }
-      out.push({ id: nanoid(10), type: "table", text: "", rows, align });
+      const hasAlign = align.some((a) => a !== "left");
+      out.push(
+        hasAlign
+          ? { id: nanoid(10), type: "table", text: "", rows, align }
+          : { id: nanoid(10), type: "table", text: "", rows },
+      );
       continue;
     }
 
