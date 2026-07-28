@@ -70,6 +70,10 @@ export type Blk = {
   language?: string;
   /** Only meaningful when type === "toggle". Absent = today's plain toggle. */
   level?: ToggleLevel;
+  /** Only meaningful when type === "callout". Absent === "neutral" (today's
+   *  appearance). Stored as a semantic name; the token mapping lives in
+   *  src/lib/callout-color.ts so a theme swap survives. */
+  color?: CalloutColor;
   /** Only meaningful when type === "columns". Never nested. */
   cols?: Blk[][];
   /** Flat outline level for list-like blocks (bullet, numbered, todo, text).
