@@ -1461,8 +1461,88 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
   }, []);
 
   const initials = initialsOf(name || user?.email || "?");
-  const avatarTint = profile?.avatar_tint ?? "var(--color-sunken)";
-  const avatarInk = profile?.avatar_ink ?? "var(--color-secondary)";
+
+  // ── §3 avatar (raw axes; disc renders live from local state) ──
+  // We fetch the RAW row directly because AuthProvider's `profile` has been
+  // transformed by applyAvatarRender — its avatar_tint is the composed url,
+  // not the palette hex we need to highlight the selected swatch.
+  const [avaTint, setAvaTint] = useState<string>("#DCEAFE");
+  const [avaInk, setAvaInk] = useState<string>("#2563EB");
+  const [avaFace, setAvaFace] = useState<number>(0);
+  const [avaSkin, setAvaSkin] = useState<number>(0);
+  const avatarLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!myId || avatarLoadedRef.current) return;
+    avatarLoadedRef.current = true;
+    let active = true;
+    supabase
+      .from("profiles")
+      .select("avatar_tint, avatar_ink, avatar_face, avatar_skin")
+      .eq("id", myId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!active || !data) return;
+        setAvaTint(data.avatar_tint ?? "#DCEAFE");
+        setAvaInk(data.avatar_ink ?? "#2563EB");
+        setAvaFace(data.avatar_face ?? 0);
+        setAvaSkin(data.avatar_skin ?? 0);
+      });
+    return () => { active = false; };
+  }, [myId]);
+
+  const avaTimer = useRef<number | null>(null);
+  function saveAvatar(next: {
+    tint: string; ink: string; face: number; skin: number;
+  }) {
+    if (avaTimer.current) window.clearTimeout(avaTimer.current);
+    avaTimer.current = window.setTimeout(async () => {
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          avatar_tint: next.tint,
+          avatar_ink: next.ink,
+          avatar_face: next.face,
+          avatar_skin: next.skin,
+        })
+        .eq("id", myId);
+      if (error) {
+        toast.push(error.message);
+        return;
+      }
+      // Optimistic: patch members cache so all 12 avatar sites update at once.
+      qc.setQueryData<unknown>(qk.members(ws), (old: unknown) => {
+        if (!Array.isArray(old)) return old;
+        const composedTint = next.face > 0
+          ? avaBg(next.tint, next.face, next.skin)
+          : next.tint;
+        const composedInk = next.face > 0 ? "transparent" : next.ink;
+        return old.map((m) => {
+          const row = m as {
+            user_id: string;
+            profiles?: Record<string, unknown> | null;
+          };
+          if (row.user_id !== myId) return m;
+          return {
+            ...row,
+            profiles: {
+              ...(row.profiles ?? {}),
+              avatar_tint: composedTint,
+              avatar_ink: composedInk,
+              avatar_face: next.face,
+              avatar_skin: next.skin,
+            },
+          };
+        });
+      });
+    }, 220);
+  }
+  useEffect(() => () => {
+    if (avaTimer.current) window.clearTimeout(avaTimer.current);
+  }, []);
+
+  // Live preview values for the 64px disc.
+  const discBg = avaBg(avaTint, avaFace, avaSkin);
+  const discInk = avaFace > 0 ? "transparent" : avaInk;
 
   // ── §3 password ──
   const [pwOpen, setPwOpen] = useState(false);
