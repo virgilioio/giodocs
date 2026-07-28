@@ -52,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq("id", userId)
       .maybeSingle()
       .then(({ data }) => {
-        if (active) setProfile(data ?? null);
+        if (active) setProfile(applyAvatarRender(data ?? null));
       });
     return () => {
       active = false;
