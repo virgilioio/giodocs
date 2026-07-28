@@ -221,9 +221,19 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
         while (copy.length < width) copy.push("");
         return copy;
       });
+      // Per-column alignment survives via the GFM pipe-table separator row:
+      //   left ":---"   center ":---:"   right "---:"   default "---".
+      const alignArr = Array.isArray(b.align) ? (b.align as unknown[]) : [];
+      const sep = padded[0].map((_, i) => {
+        const a = alignArr[i];
+        if (a === "center") return ":---:";
+        if (a === "right") return "---:";
+        if (a === "left") return ":---";
+        return "---";
+      });
       const lines: string[] = [];
       lines.push(`| ${padded[0].join(" | ")} |`);
-      lines.push(`| ${padded[0].map(() => "---").join(" | ")} |`);
+      lines.push(`| ${sep.join(" | ")} |`);
       for (let i = 1; i < padded.length; i++) {
         lines.push(`| ${padded[i].join(" | ")} |`);
       }
