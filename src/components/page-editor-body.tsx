@@ -4046,8 +4046,8 @@ function AddPill({
           background: bg,
           transition: HANDLE_TRANSITION,
           ...(isCol
-            ? { top: 3, bottom: 3, left: 0, width: 6 }
-            : { left: 3, right: 3, top: 0, height: 6 }),
+            ? { top: 3, bottom: 3, left: 0, width: 14 }
+            : { left: 3, right: 3, top: 0, height: 14 }),
         }}
       />
       <svg
