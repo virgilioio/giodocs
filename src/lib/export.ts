@@ -174,7 +174,8 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
       // deliberately LOSSY on round-trip: a caption becomes a `text` block
       // coming back through parseMarkdown. Do NOT invent a marker; the
       // structured HTML importer is the only path that preserves it.
-      // Same pragma as the `columns` case below — don't "fix" it later.
+      // Same pragma as the `columns` and `callout` (colour) cases below —
+      // three attributes Markdown cannot carry. Don't "fix" it later.
       return text;
     case "bullet":
       return `${pad}- ${text}`;
