@@ -784,7 +784,7 @@ function PeoplePane({
         <div className="flex flex-wrap gap-3">
           <StatCard label={membersLabel} value={members.length} />
           <StatCard label="Guests" value={guestEmails.size} />
-          <ProfileStatCard
+          <StatCard
             label="Pages with an owner"
             value={`${withOwner} of ${pages.length}`}
           />
