@@ -3263,9 +3263,22 @@ function TableBlock({
     () => normalizeTable(block.rows ?? [["", "", ""], ["", "", ""]]),
     [block.rows],
   );
+  const nCols = rows[0]?.length ?? 0;
+  const nRows = rows.length;
   const align = useMemo<AlignList>(
-    () => normalizeAlign(block.align as AlignList | undefined, rows[0]?.length ?? 0),
-    [block.align, rows],
+    () => normalizeAlign(block.align as AlignList | undefined, nCols),
+    [block.align, nCols],
+  );
+  // Widths is a strict opt-in: absent means "auto/equal" (today's
+  // behaviour). Only normalise WHEN present, so a table without an
+  // explicit widths array keeps its w-full / equal-share render path
+  // completely unchanged and export omits the <colgroup>.
+  const widths = useMemo<WidthList | undefined>(
+    () =>
+      Array.isArray(block.widths)
+        ? normalizeWidths(block.widths as WidthList, nCols)
+        : undefined,
+    [block.widths, nCols],
   );
   useEffect(() => {
     const rowsChanged =
@@ -3273,10 +3286,14 @@ function TableBlock({
     const alignChanged =
       Array.isArray(block.align) &&
       JSON.stringify(block.align) !== JSON.stringify(align);
-    if (rowsChanged || alignChanged) {
+    const widthsChanged =
+      Array.isArray(block.widths) &&
+      JSON.stringify(block.widths) !== JSON.stringify(widths);
+    if (rowsChanged || alignChanged || widthsChanged) {
       const patch: Partial<Blk> = {};
       if (rowsChanged) patch.rows = rows;
       if (alignChanged) patch.align = align;
+      if (widthsChanged) patch.widths = widths;
       onChange(patch);
     }
     // Only fire on mount / when the persisted shape needs repair.
@@ -3288,6 +3305,9 @@ function TableBlock({
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [menuSpec, setMenuSpec] = useState<MenuSpec | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+
   // First-contact hint: shown beneath a hovered table while nothing is
   // selected. Suppressed permanently after the first menu open on any table
   // in this browser. Read from localStorage on mount so the flag survives
@@ -3314,15 +3334,74 @@ function TableBlock({
     }
   }, []);
 
-  const nCols = rows[0]?.length ?? 0;
-  const nRows = rows.length;
+  // Live drag override — while a resize is in flight we render
+  // `dragWidths` locally and DO NOT call onChange, so pointermove never
+  // pushes an undo snapshot. On pointerup we call onChange exactly once
+  // with the final widths, which produces ONE undo entry per drag (the
+  // snapshot captured at that call reflects the pre-drag block, so the
+  // effect is "snapshot on pointerdown" as specified). `dragRef` holds
+  // the drag's origin so we can recompute width from the pointer delta
+  // rather than accumulate float error over many moves.
+  const [dragWidths, setDragWidths] = useState<WidthList | null>(null);
+  const dragRef = useRef<{
+    index: number;
+    startX: number;
+    startWidth: number;
+    base: WidthList;
+    pointerId: number;
+    handle: HTMLElement;
+  } | null>(null);
 
-  // Any structural op commits rows and (when it changed) align, in one
-  // onChange call so the outer undo stack sees one entry per user action.
+  // Horizontal-overflow fades — visible only when there is scroll to do
+  // in that direction. Recomputed on scroll, on wrapper resize, and after
+  // any widths change (dragging shrinks the table's scrollWidth in real
+  // time). A fade stuck on with nothing to reveal is worse than no fade.
+  const [showFadeL, setShowFadeL] = useState(false);
+  const [showFadeR, setShowFadeR] = useState(false);
+  const updateFades = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) {
+      setShowFadeL(false);
+      setShowFadeR(false);
+      return;
+    }
+    setShowFadeL(el.scrollLeft > 0);
+    setShowFadeR(el.scrollLeft < el.scrollWidth - el.clientWidth - 1);
+  }, []);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    updateFades();
+    const onScroll = () => updateFades();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    const ro = new ResizeObserver(updateFades);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      ro.disconnect();
+    };
+  }, [updateFades]);
+  useEffect(() => {
+    updateFades();
+  }, [widths, dragWidths, nCols, nRows, updateFades]);
+
+  // Any structural op commits rows and (when they changed) align and
+  // widths, in ONE onChange call — the outer undo stack sees a single
+  // entry per user action. `nextWidths === null` explicitly clears the
+  // widths array (double-click a handle with Alt); passing undefined
+  // means "don't touch". Splitting these two is the only way to
+  // distinguish "no change" from "restore auto layout" through a single
+  // patch merge.
   const commit = useCallback(
-    (next: string[][], nextAlign?: AlignList) => {
+    (
+      next: string[][],
+      nextAlign?: AlignList,
+      nextWidths?: WidthList | undefined | null,
+    ) => {
       const patch: Partial<Blk> = { rows: next };
       if (nextAlign) patch.align = nextAlign;
+      if (nextWidths === null) patch.widths = undefined;
+      else if (nextWidths) patch.widths = nextWidths;
       onChange(patch);
     },
     [onChange],
