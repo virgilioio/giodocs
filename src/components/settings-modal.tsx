@@ -1390,6 +1390,155 @@ function ProfileSectionHeading({ children }: { children: ReactNode }) {
   );
 }
 
+/* Avatar picker — three composed axes.
+ * Each colour swatch previews in the user's current portrait, and each
+ * portrait swatch previews in their current colour, so the axes visibly
+ * compose rather than reading as three unrelated pickers. The skin-tone
+ * row only renders when a portrait is selected. */
+function AvatarPicker({
+  initials,
+  tint,
+  ink,
+  face,
+  skin,
+  onPickColour,
+  onPickFace,
+  onPickSkin,
+}: {
+  initials: string;
+  tint: string;
+  ink: string;
+  face: number;
+  skin: number;
+  onPickColour: (p: { tint: string; ink: string }) => void;
+  onPickFace: (f: number) => void;
+  onPickSkin: (s: number) => void;
+}) {
+  const selRing =
+    "0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-accent)";
+  const swatchBase: React.CSSProperties = {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    display: "grid",
+    placeItems: "center",
+    fontFamily: "var(--font-display)",
+    fontWeight: 700,
+    fontSize: 13,
+    cursor: "pointer",
+  };
+  const rowLabel: React.CSSProperties = {
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    marginBottom: 8,
+  };
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div style={{ marginBottom: 16 }}>
+        <div className="text-muted" style={rowLabel}>Colour</div>
+        <div className="flex" style={{ gap: 10, flexWrap: "wrap" }}>
+          {PALETTE.map((p) => {
+            const selected = p.tint === tint;
+            return (
+              <button
+                key={p.name}
+                type="button"
+                aria-label={p.name}
+                aria-pressed={selected}
+                onClick={() => onPickColour({ tint: p.tint, ink: p.ink })}
+                style={{
+                  ...swatchBase,
+                  background: avaBg(p.tint, face, skin),
+                  color: face > 0 ? "transparent" : p.ink,
+                  boxShadow: selected ? selRing : undefined,
+                  border: "none",
+                }}
+              >
+                {initials}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: face > 0 ? 16 : 4 }}>
+        <div className="text-muted" style={rowLabel}>Portrait</div>
+        <div className="flex" style={{ gap: 10, flexWrap: "wrap" }}>
+          {FACES.map((f, i) => {
+            const selected = i === face;
+            return (
+              <div
+                key={f.name}
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, width: 44 }}
+              >
+                <button
+                  type="button"
+                  aria-label={f.name}
+                  aria-pressed={selected}
+                  onClick={() => onPickFace(i)}
+                  style={{
+                    ...swatchBase,
+                    background: avaBg(tint, i, skin),
+                    color: i > 0 ? "transparent" : ink,
+                    boxShadow: selected ? selRing : undefined,
+                    border: "none",
+                  }}
+                >
+                  {initials}
+                </button>
+                <span
+                  className={selected ? "text-strong" : "text-muted"}
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: selected ? 700 : 400,
+                    textAlign: "center",
+                    lineHeight: 1.1,
+                  }}
+                >
+                  {f.name}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {face > 0 ? (
+        <div style={{ marginBottom: 12 }}>
+          <div className="text-muted" style={rowLabel}>Skin tone</div>
+          <div className="flex" style={{ gap: 10, flexWrap: "wrap" }}>
+            {SKIN.map((_, i) => {
+              const selected = i === skin;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  aria-label={`Skin tone ${i + 1}`}
+                  aria-pressed={selected}
+                  onClick={() => onPickSkin(i)}
+                  style={{
+                    ...swatchBase,
+                    background: avaBg(tint, face, i),
+                    color: "transparent",
+                    boxShadow: selected ? selRing : undefined,
+                    border: "none",
+                  }}
+                />
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      <p className="text-muted" style={{ fontSize: 13.5, lineHeight: 1.5, marginTop: 12 }}>
+        Eight portraits by hair, not by gender — pick the one that looks like you. Six colours and five skin tones sit behind them, and Initials stays the default, because no drawn set of people is ever finished. A portrait keeps its own light disc in both themes — like a photograph, which does not dim at dusk. Initials do theme, because they are type, not a picture.
+      </p>
+    </div>
+  );
+}
+
 function MyProfilePane({ onClose }: { onClose: () => void }) {
   const { user, profile } = useAuth();
   const ws = useWorkspaceId();
