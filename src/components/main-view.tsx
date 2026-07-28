@@ -2516,7 +2516,7 @@ const TableRow = memo(function TableRow({
           onSave={(t) => rename({ pageId: p.id, title: t })}
         />
       </Cell>
-      <Cell className="hidden xs:block">
+      <Cell className="gio-tbl-area">
         <AreaCell
           page={p}
           areas={areas}
@@ -2537,14 +2537,14 @@ const TableRow = memo(function TableRow({
           onPick={(v) => setProp({ pageId: p.id, key: "status", value: v })}
         />
       </Cell>
-      <Cell className="hidden sm:block">
+      <Cell className="gio-tbl-tags">
         <TagsCellMemo
           page={p}
           allTags={allTags}
           onSet={(tags) => setProp({ pageId: p.id, key: "tags", value: tags })}
         />
       </Cell>
-      <Cell className="hidden md:block">
+      <Cell className="gio-tbl-verified">
         {isStale ? (
           <span className="inline-flex items-center gap-1 font-bold text-amberInk">
             ⚠ {relTime(p.verified_at)}
@@ -2684,11 +2684,11 @@ function TableBody({
           />
         </HeaderCell>
         <HeaderCell>Page</HeaderCell>
-        <HeaderCell className="hidden xs:block">Area</HeaderCell>
+        <HeaderCell className="gio-tbl-area">Area</HeaderCell>
         <HeaderCell>Owner</HeaderCell>
         <HeaderCell>Status</HeaderCell>
-        <HeaderCell className="hidden sm:block">Tags</HeaderCell>
-        <HeaderCell className="hidden md:block">Verified</HeaderCell>
+        <HeaderCell className="gio-tbl-tags">Tags</HeaderCell>
+        <HeaderCell className="gio-tbl-verified">Verified</HeaderCell>
         <HeaderCell>Edited</HeaderCell>
         <HeaderCell edge> </HeaderCell>
 
