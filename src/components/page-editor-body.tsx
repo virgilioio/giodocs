@@ -1334,7 +1334,7 @@ export function EditableBody({
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
-  }, [containerPoint, selectByMarqueeY, tickMarqueeScroll]);
+  }, [containerPoint, selectByMarqueeY, tickMarqueeScroll, blurAndClearDomSelection]);
 
 
   /* ────────── Slash menu state ────────── */
