@@ -300,6 +300,22 @@ function SpecRow({ row }: { row: Extract<MenuRow, { kind: "row" }> }) {
         >
           {row.person.initials}
         </span>
+      ) : row.swatch ? (
+        <span
+          aria-hidden
+          style={{
+            width: 14,
+            height: 14,
+            borderRadius: 99,
+            background: row.swatch,
+            // A 1px INSET border keeps the swatch visible against the
+            // white panel even for the palest tints.
+            boxShadow: "inset 0 0 0 1px var(--color-line)",
+            flex: "none",
+            marginLeft: 0,
+            marginRight: 1,
+          }}
+        />
       ) : row.dot ? (
         <span
           aria-hidden
