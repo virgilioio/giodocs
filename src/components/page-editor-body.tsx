@@ -3101,17 +3101,12 @@ function ColumnStack({
           }}
           onChange={(patch) => updateBlock(b.id, patch)}
           onInput={(val) => {
-            // TEMP-INSTRUMENT: markdown-shortcut regression probe (cols).
-            // eslint-disable-next-line no-console
-            console.debug("[gio.shortcut.probe col]", {
-              val: JSON.stringify(val),
-              codes: [...val].map((c) => c.charCodeAt(0)),
-              blockType: blocks.find((x) => x.id === b.id)?.type,
-            });
             // Same single-commit shape as top-level: shortcut first, then
             // the text update. Column scope goes through the same pure
             // op so the two paths cannot drift.
-            const mr = tryMarkdownShortcut(blocks, b.id, val);
+            const el0 = refs.current[b.id];
+            const caret0 = el0 ? (readCaret(el0, val)?.start ?? val.length) : val.length;
+            const mr = tryMarkdownShortcut(blocks, b.id, val, caret0);
             if (mr) {
               applyOp(mr);
               return;
