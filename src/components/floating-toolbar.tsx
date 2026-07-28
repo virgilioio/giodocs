@@ -395,7 +395,7 @@ export function FloatingToolbar() {
               <span
                 style={{
                   background: activeHighlight ? undefined : "var(--color-highlight)",
-                  color: activeHighlight ? undefined : "var(--color-btn)",
+                  color: activeHighlight ? undefined : "var(--color-noir)",
                   padding: "1px 4px",
                   borderRadius: 3,
                   fontWeight: 600,
