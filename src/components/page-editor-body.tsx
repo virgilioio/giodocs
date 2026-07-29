@@ -2812,6 +2812,7 @@ function BlockContent({
   onKeyDown,
   onSetIcon,
   onPaste,
+  onDelete,
 }: {
   block: Blk;
   ordinal?: number;
