@@ -34,6 +34,7 @@ import {
   PermissionsPopoverHost,
   openPermissionsPopover,
 } from "./permissions-popover";
+import { RowMenu, type MenuRow, type MenuSpec } from "./row-menu";
 import { normAccess, panelCopy } from "@/lib/share-panel";
 import type { Block, PageAccessRow, PageFull, PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
@@ -183,7 +184,7 @@ function PermissionsChip({
   );
 }
 
-/* ────────────── Freshness row ────────────── */
+/* ────────────── Freshness helpers ────────────── */
 
 function daysBetween(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 3600 * 1000));
@@ -198,91 +199,6 @@ function staleLabel(iso: string): string {
   return `${d} day${d === 1 ? "" : "s"}`;
 }
 
-function FreshnessRow({
-  page,
-  members,
-  meId,
-  staleDays,
-  onVerify,
-  justVerified,
-}: {
-  page: PageFull;
-  members: MemberRow[];
-  meId: string;
-  staleDays: number;
-  onVerify: () => void;
-  justVerified: boolean;
-}) {
-  const verifiedByName = useMemo(() => {
-    if (page.verified_by === meId) return "you";
-    const m = members.find((x) => x.user_id === page.verified_by);
-    return m?.profiles?.full_name || m?.profiles?.email || "you";
-  }, [members, page.verified_by, meId]);
-
-  const isStale = daysBetween(page.verified_at) > staleDays;
-
-  if (justVerified) {
-    return (
-      <div
-        className="flex w-full items-center rounded-lg border border-accentRing bg-accentTint text-row"
-        style={{ borderRadius: 10, padding: "12px 13px", gap: 10 }}
-      >
-        <Glyph path="M5 12l5 5 9-11" className="h-4 w-4 text-accent" />
-        <span className="font-bold text-accent">
-          Verified just now by you — thanks for keeping this fresh.
-        </span>
-      </div>
-    );
-  }
-
-  if (isStale) {
-    return (
-      <div
-        className="flex w-full items-center rounded-lg border border-amberRing bg-amberTint text-row"
-        style={{ borderRadius: 10, padding: "12px 13px", gap: 10 }}
-      >
-        <Glyph
-          path="M12 3l10 18H2L12 3zM12 10v5M12 18h.01"
-          className="h-4 w-4 text-amberInk"
-        />
-        <span className="font-bold text-amberInk">
-          Not verified in {staleLabel(page.verified_at)} — may be stale.
-        </span>
-        <button
-          type="button"
-          onClick={onVerify}
-          className="ml-auto rounded-md border border-line bg-surface px-3 text-meta text-amberInk hover:bg-amberTint"
-          style={{ height: 24 }}
-        >
-          Still accurate ✓
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className="flex w-full items-center rounded-lg border border-line bg-track text-row"
-      style={{ borderRadius: 10, padding: "12px 13px", gap: 10 }}
-    >
-      <Glyph
-        path="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3zM8.5 12l2.5 2.5L16 9.5"
-        className="h-4 w-4 text-accent"
-      />
-      <span className="text-body">
-        Verified {relTime(page.verified_at)} by {verifiedByName}
-      </span>
-      <button
-        type="button"
-        onClick={onVerify}
-        className="ml-auto rounded-md border border-line bg-surface px-3 text-meta text-body hover:bg-rail"
-        style={{ height: 24 }}
-      >
-        Still accurate ✓
-      </button>
-    </div>
-  );
-}
 
 /* ────────────── Property strip (read-only, × removes non-system props) ────────────── */
 
@@ -840,6 +756,35 @@ function TextInline({
   );
 }
 
+/* Per-property icons — attached to the registry entry (keyed by property
+ * key), NOT derived at render time. Stage and Priority are both selects
+ * but must not share an icon: Stage's values are an ordered pipeline
+ * (Screen → Interview → Offer → Hired), so it gets the ascending
+ * staircase; Priority's P0/P1/P2 is a pick from a set, so it keeps the
+ * generic dot. Encoding that difference is the point of having icons. */
+const PROP_ICON_BY_KEY: Record<string, string> = {
+  stage: "M3.5 20h5v-4.5h5V11h5V6.5h2.5",
+  priority: "M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8z",
+  due: "M5 6h14a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zM4 10.5h16M8.5 4v3M15.5 4v3",
+  effort: "M5 9.5h14M5 15h14M10 4.5 8.5 20M15.5 4.5 14 20",
+  reviewer:
+    "M12 3.4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 20.6v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2",
+  confidential:
+    "M5.5 4h13a1.5 1.5 0 0 1 1.5 1.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-13A1.5 1.5 0 0 1 5.5 4zM8.4 12.2l2.6 2.6 4.6-5",
+  notes: "M6 5h12M9.6 5v14M7.4 19h4.4",
+};
+
+const TYPE_LABEL: Record<string, string> = {
+  select: "Select",
+  status: "Select",
+  multi_select: "Multi-select",
+  date: "Date",
+  number: "Number",
+  person: "Person",
+  checkbox: "Checkbox",
+  text: "Text",
+};
+
 function AddPropertyPopover({
   propDefs,
   present,
@@ -849,110 +794,77 @@ function AddPropertyPopover({
   present: Set<string>;
   onAdd: (key: string, seed: unknown, focusAfter: boolean) => void;
 }) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const candidates = propDefs
     .filter((d) => !present.has(d.key))
     .filter((d) => d.key !== "area" && d.key !== "owner");
 
-  function typeGlyph(t: string) {
+  const seedFor = (t: string): unknown => {
     switch (t) {
-      case "select":
-      case "status":
-        return "◉";
       case "multi_select":
-        return "#";
+        return [];
       case "checkbox":
-        return "☐";
-      case "number":
-        return "#";
-      case "date":
-        return "◵";
-      case "person":
-        return "@";
+        return false;
       case "text":
-        return "T";
+        return "";
       default:
-        return "•";
+        return null;
     }
-  }
+  };
+
+  const rows: MenuRow[] = candidates.map((d) => ({
+    kind: "row" as const,
+    label: d.label,
+    icon:
+      PROP_ICON_BY_KEY[d.key] ??
+      // Fallback for unregistered keys: generic dot.
+      "M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8z",
+    hint: { text: TYPE_LABEL[d.type] ?? d.type },
+    onPick: () => {
+      onAdd(d.key, seedFor(d.type), true);
+      setAnchor(null);
+    },
+  }));
+
+  const spec: MenuSpec = {
+    title: `Add a property · ${candidates.length} left`,
+    rows,
+    footer:
+      candidates.length === 0
+        ? "Every registered property is already on this page. The registry is deliberately short."
+        : "Adding one puts this page in every view that filters on it.",
+  };
 
   return (
-    <Popover
-      width={260}
-      trigger={({ onClick, ref }) => (
-        <button
-          ref={ref}
-          type="button"
-          onClick={onClick}
-          className="gio-prop-add flex w-full items-center rounded-md text-left"
-          style={{
-            gap: 6,
-            padding: "2px 6px",
-            minHeight: 32,
-            fontSize: 14,
-            color: "var(--color-faint)",
-          }}
-        >
-          <Glyph
-            path="M12 5v14M5 12h14"
-            className="h-[11px] w-[11px]"
-            strokeWidth={2.4}
-          />
-          <span>Add a property</span>
-        </button>
-      )}
-    >
-      {(close) => (
-        <div className="p-1">
-          <div className="px-2 pt-1 pb-1 text-label uppercase text-faint">
-            Add a property
-          </div>
-          {candidates.length === 0 ? (
-            <p className="px-2 py-1 text-meta text-muted">
-              Every registered property is already on this page.
-            </p>
-          ) : (
-            candidates.map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-meta hover:bg-rail"
-                onClick={() => {
-                  /* Seed by type. For select/status/person the seed is null;
-                   * the row appears and immediately auto-opens its picker via
-                   * the `autoOpenKey` mechanism in PropertyStrip. */
-                  let seed: unknown;
-                  switch (d.type) {
-                    case "multi_select":
-                      seed = [];
-                      break;
-                    case "checkbox":
-                      seed = false;
-                      break;
-                    case "text":
-                      seed = "";
-                      break;
-                    case "number":
-                    case "date":
-                    case "select":
-                    case "status":
-                    case "person":
-                    default:
-                      seed = null;
-                  }
-                  onAdd(d.key, seed, true);
-                  close();
-                }}
-              >
-                <span className="w-4 text-faint">{typeGlyph(d.type)}</span>
-                <span>{d.label}</span>
-              </button>
-            ))
-          )}
-        </div>
-      )}
-    </Popover>
+    <>
+      <button
+        type="button"
+        onClick={(e) => setAnchor(e.currentTarget)}
+        className="gio-prop-add flex w-full items-center rounded-md text-left"
+        style={{
+          gap: 6,
+          padding: "2px 6px",
+          minHeight: 32,
+          fontSize: 14,
+          color: "var(--color-faint)",
+        }}
+      >
+        <Glyph
+          path="M12 5v14M5 12h14"
+          className="h-[11px] w-[11px]"
+          strokeWidth={2.4}
+        />
+        <span>Add a property</span>
+      </button>
+      <RowMenu
+        spec={anchor ? spec : null}
+        anchor={anchor}
+        onClose={() => setAnchor(null)}
+      />
+    </>
   );
 }
+
 
 function PropertyStrip({
   page,
@@ -961,6 +873,9 @@ function PropertyStrip({
   meId,
   pages,
   areas,
+  staleDays,
+  onVerify,
+  justVerified,
   onSet,
 }: {
   page: PageFull;
@@ -969,6 +884,9 @@ function PropertyStrip({
   meId: string;
   pages: PageListItem[];
   areas: string[];
+  staleDays: number;
+  onVerify: () => void;
+  justVerified: boolean;
   onSet: (key: string, value: unknown) => void;
 }) {
   const propsRec = propsOf(page);
@@ -995,14 +913,15 @@ function PropertyStrip({
     return m?.profiles?.full_name || m?.profiles?.email || "you";
   }, [members, page.verified_by, meId]);
 
+  const isStale = daysBetween(page.verified_at) > staleDays;
+
   /* Rhythm rule: rows ABUT (no gap between them) and each row is its own
-   * min-height 32 box. The strip owns its own top hairline (marginTop 22,
-   * borderTop 1px var(--color-line), paddingTop 8); the page container no
-   * longer wraps this with any additional spacing. */
+   * min-height 32 box. The strip absorbs the old freshness banner's job,
+   * so its top margin drops from 22 → 18. */
   return (
     <div
       style={{
-        marginTop: 22,
+        marginTop: 18,
         borderTop: "1px solid var(--color-line)",
         paddingTop: 8,
       }}
@@ -1082,8 +1001,10 @@ function PropertyStrip({
         );
       })}
 
-      {/* Last verified — the one non-clickable row. No hover, cursor
-       * default. The way to change it is the freshness banner above. */}
+      {/* Verified — the freshness banner's job, folded into a strip row.
+       * The label carries the verb ("Verified"); the value cell carries
+       * the state (fresh / stale / just-verified). Value cell wraps on
+       * narrow windows so the button never overflows. */}
       <div
         style={{
           display: "grid",
@@ -1091,22 +1012,104 @@ function PropertyStrip({
           alignItems: "center",
           minHeight: 32,
           padding: "2px 6px",
-          cursor: "default",
         }}
       >
         <div
           className="flex items-center"
           style={{ gap: 6, fontSize: 14, color: "var(--color-muted)" }}
         >
-          Last verified
+          Verified
         </div>
         <div
-          className="min-w-0"
-          style={{ fontSize: 14, color: "var(--color-strong)" }}
+          className="min-w-0 flex items-center flex-wrap"
+          style={{ gap: 8, padding: "3px 7px", marginLeft: -7 }}
         >
-          {relTime(page.verified_at)} · {verifiedByName}
+          {justVerified ? (
+            <>
+              <Glyph
+                path="M5 12l5 5 9-11"
+                className="h-[14px] w-[14px] text-accent"
+                strokeWidth={2}
+              />
+              <span
+                style={{
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: "var(--color-accent)",
+                }}
+              >
+                just now by you — thanks for keeping this fresh.
+              </span>
+            </>
+          ) : isStale ? (
+            <>
+              <Glyph
+                path="M12 3l10 18H2L12 3zM12 10v5M12 18h.01"
+                className="h-[14px] w-[14px] text-amberDot"
+                strokeWidth={2}
+              />
+              <span
+                style={{
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: "var(--color-amberInk)",
+                }}
+              >
+                not in {staleLabel(page.verified_at)} — may be stale.
+              </span>
+              <button
+                type="button"
+                onClick={onVerify}
+                style={{
+                  border: "1px solid var(--color-amberRing)",
+                  background: "var(--color-amberTint)",
+                  color: "var(--color-amberInk)",
+                  borderRadius: 7,
+                  padding: "3px 9px",
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                }}
+              >
+                Still accurate ✓
+              </button>
+            </>
+          ) : (
+            <>
+              <Glyph
+                path="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3zM8.5 12l2.5 2.5L16 9.5"
+                className="h-[14px] w-[14px] text-accent"
+                strokeWidth={2}
+              />
+              <span
+                style={{
+                  fontSize: 14,
+                  fontWeight: 400,
+                  color: "var(--color-secondary)",
+                }}
+              >
+                {relTime(page.verified_at)} by {verifiedByName}
+              </span>
+              <button
+                type="button"
+                onClick={onVerify}
+                className="hover:bg-sunken"
+                style={{
+                  border: "1px solid var(--color-lineStrong)",
+                  background: "transparent",
+                  color: "var(--color-secondary)",
+                  borderRadius: 7,
+                  padding: "3px 9px",
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                }}
+              >
+                Still accurate ✓
+              </button>
+            </>
+          )}
         </div>
       </div>
+
 
       <AddPropertyPopover
         propDefs={propDefs}
@@ -1430,22 +1433,9 @@ export function PageEditor({ pageId }: { pageId: string }) {
         </div>
       ) : null}
 
-      {/* 4. Freshness banner. */}
-      <div style={{ marginTop: 14 }}>
-        <FreshnessRow
-          page={page}
-          members={members}
-          meId={meId}
-          staleDays={staleDays}
-          onVerify={onVerify}
-          justVerified={justVerified}
-        />
-      </div>
-
-
-      {/* 5. Properties strip. The strip owns its own top hairline —
-       * marginTop 22 + border-top + padding-top 8 — so no wrapper spacing
-       * here. */}
+      {/* 4. Properties strip — the Verified control lives inside it now.
+       * The strip owns its own top hairline; margin-top absorbs the old
+       * banner's job (18px instead of 22px). */}
       <PropertyStrip
         page={page}
         propDefs={propDefs}
@@ -1453,6 +1443,9 @@ export function PageEditor({ pageId }: { pageId: string }) {
         meId={meId}
         pages={(shell.pages.data ?? []) as PageListItem[]}
         areas={areasList}
+        staleDays={staleDays}
+        onVerify={onVerify}
+        justVerified={justVerified}
         onSet={(key, value) => {
           if (key === "icon") {
             if (typeof value === "string" && value)
