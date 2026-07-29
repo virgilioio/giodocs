@@ -2450,6 +2450,14 @@ export function EditableBody({
           onAddBelow={() => { if (!locked) insertAfter(b.id); }}
           onSetIcon={(icon) => updateBlock(b.id, { icon })}
           onPaste={(e) => handlePaste(b.id, e)}
+          onDelete={() => {
+            if (locked) return;
+            // Explicit delete is the ONE place storage is collected: the
+            // objects are unreachable the moment the block is gone.
+            const paths = collectImagePaths([b]);
+            if (paths.length) void gcImagePaths(pageId, paths).catch(() => {});
+            applyOp(opsRemove(blocks, b.id, { ensureOne: true }));
+          }}
         />
       ))}
 
@@ -3728,6 +3736,14 @@ function ColumnStack({
           }}
           onSetIcon={(icon) => updateBlock(b.id, { icon })}
           onPaste={(e) => handlePaste(b.id, e)}
+          onDelete={() => {
+            if (locked) return;
+            const paths = collectImagePaths([b]);
+            if (paths.length && imgCtx) {
+              void gcImagePaths(imgCtx.pageId, paths).catch(() => {});
+            }
+            applyOp(opsRemove(blocks, b.id, { ensureOne: true }));
+          }}
         />
       ))}
       {slash ? (
