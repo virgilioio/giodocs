@@ -862,13 +862,99 @@ export async function printPdf(
   win.document.open();
   win.document.write(augmented);
   win.document.close();
-  await new Promise<void>((r) => window.setTimeout(r, 280));
+
+  // Wait for the document to ACTUALLY render before freezing it. A fixed
+  // delay was fine when exports were text and webfonts; images arrive over
+  // the network from signed URLs and routinely take longer, so print() was
+  // capturing half-loaded frames. This is a race, so it looked fine on a
+  // warm cache and broke for everyone else.
+  await waitForPrintReady(win);
+
+  if (win.closed) return; // user closed the tab while we waited
+
   try {
     win.focus();
     win.print();
   } catch {
     /* the print dialog may be dismissed by the user; that is not an error. */
   }
+}
+
+/**
+ * Resolve when `win` has parsed, loaded every image, settled its webfonts and
+ * committed a paint — or when `timeoutMs` elapses, whichever comes first.
+ *
+ * The ceiling is deliberate: a single unreachable image must degrade to "PDF
+ * without that image", never to "the print dialog never opens". Every await
+ * below is individually raced against the remaining budget.
+ */
+async function waitForPrintReady(win: Window, timeoutMs = 15000): Promise<void> {
+  const started = Date.now();
+  const remaining = () => Math.max(0, timeoutMs - (Date.now() - started));
+
+  // 1. Document parsed.
+  if (win.document.readyState !== "complete") {
+    await raceTimeout(
+      new Promise<void>((resolve) => {
+        win.addEventListener("load", () => resolve(), { once: true });
+      }),
+      remaining(),
+    );
+  }
+  if (win.closed) return;
+
+  // 2. Every <img> SETTLED — resolved or errored. `complete` is true for a
+  //    broken image too, which is what we want: a 404 is settled, not pending.
+  const imgs = Array.from(win.document.images);
+  if (imgs.length) {
+    await raceTimeout(
+      Promise.all(
+        imgs.map(
+          (img) =>
+            new Promise<void>((resolve) => {
+              if (img.complete) return resolve();
+              const done = () => resolve();
+              img.addEventListener("load", done, { once: true });
+              img.addEventListener("error", done, { once: true });
+            }),
+        ),
+      ),
+      remaining(),
+    );
+  }
+  if (win.closed) return;
+
+  // 3. Webfonts. Poppins/Lato/Spline usually come from the opener's cache,
+  //    but a cold window can still swap mid-print without this.
+  const fonts = (win.document as Document & { fonts?: { ready?: Promise<unknown> } })
+    .fonts;
+  if (fonts?.ready) {
+    await raceTimeout(fonts.ready, remaining());
+  }
+  if (win.closed) return;
+
+  // 4. Two frames, so layout and paint have committed. rAF does not fire in a
+  //    fully backgrounded tab, so this is raced too rather than awaited bare.
+  await raceTimeout(
+    new Promise<void>((resolve) => {
+      win.requestAnimationFrame(() =>
+        win.requestAnimationFrame(() => resolve()),
+      );
+    }),
+    Math.min(remaining(), 1000),
+  );
+}
+
+/** Resolve when `p` settles or `ms` elapses. Never rejects. */
+function raceTimeout(p: Promise<unknown>, ms: number): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return Promise.race([
+    Promise.resolve(p).then(
+      () => undefined,
+      () => undefined,
+    ),
+    new Promise<void>((resolve) => window.setTimeout(resolve, ms)),
+  ]);
 }
 
 /* ─────────────────────────── View exports (CSV / MD table) ───────────────────────────
