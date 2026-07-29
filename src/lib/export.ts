@@ -402,7 +402,8 @@ function blockHtml(b: Block, ordinal = 1): string {
           text,
         )}</span></aside>`;
       }
-      const kidHtml = kids.map((k) => blockHtml(k, ctx)).join("\n");
+      const kidOrds = numberedOrdinals(kids);
+      const kidHtml = kids.map((k) => blockHtml(k, (k.id && kidOrds.get(k.id)) || 1)).join("\n");
       return `<aside style="background:${bg}"><span class="ico">${esc(icon)}</span><div class="callout-body">${kidHtml}</div></aside>`;
     }
 
