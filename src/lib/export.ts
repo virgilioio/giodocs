@@ -205,7 +205,37 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
       // A stored `color` is intentionally dropped here — see the note on
       // the `caption` case for the same lossy pragma. HTML/PDF carry it
       // via an inline background style in blockHtml.
-      return `> ${icon} ${text}`;
+      const kids = Array.isArray((b as { children?: unknown }).children)
+        ? ((b as { children: Block[] }).children as Block[])
+        : null;
+      if (!kids || kids.length === 0) {
+        // Legacy single-line form. Round-trips through parseMarkdown as
+        // `type:'callout' text:<text>`.
+        return `> ${icon} ${text}`;
+      }
+      // Multi-child form: emit as a `>`-prefixed blockquote block. First
+      // line carries the emoji so the callout signal is preserved; each
+      // subsequent line is a child block's markdown, itself possibly
+      // multi-line (code, table), with `> ` prefixed to every line.
+      //
+      // ROUND-TRIP HONESTY: the reader in markdown-import.ts is
+      // intentionally NOT extended to reconstruct this back into a
+      // multi-child callout — the ambiguity against ordinary consecutive
+      // quote lines would silently turn a user's quote into a callout,
+      // exactly the failure the task rules out. So a two-child callout
+      // written by this branch comes back through parseMarkdown as a
+      // single-child callout (from the first `> {icon}` line) followed
+      // by N `quote` blocks — a documented import loss alongside
+      // caption, columns, and callout colour. HTML export is lossless.
+      const kidOrds = numberedOrdinals(kids);
+      const kidLines = kids.map((k) =>
+        blockToMarkdown(k, (k.id && kidOrds.get(k.id)) || 1),
+      );
+      const firstLine = `> ${icon}`;
+      const bodyLines = kidLines
+        .map((s) => s.split("\n").map((ln) => `> ${ln}`.replace(/\s+$/, "")).join("\n"))
+        .join("\n");
+      return `${firstLine}\n${bodyLines}`;
     }
     case "divider":
       return "---";
@@ -364,9 +394,17 @@ function blockHtml(b: Block, ordinal = 1): string {
       // no equivalent — the round-trip loss is documented in blockToMarkdown
       // alongside caption and columns.
       const bg = calloutBg((b as { color?: unknown }).color);
-      return `<aside style="background:${bg}"><span class="ico">${esc(icon)}</span><span>${inline(
-        text,
-      )}</span></aside>`;
+      const kids = Array.isArray((b as { children?: unknown }).children)
+        ? ((b as { children: Block[] }).children as Block[])
+        : null;
+      if (!kids || kids.length === 0) {
+        return `<aside style="background:${bg}"><span class="ico">${esc(icon)}</span><span>${inline(
+          text,
+        )}</span></aside>`;
+      }
+      const kidOrds = numberedOrdinals(kids);
+      const kidHtml = kids.map((k) => blockHtml(k, (k.id && kidOrds.get(k.id)) || 1)).join("\n");
+      return `<aside style="background:${bg}"><span class="ico">${esc(icon)}</span><div class="callout-body">${kidHtml}</div></aside>`;
     }
 
     case "divider":

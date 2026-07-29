@@ -569,7 +569,12 @@ export function EditableBody({
   // which list a given row belongs to.
   const colTracks = useRef<Map<string, HTMLElement>>(new Map());
   const rowColRefById = useRef<Map<string, ColumnRef | null>>(new Map());
-  const trackKey = (r: ColumnRef) => `${r.blockId}:${r.colIndex}`;
+  // A column ref has `colIndex`; a callout ref (Pass A: not yet used by
+  // any call site in this file) has `callout: true` instead.
+  const colCi = (r: ColumnRef): number | null =>
+    "colIndex" in r ? r.colIndex : null;
+  const trackKey = (r: ColumnRef) =>
+    "colIndex" in r ? `${r.blockId}:${r.colIndex}` : `${r.blockId}:callout`;
 
   const registerRowEl = useCallback(
     (id: string, el: HTMLElement | null, colRef: ColumnRef | null = null) => {
@@ -907,8 +912,9 @@ export function EditableBody({
           index = blocks.findIndex((b) => b.id === id);
         } else {
           const b = blocks.find((x) => x.id === colRef.blockId);
-          if (b?.cols && Array.isArray(b.cols)) {
-            index = (b.cols[colRef.colIndex] as Blk[]).findIndex((x) => x.id === id);
+          const ci = "colIndex" in colRef ? colRef.colIndex : -1;
+          if (b?.cols && Array.isArray(b.cols) && ci >= 0) {
+            index = (b.cols[ci] as Blk[]).findIndex((x) => x.id === id);
           }
         }
         return { col: colRef, index };
@@ -1860,12 +1866,16 @@ export function EditableBody({
     dragging.gap != null &&
     dragging.indicator != null &&
     (() => {
+      const sci = dragging.sourceCol ? colCi(dragging.sourceCol) : null;
+      const tci = dragging.targetCol ? colCi(dragging.targetCol) : null;
       const sameList =
         (dragging.sourceCol === null && dragging.targetCol === null) ||
         (dragging.sourceCol &&
           dragging.targetCol &&
           dragging.sourceCol.blockId === dragging.targetCol.blockId &&
-          dragging.sourceCol.colIndex === dragging.targetCol.colIndex);
+          sci !== null &&
+          tci !== null &&
+          sci === tci);
       if (!sameList) return true;
       if (runIdxs) {
         return dragging.gap < runIdxs.start || dragging.gap > runIdxs.end + 1;
@@ -1878,7 +1888,8 @@ export function EditableBody({
         from = blocks.findIndex((b) => b.id === id);
       } else {
         const b = blocks.find((x) => x.id === sourceCol.blockId);
-        if (b?.cols) from = (b.cols[sourceCol.colIndex] as Blk[]).findIndex((x) => x.id === id);
+        const ci = colCi(sourceCol);
+        if (b?.cols && ci !== null) from = (b.cols[ci] as Blk[]).findIndex((x) => x.id === id);
       }
       return from < 0 ? true : dragging.gap !== from && dragging.gap !== from + 1;
     })();
