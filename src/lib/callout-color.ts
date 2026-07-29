@@ -25,7 +25,7 @@ export type CalloutColor = (typeof CALLOUT_COLORS)[number];
  *  bg-sunken. A total map — no `neutral` fallback pretending to be an
  *  option; the fallback lives in the resolver below. */
 const TOKENS: Record<CalloutColor, string> = {
-  neutral: "var(--color-sunken)",
+  neutral: "var(--color-rail)",
   green: "var(--color-accentTint)",
   amber: "var(--color-amberTint)",
   blue: "var(--color-blueTint)",
@@ -33,6 +33,22 @@ const TOKENS: Record<CalloutColor, string> = {
   pink: "var(--color-pinkTint)",
   red: "var(--color-dangerTint)",
   yellow: "var(--color-yellowTint)",
+};
+
+/** The 1px edge each tint is paired with. Four exist as tokens; the other
+ *  four are DERIVED with color-mix against each tint's own ink, so a
+ *  callout can never introduce a hue the palette does not already have,
+ *  and every pair inverts correctly in dark mode with no second set of
+ *  values. */
+const RINGS: Record<CalloutColor, string> = {
+  neutral: "var(--color-line)",
+  green: "var(--color-accentRing)",
+  amber: "var(--color-amberRing)",
+  red: "var(--color-dangerRing)",
+  yellow: "color-mix(in oklab, var(--color-yellowTint) 74%, var(--color-yellowInk))",
+  blue: "color-mix(in oklab, var(--color-blueTint) 78%, var(--color-blueInk))",
+  purple: "color-mix(in oklab, var(--color-purpleTint) 78%, var(--color-purple))",
+  pink: "color-mix(in oklab, var(--color-pinkTint) 78%, var(--color-pink))",
 };
 
 const LABELS: Record<CalloutColor, string> = {
@@ -57,6 +73,12 @@ export function calloutBg(color: unknown): string {
   return isCalloutColor(color) ? TOKENS[color] : TOKENS.neutral;
 }
 
+/** The ring paired with a colour. Same totality guarantee as calloutBg. */
+export function calloutRing(color: unknown): string {
+  return isCalloutColor(color) ? RINGS[color] : RINGS.neutral;
+}
+
 export function calloutLabel(color: unknown): string {
   return isCalloutColor(color) ? LABELS[color] : LABELS.neutral;
 }
+
