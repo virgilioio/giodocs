@@ -3446,7 +3446,7 @@ function ColumnStack({
                 e.preventDefault();
                 if (bridge)
                   bridge.escapeColumn(
-                    parentBlockId,
+                    colRef,
                     op.removeEmpty ? b.id : null,
                   );
                 return;
