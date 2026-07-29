@@ -94,6 +94,9 @@ import {
 } from "@/lib/block-ops";
 import { resolveKey, type Op as KeyOp } from "@/lib/block-key-handler";
 import { toggleWrap } from "@/lib/toggle-wrap";
+import { ImageBlock, ImageRowBlock, PageImageCtx } from "@/components/image-block";
+import { collectImagePaths, droppedImagePaths, rejectReason } from "@/lib/image-ops";
+import { gcImagePaths, uploadImage } from "@/lib/images";
 import { FloatingToolbar } from "./floating-toolbar";
 import { Editable } from "./editable";
 import { EmojiPicker } from "./emoji-picker";
@@ -198,6 +201,14 @@ const BLOCK_MENU: MenuItem[] = [
   { type: "divider", name: "Divider", desc: "A visual breath.", icon: "—", ic: "bDivider" },
   { type: "code", name: "Code", desc: "Monospace, verbatim.", icon: "<>", ic: "bCode" },
   { type: "table", name: "Table", desc: "Simple rows and columns.", icon: "▦", ic: "bTable" },
+  { type: "image", name: "Image", desc: "A screenshot, diagram or photo.", icon: "🖼", ic: "bImage" },
+  {
+    type: "imagerow",
+    name: "Image row",
+    desc: "Two or three images side by side.",
+    icon: "▥",
+    ic: "bImageRow",
+  },
 ];
 
 /** The three toggle-heading levels, which are `toggle` blocks carrying a
@@ -2594,6 +2605,7 @@ function BlockRow({
   onAddBelow,
   onSetIcon,
   onPaste,
+  onDelete,
 }: {
   block: Blk;
   ordinal?: number;
@@ -2614,8 +2626,12 @@ function BlockRow({
   onAddBelow: () => void;
   onSetIcon: (icon: string) => void;
   onPaste: (e: React.ClipboardEvent<HTMLElement>) => void;
+  onDelete: () => void;
 }) {
-  const noEditor = block.type === "divider";
+  const noEditor =
+    block.type === "divider" ||
+    block.type === "image" ||
+    block.type === "imagerow";
   // Gutter (+ / drag handle) must centre vertically on the block's FIRST
   // line box, not the row centre. We publish the block's own line-height
   // as a pixel value on the row via `--gio-block-lh`; the gutter consumes
@@ -2719,6 +2735,7 @@ function BlockRow({
         onKeyDown={onKeyDown}
         onSetIcon={onSetIcon}
         onPaste={onPaste}
+        onDelete={onDelete}
       />
     </div>
   );
@@ -2751,6 +2768,7 @@ function BlockContent({
   onKeyDown: (e: ReactKeyboardEvent<HTMLElement>) => void;
   onSetIcon: (icon: string) => void;
   onPaste: (e: React.ClipboardEvent<HTMLElement>) => void;
+  onDelete: () => void;
 }) {
   const t = block.type;
   const rawText = block.text ?? "";
@@ -2815,6 +2833,28 @@ function BlockContent({
         block={block}
         locked={locked}
         onChange={onChange}
+      />
+    );
+  }
+
+  if (t === "image") {
+    return (
+      <ImageBlock
+        block={block}
+        locked={locked}
+        onChange={onChange}
+        onDelete={onDelete}
+      />
+    );
+  }
+
+  if (t === "imagerow") {
+    return (
+      <ImageRowBlock
+        block={block}
+        locked={locked}
+        onChange={onChange}
+        onDelete={onDelete}
       />
     );
   }
