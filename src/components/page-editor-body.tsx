@@ -1811,11 +1811,13 @@ export function EditableBody({
         {
           kind: "row",
           label: "Turn into",
-          icon: "layout",
+          // The icon of the block you are ON: the menu says what you are
+          // starting from before you open it.
+          icon: blockIconKey(target),
           hint: { text: "›" },
-          onPick: () =>
-            mctx.setSpec({ title: "Turn into", rows: turnIntoSub }),
+          onPick: () => mctx.setSpec(turnIntoSpec),
         },
+
         { kind: "sep" },
         {
           kind: "row",
