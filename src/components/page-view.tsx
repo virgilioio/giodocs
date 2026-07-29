@@ -1048,7 +1048,7 @@ function PropertyStrip({
             <>
               <Glyph
                 path="M12 3l10 18H2L12 3zM12 10v5M12 18h.01"
-                className="text-amberDot"
+                className="h-[14px] w-[14px] text-amberDot"
                 strokeWidth={2}
               />
               <span
