@@ -14,7 +14,7 @@
 import type { Block } from "./types";
 import { numberedOrdinals } from "./blocks";
 import { inlineToHtml } from "./inline-markdown";
-import { calloutBg } from "./callout-color";
+import { calloutBg, calloutRing } from "./callout-color";
 // Logo is inlined as a data URI so the exported HTML file is self-contained
 // (zero network requests). Vite `?raw` reads the file at build time; vitest
 // resolves the same way, so tests see the same string as the browser.
@@ -394,17 +394,20 @@ function blockHtml(b: Block, ordinal = 1): string {
       // no equivalent — the round-trip loss is documented in blockToMarkdown
       // alongside caption and columns.
       const bg = calloutBg((b as { color?: unknown }).color);
+      const ring = calloutRing((b as { color?: unknown }).color);
+      const style = `background:${bg};border:1px solid ${ring}`;
       const kids = Array.isArray((b as { children?: unknown }).children)
         ? ((b as { children: Block[] }).children as Block[])
         : null;
       if (!kids || kids.length === 0) {
-        return `<aside style="background:${bg}"><span class="ico">${esc(icon)}</span><span>${inline(
+        return `<aside style="${style}"><span class="ico">${esc(icon)}</span><span>${inline(
           text,
         )}</span></aside>`;
       }
       const kidOrds = numberedOrdinals(kids);
       const kidHtml = kids.map((k) => blockHtml(k, (k.id && kidOrds.get(k.id)) || 1)).join("\n");
-      return `<aside style="background:${bg}"><span class="ico">${esc(icon)}</span><div class="callout-body">${kidHtml}</div></aside>`;
+      return `<aside style="${style}"><span class="ico">${esc(icon)}</span><div class="callout-body">${kidHtml}</div></aside>`;
+
     }
 
     case "divider":

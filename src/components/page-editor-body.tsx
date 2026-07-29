@@ -104,8 +104,11 @@ import {
   CALLOUT_COLORS,
   type CalloutColor,
   calloutBg,
+  calloutRing,
   calloutLabel,
 } from "@/lib/callout-color";
+import type { IconKey } from "@/lib/menu-icons";
+
 
 /** Module-local bridge: nested ColumnStack keystrokes set this before
  *  bubbling their new blocks up, so EditableBody.commit knows the
@@ -163,40 +166,80 @@ type MenuItem = {
   type: BlockType;
   name: string;
   desc: string;
+  /** Mono glyph — the slash menu's only visual. Kept there; never shown
+   *  in Turn into, where a real icon already names the row. */
   icon: string;
+  /** THE single source of the 15px icon for this block type. The slash
+   *  menu, the Turn-into submenu and the parent "Turn into" row all read
+   *  it from here, so the three can never drift apart. */
+  ic: IconKey;
   /** For "columns" entries only: the column count to create. */
   count?: number;
 };
 
 const BLOCK_MENU: MenuItem[] = [
-  { type: "text", name: "Text", desc: "Plain writing. The default.", icon: "Aa" },
-  { type: "h1", name: "Heading 1", desc: "Big section title.", icon: "H1" },
-  { type: "h2", name: "Heading 2", desc: "Sub-section title.", icon: "H2" },
-  { type: "h3", name: "Heading 3", desc: "Smaller section title.", icon: "H3" },
-  { type: "bullet", name: "Bullet list", desc: "Unordered points.", icon: "•" },
-  { type: "numbered", name: "Numbered list", desc: "Steps, in order.", icon: "1." },
-  { type: "todo", name: "To-do", desc: "A checkbox that means it.", icon: "☑" },
-  { type: "toggle", name: "Toggle", desc: "Details, tucked away.", icon: "▸" },
-  { type: "quote", name: "Quote", desc: "Someone said it better.", icon: "\u201D" },
-  { type: "caption", name: "Caption", desc: "A quiet note.", icon: "c" },
+  { type: "text", name: "Text", desc: "Plain writing. The default.", icon: "Aa", ic: "bText" },
+  { type: "h1", name: "Heading 1", desc: "Big section title.", icon: "H1", ic: "bH1" },
+  { type: "h2", name: "Heading 2", desc: "Sub-section title.", icon: "H2", ic: "bH2" },
+  { type: "h3", name: "Heading 3", desc: "Smaller section title.", icon: "H3", ic: "bH3" },
+  { type: "bullet", name: "Bullet list", desc: "Unordered points.", icon: "•", ic: "bBullet" },
+  { type: "numbered", name: "Numbered list", desc: "Steps, in order.", icon: "1.", ic: "bNumbered" },
+  { type: "todo", name: "To-do", desc: "A checkbox that means it.", icon: "☑", ic: "bTodo" },
+  { type: "toggle", name: "Toggle", desc: "Details, tucked away.", icon: "▸", ic: "bToggle" },
+  { type: "quote", name: "Quote", desc: "Someone said it better.", icon: "\u201D", ic: "bQuote" },
+  { type: "caption", name: "Caption", desc: "A quiet note.", icon: "c", ic: "bCaption" },
   {
     type: "callout",
     name: "Callout",
     desc: "The thing people skim past — louder.",
     icon: "💡",
+    ic: "bCallout",
   },
-  { type: "divider", name: "Divider", desc: "A visual breath.", icon: "—" },
-  { type: "code", name: "Code", desc: "Monospace, verbatim.", icon: "<>" },
-  { type: "table", name: "Table", desc: "Simple rows and columns.", icon: "▦" },
+  { type: "divider", name: "Divider", desc: "A visual breath.", icon: "—", ic: "bDivider" },
+  { type: "code", name: "Code", desc: "Monospace, verbatim.", icon: "<>", ic: "bCode" },
+  { type: "table", name: "Table", desc: "Simple rows and columns.", icon: "▦", ic: "bTable" },
 ];
 
-const COLUMNS_MENU: MenuItem[] = [
-  { type: "columns", name: "2 columns", desc: "Side by side.", icon: "▥", count: 2 },
-  { type: "columns", name: "3 columns", desc: "Three across.", icon: "▥", count: 3 },
-  { type: "columns", name: "4 columns", desc: "Four across.", icon: "▥", count: 4 },
-  { type: "columns", name: "5 columns", desc: "Five across.", icon: "▥", count: 5 },
-  { type: "columns", name: "6 columns", desc: "Six across.", icon: "▥", count: 6 },
+/** The three toggle-heading levels, which are `toggle` blocks carrying a
+ *  `level`. They stay first-class Turn-into options. */
+const TOGGLE_HEADINGS = [
+  { n: 1 as const, ic: "bToggleH1" as IconKey },
+  { n: 2 as const, ic: "bToggleH2" as IconKey },
+  { n: 3 as const, ic: "bToggleH3" as IconKey },
 ];
+
+/** Icon for whatever a block currently IS — including toggle-heading
+ *  levels, which are not their own BlockType. */
+function blockIconKey(b: Blk | undefined): IconKey {
+  if (!b) return "bText";
+  if (b.type === "toggle") {
+    const lvl = (b as { level?: unknown }).level;
+    if (lvl === "h1") return "bToggleH1";
+    if (lvl === "h2") return "bToggleH2";
+    if (lvl === "h3") return "bToggleH3";
+    return "bToggle";
+  }
+  return BLOCK_MENU.find((m) => m.type === b.type)?.ic ?? "bText";
+}
+
+/** Name for whatever a block currently IS, toggle levels included. */
+function blockTypeName(b: Blk | undefined): string {
+  if (b?.type === "toggle") {
+    const lvl = (b as { level?: unknown }).level;
+    if (lvl === "h1" || lvl === "h2" || lvl === "h3")
+      return `Toggle heading ${lvl.slice(1)}`;
+  }
+  return BLOCK_MENU.find((m) => m.type === b?.type)?.name ?? b?.type ?? "Block";
+}
+
+const COLUMNS_MENU: MenuItem[] = [
+  { type: "columns", name: "2 columns", desc: "Side by side.", icon: "▥", ic: "layout", count: 2 },
+  { type: "columns", name: "3 columns", desc: "Three across.", icon: "▥", ic: "layout", count: 3 },
+  { type: "columns", name: "4 columns", desc: "Four across.", icon: "▥", ic: "layout", count: 4 },
+  { type: "columns", name: "5 columns", desc: "Five across.", icon: "▥", ic: "layout", count: 5 },
+  { type: "columns", name: "6 columns", desc: "Six across.", icon: "▥", ic: "layout", count: 6 },
+];
+
 
 
 
@@ -1661,19 +1704,22 @@ export function EditableBody({
       const runEnd = run[run.length - 1] ?? 0;
       const isMulti = run.length > 1;
       const target = blocks[runStart];
-      const targetName =
-        BLOCK_MENU.find((m) => m.type === target?.type)?.name ??
-        target?.type ??
-        "Block";
+      const targetName = blockTypeName(target);
       const title = isMulti ? `${run.length} blocks` : targetName;
       const atTop = runStart === 0;
       const atEnd = runEnd >= blocks.length - 1;
+      const curLevel = (target as { level?: unknown } | undefined)?.level;
 
       const turnIntoSub: MenuRow[] = [
         ...BLOCK_MENU.map((m) => ({
           kind: "row" as const,
           label: m.name,
-          icon: "layout" as const,
+          // Icon comes from the block DEFINITION — one place, three menus.
+          icon: m.ic,
+          checked:
+            !isMulti &&
+            target?.type === m.type &&
+            !(m.type === "toggle" && typeof curLevel === "string"),
           onPick: () => {
             runTurnInto(blockId, m.type);
             mctx.close();
@@ -1682,16 +1728,24 @@ export function EditableBody({
         // Toggle heading levels — sit next to the plain "Toggle" entry as
         // additional Turn-into options. Preserves text/body/open by
         // relying on runTurnInto's default patch behaviour.
-        ...([1, 2, 3] as const).map((n) => ({
+        ...TOGGLE_HEADINGS.map(({ n, ic }) => ({
           kind: "row" as const,
           label: `Toggle heading ${n}`,
-          icon: "layout" as const,
+          icon: ic,
+          checked: !isMulti && target?.type === "toggle" && curLevel === `h${n}`,
           onPick: () => {
             runTurnInto(blockId, "toggle", { level: `h${n}` as ToggleLevel });
             mctx.close();
           },
         })),
       ];
+
+      const turnIntoSpec: MenuSpec = {
+        title: isMulti ? `Turn ${run.length} blocks into` : "Turn into",
+        rows: turnIntoSub,
+        footer: "Every block type this page can hold.",
+        onBack: () => mctx.setSpec(buildBlockHandleSpec(blockId, mctx)),
+      };
 
       // Colour is a per-callout attribute. Show ONLY when every block in
       // the run is a callout — a colour row that silently skips non-
@@ -1707,19 +1761,26 @@ export function EditableBody({
       const colorSub: MenuRow[] = CALLOUT_COLORS.map((c) => ({
         kind: "row" as const,
         label: calloutLabel(c),
-        swatch: calloutBg(c),
+        // A miniature of the real block: tint fill AND its 1px ring.
+        hasSwatch: true,
+        swBg: calloutBg(c),
+        swRing: calloutRing(c),
         checked: c === currentColor,
         onPick: () => {
           const next = [...blocks];
           for (const i of run) {
             if (next[i]?.type !== "callout") continue;
             const nb: Blk = { ...next[i] };
+            // Stored as a KEY ('blue'), never a hex — a literal would not
+            // theme and could outlive a palette change.
             if (c === "neutral") delete nb.color;
             else nb.color = c;
             next[i] = nb;
           }
           commit(next);
-          mctx.close();
+          // Return to the block menu rather than closing: people try two
+          // or three against the surrounding text.
+          mctx.setSpec(buildBlockHandleSpec(blockId, mctx));
         },
       }));
 
@@ -1729,28 +1790,34 @@ export function EditableBody({
               {
                 kind: "row" as const,
                 label: "Colour",
-                icon: "dot",
+                icon: "droplet",
+                hintSwatch: true,
+                hintBg: calloutBg(currentColor),
+                hintRing: calloutRing(currentColor),
                 hint: { text: calloutLabel(currentColor) },
                 onPick: () =>
                   mctx.setSpec({
-                    title: isMulti ? `${run.length} blocks` : "Colour",
+                    title: "Colour",
                     rows: colorSub,
                     footer:
-                      "Backgrounds only — the text stays readable on all eight.",
+                      "Backgrounds only — the text stays the same weight and colour in all eight, so no callout can look like a warning it is not.",
                     onBack: () => mctx.setSpec(buildBlockHandleSpec(blockId, mctx)),
                   }),
               },
               { kind: "sep" as const },
             ] as MenuRow[])
           : []),
+
         {
           kind: "row",
           label: "Turn into",
-          icon: "layout",
+          // The icon of the block you are ON: the menu says what you are
+          // starting from before you open it.
+          icon: blockIconKey(target),
           hint: { text: "›" },
-          onPick: () =>
-            mctx.setSpec({ title: "Turn into", rows: turnIntoSub }),
+          onPick: () => mctx.setSpec(turnIntoSpec),
         },
+
         { kind: "sep" },
         {
           kind: "row",
@@ -2800,14 +2867,18 @@ function BlockContent({
       : null;
     return (
       <div
-        className="group flex items-start gap-2 rounded-lg p-3"
+        className="group flex items-start gap-2 p-3"
         style={{
-          borderRadius: 10,
+          borderRadius: 9,
           // Colour comes from a token resolved by name — never a stored hex.
-          // Absent === neutral === today's bg-sunken.
+          // Tint + 1px ring: at ~95% lightness several tints are nearly
+          // white on the page, and without an edge a callout stops reading
+          // as a block at all. Text colour NEVER changes.
           background: calloutBg((block as { color?: unknown }).color),
+          border: `1px solid ${calloutRing((block as { color?: unknown }).color)}`,
         }}
       >
+
         <CalloutIconPicker icon={block.icon ?? "💡"} onPick={onSetIcon} disabled={locked} />
         {kids ? (
           <div className="min-w-0 flex-1">
@@ -3288,24 +3359,28 @@ function ColumnStack({
     ): MenuSpec => {
       const idx = blocks.findIndex((x) => x.id === bid);
       const target = blocks[idx];
-      const targetName =
-        BLOCK_MENU.find((m) => m.type === target?.type)?.name ?? target?.type ?? "Block";
+      const targetName = blockTypeName(target);
       const atTop = idx <= 0;
       const atEnd = idx >= blocks.length - 1;
+      const curLevel = (target as { level?: unknown } | undefined)?.level;
       const turnIntoSub: MenuRow[] = [
         ...BLOCK_MENU.map((m) => ({
           kind: "row" as const,
           label: m.name,
-          icon: "layout" as const,
+          icon: m.ic,
+          checked:
+            target?.type === m.type &&
+            !(m.type === "toggle" && typeof curLevel === "string"),
           onPick: () => {
             applyTypeLocal(bid, m.type);
             mctx.close();
           },
         })),
-        ...([1, 2, 3] as const).map((n) => ({
+        ...TOGGLE_HEADINGS.map(({ n, ic }) => ({
           kind: "row" as const,
           label: `Toggle heading ${n}`,
-          icon: "layout" as const,
+          icon: ic,
+          checked: target?.type === "toggle" && curLevel === `h${n}`,
           onPick: () => {
             applyTypeLocal(bid, "toggle", { level: `h${n}` as ToggleLevel });
             mctx.close();
@@ -3324,10 +3399,17 @@ function ColumnStack({
         {
           kind: "row",
           label: "Turn into",
-          icon: "layout",
+          icon: blockIconKey(target),
           hint: { text: "›" },
-          onPick: () => mctx.setSpec({ title: "Turn into", rows: turnIntoSub }),
+          onPick: () =>
+            mctx.setSpec({
+              title: "Turn into",
+              rows: turnIntoSub,
+              footer: "Every block type this page can hold.",
+              onBack: () => mctx.setSpec(buildColMenuSpec(bid, mctx)),
+            }),
         },
+
         { kind: "sep" },
         {
           kind: "row",

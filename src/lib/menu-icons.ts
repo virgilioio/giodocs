@@ -45,7 +45,41 @@ export const IC = {
     "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7.5V12l3.2 1.9",
   download:
     "M12 3v12M7.5 10.5 12 15l4.5-4.5M4 19h16",
+  droplet:
+    "M12 3.4c0 0 5.6 5.7 5.6 9.5a5.6 5.6 0 0 1-11.2 0c0-3.8 5.6-9.5 5.6-9.5z",
+
+  /* ── One icon per BLOCK TYPE. Read by the slash menu, the Turn-into
+   * submenu and the parent row through the block definition's `ic` key —
+   * never re-listed per menu. ── */
+  bText: "M6 5h12M9.6 5v14M7.4 19h4.4",
+  bH1: "M5 5.5v13M12.5 5.5v13M5 12h7.5M16.5 10.4 19 8.8V19",
+  bH2: "M4.5 5.5v13M12 5.5v13M4.5 12h7.5M15.4 10.6a2.3 2.3 0 0 1 4.2 1.3c0 2-4.2 3.2-4.2 6.4h4.3",
+  bH3: "M4.5 5.5v13M12 5.5v13M4.5 12h7.5M15.4 10.4a2.2 2.2 0 1 1 2.4 3.3 2.3 2.3 0 1 1-2.5 3.5",
+  bBullet: "M9 6h12M9 12h12M9 18h12M4.6 6h.01M4.6 12h.01M4.6 18h.01",
+  bNumbered:
+    "M10 6h11M10 12h11M10 18h11M4 6.6 5.6 5.6v5M3.6 14.4a1.6 1.6 0 0 1 3 .8c0 1.4-3 2.2-3 4.4h3",
+  bTodo:
+    "M5.4 4h13a1.4 1.4 0 0 1 1.4 1.4v13a1.4 1.4 0 0 1-1.4 1.4h-13A1.4 1.4 0 0 1 4 18.4v-13A1.4 1.4 0 0 1 5.4 4zM8.3 12.1l2.6 2.6 4.8-5.2",
+  bToggle: "m7 7.5 4.5 4.5L7 16.5M14.5 9.5h5.5M14.5 14.5h4",
+  /* Toggle headings: the Toggle chevron + two heading rules + the matching
+   * numeral, so they never share an identical glyph with plain Toggle. */
+  bToggleH1: "m5 7.5 4 4.5-4 4.5M12 9.5h4.5M12 14.5h3M19.6 10.2 21.4 9v6",
+  bToggleH2:
+    "m5 7.5 4 4.5-4 4.5M12 9.5h4.5M12 14.5h3M18.8 10a1.6 1.6 0 0 1 2.9.9c0 1.4-2.9 2.2-2.9 4.4h3",
+  bToggleH3:
+    "m5 7.5 4 4.5-4 4.5M12 9.5h4.5M12 14.5h3M18.8 9.9a1.5 1.5 0 1 1 1.7 2.3 1.6 1.6 0 1 1-1.8 2.4",
+  bQuote: "M5 5.5v13M10.5 8.5h9.5M10.5 12.5h9.5M10.5 16.5h6",
+  /* Caption: the Text glyph derived smaller — same serif-A skeleton at a
+   * reduced optical size, so it reads as "quiet text". */
+  bCaption: "M8 8h8M11.4 8v9M9.6 17h3.6",
+  bCallout:
+    "M9.6 21h4.8M10.4 18.2h3.2M12 3a6.2 6.2 0 0 0-3.6 11.2v3.2h7.2v-3.2A6.2 6.2 0 0 0 12 3z",
+  bDivider: "M3 12h18M7 7.4h10M7 16.6h10",
+  bCode: "m8.2 8.4-4 3.6 4 3.6M15.8 8.4l4 3.6-4 3.6M13.4 5.6l-2.8 12.8",
+  bTable:
+    "M4.5 5h15a1.5 1.5 0 0 1 1.5 1.5v11a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11A1.5 1.5 0 0 1 4.5 5zM3 10h18M9.5 10v9",
 } as const;
+
 
 
 export type IconKey = keyof typeof IC;
