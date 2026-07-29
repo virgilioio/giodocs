@@ -1031,7 +1031,7 @@ function PropertyStrip({
             <>
               <Glyph
                 path="M5 12l5 5 9-11"
-                className="text-accent"
+                className="h-[14px] w-[14px] text-accent"
                 strokeWidth={2}
               />
               <span
