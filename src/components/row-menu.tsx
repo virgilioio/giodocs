@@ -311,6 +311,21 @@ function SpecRow({ row }: { row: Extract<MenuRow, { kind: "row" }> }) {
         >
           {row.person.initials}
         </span>
+      ) : row.hasSwatch ? (
+        <span
+          aria-hidden
+          style={{
+            width: 17,
+            height: 17,
+            borderRadius: 5,
+            background: row.swBg,
+            // A miniature of the real block: fill AND its 1px ring. A ring
+            // is what makes a pale tint read as a block at all.
+            boxShadow: `inset 0 0 0 1px ${row.swRing ?? "var(--color-line)"}`,
+            flex: "none",
+            marginLeft: -1,
+          }}
+        />
       ) : row.swatch ? (
         <span
           aria-hidden
@@ -354,7 +369,21 @@ function SpecRow({ row }: { row: Extract<MenuRow, { kind: "row" }> }) {
       </span>
 
       {row.checked && <CheckIcon />}
+      {row.hintSwatch && (
+        <span
+          aria-hidden
+          style={{
+            width: 13,
+            height: 13,
+            borderRadius: 4,
+            background: row.hintBg,
+            boxShadow: `inset 0 0 0 1px ${row.hintRing ?? "var(--color-line)"}`,
+            flex: "none",
+          }}
+        />
+      )}
       {row.hint && <MenuHintView hint={row.hint} />}
+
 
     </button>
   );
