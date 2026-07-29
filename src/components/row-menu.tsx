@@ -468,7 +468,7 @@ function SpecBody({ spec, onClose }: { spec: MenuSpec; onClose: () => void }) {
             padding: "8px 7px 4px",
             fontSize: 12.5,
             lineHeight: 1.45,
-            color: "var(--color-whisper)",
+            color: "var(--color-secondary)",
           }}
         >
           {spec.footer}
