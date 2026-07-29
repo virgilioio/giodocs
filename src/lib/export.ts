@@ -713,6 +713,9 @@ const HTML_CSS = `
   ul, ol { margin: 0 0 10px; padding-left: 22px; }
   li { margin: 2px 0; }
   hr { border: 0; border-top: 1px solid ${line}; margin: 20px 0; }
+  figure { margin: 14px 0; }
+  figure img { max-width: 100%; }
+  figcaption { margin-top: 7px; text-align: center; font-size: 12.5px; color: ${muted}; }
   blockquote { margin: 10px 0; padding: 4px 14px; border-left: 3px solid ${lineStrong}; color: ${muted}; font-style: italic; }
   aside, .callout { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; padding: 12px 14px; background: ${sunken}; border-radius: 10px; }
   aside .ico { flex: none; font-size: 18px; line-height: 1.3; }
@@ -752,6 +755,7 @@ const HTML_CSS = `
   tr { break-inside: avoid; page-break-inside: avoid; }
   thead { display: table-header-group; }
   hr { break-after: avoid; }
+  figure { break-inside: avoid; }
 `;
 
 export function toHtml(ctx: ExportContext): string {
