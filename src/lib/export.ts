@@ -13,6 +13,8 @@
 
 import type { Block } from "./types";
 import { numberedOrdinals } from "./blocks";
+import { peekSignedUrl } from "./image-url-cache";
+import { readAlign, readCols, readPaths, readW } from "./image-ops";
 import { inlineToHtml } from "./inline-markdown";
 import { calloutBg, calloutRing } from "./callout-color";
 // Logo is inlined as a data URI so the exported HTML file is self-contained
@@ -237,6 +239,27 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
         .join("\n");
       return `${firstLine}\n${bodyLines}`;
     }
+    // Images export as their SIGNED URL, resolved from the cache the
+    // editor already filled. Exports are snapshots — an unresolved path
+    // is skipped rather than written as a dead relative link.
+    case "image": {
+      const src = peekSignedUrl((b as { path?: string }).path);
+      if (!src) return "";
+      const cap = String((b as { cap?: string }).cap ?? "");
+      const alt = String((b as { alt?: string }).alt ?? "") || cap;
+      const img = `![${alt}](${src})`;
+      return cap ? `${img}\n*${cap}*` : img;
+    }
+    case "imagerow": {
+      const cap = String((b as { cap?: string }).cap ?? "");
+      const imgs = readPaths(b)
+        .map((p) => peekSignedUrl(p))
+        .filter(Boolean)
+        .map((src) => `![${cap}](${src})`)
+        .join(" ");
+      if (!imgs) return "";
+      return cap ? `${imgs}\n*${cap}*` : imgs;
+    }
     case "divider":
       return "---";
     case "code": {
@@ -410,6 +433,45 @@ function blockHtml(b: Block, ordinal = 1): string {
 
     }
 
+    case "image": {
+      const src = peekSignedUrl((b as { path?: string }).path);
+      if (!src) return "";
+      const cap = String((b as { cap?: string }).cap ?? "");
+      const alt = String((b as { alt?: string }).alt ?? "") || cap;
+      const w = readW(b);
+      const align = readAlign(b);
+      const wrap =
+        align === "left"
+          ? "margin:14px 0;"
+          : align === "right"
+            ? "margin:14px 0 14px auto;"
+            : "margin:14px auto;";
+      const width = align === "full" ? "100%" : `${w}%`;
+      return `<figure style="${wrap}width:${width};max-width:100%"><img src="${esc(
+        src,
+      )}" alt="${esc(alt)}" style="width:100%;height:auto;border-radius:9px"/>${
+        cap ? `<figcaption>${esc(cap)}</figcaption>` : ""
+      }</figure>`;
+    }
+    case "imagerow": {
+      const cap = String((b as { cap?: string }).cap ?? "");
+      const paths = readPaths(b).filter(Boolean) as string[];
+      const cells = paths
+        .map((p) => peekSignedUrl(p))
+        .filter(Boolean)
+        .map(
+          (src) =>
+            `<img src="${esc(src)}" alt="${esc(
+              cap,
+            )}" style="width:100%;height:auto;border-radius:9px"/>`,
+        );
+      if (cells.length === 0) return "";
+      return `<figure style="margin:14px 0"><div style="display:grid;grid-template-columns:repeat(${
+        readCols(b)
+      },minmax(0,1fr));gap:10px">${cells.join("")}</div>${
+        cap ? `<figcaption>${esc(cap)}</figcaption>` : ""
+      }</figure>`;
+    }
     case "divider":
       return `<hr/>`;
     case "code": {
@@ -651,6 +713,9 @@ const HTML_CSS = `
   ul, ol { margin: 0 0 10px; padding-left: 22px; }
   li { margin: 2px 0; }
   hr { border: 0; border-top: 1px solid ${line}; margin: 20px 0; }
+  figure { margin: 14px 0; }
+  figure img { max-width: 100%; }
+  figcaption { margin-top: 7px; text-align: center; font-size: 12.5px; color: ${muted}; }
   blockquote { margin: 10px 0; padding: 4px 14px; border-left: 3px solid ${lineStrong}; color: ${muted}; font-style: italic; }
   aside, .callout { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; padding: 12px 14px; background: ${sunken}; border-radius: 10px; }
   aside .ico { flex: none; font-size: 18px; line-height: 1.3; }
@@ -690,6 +755,7 @@ const HTML_CSS = `
   tr { break-inside: avoid; page-break-inside: avoid; }
   thead { display: table-header-group; }
   hr { break-after: avoid; }
+  figure { break-inside: avoid; }
 `;
 
 export function toHtml(ctx: ExportContext): string {

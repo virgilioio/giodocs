@@ -56,12 +56,16 @@ before proceeding.
   Never add a server-side filter compiler or a second engine.
 - Deleting a page is soft (deleted_at). There is deliberately no DELETE
   policy on pages. Do not add one.
+- Images live in the private page-images Supabase bucket, addressed by
+  storage path. Access goes through can_read_page, so image permissions
+  can never drift from page permissions. Never store a signed URL,
+  base64 or a blob in the blocks column.
 - Only workspace owners publish team views — enforced by views_update
   RLS and publish_view(). Members fork to personal copies instead.
 
 ## Scope (v1 exclusions — do not build)
 Folder trees, nested pages, comments, mentions, notifications,
-templates, AI features, public sharing, file uploads, real-time
+templates, AI features, public sharing, real-time
 co-editing cursors, dark mode, multi-workspace UI.
 
 ## Working agreement

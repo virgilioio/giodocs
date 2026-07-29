@@ -17,6 +17,8 @@ import {
   toMarkdown,
   type ExportContext,
 } from "@/lib/export";
+import { prefetchSignedUrls } from "@/lib/images";
+import { collectImagePaths } from "@/lib/image-ops";
 
 export type ExportFormat = "PDF" | "HTML" | "Markdown";
 type Paper = "Letter" | "A4" | "Legal" | "Tabloid" | "A3";
@@ -158,6 +160,9 @@ export function ExportDialog({
     // to compute it. printPdf uses toHtml internally, so it inherits.
     const exportCtx: ExportContext = { ...ctx, includeDetails };
     try {
+      // Serialisers are synchronous, so every image URL must already be
+      // signed and cached before the first block is written.
+      await prefetchSignedUrls(collectImagePaths(ctx.blocks as never));
       if (fmt === "Markdown") {
         const text = toMarkdown(exportCtx);
         download(filename, new Blob([text], { type: "text/markdown;charset=utf-8" }));

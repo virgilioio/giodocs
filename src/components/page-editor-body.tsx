@@ -26,6 +26,7 @@ import { numberedOrdinals } from "@/lib/blocks";
 import { rowsInBand } from "@/lib/marquee";
 import { blockHandleFooter } from "@/lib/block-handle-footer";
 import { useToast } from "@/lib/toast";
+import { useWorkspaceId } from "@/lib/workspace-context";
 import { RowMenu, type MenuSpec, type MenuRow } from "./row-menu";
 import { isTypingTarget, shouldCopyBlocks } from "@/lib/is-typing";
 import { nextEditableIndex } from "@/lib/block-nav";
@@ -94,6 +95,9 @@ import {
 } from "@/lib/block-ops";
 import { resolveKey, type Op as KeyOp } from "@/lib/block-key-handler";
 import { toggleWrap } from "@/lib/toggle-wrap";
+import { ImageBlock, ImageRowBlock, PageImageCtx } from "@/components/image-block";
+import { collectImagePaths, droppedImagePaths, rejectReason } from "@/lib/image-ops";
+import { gcImagePaths, uploadImage } from "@/lib/images";
 import { FloatingToolbar } from "./floating-toolbar";
 import { Editable } from "./editable";
 import { EmojiPicker } from "./emoji-picker";
@@ -198,6 +202,14 @@ const BLOCK_MENU: MenuItem[] = [
   { type: "divider", name: "Divider", desc: "A visual breath.", icon: "—", ic: "bDivider" },
   { type: "code", name: "Code", desc: "Monospace, verbatim.", icon: "<>", ic: "bCode" },
   { type: "table", name: "Table", desc: "Simple rows and columns.", icon: "▦", ic: "bTable" },
+  { type: "image", name: "Image", desc: "A screenshot, diagram or photo.", icon: "🖼", ic: "bImage" },
+  {
+    type: "imagerow",
+    name: "Image row",
+    desc: "Two or three images side by side.",
+    icon: "▥",
+    ic: "bImageRow",
+  },
 ];
 
 /** The three toggle-heading levels, which are `toggle` blocks carrying a
@@ -368,6 +380,7 @@ export function EditableBody({
     return n.length ? n : [newBlock("text")];
   });
   // If the incoming server data changes for a different page, resync.
+  const workspaceId = useWorkspaceId();
   const lastPage = useRef(pageId);
   useEffect(() => {
     if (lastPage.current !== pageId) {
@@ -1174,9 +1187,47 @@ export function EditableBody({
    * no markdown markers, we DO NOTHING and let the browser paste it as
    * ordinary text (undo history stays intact). Otherwise we splice parsed
    * blocks at the caret — or replace the current block-selection run. */
+  /** Insert one image block per pasted/dropped file and upload each. The
+   *  block lands immediately with no path; the upload patches it in. */
+  const insertImageFiles = useCallback(
+    (blockId: string, files: File[]) => {
+      const idx = blocksRef.current.findIndex((b) => b.id === blockId);
+      if (idx === -1) return;
+      const made = files.map(() => newBlock("image"));
+      const next = [...blocksRef.current];
+      next.splice(idx + 1, 0, ...made);
+      commit(next);
+      files.forEach((file, i) => {
+        const id = made[i].id;
+        uploadImage(file, workspaceId, pageId)
+          .then((path) => {
+            const cur = blocksRef.current.map((b) =>
+              b.id === id ? { ...b, path } : b,
+            );
+            commit(cur);
+          })
+          .catch(() => toast.push("That image could not be uploaded."));
+      });
+    },
+    [commit, pageId, workspaceId, toast],
+  );
+
   const handlePaste = useCallback(
     (blockId: string, e: React.ClipboardEvent<HTMLElement>) => {
       if (locked) return;
+
+      // A pasted screenshot is the single most common way an image gets
+      // into a migrated page, so files are checked BEFORE any text
+      // interpretation — Word and Chrome both ship HTML alongside them.
+      const files = Array.from(e.clipboardData?.files ?? []).filter(
+        (f) => !rejectReason(f),
+      );
+      if (files.length > 0) {
+        e.preventDefault();
+        insertImageFiles(blockId, files);
+        return;
+      }
+
       const htmlSrc = e.clipboardData?.getData("text/html") ?? "";
       const plainSrc = e.clipboardData?.getData("text/plain") ?? "";
       const parsedOut = parsePasteToBlocks(htmlSrc, plainSrc);
@@ -1222,7 +1273,7 @@ export function EditableBody({
       setFocusRequest({ id: focusId, caret: "end" });
       if (parsed.length > 1) toast.push(`Pasted ${parsed.length} blocks`);
     },
-    [blocks, commit, locked, selectedIds, clearSelection, toast],
+    [blocks, commit, locked, selectedIds, clearSelection, toast, insertImageFiles],
   );
 
 
@@ -2135,12 +2186,41 @@ export function EditableBody({
   );
 
 
+  // Images are addressed by {workspace}/{page}/{uuid}; both halves come
+  // from here so no child has to rediscover them.
+  const imageCtx = useMemo(
+    () => ({ workspaceId, pageId }),
+    [workspaceId, pageId],
+  );
+
   return (
     <ColumnBridgeCtx.Provider value={columnBridge}>
+    <PageImageCtx.Provider value={imageCtx}>
     <div
       ref={containerRef}
       data-gio-page-body
       className="gio-page-body relative"
+      onDragOver={(e) => {
+        // Only claim the drag when it actually carries files; block drags
+        // are pointer-based and must not be intercepted here.
+        if (Array.from(e.dataTransfer?.types ?? []).includes("Files")) {
+          e.preventDefault();
+        }
+      }}
+      onDrop={(e) => {
+        const files = Array.from(e.dataTransfer?.files ?? []).filter(
+          (f) => !rejectReason(f),
+        );
+        if (files.length === 0 || locked) return;
+        e.preventDefault();
+        const row = (e.target as HTMLElement | null)?.closest?.(
+          "[data-block-id]",
+        ) as HTMLElement | null;
+        const id =
+          row?.getAttribute("data-block-id") ??
+          blocksRef.current[blocksRef.current.length - 1]?.id;
+        if (id) insertImageFiles(id, files);
+      }}
       onPointerDown={handleContainerPointerDown}
       onFocusCapture={(e) => {
         const t = e.target as HTMLElement;
@@ -2439,6 +2519,14 @@ export function EditableBody({
           onAddBelow={() => { if (!locked) insertAfter(b.id); }}
           onSetIcon={(icon) => updateBlock(b.id, { icon })}
           onPaste={(e) => handlePaste(b.id, e)}
+          onDelete={() => {
+            if (locked) return;
+            // Explicit delete is the ONE place storage is collected: the
+            // objects are unreachable the moment the block is gone.
+            const paths = collectImagePaths([b]);
+            if (paths.length) void gcImagePaths(pageId, paths).catch(() => {});
+            applyOp(opsRemove(blocks, b.id, { ensureOne: true }));
+          }}
         />
       ))}
 
@@ -2568,6 +2656,7 @@ export function EditableBody({
       ) : null}
       <FloatingToolbar />
     </div>
+    </PageImageCtx.Provider>
     </ColumnBridgeCtx.Provider>
   );
 }
@@ -2594,6 +2683,7 @@ function BlockRow({
   onAddBelow,
   onSetIcon,
   onPaste,
+  onDelete,
 }: {
   block: Blk;
   ordinal?: number;
@@ -2614,8 +2704,12 @@ function BlockRow({
   onAddBelow: () => void;
   onSetIcon: (icon: string) => void;
   onPaste: (e: React.ClipboardEvent<HTMLElement>) => void;
+  onDelete: () => void;
 }) {
-  const noEditor = block.type === "divider";
+  const noEditor =
+    block.type === "divider" ||
+    block.type === "image" ||
+    block.type === "imagerow";
   // Gutter (+ / drag handle) must centre vertically on the block's FIRST
   // line box, not the row centre. We publish the block's own line-height
   // as a pixel value on the row via `--gio-block-lh`; the gutter consumes
@@ -2719,6 +2813,7 @@ function BlockRow({
         onKeyDown={onKeyDown}
         onSetIcon={onSetIcon}
         onPaste={onPaste}
+        onDelete={onDelete}
       />
     </div>
   );
@@ -2738,6 +2833,7 @@ function BlockContent({
   onKeyDown,
   onSetIcon,
   onPaste,
+  onDelete,
 }: {
   block: Blk;
   ordinal?: number;
@@ -2751,6 +2847,7 @@ function BlockContent({
   onKeyDown: (e: ReactKeyboardEvent<HTMLElement>) => void;
   onSetIcon: (icon: string) => void;
   onPaste: (e: React.ClipboardEvent<HTMLElement>) => void;
+  onDelete: () => void;
 }) {
   const t = block.type;
   const rawText = block.text ?? "";
@@ -2815,6 +2912,28 @@ function BlockContent({
         block={block}
         locked={locked}
         onChange={onChange}
+      />
+    );
+  }
+
+  if (t === "image") {
+    return (
+      <ImageBlock
+        block={block}
+        locked={locked}
+        onChange={onChange}
+        onDelete={onDelete}
+      />
+    );
+  }
+
+  if (t === "imagerow") {
+    return (
+      <ImageRowBlock
+        block={block}
+        locked={locked}
+        onChange={onChange}
+        onDelete={onDelete}
       />
     );
   }
@@ -3278,6 +3397,8 @@ function ColumnStack({
    * columnTypingHint — the outer commit sees a `{ cols: … }` patch and
    * pushes a fresh undo snapshot. Only text-only keystrokes set the hint,
    * so typing bursts coalesce with the same rules as the top level. */
+  const imgCtx = useContext(PageImageCtx);
+
   const applyOp = useCallback(
     (r: OpResult | null) => {
       if (!r) return;
@@ -3688,6 +3809,14 @@ function ColumnStack({
           }}
           onSetIcon={(icon) => updateBlock(b.id, { icon })}
           onPaste={(e) => handlePaste(b.id, e)}
+          onDelete={() => {
+            if (locked) return;
+            const paths = collectImagePaths([b]);
+            if (paths.length && imgCtx) {
+              void gcImagePaths(imgCtx.pageId, paths).catch(() => {});
+            }
+            applyOp(opsRemove(blocks, b.id, { ensureOne: true }));
+          }}
         />
       ))}
       {slash ? (
