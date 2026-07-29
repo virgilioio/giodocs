@@ -646,6 +646,10 @@ export type Database = {
           page_count: number
         }[]
       }
+      page_images_gc: {
+        Args: { p_page: string; p_paths: string[] }
+        Returns: number
+      }
       page_search_text: {
         Args: { p_blocks: Json; p_title: string }
         Returns: string
