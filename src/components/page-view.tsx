@@ -34,6 +34,7 @@ import {
   PermissionsPopoverHost,
   openPermissionsPopover,
 } from "./permissions-popover";
+import { RowMenu, type MenuRow, type MenuSpec } from "./row-menu";
 import { normAccess, panelCopy } from "@/lib/share-panel";
 import type { Block, PageAccessRow, PageFull, PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
