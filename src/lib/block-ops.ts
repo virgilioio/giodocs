@@ -38,7 +38,9 @@ export type BlockType =
   | "divider"
   | "code"
   | "table"
-  | "columns";
+  | "columns"
+  | "image"
+  | "imagerow";
 
 /** Optional heading level for `toggle` blocks. Absent = plain toggle (today's
  *  rendering). Present = the summary renders at the given heading level, and

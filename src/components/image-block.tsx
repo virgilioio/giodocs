@@ -379,7 +379,7 @@ export function ImageBlock({
     onUndoMark?.();
     const move = (e: MouseEvent) => {
       const next = resizeW(startWidth, e.clientX - startX, containerW, align, edge);
-      onChange({ w: next, align: alignAfterResize(align) } as Partial<Blk>);
+      onChange({ w: next, align: alignAfterResize(align) } as unknown as Partial<Blk>);
     };
     const up = () => {
       window.removeEventListener("mousemove", move);
@@ -461,7 +461,7 @@ export function ImageBlock({
                   title={a === "full" ? "Full width" : `Align ${a}`}
                   d={ALIGN_ICON[a]}
                   active={align === a}
-                  onPick={() => onChange({ align: a } as Partial<Blk>)}
+                  onPick={() => onChange({ align: a } as unknown as Partial<Blk>)}
                 />
               ))}
               <Divider />
