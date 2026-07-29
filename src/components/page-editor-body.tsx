@@ -2889,20 +2889,29 @@ function CalloutIconPicker({
   onPick: (i: string) => void;
   disabled?: boolean;
 }) {
+  // Vertically centre the 24×24 icon within ONE line-box of the callout's
+  // first line — same treatment as list markers and the gutter.
+  const wrapStyle: React.CSSProperties = {
+    height: "1lh",
+    display: "flex",
+    alignItems: "center",
+  };
   // A locked page's callout icon is not interactive — render as plain glyph.
   if (disabled) {
     return (
-      <div
-        className="shrink-0 grid place-items-center"
-        style={{ width: 24, height: 24, fontSize: 18, lineHeight: 1 }}
-        aria-label="Callout icon"
-      >
-        {icon}
+      <div className="shrink-0" style={wrapStyle} aria-label="Callout icon">
+        <div
+          className="grid place-items-center"
+          style={{ width: 24, height: 24, fontSize: 18, lineHeight: 1 }}
+        >
+          {icon}
+        </div>
       </div>
     );
   }
   return (
-    <div className="shrink-0">
+    <div className="shrink-0" style={wrapStyle}>
+
       <Popover
         width={320}
         trigger={({ open, onClick, ref }) => (
