@@ -127,10 +127,10 @@ type ColumnBridge = {
     sourceCol: ColumnRef,
   ) => void;
   /** Escape gesture: promote focus to a top-level text block after the
-   * parent `columns` block. When `removeBlockId` is non-null, remove that
-   * inner block from its column first — but never below the column's
-   * one-block minimum. */
-  escapeColumn: (parentBlockId: string, removeBlockId: string | null) => void;
+   * parent container (a `columns` block OR a `callout` container). When
+   * `removeBlockId` is non-null, remove that inner block from its list
+   * first — but never below the container's one-block minimum. */
+  escapeColumn: (colRef: ColumnRef, removeBlockId: string | null) => void;
   /** Stage-2 ⌘A from inside a column: blur the caret and promote the
    *  selection to every top-level block on the page. Column-scoped block
    *  selection is deliberately NOT supported. */
