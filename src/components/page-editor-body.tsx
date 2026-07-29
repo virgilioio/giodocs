@@ -3163,12 +3163,18 @@ function ColumnStack({
   useEffect(() => setMenuIdx(0), [slash?.query]);
 
   const filteredMenu = useMemo(() => {
+    // Inside a callout, Pass A forbids nested callouts at the model —
+    // suppress the entry so the menu never offers what the ops layer
+    // will refuse. Columns are already absent (BLOCK_MENU excludes them).
+    const base = isCallout
+      ? BLOCK_MENU.filter((m) => m.type !== "callout")
+      : BLOCK_MENU;
     const q = (slash?.query ?? "").toLowerCase().trim();
-    if (!q) return BLOCK_MENU;
-    return BLOCK_MENU.filter(
+    if (!q) return base;
+    return base.filter(
       (m) => m.name.toLowerCase().includes(q) || m.type.includes(q),
     );
-  }, [slash]);
+  }, [slash, isCallout]);
 
   useEffect(() => {
     if (!focusRequest) return;
