@@ -2766,13 +2766,18 @@ function BlockContent({
     const done = !!block.checked;
     return contentWrap(
       <div className="flex items-start gap-2 text-prose text-body">
-        <input
-          type="checkbox"
-          checked={done}
-          onChange={() => onChange({ checked: !done })}
-          className="mt-2 accent-accent"
-          aria-label={done ? "Done" : "Todo"}
-        />
+        <span
+          className="flex shrink-0 items-center"
+          style={{ height: "1lh" }}
+        >
+          <input
+            type="checkbox"
+            checked={done}
+            onChange={() => onChange({ checked: !done })}
+            className="accent-accent"
+            aria-label={done ? "Done" : "Todo"}
+          />
+        </span>
         {renderProse(
           "w-full",
           {
@@ -2788,7 +2793,11 @@ function BlockContent({
     const glyph = BULLET_GLYPHS[indent % 3];
     return contentWrap(
       <div className="flex items-start gap-2 text-prose text-body">
-        <span aria-hidden className="mt-2 leading-none text-muted">
+        <span
+          aria-hidden
+          className="flex items-center leading-none text-muted"
+          style={{ height: "1lh" }}
+        >
           {glyph}
         </span>
         {renderProse("w-full", { placeholder: "List" })}
@@ -2800,13 +2809,18 @@ function BlockContent({
     const label = ordinalLabel(ordinal ?? 1, indent);
     return contentWrap(
       <div className="flex items-start gap-2 text-prose text-body">
-        <span aria-hidden className="mt-1 min-w-4 text-meta text-muted tnum">
+        <span
+          aria-hidden
+          className="flex min-w-4 items-center text-meta text-muted tnum"
+          style={{ height: "1lh" }}
+        >
           {label}
         </span>
         {renderProse("w-full", { placeholder: "List" })}
       </div>
     );
   }
+
 
   if (t === "h1") {
     return renderProse(
