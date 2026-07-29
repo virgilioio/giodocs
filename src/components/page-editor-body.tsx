@@ -2452,13 +2452,28 @@ function BlockRow({
   onPaste: (e: React.ClipboardEvent<HTMLElement>) => void;
 }) {
   const noEditor = block.type === "divider";
+  // Typography on the ROW so the absolutely-positioned gutter inherits the
+  // block's own font-size and line-height. Gutter uses `height: 1lh` and
+  // resolves to the height of ONE first-line box of the block's text —
+  // correct for every type (paragraph 27px, h1 42px, h2 27px, …) and
+  // stable when the paragraph wraps to two lines.
+  const rowTypoClass = ((): string => {
+    switch (block.type) {
+      case "h1": return "text-title";
+      case "h2": return "text-heading";
+      case "h3": return "text-subhead";
+      case "caption": return "text-caption";
+      case "quote": return "text-quote";
+      default: return "text-prose";
+    }
+  })();
   return (
     <div
       ref={(el) => registerRowEl(block.id, el)}
       data-block-id={block.id}
       data-block-type={block.type}
       data-block-no-editor={noEditor ? "true" : undefined}
-      className="group relative -ml-[42px] pl-[42px]"
+      className={"group relative -ml-[42px] pl-[42px] " + rowTypoClass}
       style={{
         opacity: dimmed ? 0.45 : undefined,
         background: selected ? "var(--color-blueTint)" : undefined,
@@ -2474,7 +2489,7 @@ function BlockRow({
           className="gio-block-gutter pointer-events-none absolute top-0 flex select-none items-center gap-0.5 opacity-0 transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100"
           style={{
             left: 0,
-            height: 32,
+            height: "1lh",
             width: 39,
             opacity: selected ? 1 : undefined,
             pointerEvents: selected ? "auto" : undefined,
@@ -2521,6 +2536,7 @@ function BlockRow({
           </button>
         </div>
       )}
+
 
       <BlockContent
         block={block}
