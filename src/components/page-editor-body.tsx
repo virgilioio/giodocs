@@ -163,40 +163,80 @@ type MenuItem = {
   type: BlockType;
   name: string;
   desc: string;
+  /** Mono glyph — the slash menu's only visual. Kept there; never shown
+   *  in Turn into, where a real icon already names the row. */
   icon: string;
+  /** THE single source of the 15px icon for this block type. The slash
+   *  menu, the Turn-into submenu and the parent "Turn into" row all read
+   *  it from here, so the three can never drift apart. */
+  ic: IconKey;
   /** For "columns" entries only: the column count to create. */
   count?: number;
 };
 
 const BLOCK_MENU: MenuItem[] = [
-  { type: "text", name: "Text", desc: "Plain writing. The default.", icon: "Aa" },
-  { type: "h1", name: "Heading 1", desc: "Big section title.", icon: "H1" },
-  { type: "h2", name: "Heading 2", desc: "Sub-section title.", icon: "H2" },
-  { type: "h3", name: "Heading 3", desc: "Smaller section title.", icon: "H3" },
-  { type: "bullet", name: "Bullet list", desc: "Unordered points.", icon: "•" },
-  { type: "numbered", name: "Numbered list", desc: "Steps, in order.", icon: "1." },
-  { type: "todo", name: "To-do", desc: "A checkbox that means it.", icon: "☑" },
-  { type: "toggle", name: "Toggle", desc: "Details, tucked away.", icon: "▸" },
-  { type: "quote", name: "Quote", desc: "Someone said it better.", icon: "\u201D" },
-  { type: "caption", name: "Caption", desc: "A quiet note.", icon: "c" },
+  { type: "text", name: "Text", desc: "Plain writing. The default.", icon: "Aa", ic: "bText" },
+  { type: "h1", name: "Heading 1", desc: "Big section title.", icon: "H1", ic: "bH1" },
+  { type: "h2", name: "Heading 2", desc: "Sub-section title.", icon: "H2", ic: "bH2" },
+  { type: "h3", name: "Heading 3", desc: "Smaller section title.", icon: "H3", ic: "bH3" },
+  { type: "bullet", name: "Bullet list", desc: "Unordered points.", icon: "•", ic: "bBullet" },
+  { type: "numbered", name: "Numbered list", desc: "Steps, in order.", icon: "1.", ic: "bNumbered" },
+  { type: "todo", name: "To-do", desc: "A checkbox that means it.", icon: "☑", ic: "bTodo" },
+  { type: "toggle", name: "Toggle", desc: "Details, tucked away.", icon: "▸", ic: "bToggle" },
+  { type: "quote", name: "Quote", desc: "Someone said it better.", icon: "\u201D", ic: "bQuote" },
+  { type: "caption", name: "Caption", desc: "A quiet note.", icon: "c", ic: "bCaption" },
   {
     type: "callout",
     name: "Callout",
     desc: "The thing people skim past — louder.",
     icon: "💡",
+    ic: "bCallout",
   },
-  { type: "divider", name: "Divider", desc: "A visual breath.", icon: "—" },
-  { type: "code", name: "Code", desc: "Monospace, verbatim.", icon: "<>" },
-  { type: "table", name: "Table", desc: "Simple rows and columns.", icon: "▦" },
+  { type: "divider", name: "Divider", desc: "A visual breath.", icon: "—", ic: "bDivider" },
+  { type: "code", name: "Code", desc: "Monospace, verbatim.", icon: "<>", ic: "bCode" },
+  { type: "table", name: "Table", desc: "Simple rows and columns.", icon: "▦", ic: "bTable" },
 ];
 
-const COLUMNS_MENU: MenuItem[] = [
-  { type: "columns", name: "2 columns", desc: "Side by side.", icon: "▥", count: 2 },
-  { type: "columns", name: "3 columns", desc: "Three across.", icon: "▥", count: 3 },
-  { type: "columns", name: "4 columns", desc: "Four across.", icon: "▥", count: 4 },
-  { type: "columns", name: "5 columns", desc: "Five across.", icon: "▥", count: 5 },
-  { type: "columns", name: "6 columns", desc: "Six across.", icon: "▥", count: 6 },
+/** The three toggle-heading levels, which are `toggle` blocks carrying a
+ *  `level`. They stay first-class Turn-into options. */
+const TOGGLE_HEADINGS = [
+  { n: 1 as const, ic: "bToggleH1" as IconKey },
+  { n: 2 as const, ic: "bToggleH2" as IconKey },
+  { n: 3 as const, ic: "bToggleH3" as IconKey },
 ];
+
+/** Icon for whatever a block currently IS — including toggle-heading
+ *  levels, which are not their own BlockType. */
+function blockIconKey(b: Blk | undefined): IconKey {
+  if (!b) return "bText";
+  if (b.type === "toggle") {
+    const lvl = (b as { level?: unknown }).level;
+    if (lvl === "h1") return "bToggleH1";
+    if (lvl === "h2") return "bToggleH2";
+    if (lvl === "h3") return "bToggleH3";
+    return "bToggle";
+  }
+  return BLOCK_MENU.find((m) => m.type === b.type)?.ic ?? "bText";
+}
+
+/** Name for whatever a block currently IS, toggle levels included. */
+function blockTypeName(b: Blk | undefined): string {
+  if (b?.type === "toggle") {
+    const lvl = (b as { level?: unknown }).level;
+    if (lvl === "h1" || lvl === "h2" || lvl === "h3")
+      return `Toggle heading ${lvl.slice(1)}`;
+  }
+  return BLOCK_MENU.find((m) => m.type === b?.type)?.name ?? b?.type ?? "Block";
+}
+
+const COLUMNS_MENU: MenuItem[] = [
+  { type: "columns", name: "2 columns", desc: "Side by side.", icon: "▥", ic: "layout", count: 2 },
+  { type: "columns", name: "3 columns", desc: "Three across.", icon: "▥", ic: "layout", count: 3 },
+  { type: "columns", name: "4 columns", desc: "Four across.", icon: "▥", ic: "layout", count: 4 },
+  { type: "columns", name: "5 columns", desc: "Five across.", icon: "▥", ic: "layout", count: 5 },
+  { type: "columns", name: "6 columns", desc: "Six across.", icon: "▥", ic: "layout", count: 6 },
+];
+
 
 
 
