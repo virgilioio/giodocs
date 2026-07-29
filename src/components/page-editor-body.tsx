@@ -104,8 +104,11 @@ import {
   CALLOUT_COLORS,
   type CalloutColor,
   calloutBg,
+  calloutRing,
   calloutLabel,
 } from "@/lib/callout-color";
+import type { IconKey } from "@/lib/menu-icons";
+
 
 /** Module-local bridge: nested ColumnStack keystrokes set this before
  *  bubbling their new blocks up, so EditableBody.commit knows the
