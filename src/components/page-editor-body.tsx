@@ -1896,27 +1896,45 @@ export function EditableBody({
 
   const ordinalMap = useMemo(() => numberedOrdinals(blocks), [blocks]);
 
-  /* Escape gesture from inside a column: promote focus to a top-level
-   * text block immediately after the parent `columns` block, optionally
-   * removing the now-empty inner block. Reuses an existing empty text
-   * neighbour if one is already there — never leaves a stray empty. */
+  /* Escape gesture from inside a container (column OR callout): promote
+   * focus to a top-level text block immediately after the parent block,
+   * optionally removing the now-empty inner block. Reuses an existing
+   * empty text neighbour if one is already there — never leaves a stray
+   * empty. */
   const escapeColumn = useCallback(
-    (parentBlockId: string, removeBlockId: string | null) => {
-      const pi = blocks.findIndex((b) => b.id === parentBlockId);
+    (colRef: ColumnRef, removeBlockId: string | null) => {
+      const pi = blocks.findIndex((b) => b.id === colRef.blockId);
       if (pi === -1) return;
       const parent = blocks[pi];
-      if (parent.type !== "columns" || !Array.isArray(parent.cols)) return;
+      const isCallout = !("colIndex" in colRef);
+      if (isCallout) {
+        if (parent.type !== "callout") return;
+      } else {
+        if (parent.type !== "columns" || !Array.isArray(parent.cols)) return;
+      }
 
       let nextBlocks: Blk[] = blocks;
       if (removeBlockId) {
-        const nextCols = (parent.cols as Blk[][]).map((col) => {
-          if (col.length <= 1) return col;
-          const stripped = col.filter((cb) => cb.id !== removeBlockId);
-          return stripped.length ? stripped : col;
-        });
-        nextBlocks = blocks.map((b, i) =>
-          i === pi ? { ...parent, cols: nextCols } : b,
-        );
+        if (isCallout) {
+          const kids = Array.isArray(parent.children)
+            ? (parent.children as Blk[])
+            : null;
+          if (kids && kids.length > 1) {
+            const stripped = kids.filter((cb) => cb.id !== removeBlockId);
+            nextBlocks = blocks.map((b, i) =>
+              i === pi ? { ...parent, children: stripped } : b,
+            );
+          }
+        } else {
+          const nextCols = (parent.cols as Blk[][]).map((col) => {
+            if (col.length <= 1) return col;
+            const stripped = col.filter((cb) => cb.id !== removeBlockId);
+            return stripped.length ? stripped : col;
+          });
+          nextBlocks = blocks.map((b, i) =>
+            i === pi ? { ...parent, cols: nextCols } : b,
+          );
+        }
       }
 
       const after = nextBlocks[pi + 1];
