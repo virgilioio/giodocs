@@ -2802,6 +2802,9 @@ function BlockContent({
   }
 
   if (t === "callout") {
+    const kids = Array.isArray((block as { children?: unknown }).children)
+      ? ((block as { children?: Blk[] }).children as Blk[])
+      : null;
     return (
       <div
         className="group flex items-start gap-2 rounded-lg p-3"
@@ -2813,9 +2816,20 @@ function BlockContent({
         }}
       >
         <CalloutIconPicker icon={block.icon ?? "💡"} onPick={onSetIcon} disabled={locked} />
-        {renderProse(
-          "w-full text-prose text-body",
-          { placeholder: "Write, or type / for blocks" },
+        {kids ? (
+          <div className="min-w-0 flex-1">
+            <ColumnStack
+              colRef={{ blockId: block.id, callout: true }}
+              blocks={kids}
+              setBlocks={(next) => onChange({ children: next } as Partial<Blk>)}
+              locked={locked}
+            />
+          </div>
+        ) : (
+          renderProse(
+            "w-full text-prose text-body",
+            { placeholder: "Write, or type / for blocks" },
+          )
         )}
       </div>
     );
