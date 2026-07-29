@@ -2452,19 +2452,21 @@ function BlockRow({
   onPaste: (e: React.ClipboardEvent<HTMLElement>) => void;
 }) {
   const noEditor = block.type === "divider";
-  // Typography on the ROW so the absolutely-positioned gutter inherits the
-  // block's own font-size and line-height. Gutter uses `height: 1lh` and
-  // resolves to the height of ONE first-line box of the block's text —
-  // correct for every type (paragraph 27px, h1 42px, h2 27px, …) and
-  // stable when the paragraph wraps to two lines.
-  const rowTypoClass = ((): string => {
+  // Gutter (+ / drag handle) must centre vertically on the block's FIRST
+  // line box, not the row centre. We publish the block's own line-height
+  // as a pixel value on the row via `--gio-block-lh`; the gutter consumes
+  // it with `height: var(--gio-block-lh)`. Values are `fontSize *
+  // line-height-multiplier`, matching the tokens in @theme so the two
+  // stay in lockstep. (`1lh` on the gutter itself would inherit the row's
+  // typography and blow up the +/⋮⋮ glyphs.)
+  const blockLineHeight = ((): string => {
     switch (block.type) {
-      case "h1": return "text-title";
-      case "h2": return "text-heading";
-      case "h3": return "text-subhead";
-      case "caption": return "text-caption";
-      case "quote": return "text-quote";
-      default: return "text-prose";
+      case "h1": return "43.7px";        // text-title 38 × 1.15
+      case "h2": return "26.875px";      // text-heading 21.5 × 1.25
+      case "h3": return "22.1px";        // text-subhead 17 × 1.30
+      case "caption": return "17.5px";   // text-caption 12.5 × 1.40
+      case "quote": return "30px";       // text-quote 20 × 1.50
+      default: return "27.2px";          // text-prose 17 × 1.60
     }
   })();
   return (
@@ -2473,7 +2475,7 @@ function BlockRow({
       data-block-id={block.id}
       data-block-type={block.type}
       data-block-no-editor={noEditor ? "true" : undefined}
-      className={"group relative -ml-[42px] pl-[42px] " + rowTypoClass}
+      className="group relative -ml-[42px] pl-[42px]"
       style={{
         opacity: dimmed ? 0.45 : undefined,
         background: selected ? "var(--color-blueTint)" : undefined,
@@ -2481,6 +2483,7 @@ function BlockRow({
         borderRadius: selected ? 4 : undefined,
         cursor: noEditor ? "pointer" : undefined,
         transition: "background 120ms ease, box-shadow 120ms ease",
+        ["--gio-block-lh" as string]: blockLineHeight,
       }}
     >
 
@@ -2489,8 +2492,9 @@ function BlockRow({
           className="gio-block-gutter pointer-events-none absolute top-0 flex select-none items-center gap-0.5 opacity-0 transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100"
           style={{
             left: 0,
-            height: "1lh",
+            height: "var(--gio-block-lh)",
             width: 39,
+
             opacity: selected ? 1 : undefined,
             pointerEvents: selected ? "auto" : undefined,
           }}
