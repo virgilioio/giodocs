@@ -183,7 +183,7 @@ function PermissionsChip({
   );
 }
 
-/* ────────────── Freshness row ────────────── */
+/* ────────────── Freshness helpers ────────────── */
 
 function daysBetween(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 3600 * 1000));
@@ -198,91 +198,6 @@ function staleLabel(iso: string): string {
   return `${d} day${d === 1 ? "" : "s"}`;
 }
 
-function FreshnessRow({
-  page,
-  members,
-  meId,
-  staleDays,
-  onVerify,
-  justVerified,
-}: {
-  page: PageFull;
-  members: MemberRow[];
-  meId: string;
-  staleDays: number;
-  onVerify: () => void;
-  justVerified: boolean;
-}) {
-  const verifiedByName = useMemo(() => {
-    if (page.verified_by === meId) return "you";
-    const m = members.find((x) => x.user_id === page.verified_by);
-    return m?.profiles?.full_name || m?.profiles?.email || "you";
-  }, [members, page.verified_by, meId]);
-
-  const isStale = daysBetween(page.verified_at) > staleDays;
-
-  if (justVerified) {
-    return (
-      <div
-        className="flex w-full items-center rounded-lg border border-accentRing bg-accentTint text-row"
-        style={{ borderRadius: 10, padding: "12px 13px", gap: 10 }}
-      >
-        <Glyph path="M5 12l5 5 9-11" className="h-4 w-4 text-accent" />
-        <span className="font-bold text-accent">
-          Verified just now by you — thanks for keeping this fresh.
-        </span>
-      </div>
-    );
-  }
-
-  if (isStale) {
-    return (
-      <div
-        className="flex w-full items-center rounded-lg border border-amberRing bg-amberTint text-row"
-        style={{ borderRadius: 10, padding: "12px 13px", gap: 10 }}
-      >
-        <Glyph
-          path="M12 3l10 18H2L12 3zM12 10v5M12 18h.01"
-          className="h-4 w-4 text-amberInk"
-        />
-        <span className="font-bold text-amberInk">
-          Not verified in {staleLabel(page.verified_at)} — may be stale.
-        </span>
-        <button
-          type="button"
-          onClick={onVerify}
-          className="ml-auto rounded-md border border-line bg-surface px-3 text-meta text-amberInk hover:bg-amberTint"
-          style={{ height: 24 }}
-        >
-          Still accurate ✓
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className="flex w-full items-center rounded-lg border border-line bg-track text-row"
-      style={{ borderRadius: 10, padding: "12px 13px", gap: 10 }}
-    >
-      <Glyph
-        path="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3zM8.5 12l2.5 2.5L16 9.5"
-        className="h-4 w-4 text-accent"
-      />
-      <span className="text-body">
-        Verified {relTime(page.verified_at)} by {verifiedByName}
-      </span>
-      <button
-        type="button"
-        onClick={onVerify}
-        className="ml-auto rounded-md border border-line bg-surface px-3 text-meta text-body hover:bg-rail"
-        style={{ height: 24 }}
-      >
-        Still accurate ✓
-      </button>
-    </div>
-  );
-}
 
 /* ────────────── Property strip (read-only, × removes non-system props) ────────────── */
 
