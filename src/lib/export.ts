@@ -394,9 +394,16 @@ function blockHtml(b: Block, ordinal = 1): string {
       // no equivalent — the round-trip loss is documented in blockToMarkdown
       // alongside caption and columns.
       const bg = calloutBg((b as { color?: unknown }).color);
-      return `<aside style="background:${bg}"><span class="ico">${esc(icon)}</span><span>${inline(
-        text,
-      )}</span></aside>`;
+      const kids = Array.isArray((b as { children?: unknown }).children)
+        ? ((b as { children: Block[] }).children as Block[])
+        : null;
+      if (!kids || kids.length === 0) {
+        return `<aside style="background:${bg}"><span class="ico">${esc(icon)}</span><span>${inline(
+          text,
+        )}</span></aside>`;
+      }
+      const kidHtml = kids.map((k) => blockHtml(k, ctx)).join("\n");
+      return `<aside style="background:${bg}"><span class="ico">${esc(icon)}</span><div class="callout-body">${kidHtml}</div></aside>`;
     }
 
     case "divider":
