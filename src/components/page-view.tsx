@@ -876,6 +876,9 @@ function PropertyStrip({
   meId,
   pages,
   areas,
+  staleDays,
+  onVerify,
+  justVerified,
   onSet,
 }: {
   page: PageFull;
@@ -884,6 +887,9 @@ function PropertyStrip({
   meId: string;
   pages: PageListItem[];
   areas: string[];
+  staleDays: number;
+  onVerify: () => void;
+  justVerified: boolean;
   onSet: (key: string, value: unknown) => void;
 }) {
   const propsRec = propsOf(page);
@@ -910,14 +916,15 @@ function PropertyStrip({
     return m?.profiles?.full_name || m?.profiles?.email || "you";
   }, [members, page.verified_by, meId]);
 
+  const isStale = daysBetween(page.verified_at) > staleDays;
+
   /* Rhythm rule: rows ABUT (no gap between them) and each row is its own
-   * min-height 32 box. The strip owns its own top hairline (marginTop 22,
-   * borderTop 1px var(--color-line), paddingTop 8); the page container no
-   * longer wraps this with any additional spacing. */
+   * min-height 32 box. The strip absorbs the old freshness banner's job,
+   * so its top margin drops from 22 → 18. */
   return (
     <div
       style={{
-        marginTop: 22,
+        marginTop: 18,
         borderTop: "1px solid var(--color-line)",
         paddingTop: 8,
       }}
