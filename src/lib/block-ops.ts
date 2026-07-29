@@ -76,6 +76,14 @@ export type Blk = {
   color?: CalloutColor;
   /** Only meaningful when type === "columns". Never nested. */
   cols?: Blk[][];
+  /** Only meaningful when type === "callout". When absent, the callout
+   *  renders from `text` (today's behaviour). When present, `text` is
+   *  ignored and the callout renders `children` inside the tinted box —
+   *  it is a container of ordinary blocks. Lazy-migrated by the drop
+   *  layer the first time a block lands inside an untouched callout.
+   *  Invariant, enforced in reorder.ts: no callout in callout, no
+   *  columns in callout. */
+  children?: Blk[];
   /** Flat outline level for list-like blocks (bullet, numbered, todo, text).
    *  Absent or 0 means top level. NOT a tree — blocks stay in a flat array;
    *  this is only a rendering / label / export hint. Clamped 0..6 with the

@@ -68,33 +68,81 @@ export function deleteIndices<T>(
   return next;
 }
 
-/* ────────────── Cross-list moves (columns) ────────────── */
+/* ────────────── Cross-list moves (columns, callouts) ────────────── */
 
-export type ColumnRef = { blockId: string; colIndex: number };
+/**
+ * A container reference. Two shapes — structural, no discriminator field
+ * on the column case, so every existing `{ blockId, colIndex }` literal
+ * keeps working unchanged.
+ *
+ *   Column:   { blockId, colIndex }
+ *   Callout:  { blockId, callout: true }
+ *
+ * `col: null` still means "the top-level block list".
+ */
+export type ColumnRef =
+  | { blockId: string; colIndex: number }
+  | { blockId: string; callout: true };
 export type Path = { col: ColumnRef | null; index: number };
 
 type BlkLite = {
   id: string;
   type?: string;
+  text?: string;
   cols?: BlkLite[][];
+  children?: BlkLite[];
 };
+
+function isCalloutRef(r: ColumnRef): r is { blockId: string; callout: true } {
+  return (r as { callout?: unknown }).callout === true;
+}
 
 function samePath(a: Path, b: Path): boolean {
   if (a.col === null && b.col === null) return true;
   if (a.col && b.col) {
-    return a.col.blockId === b.col.blockId && a.col.colIndex === b.col.colIndex;
+    if (a.col.blockId !== b.col.blockId) return false;
+    const aCallout = isCalloutRef(a.col);
+    const bCallout = isCalloutRef(b.col);
+    if (aCallout !== bCallout) return false;
+    if (aCallout) return true;
+    return (
+      (a.col as { colIndex: number }).colIndex ===
+      (b.col as { colIndex: number }).colIndex
+    );
   }
   return false;
 }
 
-function getList<B extends BlkLite>(blocks: readonly B[], col: ColumnRef | null): B[] | null {
+/** Materialise the container's block list. Column: reads `b.cols[i]`.
+ *  Callout: reads `b.children` if present, else — for lazy-migration
+ *  support — synthesises a single text block from `b.text` via
+ *  `makeMigratedText`. When `makeMigratedText` is omitted (pure reads
+ *  that don't want to trigger a migration) an unmigrated callout returns
+ *  an empty list, which is the "would need migration first" signal. */
+function getList<B extends BlkLite>(
+  blocks: readonly B[],
+  col: ColumnRef | null,
+  makeMigratedText?: (text: string) => B,
+): B[] | null {
   if (col === null) return blocks.slice();
   const b = blocks.find((x) => x.id === col.blockId);
-  if (!b || !Array.isArray(b.cols)) return null;
-  if (col.colIndex < 0 || col.colIndex >= b.cols.length) return null;
-  return (b.cols[col.colIndex] as B[]).slice();
+  if (!b) return null;
+  if (isCalloutRef(col)) {
+    if (b.type !== "callout") return null;
+    if (Array.isArray(b.children)) return (b.children as B[]).slice();
+    if (makeMigratedText) return [makeMigratedText(b.text ?? "")];
+    return [];
+  }
+  if (!Array.isArray(b.cols)) return null;
+  const ci = (col as { colIndex: number }).colIndex;
+  if (ci < 0 || ci >= b.cols.length) return null;
+  return (b.cols[ci] as B[]).slice();
 }
 
+/** Write a container's block list. Column: replaces `cols[i]`. Callout:
+ *  writes `children` and blanks `text` — the migration is applied
+ *  whenever the caller commits any list into a callout, so a callout
+ *  that has been touched is always in "container mode". */
 function setList<B extends BlkLite>(
   blocks: readonly B[],
   col: ColumnRef | null,
@@ -102,24 +150,41 @@ function setList<B extends BlkLite>(
 ): B[] {
   if (col === null) return next.slice() as B[];
   return blocks.map((b) => {
-    if (b.id !== col.blockId || !Array.isArray(b.cols)) return b;
-    const nextCols = b.cols.map((c, ci) =>
-      ci === col.colIndex ? (next as B[]).slice() : (c as B[]).slice(),
+    if (b.id !== col.blockId) return b;
+    if (isCalloutRef(col)) {
+      if (b.type !== "callout") return b;
+      return { ...b, children: (next as B[]).slice(), text: "" } as B;
+    }
+    if (!Array.isArray(b.cols)) return b;
+    const ci = (col as { colIndex: number }).colIndex;
+    const nextCols = b.cols.map((c, i) =>
+      i === ci ? (next as B[]).slice() : (c as B[]).slice(),
     );
     return { ...b, cols: nextCols } as B;
   });
 }
 
+/** Whether inserting `item` into `to` is refused by a container invariant.
+ *  Columns must never nest (existing rule). Callouts refuse other callouts
+ *  and columns blocks (new rule) — see block-ops.ts's `children` note. */
+function isRefusedInsertion<B extends BlkLite>(item: B, to: Path): boolean {
+  if (to.col === null) return false;
+  if (isCalloutRef(to.col)) {
+    return item.type === "callout" || item.type === "columns";
+  }
+  // Column target: existing invariant.
+  return item.type === "columns";
+}
+
 /**
  * Move a single block from `from` (points AT a block) to `to` (points AT
- * a gap in the target list). Refuses to move a `columns` block into a
- * column (no nesting — see src/lib/columns.ts). When the source list is
- * a column that becomes empty as a result, the column is reseeded with
- * one fresh block from `makeEmpty()` so the invariant "every column has
- * ≥ 1 block" is preserved.
- *
- * Same-list drops honour the moveBlock identity rule: dropping on the
- * block's own gap (before or after it) is a no-op.
+ * a gap in the target list). Refuses container invariants (see
+ * `isRefusedInsertion`). When the source list is a column that becomes
+ * empty as a result, the column is reseeded with one fresh block from
+ * `makeEmpty()` so the invariant "every column has ≥ 1 block" is
+ * preserved. The equivalent is true for callout children (see comment
+ * on the `children` field): draining a callout leaves one empty text
+ * block. Same-list drops honour the moveBlock identity rule.
  */
 export function moveBlockAcross<B extends BlkLite>(
   blocks: readonly B[],
@@ -127,13 +192,20 @@ export function moveBlockAcross<B extends BlkLite>(
   to: Path,
   makeEmpty: () => B,
 ): B[] {
-  const source = getList(blocks, from.col);
+  const makeMigratedText = (text: string): B => {
+    // Seed a fresh empty block, then patch its text. Preserves the
+    // caller-supplied factory's id generation and shape.
+    const seeded = makeEmpty();
+    (seeded as { text?: string }).text = text;
+    return seeded;
+  };
+  const source = getList(blocks, from.col, makeMigratedText);
   if (!source) return blocks.slice() as B[];
   if (from.index < 0 || from.index >= source.length) return blocks.slice() as B[];
   const item = source[from.index];
 
-  // Invariant: a `columns` block may never be dropped inside a column.
-  if (item.type === "columns" && to.col !== null) return blocks.slice() as B[];
+  // Container invariants.
+  if (isRefusedInsertion(item, to)) return blocks.slice() as B[];
 
   const same = samePath(from, to);
   if (same && (to.index === from.index || to.index === from.index + 1)) {
@@ -145,14 +217,17 @@ export function moveBlockAcross<B extends BlkLite>(
     return setList(blocks, from.col, nextList) as B[];
   }
 
-  // Different source and target lists — remove first, then insert.
+  // Different source and target lists — remove first, then insert. Both
+  // sides may need lazy-migration reads (source: unlikely — you can't
+  // drag out of a callout that has no `children` — but keep symmetric).
   const nextSource = source.slice();
   nextSource.splice(from.index, 1);
-  const seededSource =
-    from.col !== null && nextSource.length === 0 ? [makeEmpty()] : nextSource;
+  const sourceNeedsSeed =
+    from.col !== null && nextSource.length === 0;
+  const seededSource = sourceNeedsSeed ? [makeEmpty()] : nextSource;
   let intermediate = setList(blocks, from.col, seededSource);
 
-  const target = getList(intermediate, to.col);
+  const target = getList(intermediate, to.col, makeMigratedText);
   if (!target) return blocks.slice() as B[];
   const insertAt = Math.max(0, Math.min(target.length, to.index));
   const nextTarget = target.slice();
@@ -187,13 +262,18 @@ export function moveRunAcross<B extends BlkLite>(
     // Not contiguous — no-op.
     return blocks.slice() as B[];
   }
-  const source = getList(blocks, first.col);
+  const makeMigratedText = (text: string): B => {
+    const seeded = makeEmpty();
+    (seeded as { text?: string }).text = text;
+    return seeded;
+  };
+  const source = getList(blocks, first.col, makeMigratedText);
   if (!source) return blocks.slice() as B[];
   if (runStart < 0 || runEnd >= source.length) return blocks.slice() as B[];
   const items = source.slice(runStart, runEnd + 1);
 
-  // Guard: a run containing a `columns` block cannot land in a column.
-  if (to.col !== null && items.some((x) => x.type === "columns")) {
+  // Container invariants: any refused item aborts the whole run.
+  if (items.some((x) => isRefusedInsertion(x, to))) {
     return blocks.slice() as B[];
   }
 
@@ -212,7 +292,7 @@ export function moveRunAcross<B extends BlkLite>(
     first.col !== null && nextSource.length === 0 ? [makeEmpty()] : nextSource;
   let intermediate = setList(blocks, first.col, seededSource);
 
-  const target = getList(intermediate, to.col);
+  const target = getList(intermediate, to.col, makeMigratedText);
   if (!target) return blocks.slice() as B[];
   const insertAt = Math.max(0, Math.min(target.length, to.index));
   const nextTarget = target.slice(0, insertAt).concat(items, target.slice(insertAt));
