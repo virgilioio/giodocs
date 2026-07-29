@@ -43,10 +43,21 @@ export type MenuRow =
        *  slot when a colour is the row's own mark (per menu spec — never
        *  an icon AND a swatch). Mutually exclusive with icon/dot/person. */
       swatch?: string;
+      /** 17px rounded-square swatch in the same LEADING slot: a miniature
+       *  of a real surface — fill AND its 1px ring. Generic: any menu can
+       *  use it, not just the callout colour picker. */
+      hasSwatch?: boolean;
+      swBg?: string;
+      swRing?: string;
       /** 20px pastel avatar — mutually exclusive with icon/dot/swatch. */
       person?: { initials: string; tint: string; ink: string };
       hint?: MenuHint;
+      /** 13px swatch rendered immediately before the hint text. */
+      hintSwatch?: boolean;
+      hintBg?: string;
+      hintRing?: string;
       checked?: boolean;
+
       danger?: boolean;
       onPick: () => void;
     };
