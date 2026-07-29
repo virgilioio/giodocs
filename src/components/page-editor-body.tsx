@@ -1704,19 +1704,22 @@ export function EditableBody({
       const runEnd = run[run.length - 1] ?? 0;
       const isMulti = run.length > 1;
       const target = blocks[runStart];
-      const targetName =
-        BLOCK_MENU.find((m) => m.type === target?.type)?.name ??
-        target?.type ??
-        "Block";
+      const targetName = blockTypeName(target);
       const title = isMulti ? `${run.length} blocks` : targetName;
       const atTop = runStart === 0;
       const atEnd = runEnd >= blocks.length - 1;
+      const curLevel = (target as { level?: unknown } | undefined)?.level;
 
       const turnIntoSub: MenuRow[] = [
         ...BLOCK_MENU.map((m) => ({
           kind: "row" as const,
           label: m.name,
-          icon: "layout" as const,
+          // Icon comes from the block DEFINITION — one place, three menus.
+          icon: m.ic,
+          checked:
+            !isMulti &&
+            target?.type === m.type &&
+            !(m.type === "toggle" && typeof curLevel === "string"),
           onPick: () => {
             runTurnInto(blockId, m.type);
             mctx.close();
@@ -1725,16 +1728,24 @@ export function EditableBody({
         // Toggle heading levels — sit next to the plain "Toggle" entry as
         // additional Turn-into options. Preserves text/body/open by
         // relying on runTurnInto's default patch behaviour.
-        ...([1, 2, 3] as const).map((n) => ({
+        ...TOGGLE_HEADINGS.map(({ n, ic }) => ({
           kind: "row" as const,
           label: `Toggle heading ${n}`,
-          icon: "layout" as const,
+          icon: ic,
+          checked: !isMulti && target?.type === "toggle" && curLevel === `h${n}`,
           onPick: () => {
             runTurnInto(blockId, "toggle", { level: `h${n}` as ToggleLevel });
             mctx.close();
           },
         })),
       ];
+
+      const turnIntoSpec: MenuSpec = {
+        title: isMulti ? `Turn ${run.length} blocks into` : "Turn into",
+        rows: turnIntoSub,
+        footer: "Every block type this page can hold.",
+        onBack: () => mctx.setSpec(buildBlockHandleSpec(blockId, mctx)),
+      };
 
       // Colour is a per-callout attribute. Show ONLY when every block in
       // the run is a callout — a colour row that silently skips non-
@@ -1750,19 +1761,26 @@ export function EditableBody({
       const colorSub: MenuRow[] = CALLOUT_COLORS.map((c) => ({
         kind: "row" as const,
         label: calloutLabel(c),
-        swatch: calloutBg(c),
+        // A miniature of the real block: tint fill AND its 1px ring.
+        hasSwatch: true,
+        swBg: calloutBg(c),
+        swRing: calloutRing(c),
         checked: c === currentColor,
         onPick: () => {
           const next = [...blocks];
           for (const i of run) {
             if (next[i]?.type !== "callout") continue;
             const nb: Blk = { ...next[i] };
+            // Stored as a KEY ('blue'), never a hex — a literal would not
+            // theme and could outlive a palette change.
             if (c === "neutral") delete nb.color;
             else nb.color = c;
             next[i] = nb;
           }
           commit(next);
-          mctx.close();
+          // Return to the block menu rather than closing: people try two
+          // or three against the surrounding text.
+          mctx.setSpec(buildBlockHandleSpec(blockId, mctx));
         },
       }));
 
@@ -1772,20 +1790,24 @@ export function EditableBody({
               {
                 kind: "row" as const,
                 label: "Colour",
-                icon: "dot",
+                icon: "droplet",
+                hintSwatch: true,
+                hintBg: calloutBg(currentColor),
+                hintRing: calloutRing(currentColor),
                 hint: { text: calloutLabel(currentColor) },
                 onPick: () =>
                   mctx.setSpec({
-                    title: isMulti ? `${run.length} blocks` : "Colour",
+                    title: "Colour",
                     rows: colorSub,
                     footer:
-                      "Backgrounds only — the text stays readable on all eight.",
+                      "Backgrounds only — the text stays the same weight and colour in all eight, so no callout can look like a warning it is not.",
                     onBack: () => mctx.setSpec(buildBlockHandleSpec(blockId, mctx)),
                   }),
               },
               { kind: "sep" as const },
             ] as MenuRow[])
           : []),
+
         {
           kind: "row",
           label: "Turn into",
