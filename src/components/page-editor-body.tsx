@@ -2452,6 +2452,23 @@ function BlockRow({
   onPaste: (e: React.ClipboardEvent<HTMLElement>) => void;
 }) {
   const noEditor = block.type === "divider";
+  // Gutter (+ / drag handle) must centre vertically on the block's FIRST
+  // line box, not the row centre. We publish the block's own line-height
+  // as a pixel value on the row via `--gio-block-lh`; the gutter consumes
+  // it with `height: var(--gio-block-lh)`. Values are `fontSize *
+  // line-height-multiplier`, matching the tokens in @theme so the two
+  // stay in lockstep. (`1lh` on the gutter itself would inherit the row's
+  // typography and blow up the +/⋮⋮ glyphs.)
+  const blockLineHeight = ((): string => {
+    switch (block.type) {
+      case "h1": return "43.7px";        // text-title 38 × 1.15
+      case "h2": return "26.875px";      // text-heading 21.5 × 1.25
+      case "h3": return "22.1px";        // text-subhead 17 × 1.30
+      case "caption": return "17.5px";   // text-caption 12.5 × 1.40
+      case "quote": return "30px";       // text-quote 20 × 1.50
+      default: return "27.2px";          // text-prose 17 × 1.60
+    }
+  })();
   return (
     <div
       ref={(el) => registerRowEl(block.id, el)}
@@ -2466,6 +2483,7 @@ function BlockRow({
         borderRadius: selected ? 4 : undefined,
         cursor: noEditor ? "pointer" : undefined,
         transition: "background 120ms ease, box-shadow 120ms ease",
+        ["--gio-block-lh" as string]: blockLineHeight,
       }}
     >
 
@@ -2474,8 +2492,9 @@ function BlockRow({
           className="gio-block-gutter pointer-events-none absolute top-0 flex select-none items-center gap-0.5 opacity-0 transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100"
           style={{
             left: 0,
-            height: 32,
+            height: "var(--gio-block-lh)",
             width: 39,
+
             opacity: selected ? 1 : undefined,
             pointerEvents: selected ? "auto" : undefined,
           }}
@@ -2521,6 +2540,7 @@ function BlockRow({
           </button>
         </div>
       )}
+
 
       <BlockContent
         block={block}
@@ -2750,13 +2770,18 @@ function BlockContent({
     const done = !!block.checked;
     return contentWrap(
       <div className="flex items-start gap-2 text-prose text-body">
-        <input
-          type="checkbox"
-          checked={done}
-          onChange={() => onChange({ checked: !done })}
-          className="mt-2 accent-accent"
-          aria-label={done ? "Done" : "Todo"}
-        />
+        <span
+          className="flex shrink-0 items-center"
+          style={{ height: "1lh" }}
+        >
+          <input
+            type="checkbox"
+            checked={done}
+            onChange={() => onChange({ checked: !done })}
+            className="accent-accent"
+            aria-label={done ? "Done" : "Todo"}
+          />
+        </span>
         {renderProse(
           "w-full",
           {
@@ -2772,8 +2797,16 @@ function BlockContent({
     const glyph = BULLET_GLYPHS[indent % 3];
     return contentWrap(
       <div className="flex items-start gap-2 text-prose text-body">
-        <span aria-hidden className="mt-2 leading-none text-muted">
-          {glyph}
+        <span
+          aria-hidden
+          className="flex items-center"
+          style={{ height: "1lh" }}
+        >
+          {/* `leading-none` and colour live on the INNER glyph so the
+              outer wrapper keeps the parent's line-height — 1lh on the
+              wrapper must resolve to text-prose (27.2px), not to the
+              glyph's own 1× line-height. */}
+          <span className="leading-none text-muted">{glyph}</span>
         </span>
         {renderProse("w-full", { placeholder: "List" })}
       </div>
@@ -2784,13 +2817,23 @@ function BlockContent({
     const label = ordinalLabel(ordinal ?? 1, indent);
     return contentWrap(
       <div className="flex items-start gap-2 text-prose text-body">
-        <span aria-hidden className="mt-1 min-w-4 text-meta text-muted tnum">
-          {label}
+        <span
+          aria-hidden
+          className="flex min-w-4 items-center"
+          style={{ height: "1lh" }}
+        >
+          {/* text-meta on an INNER span so `1lh` on the wrapper reflects
+              the block's line-height (text-prose 27.2px), not the label's
+              own smaller 1.4× line-height. */}
+          <span className="text-meta text-muted tnum">{label}</span>
         </span>
         {renderProse("w-full", { placeholder: "List" })}
       </div>
     );
   }
+
+
+
 
   if (t === "h1") {
     return renderProse(
@@ -2859,20 +2902,29 @@ function CalloutIconPicker({
   onPick: (i: string) => void;
   disabled?: boolean;
 }) {
+  // Vertically centre the 24×24 icon within ONE line-box of the callout's
+  // first line — same treatment as list markers and the gutter.
+  const wrapStyle: React.CSSProperties = {
+    height: "1lh",
+    display: "flex",
+    alignItems: "center",
+  };
   // A locked page's callout icon is not interactive — render as plain glyph.
   if (disabled) {
     return (
-      <div
-        className="shrink-0 grid place-items-center"
-        style={{ width: 24, height: 24, fontSize: 18, lineHeight: 1 }}
-        aria-label="Callout icon"
-      >
-        {icon}
+      <div className="shrink-0" style={wrapStyle} aria-label="Callout icon">
+        <div
+          className="grid place-items-center"
+          style={{ width: 24, height: 24, fontSize: 18, lineHeight: 1 }}
+        >
+          {icon}
+        </div>
       </div>
     );
   }
   return (
-    <div className="shrink-0">
+    <div className="shrink-0" style={wrapStyle}>
+
       <Popover
         width={320}
         trigger={({ open, onClick, ref }) => (
