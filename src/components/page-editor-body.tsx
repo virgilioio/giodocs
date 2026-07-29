@@ -127,10 +127,10 @@ type ColumnBridge = {
     sourceCol: ColumnRef,
   ) => void;
   /** Escape gesture: promote focus to a top-level text block after the
-   * parent `columns` block. When `removeBlockId` is non-null, remove that
-   * inner block from its column first — but never below the column's
-   * one-block minimum. */
-  escapeColumn: (parentBlockId: string, removeBlockId: string | null) => void;
+   * parent container (a `columns` block OR a `callout` container). When
+   * `removeBlockId` is non-null, remove that inner block from its list
+   * first — but never below the container's one-block minimum. */
+  escapeColumn: (colRef: ColumnRef, removeBlockId: string | null) => void;
   /** Stage-2 ⌘A from inside a column: blur the caret and promote the
    *  selection to every top-level block on the page. Column-scoped block
    *  selection is deliberately NOT supported. */
@@ -771,6 +771,81 @@ export function EditableBody({
           const xInContainer = trackRect.left - cRect.left;
           if (rects.length === 0) {
             // Empty-looking column (shouldn't happen post-normalise).
+            return {
+              targetCol: colRef,
+              gap: 0,
+              indicator: { x: xInContainer, y: trackRect.top - cRect.top, width },
+            };
+          }
+          if (clientY < rects[0].mid) {
+            return {
+              targetCol: colRef,
+              gap: 0,
+              indicator: { x: xInContainer, y: rects[0].top - cRect.top - 2, width },
+            };
+          }
+          for (let i = 0; i < rects.length; i++) {
+            const rr = rects[i];
+            if (clientY < rr.mid) {
+              const y = ((rects[i - 1]?.bottom ?? rr.top) + rr.top) / 2;
+              return {
+                targetCol: colRef,
+                gap: i,
+                indicator: { x: xInContainer, y: y - cRect.top - 1, width },
+              };
+            }
+          }
+          const last = rects[rects.length - 1];
+          return {
+            targetCol: colRef,
+            gap: rects.length,
+            indicator: { x: xInContainer, y: last.bottom - cRect.top + 2, width },
+          };
+        }
+      }
+
+      // Step 1b: callout containers. Only reachable when the dragged run
+      // is NOT a columns block. Callouts and columns are peers as drop
+      // targets — same midpoint hit-testing, but scoped to a single
+      // callout's children track. A legacy callout with no children yet
+      // has no track registered — pointer inside its outer row falls
+      // through to a gap-0 drop that triggers Pass A's lazy migration.
+      if (!draggingColumnsBlock) {
+        for (const b of blocks) {
+          if (b.type !== "callout") continue;
+          const outer = rowEls.current.get(b.id);
+          if (!outer) continue;
+          const cb = outer.getBoundingClientRect();
+          if (
+            clientY < cb.top ||
+            clientY > cb.bottom ||
+            clientX < cb.left ||
+            clientX > cb.right
+          )
+            continue;
+          const colRef: ColumnRef = { blockId: b.id, callout: true };
+          const trackEl = colTracks.current.get(trackKey(colRef));
+          const kids = Array.isArray(b.children) ? (b.children as Blk[]) : null;
+          // Legacy callout (text-mode, no CalloutStack rendered).
+          if (!trackEl || !kids) {
+            const xInContainer = cb.left - cRect.left;
+            return {
+              targetCol: colRef,
+              gap: 0,
+              indicator: { x: xInContainer + 8, y: cb.bottom - cRect.top - 2, width: cb.width - 16 },
+            };
+          }
+          const rects: Array<{ id: string; top: number; bottom: number; mid: number }> = [];
+          for (const cb2 of kids) {
+            const el = rowEls.current.get(cb2.id);
+            if (!el) continue;
+            const r = el.getBoundingClientRect();
+            rects.push({ id: cb2.id, top: r.top, bottom: r.bottom, mid: (r.top + r.bottom) / 2 });
+          }
+          const trackRect = trackEl.getBoundingClientRect();
+          const width = trackRect.width;
+          const xInContainer = trackRect.left - cRect.left;
+          if (rects.length === 0) {
             return {
               targetCol: colRef,
               gap: 0,
@@ -1896,27 +1971,45 @@ export function EditableBody({
 
   const ordinalMap = useMemo(() => numberedOrdinals(blocks), [blocks]);
 
-  /* Escape gesture from inside a column: promote focus to a top-level
-   * text block immediately after the parent `columns` block, optionally
-   * removing the now-empty inner block. Reuses an existing empty text
-   * neighbour if one is already there — never leaves a stray empty. */
+  /* Escape gesture from inside a container (column OR callout): promote
+   * focus to a top-level text block immediately after the parent block,
+   * optionally removing the now-empty inner block. Reuses an existing
+   * empty text neighbour if one is already there — never leaves a stray
+   * empty. */
   const escapeColumn = useCallback(
-    (parentBlockId: string, removeBlockId: string | null) => {
-      const pi = blocks.findIndex((b) => b.id === parentBlockId);
+    (colRef: ColumnRef, removeBlockId: string | null) => {
+      const pi = blocks.findIndex((b) => b.id === colRef.blockId);
       if (pi === -1) return;
       const parent = blocks[pi];
-      if (parent.type !== "columns" || !Array.isArray(parent.cols)) return;
+      const isCallout = !("colIndex" in colRef);
+      if (isCallout) {
+        if (parent.type !== "callout") return;
+      } else {
+        if (parent.type !== "columns" || !Array.isArray(parent.cols)) return;
+      }
 
       let nextBlocks: Blk[] = blocks;
       if (removeBlockId) {
-        const nextCols = (parent.cols as Blk[][]).map((col) => {
-          if (col.length <= 1) return col;
-          const stripped = col.filter((cb) => cb.id !== removeBlockId);
-          return stripped.length ? stripped : col;
-        });
-        nextBlocks = blocks.map((b, i) =>
-          i === pi ? { ...parent, cols: nextCols } : b,
-        );
+        if (isCallout) {
+          const kids = Array.isArray(parent.children)
+            ? (parent.children as Blk[])
+            : null;
+          if (kids && kids.length > 1) {
+            const stripped = kids.filter((cb) => cb.id !== removeBlockId);
+            nextBlocks = blocks.map((b, i) =>
+              i === pi ? { ...parent, children: stripped } : b,
+            );
+          }
+        } else {
+          const nextCols = (parent.cols as Blk[][]).map((col) => {
+            if (col.length <= 1) return col;
+            const stripped = col.filter((cb) => cb.id !== removeBlockId);
+            return stripped.length ? stripped : col;
+          });
+          nextBlocks = blocks.map((b, i) =>
+            i === pi ? { ...parent, cols: nextCols } : b,
+          );
+        }
       }
 
       const after = nextBlocks[pi + 1];
@@ -2709,6 +2802,9 @@ function BlockContent({
   }
 
   if (t === "callout") {
+    const kids = Array.isArray((block as { children?: unknown }).children)
+      ? ((block as { children?: Blk[] }).children as Blk[])
+      : null;
     return (
       <div
         className="group flex items-start gap-2 rounded-lg p-3"
@@ -2720,9 +2816,20 @@ function BlockContent({
         }}
       >
         <CalloutIconPicker icon={block.icon ?? "💡"} onPick={onSetIcon} disabled={locked} />
-        {renderProse(
-          "w-full text-prose text-body",
-          { placeholder: "Write, or type / for blocks" },
+        {kids ? (
+          <div className="min-w-0 flex-1">
+            <ColumnStack
+              colRef={{ blockId: block.id, callout: true }}
+              blocks={kids}
+              setBlocks={(next) => onChange({ children: next } as Partial<Blk>)}
+              locked={locked}
+            />
+          </div>
+        ) : (
+          renderProse(
+            "w-full text-prose text-body",
+            { placeholder: "Write, or type / for blocks" },
+          )
         )}
       </div>
     );
@@ -3018,8 +3125,7 @@ function ColumnsBlock({
       {cols.map((col, i) => (
         <ColumnStack
           key={i}
-          parentBlockId={block.id}
-          colIndex={i}
+          colRef={{ blockId: block.id, colIndex: i }}
           blocks={col}
           setBlocks={(next) => setColumn(i, next)}
           locked={locked}
@@ -3034,23 +3140,21 @@ function ColumnsBlock({
  * from EditableBody rather than fully sharing state — part 2 of the
  * columns task will unify these under a single BlockStack component. */
 function ColumnStack({
-  parentBlockId,
-  colIndex,
+  colRef,
   blocks,
   setBlocks,
   locked,
 }: {
-  parentBlockId: string;
-  colIndex: number;
+  /** The container this stack renders. Column: `{blockId, colIndex}`.
+   *  Callout: `{blockId, callout: true}`. See ColumnRef in block-ops. */
+  colRef: ColumnRef;
   blocks: Blk[];
   setBlocks: (next: Blk[]) => void;
   locked: boolean;
 }) {
   const bridge = useContext(ColumnBridgeCtx);
-  const colRef = useMemo<ColumnRef>(
-    () => ({ blockId: parentBlockId, colIndex }),
-    [parentBlockId, colIndex],
-  );
+  const parentBlockId = colRef.blockId;
+  const isCallout = !("colIndex" in colRef);
   const trackRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     bridge?.registerTrack(colRef, trackRef.current);
@@ -3073,12 +3177,18 @@ function ColumnStack({
   useEffect(() => setMenuIdx(0), [slash?.query]);
 
   const filteredMenu = useMemo(() => {
+    // Inside a callout, Pass A forbids nested callouts at the model —
+    // suppress the entry so the menu never offers what the ops layer
+    // will refuse. Columns are already absent (BLOCK_MENU excludes them).
+    const base = isCallout
+      ? BLOCK_MENU.filter((m) => m.type !== "callout")
+      : BLOCK_MENU;
     const q = (slash?.query ?? "").toLowerCase().trim();
-    if (!q) return BLOCK_MENU;
-    return BLOCK_MENU.filter(
+    if (!q) return base;
+    return base.filter(
       (m) => m.name.toLowerCase().includes(q) || m.type.includes(q),
     );
-  }, [slash]);
+  }, [slash, isCallout]);
 
   useEffect(() => {
     if (!focusRequest) return;
@@ -3428,7 +3538,7 @@ function ColumnStack({
                 e.preventDefault();
                 if (bridge)
                   bridge.escapeColumn(
-                    parentBlockId,
+                    colRef,
                     op.removeEmpty ? b.id : null,
                   );
                 return;
