@@ -2867,14 +2867,18 @@ function BlockContent({
       : null;
     return (
       <div
-        className="group flex items-start gap-2 rounded-lg p-3"
+        className="group flex items-start gap-2 p-3"
         style={{
-          borderRadius: 10,
+          borderRadius: 9,
           // Colour comes from a token resolved by name — never a stored hex.
-          // Absent === neutral === today's bg-sunken.
+          // Tint + 1px ring: at ~95% lightness several tints are nearly
+          // white on the page, and without an edge a callout stops reading
+          // as a block at all. Text colour NEVER changes.
           background: calloutBg((block as { color?: unknown }).color),
+          border: `1px solid ${calloutRing((block as { color?: unknown }).color)}`,
         }}
       >
+
         <CalloutIconPicker icon={block.icon ?? "💡"} onPick={onSetIcon} disabled={locked} />
         {kids ? (
           <div className="min-w-0 flex-1">
