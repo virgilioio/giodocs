@@ -177,6 +177,41 @@ describe("blockToMarkdown", () => {
   });
 });
 
+describe("callout with children serialisation", () => {
+  const cwith = () =>
+    ({
+      id: "ca",
+      type: "callout",
+      text: "",
+      icon: "💡",
+      children: [
+        { id: "k1", type: "text", text: "one" },
+        { id: "k2", type: "numbered", text: "two" },
+      ],
+    }) as unknown as Block;
+
+  it("blockToMarkdown emits '> {icon}' first line then quoted children", () => {
+    const md = blockToMarkdown(cwith());
+    // First line carries the icon; subsequent lines are each child's
+    // markdown, `> `-prefixed line by line.
+    expect(md.split("\n")).toEqual(["> 💡", "> one", "> 1. two"]);
+  });
+
+  it("legacy callout without children still emits '> {icon} {text}'", () => {
+    const md = blockToMarkdown(
+      B("callout", { text: "note", icon: "⚠️" }),
+    );
+    expect(md).toBe("> ⚠️ note");
+  });
+
+  it("empty children array falls back to the legacy single-line form", () => {
+    const md = blockToMarkdown(
+      B("callout", { text: "hi", icon: "💡", children: [] as unknown }),
+    );
+    expect(md).toBe("> 💡 hi");
+  });
+});
+
 describe("columns block serialisation", () => {
   const cb = (n: number) => ({
     id: "c1",
