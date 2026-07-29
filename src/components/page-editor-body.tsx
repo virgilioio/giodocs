@@ -804,6 +804,81 @@ export function EditableBody({
         }
       }
 
+      // Step 1b: callout containers. Only reachable when the dragged run
+      // is NOT a columns block. Callouts and columns are peers as drop
+      // targets — same midpoint hit-testing, but scoped to a single
+      // callout's children track. A legacy callout with no children yet
+      // has no track registered — pointer inside its outer row falls
+      // through to a gap-0 drop that triggers Pass A's lazy migration.
+      if (!draggingColumnsBlock) {
+        for (const b of blocks) {
+          if (b.type !== "callout") continue;
+          const outer = rowEls.current.get(b.id);
+          if (!outer) continue;
+          const cb = outer.getBoundingClientRect();
+          if (
+            clientY < cb.top ||
+            clientY > cb.bottom ||
+            clientX < cb.left ||
+            clientX > cb.right
+          )
+            continue;
+          const colRef: ColumnRef = { blockId: b.id, callout: true };
+          const trackEl = colTracks.current.get(trackKey(colRef));
+          const kids = Array.isArray(b.children) ? (b.children as Blk[]) : null;
+          // Legacy callout (text-mode, no CalloutStack rendered).
+          if (!trackEl || !kids) {
+            const xInContainer = cb.left - cRect.left;
+            return {
+              targetCol: colRef,
+              gap: 0,
+              indicator: { x: xInContainer + 8, y: cb.bottom - cRect.top - 2, width: cb.width - 16 },
+            };
+          }
+          const rects: Array<{ id: string; top: number; bottom: number; mid: number }> = [];
+          for (const cb2 of kids) {
+            const el = rowEls.current.get(cb2.id);
+            if (!el) continue;
+            const r = el.getBoundingClientRect();
+            rects.push({ id: cb2.id, top: r.top, bottom: r.bottom, mid: (r.top + r.bottom) / 2 });
+          }
+          const trackRect = trackEl.getBoundingClientRect();
+          const width = trackRect.width;
+          const xInContainer = trackRect.left - cRect.left;
+          if (rects.length === 0) {
+            return {
+              targetCol: colRef,
+              gap: 0,
+              indicator: { x: xInContainer, y: trackRect.top - cRect.top, width },
+            };
+          }
+          if (clientY < rects[0].mid) {
+            return {
+              targetCol: colRef,
+              gap: 0,
+              indicator: { x: xInContainer, y: rects[0].top - cRect.top - 2, width },
+            };
+          }
+          for (let i = 0; i < rects.length; i++) {
+            const rr = rects[i];
+            if (clientY < rr.mid) {
+              const y = ((rects[i - 1]?.bottom ?? rr.top) + rr.top) / 2;
+              return {
+                targetCol: colRef,
+                gap: i,
+                indicator: { x: xInContainer, y: y - cRect.top - 1, width },
+              };
+            }
+          }
+          const last = rects[rects.length - 1];
+          return {
+            targetCol: colRef,
+            gap: rects.length,
+            indicator: { x: xInContainer, y: last.bottom - cRect.top + 2, width },
+          };
+        }
+      }
+
       // Step 2: top-level hit-test.
       const ids = blocks.map((b) => b.id);
       const rects: Array<{ id: string; top: number; bottom: number; mid: number }> = [];
