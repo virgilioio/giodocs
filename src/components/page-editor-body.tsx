@@ -729,6 +729,88 @@ export function EditableBody({
         !!d &&
         d.ids.some((x) => blocks.find((b) => b.id === x)?.type === "columns");
 
+      // Shared containment-wins hit test for both container kinds
+      // (column tracks and callout children). Containment is the signal:
+      // when the pointer is inside the container, the container ALWAYS
+      // wins the hit-test, regardless of whether any child rows are
+      // measurable. An "empty" container is either (a) genuinely zero
+      // measurable rows or (b) exactly one placeholder empty text block
+      // (columns are normalised to keep ≥1 block; a legacy callout that
+      // has just been migrated may render one blank child). In both
+      // cases we drop at gap 0 with the 2px indicator centred inside
+      // the container's INNER content area — never hugging its border
+      // (which reads as chrome) and never spilling to page width.
+      const hitContainer = (
+        colRef: ColumnRef,
+        outerRect: DOMRect,
+        trackEl: HTMLElement | null,
+        kids: Blk[] | null,
+      ): {
+        targetCol: ColumnRef;
+        gap: number;
+        indicator: { x: number; y: number; width: number };
+      } => {
+        const innerRect = trackEl
+          ? trackEl.getBoundingClientRect()
+          : ({
+              left: outerRect.left + 44,
+              top: outerRect.top + 12,
+              right: outerRect.right - 12,
+              bottom: outerRect.bottom - 12,
+              width: outerRect.width - 56,
+            } as DOMRect);
+        const width = innerRect.width;
+        const xInContainer = innerRect.left - cRect.left;
+
+        const rects: Array<{ id: string; top: number; bottom: number; mid: number }> = [];
+        if (kids) {
+          for (const c of kids) {
+            const el = rowEls.current.get(c.id);
+            if (!el) continue;
+            const r = el.getBoundingClientRect();
+            rects.push({ id: c.id, top: r.top, bottom: r.bottom, mid: (r.top + r.bottom) / 2 });
+          }
+        }
+        const onlyEmptyPlaceholder =
+          !!kids &&
+          kids.length === 1 &&
+          kids[0].type === "text" &&
+          !((kids[0] as { text?: string }).text ?? "").trim();
+
+        if (rects.length === 0 || onlyEmptyPlaceholder) {
+          const yCentre = (innerRect.top + innerRect.bottom) / 2;
+          return {
+            targetCol: colRef,
+            gap: 0,
+            indicator: { x: xInContainer, y: yCentre - cRect.top - 1, width },
+          };
+        }
+        if (clientY < rects[0].mid) {
+          return {
+            targetCol: colRef,
+            gap: 0,
+            indicator: { x: xInContainer, y: rects[0].top - cRect.top - 2, width },
+          };
+        }
+        for (let i = 0; i < rects.length; i++) {
+          const rr = rects[i];
+          if (clientY < rr.mid) {
+            const y = ((rects[i - 1]?.bottom ?? rr.top) + rr.top) / 2;
+            return {
+              targetCol: colRef,
+              gap: i,
+              indicator: { x: xInContainer, y: y - cRect.top - 1, width },
+            };
+          }
+        }
+        const last = rects[rects.length - 1];
+        return {
+          targetCol: colRef,
+          gap: rects.length,
+          indicator: { x: xInContainer, y: last.bottom - cRect.top + 2, width },
+        };
+      };
+
       // Step 1: is the pointer inside any columns block's bounding box?
       // If so, hit-test against its column tracks (unless we're dragging
       // a columns block itself, in which case only top-level applies).
@@ -757,59 +839,19 @@ export function EditableBody({
             }
           }
           if (!chosen) continue;
-          const colRef: ColumnRef = { blockId: b.id, colIndex: chosen.colIndex };
-          const colBlocks = b.cols[chosen.colIndex] as Blk[];
-          const rects: Array<{ id: string; top: number; bottom: number; mid: number }> = [];
-          for (const cb2 of colBlocks) {
-            const el = rowEls.current.get(cb2.id);
-            if (!el) continue;
-            const r = el.getBoundingClientRect();
-            rects.push({ id: cb2.id, top: r.top, bottom: r.bottom, mid: (r.top + r.bottom) / 2 });
-          }
-          const trackRect = chosen.el.getBoundingClientRect();
-          const width = trackRect.width;
-          const xInContainer = trackRect.left - cRect.left;
-          if (rects.length === 0) {
-            // Empty-looking column (shouldn't happen post-normalise).
-            return {
-              targetCol: colRef,
-              gap: 0,
-              indicator: { x: xInContainer, y: trackRect.top - cRect.top, width },
-            };
-          }
-          if (clientY < rects[0].mid) {
-            return {
-              targetCol: colRef,
-              gap: 0,
-              indicator: { x: xInContainer, y: rects[0].top - cRect.top - 2, width },
-            };
-          }
-          for (let i = 0; i < rects.length; i++) {
-            const rr = rects[i];
-            if (clientY < rr.mid) {
-              const y = ((rects[i - 1]?.bottom ?? rr.top) + rr.top) / 2;
-              return {
-                targetCol: colRef,
-                gap: i,
-                indicator: { x: xInContainer, y: y - cRect.top - 1, width },
-              };
-            }
-          }
-          const last = rects[rects.length - 1];
-          return {
-            targetCol: colRef,
-            gap: rects.length,
-            indicator: { x: xInContainer, y: last.bottom - cRect.top + 2, width },
-          };
+          return hitContainer(
+            { blockId: b.id, colIndex: chosen.colIndex },
+            cb,
+            chosen.el,
+            b.cols[chosen.colIndex] as Blk[],
+          );
         }
       }
 
-      // Step 1b: callout containers. Only reachable when the dragged run
-      // is NOT a columns block. Callouts and columns are peers as drop
-      // targets — same midpoint hit-testing, but scoped to a single
-      // callout's children track. A legacy callout with no children yet
-      // has no track registered — pointer inside its outer row falls
-      // through to a gap-0 drop that triggers Pass A's lazy migration.
+      // Step 1b: callout containers. Containment wins here too — a
+      // legacy (unmigrated) callout with no children track registered
+      // still catches the drop and shows a centred indicator inside its
+      // inner box; the actual migration happens on release via Pass A.
       if (!draggingColumnsBlock) {
         for (const b of blocks) {
           if (b.type !== "callout") continue;
@@ -824,58 +866,9 @@ export function EditableBody({
           )
             continue;
           const colRef: ColumnRef = { blockId: b.id, callout: true };
-          const trackEl = colTracks.current.get(trackKey(colRef));
+          const trackEl = colTracks.current.get(trackKey(colRef)) ?? null;
           const kids = Array.isArray(b.children) ? (b.children as Blk[]) : null;
-          // Legacy callout (text-mode, no CalloutStack rendered).
-          if (!trackEl || !kids) {
-            const xInContainer = cb.left - cRect.left;
-            return {
-              targetCol: colRef,
-              gap: 0,
-              indicator: { x: xInContainer + 8, y: cb.bottom - cRect.top - 2, width: cb.width - 16 },
-            };
-          }
-          const rects: Array<{ id: string; top: number; bottom: number; mid: number }> = [];
-          for (const cb2 of kids) {
-            const el = rowEls.current.get(cb2.id);
-            if (!el) continue;
-            const r = el.getBoundingClientRect();
-            rects.push({ id: cb2.id, top: r.top, bottom: r.bottom, mid: (r.top + r.bottom) / 2 });
-          }
-          const trackRect = trackEl.getBoundingClientRect();
-          const width = trackRect.width;
-          const xInContainer = trackRect.left - cRect.left;
-          if (rects.length === 0) {
-            return {
-              targetCol: colRef,
-              gap: 0,
-              indicator: { x: xInContainer, y: trackRect.top - cRect.top, width },
-            };
-          }
-          if (clientY < rects[0].mid) {
-            return {
-              targetCol: colRef,
-              gap: 0,
-              indicator: { x: xInContainer, y: rects[0].top - cRect.top - 2, width },
-            };
-          }
-          for (let i = 0; i < rects.length; i++) {
-            const rr = rects[i];
-            if (clientY < rr.mid) {
-              const y = ((rects[i - 1]?.bottom ?? rr.top) + rr.top) / 2;
-              return {
-                targetCol: colRef,
-                gap: i,
-                indicator: { x: xInContainer, y: y - cRect.top - 1, width },
-              };
-            }
-          }
-          const last = rects[rects.length - 1];
-          return {
-            targetCol: colRef,
-            gap: rects.length,
-            indicator: { x: xInContainer, y: last.bottom - cRect.top + 2, width },
-          };
+          return hitContainer(colRef, cb, trackEl, kids);
         }
       }
 
