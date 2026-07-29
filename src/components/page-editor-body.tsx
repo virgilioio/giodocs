@@ -2799,10 +2799,14 @@ function BlockContent({
       <div className="flex items-start gap-2 text-prose text-body">
         <span
           aria-hidden
-          className="flex items-center leading-none text-muted"
+          className="flex items-center"
           style={{ height: "1lh" }}
         >
-          {glyph}
+          {/* `leading-none` and colour live on the INNER glyph so the
+              outer wrapper keeps the parent's line-height — 1lh on the
+              wrapper must resolve to text-prose (27.2px), not to the
+              glyph's own 1× line-height. */}
+          <span className="leading-none text-muted">{glyph}</span>
         </span>
         {renderProse("w-full", { placeholder: "List" })}
       </div>
@@ -2815,15 +2819,20 @@ function BlockContent({
       <div className="flex items-start gap-2 text-prose text-body">
         <span
           aria-hidden
-          className="flex min-w-4 items-center text-meta text-muted tnum"
+          className="flex min-w-4 items-center"
           style={{ height: "1lh" }}
         >
-          {label}
+          {/* text-meta on an INNER span so `1lh` on the wrapper reflects
+              the block's line-height (text-prose 27.2px), not the label's
+              own smaller 1.4× line-height. */}
+          <span className="text-meta text-muted tnum">{label}</span>
         </span>
         {renderProse("w-full", { placeholder: "List" })}
       </div>
     );
   }
+
+
 
 
   if (t === "h1") {
