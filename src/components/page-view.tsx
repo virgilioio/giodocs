@@ -1345,22 +1345,9 @@ export function PageEditor({ pageId }: { pageId: string }) {
         </div>
       ) : null}
 
-      {/* 4. Freshness banner. */}
-      <div style={{ marginTop: 14 }}>
-        <FreshnessRow
-          page={page}
-          members={members}
-          meId={meId}
-          staleDays={staleDays}
-          onVerify={onVerify}
-          justVerified={justVerified}
-        />
-      </div>
-
-
-      {/* 5. Properties strip. The strip owns its own top hairline —
-       * marginTop 22 + border-top + padding-top 8 — so no wrapper spacing
-       * here. */}
+      {/* 4. Properties strip — the Verified control lives inside it now.
+       * The strip owns its own top hairline; margin-top absorbs the old
+       * banner's job (18px instead of 22px). */}
       <PropertyStrip
         page={page}
         propDefs={propDefs}
@@ -1368,6 +1355,9 @@ export function PageEditor({ pageId }: { pageId: string }) {
         meId={meId}
         pages={(shell.pages.data ?? []) as PageListItem[]}
         areas={areasList}
+        staleDays={staleDays}
+        onVerify={onVerify}
+        justVerified={justVerified}
         onSet={(key, value) => {
           if (key === "icon") {
             if (typeof value === "string" && value)
