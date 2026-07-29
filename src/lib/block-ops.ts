@@ -104,6 +104,12 @@ export function newBlock(type: BlockType = "text", text = ""): Blk {
   if (type === "toggle") base.open = false;
   if (type === "callout") base.icon = "💡";
   if (type === "table") base.rows = [["", "", ""], ["", "", ""]];
+  // Image blocks start empty: no path, centred, full column width. The
+  // stored value is always a STORAGE PATH, never a signed URL.
+  if (type === "image")
+    Object.assign(base, { align: "center", w: 100 } as Record<string, unknown>);
+  if (type === "imagerow")
+    Object.assign(base, { cols: 2, paths: [null, null] } as Record<string, unknown>);
   return base;
 }
 
