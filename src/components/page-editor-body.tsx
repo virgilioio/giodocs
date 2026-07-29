@@ -3052,23 +3052,21 @@ function ColumnsBlock({
  * from EditableBody rather than fully sharing state — part 2 of the
  * columns task will unify these under a single BlockStack component. */
 function ColumnStack({
-  parentBlockId,
-  colIndex,
+  colRef,
   blocks,
   setBlocks,
   locked,
 }: {
-  parentBlockId: string;
-  colIndex: number;
+  /** The container this stack renders. Column: `{blockId, colIndex}`.
+   *  Callout: `{blockId, callout: true}`. See ColumnRef in block-ops. */
+  colRef: ColumnRef;
   blocks: Blk[];
   setBlocks: (next: Blk[]) => void;
   locked: boolean;
 }) {
   const bridge = useContext(ColumnBridgeCtx);
-  const colRef = useMemo<ColumnRef>(
-    () => ({ blockId: parentBlockId, colIndex }),
-    [parentBlockId, colIndex],
-  );
+  const parentBlockId = colRef.blockId;
+  const isCallout = !("colIndex" in colRef);
   const trackRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     bridge?.registerTrack(colRef, trackRef.current);
