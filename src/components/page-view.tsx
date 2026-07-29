@@ -1004,8 +1004,10 @@ function PropertyStrip({
         );
       })}
 
-      {/* Last verified — the one non-clickable row. No hover, cursor
-       * default. The way to change it is the freshness banner above. */}
+      {/* Verified — the freshness banner's job, folded into a strip row.
+       * The label carries the verb ("Verified"); the value cell carries
+       * the state (fresh / stale / just-verified). Value cell wraps on
+       * narrow windows so the button never overflows. */}
       <div
         style={{
           display: "grid",
@@ -1013,22 +1015,104 @@ function PropertyStrip({
           alignItems: "center",
           minHeight: 32,
           padding: "2px 6px",
-          cursor: "default",
         }}
       >
         <div
           className="flex items-center"
           style={{ gap: 6, fontSize: 14, color: "var(--color-muted)" }}
         >
-          Last verified
+          Verified
         </div>
         <div
-          className="min-w-0"
-          style={{ fontSize: 14, color: "var(--color-strong)" }}
+          className="min-w-0 flex items-center flex-wrap"
+          style={{ gap: 8, padding: "3px 7px", marginLeft: -7 }}
         >
-          {relTime(page.verified_at)} · {verifiedByName}
+          {justVerified ? (
+            <>
+              <Glyph
+                path="M5 12l5 5 9-11"
+                className="text-accent"
+                strokeWidth={2}
+              />
+              <span
+                style={{
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: "var(--color-accent)",
+                }}
+              >
+                just now by you — thanks for keeping this fresh.
+              </span>
+            </>
+          ) : isStale ? (
+            <>
+              <Glyph
+                path="M12 3l10 18H2L12 3zM12 10v5M12 18h.01"
+                className="text-amberDot"
+                strokeWidth={2}
+              />
+              <span
+                style={{
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: "var(--color-amberInk)",
+                }}
+              >
+                not in {staleLabel(page.verified_at)} — may be stale.
+              </span>
+              <button
+                type="button"
+                onClick={onVerify}
+                style={{
+                  border: "1px solid var(--color-amberRing)",
+                  background: "var(--color-amberTint)",
+                  color: "var(--color-amberInk)",
+                  borderRadius: 7,
+                  padding: "3px 9px",
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                }}
+              >
+                Still accurate ✓
+              </button>
+            </>
+          ) : (
+            <>
+              <Glyph
+                path="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3zM8.5 12l2.5 2.5L16 9.5"
+                className="text-accent"
+                strokeWidth={2}
+              />
+              <span
+                style={{
+                  fontSize: 14,
+                  fontWeight: 400,
+                  color: "var(--color-secondary)",
+                }}
+              >
+                {relTime(page.verified_at)} by {verifiedByName}
+              </span>
+              <button
+                type="button"
+                onClick={onVerify}
+                className="hover:bg-sunken"
+                style={{
+                  border: "1px solid var(--color-lineStrong)",
+                  background: "transparent",
+                  color: "var(--color-secondary)",
+                  borderRadius: 7,
+                  padding: "3px 9px",
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                }}
+              >
+                Still accurate ✓
+              </button>
+            </>
+          )}
         </div>
       </div>
+
 
       <AddPropertyPopover
         propDefs={propDefs}
