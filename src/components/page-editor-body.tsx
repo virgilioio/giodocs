@@ -2200,6 +2200,27 @@ export function EditableBody({
       ref={containerRef}
       data-gio-page-body
       className="gio-page-body relative"
+      onDragOver={(e) => {
+        // Only claim the drag when it actually carries files; block drags
+        // are pointer-based and must not be intercepted here.
+        if (Array.from(e.dataTransfer?.types ?? []).includes("Files")) {
+          e.preventDefault();
+        }
+      }}
+      onDrop={(e) => {
+        const files = Array.from(e.dataTransfer?.files ?? []).filter(
+          (f) => !rejectReason(f),
+        );
+        if (files.length === 0 || locked) return;
+        e.preventDefault();
+        const row = (e.target as HTMLElement | null)?.closest?.(
+          "[data-block-id]",
+        ) as HTMLElement | null;
+        const id =
+          row?.getAttribute("data-block-id") ??
+          blocksRef.current[blocksRef.current.length - 1]?.id;
+        if (id) insertImageFiles(id, files);
+      }}
       onPointerDown={handleContainerPointerDown}
       onFocusCapture={(e) => {
         const t = e.target as HTMLElement;
