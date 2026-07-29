@@ -158,6 +158,9 @@ export function ExportDialog({
     // to compute it. printPdf uses toHtml internally, so it inherits.
     const exportCtx: ExportContext = { ...ctx, includeDetails };
     try {
+      // Serialisers are synchronous, so every image URL must already be
+      // signed and cached before the first block is written.
+      await prefetchSignedUrls(collectImagePaths(ctx.blocks));
       if (fmt === "Markdown") {
         const text = toMarkdown(exportCtx);
         download(filename, new Blob([text], { type: "text/markdown;charset=utf-8" }));
