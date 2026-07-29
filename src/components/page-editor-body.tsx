@@ -3355,24 +3355,28 @@ function ColumnStack({
     ): MenuSpec => {
       const idx = blocks.findIndex((x) => x.id === bid);
       const target = blocks[idx];
-      const targetName =
-        BLOCK_MENU.find((m) => m.type === target?.type)?.name ?? target?.type ?? "Block";
+      const targetName = blockTypeName(target);
       const atTop = idx <= 0;
       const atEnd = idx >= blocks.length - 1;
+      const curLevel = (target as { level?: unknown } | undefined)?.level;
       const turnIntoSub: MenuRow[] = [
         ...BLOCK_MENU.map((m) => ({
           kind: "row" as const,
           label: m.name,
-          icon: "layout" as const,
+          icon: m.ic,
+          checked:
+            target?.type === m.type &&
+            !(m.type === "toggle" && typeof curLevel === "string"),
           onPick: () => {
             applyTypeLocal(bid, m.type);
             mctx.close();
           },
         })),
-        ...([1, 2, 3] as const).map((n) => ({
+        ...TOGGLE_HEADINGS.map(({ n, ic }) => ({
           kind: "row" as const,
           label: `Toggle heading ${n}`,
-          icon: "layout" as const,
+          icon: ic,
+          checked: target?.type === "toggle" && curLevel === `h${n}`,
           onPick: () => {
             applyTypeLocal(bid, "toggle", { level: `h${n}` as ToggleLevel });
             mctx.close();
@@ -3391,10 +3395,17 @@ function ColumnStack({
         {
           kind: "row",
           label: "Turn into",
-          icon: "layout",
+          icon: blockIconKey(target),
           hint: { text: "›" },
-          onPick: () => mctx.setSpec({ title: "Turn into", rows: turnIntoSub }),
+          onPick: () =>
+            mctx.setSpec({
+              title: "Turn into",
+              rows: turnIntoSub,
+              footer: "Every block type this page can hold.",
+              onBack: () => mctx.setSpec(buildColMenuSpec(bid, mctx)),
+            }),
         },
+
         { kind: "sep" },
         {
           kind: "row",
