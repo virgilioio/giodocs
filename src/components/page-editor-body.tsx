@@ -498,43 +498,41 @@ export function EditableBody({
           blocks: blocksRef.current,
           caret: getCurrentCaret(),
         };
+        const marker = getTypingMarker(pageId);
         if (key) {
           const now = Date.now();
-          const coalesce = shouldCoalesce(
-            lastTypingAtRef.current,
-            now,
-            lastTypingKeyRef.current,
-            key,
-          );
+          const coalesce = shouldCoalesce(marker.at, now, marker.key, key);
           if (!coalesce) {
-            undoStateRef.current = undoPush(undoStateRef.current, prevEntry);
+            setUndoState(pageId, undoPush(getUndoState<Blk>(pageId), prevEntry));
           } else {
             // Any new action clears future, even on coalesce.
-            undoStateRef.current = {
-              past: undoStateRef.current.past,
+            setUndoState(pageId, {
+              past: getUndoState<Blk>(pageId).past,
               future: [],
-            };
+            });
           }
-          lastTypingAtRef.current = now;
-          lastTypingKeyRef.current = key;
+          setTypingMarker(pageId, now, key);
         } else {
           // Structural: push and end any in-flight typing burst.
-          undoStateRef.current = undoPush(undoStateRef.current, prevEntry);
-          lastTypingAtRef.current = null;
-          lastTypingKeyRef.current = null;
+          setUndoState(pageId, undoPush(getUndoState<Blk>(pageId), prevEntry));
+          setTypingMarker(pageId, null, null);
         }
       }
       setBlocks(next);
       onChange(next);
     },
-    [onChange],
+    [onChange, pageId],
   );
 
   const restoreEntry = useCallback(
     (entry: UndoEntry<Blk>) => {
       isRestoringRef.current = true;
-      lastTypingAtRef.current = null;
-      lastTypingKeyRef.current = null;
+      setTypingMarker(pageId, null, null);
+      // Capture the scroll position BEFORE the state commit, and hand it to
+      // the focus effect so the whole restore is scroll-neutral.
+      const sc = (containerRef.current?.closest("main") ??
+        null) as HTMLElement | null;
+      const keep = sc ? sc.scrollTop : null;
       setBlocks(entry.blocks);
       onChange(entry.blocks);
       // Restore focus. If the caret block still exists, focus it with the
@@ -551,13 +549,18 @@ export function EditableBody({
         targetId = survivors[0].id;
         targetOff = "start";
       }
-      if (targetId) setFocusRequest({ id: targetId, caret: targetOff });
+      if (targetId)
+        setFocusRequest({
+          id: targetId,
+          caret: targetOff,
+          preserveScrollTop: keep,
+        });
       // Release the guard on the next tick so re-render's effects don't push.
       queueMicrotask(() => {
         isRestoringRef.current = false;
       });
     },
-    [onChange],
+    [onChange, pageId],
   );
 
   const performUndo = useCallback(() => {
@@ -565,22 +568,22 @@ export function EditableBody({
       blocks: blocksRef.current,
       caret: getCurrentCaret(),
     };
-    const r = undoDo(undoStateRef.current, cur);
+    const r = undoDo(getUndoState<Blk>(pageId), cur);
     if (!r) return;
-    undoStateRef.current = r.state;
+    setUndoState(pageId, r.state);
     restoreEntry(r.entry);
-  }, [restoreEntry]);
+  }, [restoreEntry, pageId]);
 
   const performRedo = useCallback(() => {
     const cur: UndoEntry<Blk> = {
       blocks: blocksRef.current,
       caret: getCurrentCaret(),
     };
-    const r = undoRedo(undoStateRef.current, cur);
+    const r = undoRedo(getUndoState<Blk>(pageId), cur);
     if (!r) return;
-    undoStateRef.current = r.state;
+    setUndoState(pageId, r.state);
     restoreEntry(r.entry);
-  }, [restoreEntry]);
+  }, [restoreEntry, pageId]);
 
   // Window-level ⌘Z / ⌘⇧Z / ⌘Y — deliberate EXCEPTION to isTypingTarget,
   // alongside ⌘K and ⌘,. preventDefault always, so the browser's own
