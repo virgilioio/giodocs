@@ -11,6 +11,11 @@ import { act } from "react";
 import { EditableBody } from "./page-editor-body";
 import type { Blk } from "@/lib/block-ops";
 
+vi.mock("@/lib/workspace-context", () => ({
+  useWorkspaceId: () => "ws1",
+}));
+vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
+
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let host: HTMLDivElement;
