@@ -31,7 +31,7 @@ describe("diag delete", () => {
     const rows = host.querySelectorAll("[data-block-id]");
     console.log("ROWS", rows.length);
     // build a selection the way shift-click on a handle would: dispatch keydown ⌘A twice? use handle shift-click
-    const handles = host.querySelectorAll('[data-block-handle]');
+    const handles = host.querySelectorAll('[aria-label="Drag to reorder"]');
     console.log("HANDLES", handles.length);
     act(() => {
       (handles[0] as HTMLElement)?.dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }));
