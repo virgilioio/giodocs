@@ -1585,13 +1585,16 @@ export function EditableBody({
         originX: p.x,
         originY: p.y,
         originTarget: t,
+        // A press in the lateral margin is by definition outside every
+        // container, so this is page scope — but ask, don't assume.
+        scope: containerAtPoint(e.clientX, e.clientY),
         moved: false,
       };
       marqueeLastClient.current = { x: e.clientX, y: e.clientY };
     };
     main.addEventListener("pointerdown", onDown);
     return () => main.removeEventListener("pointerdown", onDown);
-  }, [containerPoint]);
+  }, [containerPoint, containerAtPoint]);
 
 
   useEffect(() => {
