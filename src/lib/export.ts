@@ -13,7 +13,7 @@
 
 import type { Block } from "./types";
 import { numberedOrdinals } from "./blocks";
-import { columnsGridTemplate, normalizeColumnWidths } from "./column-widths";
+import { columnsGridTemplatePlain, normalizeColumnWidths } from "./column-widths";
 import { peekSignedUrl } from "./image-url-cache";
 import { readAlign, readCols, readPaths, readW } from "./image-ops";
 import { inlineToHtml } from "./inline-markdown";
@@ -574,7 +574,7 @@ function blockHtml(b: Block, ordinal = 1): string {
           return `<div>${renderBlocksHtml(col, ords)}</div>`;
         })
         .join("");
-      const tpl = columnsGridTemplate(
+      const tpl = columnsGridTemplatePlain(
         normalizeColumnWidths((b as { widths?: unknown }).widths, n),
         n,
       );
