@@ -1197,12 +1197,45 @@ export function EditableBody({
     };
   }, [dragging, onPointerMove, endDrag]);
 
+  /* ────────── Scoped selection operations ──────────
+   * Every consumer of a block selection goes through these two helpers, so
+   * a selection inside a column or callout is deleted / copied / cut from
+   * ITS OWN list and never from the top-level one. */
+
+  const selectedInScope = useCallback(
+    (source?: Blk[]): { list: Blk[]; picked: Blk[]; scope: ScopeRef } | null => {
+      const scope = selScopeRef.current;
+      const list = scopedList(scope, source);
+      if (!list) return null;
+      const picked = list.filter((b) => selectedIds.has(b.id));
+      if (picked.length === 0) return null;
+      return { list, picked, scope };
+    },
+    [scopedList, selectedIds],
+  );
+
+  const deleteSelection = useCallback(() => {
+    const s = selectedInScope(blocks);
+    if (!s) return;
+    const toDrop = s.list
+      .map((b, i) => (selectedIds.has(b.id) ? i : -1))
+      .filter((i) => i >= 0);
+    const nextList = deleteIndices(s.list, toDrop, () => newBlock("text"));
+    const next =
+      s.scope === null
+        ? nextList
+        : setContainerList(blocks, s.scope, nextList);
+    clearSelection();
+    commit(next as Blk[]);
+  }, [selectedInScope, selectedIds, blocks, clearSelection, commit]);
+
   /* ────────── Document keydown: Escape / Delete for selection ────────── */
 
   useEffect(() => {
     if (selectedIds.size === 0) return;
     const onKey = (e: KeyboardEvent) => {
-      // Escape is a deliberate exception to the typing guard.
+      // Escape is a deliberate exception to the typing guard. It clears
+      // BOTH the selection and its scope.
       if (e.key === "Escape") {
         e.preventDefault();
         clearSelection();
@@ -1211,18 +1244,12 @@ export function EditableBody({
       if (isTypingTarget(e.target)) return;
       if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
-        const ids = blocks.map((b) => b.id);
-        const toDrop = ids
-          .map((id, i) => (selectedIds.has(id) ? i : -1))
-          .filter((i) => i >= 0);
-        const next = deleteIndices(blocks, toDrop, () => newBlock("text"));
-        clearSelection();
-        commit(next);
+        deleteSelection();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedIds, blocks, commit, clearSelection]);
+  }, [selectedIds, clearSelection, deleteSelection]);
 
   /* ────────── Copy / Cut a block selection ──────────
    *
@@ -1237,8 +1264,9 @@ export function EditableBody({
 
   const runCopySelection = useCallback(
     (opts: { cut: boolean }) => {
-      if (selectedIds.size === 0) return;
-      const selected = blocks.filter((b) => selectedIds.has(b.id));
+      const s = selectedInScope(blocks);
+      if (!s) return;
+      const selected = s.picked;
       const p = writeBlocksClipboard(selected as unknown as Parameters<
         typeof writeBlocksClipboard
       >[0]);
@@ -1246,20 +1274,12 @@ export function EditableBody({
         toast.push(
           `Copied ${selected.length} ${selected.length === 1 ? "block" : "blocks"}`,
         );
-        if (opts.cut && !locked) {
-          const ids = blocks.map((b) => b.id);
-          const toDrop = ids
-            .map((id, i) => (selectedIds.has(id) ? i : -1))
-            .filter((i) => i >= 0);
-          const next = deleteIndices(blocks, toDrop, () => newBlock("text"));
-          clearSelection();
-          commit(next);
-        }
+        if (opts.cut && !locked) deleteSelection();
       };
       if (p && typeof p.then === "function") p.then(after).catch(() => after());
       else after();
     },
-    [selectedIds, blocks, commit, clearSelection, locked, toast],
+    [selectedInScope, blocks, deleteSelection, locked, toast],
   );
 
   useEffect(() => {
@@ -1282,7 +1302,8 @@ export function EditableBody({
    * The in-textarea two-stage behaviour lives in the textarea onKeyDown.
    * This handler only fires when a block-selection is already active AND
    * focus is outside a text field, so ⌘A extends that selection to the
-   * whole document. */
+   * whole of ITS SCOPE — the container's children when the selection lives
+   * in one, the page otherwise. */
   useEffect(() => {
     if (selectedIds.size === 0) return;
     const onKey = (e: KeyboardEvent) => {
@@ -1290,11 +1311,13 @@ export function EditableBody({
       if (e.key.toLowerCase() !== "a") return;
       if (isTypingTarget(e.target)) return;
       e.preventDefault();
-      setSelectedIds(new Set(blocks.map((b) => b.id)));
+      const list = scopedList(selScopeRef.current, blocks);
+      if (!list) return;
+      setSelectedIds(new Set(list.map((b) => b.id)));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedIds, blocks]);
+  }, [selectedIds, blocks, scopedList]);
 
   /* ────────── Paste Markdown → real blocks ──────────
    * Inverse of the copy path above. If the pasted text has no newline and
