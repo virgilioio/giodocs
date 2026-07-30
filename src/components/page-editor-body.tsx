@@ -1596,7 +1596,7 @@ export function EditableBody({
       // Filter interactive targets that live outside the body too.
       if (
         t.closest(
-          "textarea, input, button, [data-slash-menu], [data-block-handle], [data-popover-root]",
+          '[contenteditable="true"], textarea, input, select, button, [data-slash-menu], [data-block-handle], [data-popover-root]',
         )
       )
         return;
