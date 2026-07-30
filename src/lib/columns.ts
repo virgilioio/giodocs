@@ -72,3 +72,20 @@ export function emptyColumns<T>(n: number, makeText: () => T): T[][] {
   const clamped = Math.max(MIN_COLS, Math.min(MAX_COLS, n));
   return Array.from({ length: clamped }, () => [makeText()]);
 }
+
+/** True when EVERY column of a columns block is "empty": at most one block,
+ *  and that block is a text block with no text (and no image/table payload).
+ *  This is the condition under which Backspace dissolves the whole block —
+ *  the escape hatch for a `/col3` you did not mean. */
+export function isColumnsBlockEmpty(cols: unknown): boolean {
+  if (!Array.isArray(cols) || cols.length === 0) return false;
+  for (const col of cols) {
+    if (!Array.isArray(col)) return false;
+    if (col.length > 1) return false;
+    if (col.length === 0) continue;
+    const b = col[0] as { type?: string; text?: string };
+    if (!b || b.type !== "text") return false;
+    if ((b.text ?? "") !== "") return false;
+  }
+  return true;
+}

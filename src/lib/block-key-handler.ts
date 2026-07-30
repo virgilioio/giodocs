@@ -59,6 +59,11 @@ export type Op =
   | { kind: "remove-empty" }
   /** Column-only: escape the column via the enterAction decision. */
   | { kind: "escape-column"; removeEmpty: boolean }
+  /** Column-only: Backspace at caret 0 of the column's ONLY block, which is
+   *  an empty text block. The caller asks the parent whether EVERY column
+   *  is likewise empty; if so the whole columns block dissolves into one
+   *  empty text block, otherwise nothing happens (the old guard). */
+  | { kind: "dissolve-columns" }
   /** Stage-2 ⌘A: blur and select every block. Caller decides scope
    *  (page: local blocks; column: top-level blocks via bridge). */
   | { kind: "select-all-blocks" }
@@ -165,7 +170,12 @@ export function resolveKey(
     if (curIndent > 0 && INDENTABLE.has(b.type)) return { kind: "outdent" };
     if (b.type !== "text") return { kind: "convert-to-text" };
     if ((b.text ?? "") === "") {
-      if (scope === "column" && index === 0) return { kind: "none" };
+      if (scope === "column" && index === 0) {
+        // Only block of its column, and empty: offer the dissolve. The
+        // parent decides — with content anywhere else this is still a no-op.
+        if (list.length === 1) return { kind: "dissolve-columns" };
+        return { kind: "none" };
+      }
       return { kind: "remove-empty" };
     }
     if (scope === "column" && index === 0) return { kind: "none" };
