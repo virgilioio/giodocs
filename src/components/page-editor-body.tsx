@@ -799,18 +799,22 @@ export function EditableBody({
       ev: React.PointerEvent<HTMLElement>,
       sourceCol: ColumnRef | null = null,
     ) => {
-      const sourceIsTopLevel = sourceCol === null;
+      // Multi-drag applies when the handle belongs to a currently-selected
+      // block AND the selection's scope is the drag's source list — a
+      // selection inside a column drags as a run within that column.
       let dragIds: string[] = [id];
-      if (sourceIsTopLevel) {
-        // Top-level multi-select: only drag the run when the handle
-        // belongs to a currently-selected top-level block.
-        const ids = blocks.map((b) => b.id);
-        if (ids.indexOf(id) < 0) return;
-        const isMulti = selectedIds.size > 1 && selectedIds.has(id);
-        if (isMulti) dragIds = ids.filter((x) => selectedIds.has(x));
-      }
+      const list = scopedList(sourceCol);
+      if (!list) return;
+      const ids = list.map((b) => b.id);
+      if (ids.indexOf(id) < 0) return;
+      const isMulti =
+        selectedIds.size > 1 &&
+        selectedIds.has(id) &&
+        sameScope(selScopeRef.current, sourceCol);
+      if (isMulti) dragIds = ids.filter((x) => selectedIds.has(x));
       if (dragIds.length === 1) {
         setSelectedIds(new Set());
+        setSelScope(null);
         anchorId.current = null;
       }
       try {
