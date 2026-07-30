@@ -1886,30 +1886,24 @@ export function EditableBody({
    * splices N copies contiguously right after the last selected index;
    * delete drops every selected index in one commit. */
   const runDuplicateSelected = useCallback(() => {
-    if (selectedIds.size === 0) return;
+    const s = selectedInScope(blocks);
+    if (!s) return;
     const idxs: number[] = [];
-    blocks.forEach((b, i) => {
+    s.list.forEach((b, i) => {
       if (selectedIds.has(b.id)) idxs.push(i);
     });
     if (!idxs.length) return;
-    const copies: Blk[] = idxs.map((i) => ({ ...blocks[i], id: nanoid(10) }));
-    const insertAt = idxs[idxs.length - 1] + 1;
-    const next = [...blocks];
-    next.splice(insertAt, 0, ...copies);
-    commit(next);
-  }, [blocks, commit, selectedIds]);
+    const copies: Blk[] = idxs.map((i) => ({ ...s.list[i], id: nanoid(10) }));
+    const nextList = [...s.list];
+    nextList.splice(idxs[idxs.length - 1] + 1, 0, ...copies);
+    const next =
+      s.scope === null ? nextList : setContainerList(blocks, s.scope, nextList);
+    commit(next as Blk[]);
+  }, [selectedInScope, blocks, commit, selectedIds]);
 
   const runDeleteSelected = useCallback(() => {
-    if (selectedIds.size === 0) return;
-    const idxs: number[] = [];
-    blocks.forEach((b, i) => {
-      if (selectedIds.has(b.id)) idxs.push(i);
-    });
-    if (!idxs.length) return;
-    const next = deleteIndices(blocks, idxs, () => newBlock("text"));
-    clearSelection();
-    commit(next);
-  }, [blocks, commit, clearSelection, selectedIds]);
+    deleteSelection();
+  }, [deleteSelection]);
 
   // ⌘D duplicates the current block-selection run. Yields to text fields
   // — inside a textarea the browser's native ⌘D (or nothing) wins.
