@@ -14,6 +14,7 @@ import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { useRealtimeWorkspace } from "@/hooks/use-realtime";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
 import { getPageOrigin } from "@/lib/page-origin";
+import { Ico } from "./emoji-icon";
 import { resolvePageIdParam } from "@/lib/slug";
 
 import {
@@ -1299,7 +1300,7 @@ function ViewIconSlot({
             style={{ width: 18, height: 18 }}
           >
             {view.icon ? (
-              <span className="text-row leading-none">{view.icon}</span>
+              <Ico icon={view.icon} size={15} />
             ) : (
               <LayoutGlyph layout={effectiveLayout} />
             )}
@@ -1818,7 +1819,7 @@ function AreaEmojiSlot({
               style={{ width: 18, height: 18 }}
             >
               {icon ? (
-                <span className="text-row leading-none">{icon}</span>
+                <Ico icon={icon} size={15} />
               ) : hoverRow ? (
                 <span
                   aria-hidden
@@ -2082,7 +2083,7 @@ function FooterAccount({
                 style={{ width: 30, height: 30, borderRadius: 8, fontSize: 16 }}
                 aria-hidden
               >
-                {workspaceIcon}
+                <Ico icon={workspaceIcon} size={16} />
               </span>
               <div className="min-w-0 flex-1">
                 <div
@@ -2138,7 +2139,7 @@ function FooterAccount({
                   style={{ width: 22, height: 22, borderRadius: 6, fontSize: 12 }}
                   aria-hidden
                 >
-                  {workspaceIcon}
+                  <Ico icon={workspaceIcon} size={12} />
                 </span>
                 <span className="min-w-0 flex-1 truncate text-body">
                   {workspaceName}

@@ -10,6 +10,7 @@ import { runView, type Filter, type SortSpec } from "@/lib/run-view";
 import { applyFilterReplacement, filterLabel } from "@/lib/filter-label";
 import { PageOriginContext, useSetPageOrigin } from "@/lib/page-origin";
 import { areaBaseView, currentView, type ViewBase, type ViewDraft } from "@/lib/view-drafts";
+import { Ico } from "./emoji-icon";
 import {
   useDrafts,
   patchDraft as storePatchDraft,
@@ -1098,7 +1099,7 @@ function PageTitleCell({
 
   return (
     <div className="flex min-w-0 items-center gap-1">
-      <span className="text-row">{page.icon || "📄"}</span>
+      <Ico icon={page.icon || "📄"} size={19} />
       {editing ? (
         <input
           ref={inputRef}
@@ -2839,7 +2840,7 @@ function BoardBody({
                         />
                       </span>
                     ) : (
-                      <span className="text-row leading-none">{p.icon ?? "📄"}</span>
+                      <Ico icon={p.icon ?? "📄"} size={18} />
                     )}
                     <span className="min-w-0 flex-1 truncate text-row font-bold text-noir">
                       {p.title || "Untitled"}
@@ -2971,7 +2972,7 @@ function ListBody({
                 />
               </span>
             ) : (
-              <span className="text-row leading-none">{p.icon ?? "📄"}</span>
+              <Ico icon={p.icon ?? "📄"} size={21} />
             )}
             <div className="min-w-0">
               <div className="truncate text-row font-bold text-noir">

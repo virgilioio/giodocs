@@ -37,6 +37,48 @@ export type Database = {
           },
         ]
       }
+      custom_emoji: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string
+          name: string
+          path: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          name: string
+          path: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          name?: string
+          path?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "custom_emoji_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "custom_emoji_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       page_access: {
         Row: {
           capability: string
@@ -594,6 +636,13 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      custom_emoji_usage: {
+        Args: { p_workspace: string }
+        Returns: {
+          name: string
+          pages: number
+        }[]
+      }
       delete_page: { Args: { p_page: string }; Returns: undefined }
       domain_status: { Args: { p_email: string }; Returns: string }
       fork_view: {
@@ -677,8 +726,19 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      rename_custom_emoji: {
+        Args: {
+          p_desc: string
+          p_new: string
+          p_old: string
+          p_path: string
+          p_workspace: string
+        }
+        Returns: number
+      }
       restore_page: { Args: { p_page: string }; Returns: undefined }
       restore_page_version: { Args: { p_version: string }; Returns: undefined }
+      safe_uuid: { Args: { t: string }; Returns: string }
       search_pages: {
         Args: { p_limit?: number; p_q: string; p_workspace: string }
         Returns: {

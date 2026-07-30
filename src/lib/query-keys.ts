@@ -6,5 +6,6 @@ export const qk = {
   invites: (ws: string) => ["invites", ws] as const,
   propDefs: (ws: string) => ["propDefs", ws] as const,
   page: (id: string) => ["page", id] as const,
+  customEmoji: (ws: string) => ["customEmoji", ws] as const,
   pageAccess: (id: string) => ["pageAccess", id] as const,
 };

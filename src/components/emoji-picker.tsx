@@ -11,6 +11,8 @@ import {
 } from "@/lib/emoji-data";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { usePages, usePropDefs, useViews } from "@/hooks/use-workspace-data";
+import { useEmojiSet } from "@/hooks/use-custom-emoji";
+import { Ico } from "./emoji-icon";
 
 /**
  * Derive the "used in this workspace" set from already-cached data — same
@@ -93,6 +95,21 @@ export function EmojiPicker({
     searchRef.current?.focus();
   }, []);
 
+  // §6 — custom emoji sit ABOVE the unicode grid, in their own section.
+  // They are the workspace's own vocabulary; making people scroll past
+  // 1,800 unicode faces to reach the team logo is how they go unused.
+  const emojiSet = useEmojiSet();
+  const customItems = useMemo<Emoji[]>(
+    () =>
+      emojiSet.map((c) => ({
+        char: `:${c.name}:`,
+        name: c.name,
+        keywords: c.description ? c.description.toLowerCase().split(/\s+/) : [],
+        category: "symbols" as EmojiCategory,
+      })),
+    [emojiSet],
+  );
+
   const usedInWorkspace = useUsedInWorkspace();
   const usedItems = useMemo<Emoji[]>(
     () =>
@@ -115,7 +132,11 @@ export function EmojiPicker({
 
   const results = useMemo<Emoji[]>(() => {
     if (!searching) return [];
-    const found = searchEmoji(query, 80);
+    const q = query.trim().toLowerCase();
+    const customHits = customItems.filter(
+      (c) => c.name.includes(q) || c.keywords.some((k) => k.includes(q)),
+    );
+    const found = [...customHits, ...searchEmoji(query, 80)];
     const g = firstGrapheme(query);
     // If the query itself is an emoji grapheme and not already first,
     // surface it as the first result so raw emoji stays reachable.
@@ -126,11 +147,11 @@ export function EmojiPicker({
       ];
     }
     return found;
-  }, [query, searching]);
+  }, [query, searching, customItems]);
 
   const flatSectioned = useMemo<Emoji[]>(
-    () => [...usedItems, ...sections.flatMap((s) => s.items)],
-    [sections, usedItems],
+    () => [...customItems, ...usedItems, ...sections.flatMap((s) => s.items)],
+    [customItems, sections, usedItems],
   );
   const flat = searching ? results : flatSectioned;
 
@@ -259,6 +280,19 @@ export function EmojiPicker({
           )
         ) : (
           <>
+            {customItems.length > 0 ? (
+              <div>
+                <div className="sticky top-0 z-[1] bg-surface pb-1 pt-2 text-label uppercase text-faint">
+                  Custom
+                </div>
+                <EmojiGrid
+                  items={customItems}
+                  highlight={highlight}
+                  onPick={pick}
+                  onHover={setHighlight}
+                />
+              </div>
+            ) : null}
             {usedItems.length > 0 ? (
               <div>
                 <div className="sticky top-0 z-[1] bg-surface pb-1 pt-2 text-label uppercase text-faint">
@@ -266,15 +300,16 @@ export function EmojiPicker({
                 </div>
                 <EmojiGrid
                   items={usedItems}
-                  highlight={highlight}
+                  highlight={highlight - customItems.length}
                   onPick={pick}
-                  onHover={(i) => setHighlight(i)}
+                  onHover={(i) => setHighlight(customItems.length + i)}
                 />
               </div>
             ) : null}
             {sections.map(({ cat, items }, sectionIdx) => {
               // Compute the highlight index offset for this section within the flat list.
               const offset =
+                customItems.length +
                 usedItems.length +
                 sections
                   .slice(0, sectionIdx)
@@ -353,9 +388,9 @@ export function EmojiGrid({
               "grid place-items-center rounded-md hover:bg-sunken " +
               (isHi ? "ring-2 ring-accent" : "")
             }
-            style={{ width: CELL, height: CELL, fontSize: 20, lineHeight: 1 }}
+            style={{ width: CELL, height: CELL }}
           >
-            {e.char}
+            <Ico icon={e.char} size={20} />
           </button>
         );
       })}
