@@ -3633,34 +3633,34 @@ function ColumnsBlock({
       className="gio-cols relative"
       style={{
         display: "grid",
+        // Weight tracks and 40px handle tracks INTERLEAVED, so the number of
+        // grid children (N columns + N-1 handles) equals the number of
+        // tracks. The handle tracks ARE the spacing, hence gap 0.
         gridTemplateColumns: columnsGridTemplate(effective, n),
-        gap: COLS_GAP,
+        gap: 0,
       }}
     >
       {cols.map((col, i) => (
-        <ColumnStack
-          key={i}
-          colRef={{ blockId: block.id, colIndex: i }}
-          blocks={col}
-          setBlocks={(next) => setColumn(i, next)}
-          locked={locked}
-        />
+        <div key={i} style={{ gridColumn: 2 * i + 1, gridRow: 1, minWidth: 0 }}>
+          <ColumnStack
+            colRef={{ blockId: block.id, colIndex: i }}
+            blocks={col}
+            setBlocks={(next) => setColumn(i, next)}
+            locked={locked}
+          />
+        </div>
       ))}
       {/* One handle per BOUNDARY between columns (N-1) — there is nothing
-          outside the outer edges to trade width with. Centred on the gap,
-          invisible at rest. Hidden below the stacking breakpoint. */}
+          outside the outer edges to trade width with. Each handle owns its
+          own 40px track, so the whole gap is the hit area and the 1px rule
+          is centred inside it. Hidden below the stacking breakpoint. */}
       {!locked &&
         cols.slice(0, Math.max(0, n - 1)).map((_, i) => (
           <div
             key={`h${i}`}
             className="gio-col-resize"
             data-dragging={dragRef.current?.index === i ? "true" : undefined}
-            style={{
-              gridColumn: i + 1,
-              gridRow: 1,
-              justifySelf: "end",
-              marginRight: -(COLS_GAP / 2) - 4,
-            }}
+            style={{ gridColumn: 2 * i + 2, gridRow: 1 }}
             onPointerDown={(e) => beginResize(e, i)}
             onPointerMove={onResizeMove}
             onPointerUp={endResize}
@@ -3668,6 +3668,7 @@ function ColumnsBlock({
             onDoubleClick={(e) => onHandleDoubleClick(e, i)}
           />
         ))}
+
     </div>
   );
 }
