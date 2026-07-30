@@ -1037,6 +1037,51 @@ export function EditableBody({
     [blocks],
   );
 
+  /* ────────── Which container is this point in? ──────────
+   *
+   * The same CONTAINMENT hit-test computeGap uses (columns tracks first,
+   * then callout boxes), minus the indicator arithmetic. It answers the
+   * marquee's only question at pointerdown: "which list did this gesture
+   * start in?" — null meaning the page background. Recorded once per
+   * gesture; never recomputed mid-drag, or dragging past a container's
+   * edge would silently change the selection's scope. */
+  const containerAtPoint = useCallback(
+    (clientX: number, clientY: number): ScopeRef => {
+      const inside = (r: DOMRect) =>
+        clientY >= r.top &&
+        clientY <= r.bottom &&
+        clientX >= r.left &&
+        clientX <= r.right;
+      for (const b of blocksRef.current) {
+        if (b.type === "columns" && Array.isArray(b.cols)) {
+          const colsEl = rowEls.current.get(b.id);
+          if (!colsEl || !inside(colsEl.getBoundingClientRect())) continue;
+          for (let i = 0; i < b.cols.length; i++) {
+            const el = colTracks.current.get(
+              trackKey({ blockId: b.id, colIndex: i }),
+            );
+            if (!el) continue;
+            const r = el.getBoundingClientRect();
+            if (clientX >= r.left && clientX <= r.right)
+              return { blockId: b.id, colIndex: i };
+          }
+          continue;
+        }
+        if (b.type === "callout") {
+          const outer = rowEls.current.get(b.id);
+          if (!outer || !inside(outer.getBoundingClientRect())) continue;
+          // Only a MIGRATED callout (one with children) has child rows the
+          // marquee could scope to; a legacy text-only callout stays a unit.
+          if (!Array.isArray(b.children)) continue;
+          return { blockId: b.id, callout: true };
+        }
+      }
+      return null;
+    },
+    [],
+  );
+
+
   // Auto-scroll while dragging near edges.
   const scrollContainerRef = useRef<HTMLElement | null>(null);
   const scrollRafRef = useRef<number | null>(null);
