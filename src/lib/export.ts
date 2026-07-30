@@ -13,6 +13,7 @@
 
 import type { Block } from "./types";
 import { numberedOrdinals } from "./blocks";
+import { columnsGridTemplate, normalizeColumnWidths } from "./column-widths";
 import { peekSignedUrl } from "./image-url-cache";
 import { readAlign, readCols, readPaths, readW } from "./image-ops";
 import { inlineToHtml } from "./inline-markdown";
