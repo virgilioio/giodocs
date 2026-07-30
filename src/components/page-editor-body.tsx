@@ -2938,7 +2938,12 @@ function BlockRow({
       data-block-id={block.id}
       data-block-type={block.type}
       data-block-no-editor={noEditor ? "true" : undefined}
-      className="group relative -ml-[42px] pl-[42px]"
+      // `gio-row` (not Tailwind's `group`) owns the gutter reveal. A bare
+      // `group` matches ANY ancestor, so a columns/callout row wrapping
+      // inner rows revealed every inner gutter at once — the reveal now
+      // comes from `.gio-row:hover > .gio-block-gutter` in styles.css,
+      // which is scoped to the hovered row itself in every container.
+      className="gio-row relative"
       style={{
         opacity: dimmed ? 0.45 : undefined,
         background: selected ? "var(--color-blueTint)" : undefined,
