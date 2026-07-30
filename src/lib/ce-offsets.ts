@@ -13,7 +13,73 @@
  * drift by construction.
  */
 
-import { tokenizeInline, type InlineToken } from "./inline-tokens";
+import {
+  EMOJI_ATTR,
+  tokenizeInline,
+  type InlineOpts,
+  type InlineToken,
+} from "./inline-tokens";
+
+/* Text inside an inline-emoji span is a screen-reader / copy-paste
+ * affordance, not content: it must contribute ZERO rendered characters
+ * or the DOM caret and the offset map disagree by the length of the
+ * shortcode. Every DOM traversal in this file skips those subtrees. */
+function isEmojiEl(n: Node | null): n is Element {
+  return (
+    !!n &&
+    n.nodeType === 1 &&
+    typeof (n as Element).hasAttribute === "function" &&
+    (n as Element).hasAttribute(EMOJI_ATTR)
+  );
+}
+
+function emojiAncestor(node: Node, root: Node): Element | null {
+  let p: Node | null = node;
+  let found: Element | null = null;
+  while (p && p !== root) {
+    if (isEmojiEl(p)) found = p;
+    p = p.parentNode;
+  }
+  return found;
+}
+
+/** Rendered (caret-visible) text length of a node. */
+function visibleLen(node: Node): number {
+  if (node.nodeType === 3) return (node.nodeValue ?? "").length;
+  if (node.nodeType !== 1) return 0;
+  if (isEmojiEl(node)) return 0;
+  let n = 0;
+  for (const c of Array.from(node.childNodes)) n += visibleLen(c);
+  return n;
+}
+
+/** Rendered length of everything in `root` that precedes `stop`. */
+function visibleLenBefore(root: Node, stop: Node): number {
+  let acc = 0;
+  let done = false;
+  const rec = (n: Node) => {
+    if (done) return;
+    if (n === stop) {
+      done = true;
+      return;
+    }
+    if (n.nodeType === 3) {
+      acc += (n.nodeValue ?? "").length;
+      return;
+    }
+    if (n.nodeType !== 1) return;
+    if (isEmojiEl(n)) return;
+    for (const c of Array.from(n.childNodes)) {
+      rec(c);
+      if (done) return;
+    }
+  };
+  for (const c of Array.from(root.childNodes)) {
+    rec(c);
+    if (done) break;
+  }
+  return acc;
+}
 
 export type OffsetMap = {
   toSource: (rendered: number) => number;
@@ -31,7 +97,7 @@ export type OffsetMap = {
  *             sentinel).
  * Both arrays are strictly non-decreasing, which makes clamping cheap.
  */
-function scan(source: string): {
+function scan(source: string, opts?: InlineOpts): {
   renderedText: string;
   s2r: number[];
   r2s: number[];
@@ -84,6 +150,14 @@ function scan(source: string): {
         continue;
       }
 
+      if (t.kind === "emoji") {
+        // Zero rendered characters, exactly like a delimiter run: every
+        // source position inside ":name:" clamps to the same rendered
+        // slot, so the caret steps over the token as one atom.
+        fillClamp(t.sourceStart, t.sourceEnd, renderedLen);
+        continue;
+      }
+
       // Container-shaped tokens (bold, italic, strike, highlight,
       // underline, link). All share the same offset shape: opening
       // delimiter of `openLen` source chars (unreachable, clamp to
@@ -101,7 +175,7 @@ function scan(source: string): {
   }
 
   s2r[0] = 0;
-  walk(tokenizeInline(source));
+  walk(tokenizeInline(source, opts));
   // Sentinel: rendered position == renderedLen ↔ source position == source.length.
   r2s.push(source.length);
   // Fill any positions that the walker didn't touch (e.g. an empty source).
@@ -112,9 +186,9 @@ function scan(source: string): {
   return { renderedText: rendered.join(""), s2r, r2s };
 }
 
-export function buildOffsetMap(source: string): OffsetMap {
+export function buildOffsetMap(source: string, opts?: InlineOpts): OffsetMap {
   const src = source ?? "";
-  const { renderedText, s2r, r2s } = scan(src);
+  const { renderedText, s2r, r2s } = scan(src, opts);
   const srcLen = src.length;
   const rndLen = renderedText.length;
 
@@ -163,24 +237,16 @@ export function getCaretOffset(
     if (!doc) return 0;
 
     if (node.nodeType === 3 /* Text */) {
-      const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-      let cur = walker.nextNode();
-      while (cur && cur !== node) {
-        count += (cur.nodeValue ?? "").length;
-        cur = walker.nextNode();
-      }
-      return count + offset;
+      const inEmoji = emojiAncestor(node, el);
+      if (inEmoji) return visibleLenBefore(el, inEmoji);
+      return visibleLenBefore(el, node) + offset;
     }
 
     // Element node: sum text length of the first `offset` children.
     let idx = 0;
     for (const child of Array.from(node.childNodes)) {
       if (idx >= offset) break;
-      if (child.nodeType === 3) {
-        count += (child.nodeValue ?? "").length;
-      } else if (child.nodeType === 1) {
-        count += (child as HTMLElement).textContent?.length ?? 0;
-      }
+      count += visibleLen(child);
       idx += 1;
     }
     // If offset points past the last child of an element, keep walking
@@ -201,12 +267,17 @@ export function setCaretOffset(
   const doc = el.ownerDocument;
   const win = doc?.defaultView;
   if (!doc || !win) return;
-  const total = el.textContent?.length ?? 0;
+  const total = visibleLen(el);
   const s = Math.max(0, Math.min(start | 0, total));
   const e = Math.max(s, Math.min((end ?? start) | 0, total));
 
   const locate = (target: number): { node: Node; offset: number } => {
-    const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n: Node) =>
+        emojiAncestor(n, el)
+          ? NodeFilter.FILTER_REJECT
+          : NodeFilter.FILTER_ACCEPT,
+    });
     let counted = 0;
     let cur = walker.nextNode();
     let last: Text | null = null;
@@ -256,10 +327,11 @@ export function setCaretOffset(
 export function readCaretSource(
   el: HTMLElement,
   source: string,
+  opts?: InlineOpts,
 ): { start: number; end: number } | null {
   const rendered = getCaretOffset(el);
   if (!rendered) return null;
-  const map = buildOffsetMap(source);
+  const map = buildOffsetMap(source, opts);
   return {
     start: map.toSource(rendered.start),
     end: map.toSource(rendered.end),
@@ -271,8 +343,9 @@ export function writeCaretSource(
   source: string,
   start: number,
   end?: number,
+  opts?: InlineOpts,
 ): void {
-  const map = buildOffsetMap(source);
+  const map = buildOffsetMap(source, opts);
   const rStart = map.toRendered(start);
   const rEnd = end === undefined ? undefined : map.toRendered(end);
   setCaretOffset(el, rStart, rEnd);

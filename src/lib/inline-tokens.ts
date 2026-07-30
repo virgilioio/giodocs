@@ -13,7 +13,33 @@
  * dangerous URL schemes fall through to literal text).
  */
 
+import { getInlineEmojiSet } from "./emoji-registry";
+
 const ESC_PUNCT = /[\\*_`~<>\[\]()]/;
+
+/* ─── options ──────────────────────────────────────────────────────────
+ * The ONLY set-dependent part of the grammar: ":name:" is an emoji token
+ * when `name` is in the known set, and literal text otherwise. Both the
+ * renderer and the offset map must be handed the SAME set or the caret
+ * and the screen drift. Every entry point defaults to the module-level
+ * registry (see emoji-registry.ts) rather than to an empty set, so a
+ * consumer cannot accidentally opt out. */
+export type InlineOpts = {
+  emoji?: readonly { name: string; url?: string; description?: string }[];
+};
+
+export function inlineEmojiNames(opts?: InlineOpts): ReadonlySet<string> {
+  const list = opts?.emoji ?? getInlineEmojiSet();
+  return new Set(list.map((e) => e.name));
+}
+
+/** ':' + name + ':' where name is ^[a-z0-9][a-z0-9-]{0,23}$ */
+const SHORTCODE_RE = /^:([a-z0-9][a-z0-9-]{0,23}):/;
+
+/** The attribute an inline emoji span carries. htmlToInlineMarkdown reads
+ * it to recover ":name:", and ce-offsets skips the subtree so the hidden
+ * shortcode text node contributes ZERO rendered characters. */
+export const EMOJI_ATTR = "data-gio-emoji";
 
 export function safeUrl(url: string): string | null {
   const trimmed = url.trim();
@@ -71,21 +97,32 @@ export type InlineLinkToken = {
   url: string;
   children: InlineToken[];
 };
+export type InlineEmojiToken = {
+  kind: "emoji";
+  sourceStart: number;
+  sourceEnd: number;
+  name: string;
+};
 export type InlineToken =
+  | InlineEmojiToken
   | InlineTextToken
   | InlineCodeToken
   | InlineContainerToken
   | InlineLinkToken;
 
-export function tokenizeInline(source: string): InlineToken[] {
+export function tokenizeInline(
+  source: string,
+  opts?: InlineOpts,
+): InlineToken[] {
   const src = source ?? "";
-  return tokenizeRange(src, 0, src.length);
+  return tokenizeRange(src, 0, src.length, inlineEmojiNames(opts));
 }
 
 function tokenizeRange(
   src: string,
   from: number,
   to: number,
+  names: ReadonlySet<string>,
 ): InlineToken[] {
   const out: InlineToken[] = [];
   let i = from;
@@ -119,6 +156,23 @@ function tokenizeRange(
       }
     }
 
+    // Custom emoji :name: — AFTER code (a shortcode inside backticks is
+    // literal) and never nests. Rendered length is ZERO, exactly like a
+    // delimiter run: the caret steps over the whole token.
+    if (c === ":" && names.size > 0) {
+      const m = SHORTCODE_RE.exec(src.slice(i, Math.min(to, i + 27)));
+      if (m && names.has(m[1])) {
+        out.push({
+          kind: "emoji",
+          sourceStart: i,
+          sourceEnd: i + m[0].length,
+          name: m[1],
+        });
+        i += m[0].length;
+        continue;
+      }
+    }
+
     // Bold **…**
     if (c === "*" && src[i + 1] === "*") {
       const end = src.indexOf("**", i + 2);
@@ -129,7 +183,7 @@ function tokenizeRange(
           sourceEnd: end + 2,
           openLen: 2,
           closeLen: 2,
-          children: tokenizeRange(src, i + 2, end),
+          children: tokenizeRange(src, i + 2, end, names),
         });
         i = end + 2;
         continue;
@@ -146,7 +200,7 @@ function tokenizeRange(
           sourceEnd: end + 2,
           openLen: 2,
           closeLen: 2,
-          children: tokenizeRange(src, i + 2, end),
+          children: tokenizeRange(src, i + 2, end, names),
         });
         i = end + 2;
         continue;
@@ -163,7 +217,7 @@ function tokenizeRange(
           sourceEnd: end + 2,
           openLen: 2,
           closeLen: 2,
-          children: tokenizeRange(src, i + 2, end),
+          children: tokenizeRange(src, i + 2, end, names),
         });
         i = end + 2;
         continue;
@@ -195,7 +249,7 @@ function tokenizeRange(
           sourceEnd: j + 1,
           openLen: 1,
           closeLen: 1,
-          children: tokenizeRange(src, i + 1, j),
+          children: tokenizeRange(src, i + 1, j, names),
         });
         i = j + 1;
         continue;
@@ -213,7 +267,7 @@ function tokenizeRange(
           sourceEnd: end + 4,
           openLen: 3,
           closeLen: 4,
-          children: tokenizeRange(src, i + 3, end),
+          children: tokenizeRange(src, i + 3, end, names),
         });
         i = end + 4;
         continue;
@@ -235,7 +289,7 @@ function tokenizeRange(
               openLen: 1,
               closeLen: rp + 1 - rb, // "](url)"
               url,
-              children: tokenizeRange(src, i + 1, rb),
+              children: tokenizeRange(src, i + 1, rb, names),
             });
             i = rp + 1;
             continue;
@@ -298,6 +352,10 @@ function walkNode(node: Node): string {
   // Comment / anything non-element
   if (node.nodeType !== 1) return "";
   const el = node as Element;
+  // An inline emoji span round-trips to its shortcode. Its hidden text
+  // node is NOT walked — that is what keeps rendered length at zero.
+  const sc = el.getAttribute ? el.getAttribute(EMOJI_ATTR) : null;
+  if (sc) return ":" + sc + ":";
   const tag = el.tagName ? el.tagName.toLowerCase() : "";
   if (tag === "script" || tag === "style") return "";
   if (tag === "br") return "\n";

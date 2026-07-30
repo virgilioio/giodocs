@@ -147,3 +147,12 @@ describe("htmlToInlineMarkdown — ROUND TRIP", () => {
     });
   }
 });
+
+describe("htmlToInlineMarkdown — inline custom emoji", () => {
+  it("an emoji span round-trips to its shortcode, hidden text excluded", () => {
+    const src = "a:brand:b";
+    const opts = { emoji: [{ name: "brand", url: "https://x.test/b.png" }] };
+    const html = inlineToHtml(src, opts);
+    expect(htmlToInlineMarkdown(html)).toBe(src);
+  });
+});

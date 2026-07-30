@@ -45,7 +45,33 @@ import { htmlToInlineMarkdown } from "@/lib/inline-tokens";
 import { inlineToHtml } from "@/lib/inline-markdown";
 import { readCaretSource, writeCaretSource } from "@/lib/ce-offsets";
 import { searchEmoji, shouldOpenEmojiTrigger, type Emoji } from "@/lib/emoji-data";
+import { useInlineEmojiSet, type InlineEmoji } from "@/lib/emoji-registry";
 import { EmojiGrid } from "./emoji-picker";
+
+/* The ":" trigger lists the workspace's CUSTOM emoji first — they are
+ * the vocabulary a team actually types. Picking one inserts ":name:",
+ * which the shared tokenizer renders as an inline image. */
+function customToEmoji(e: InlineEmoji): Emoji {
+  return {
+    char: `:${e.name}:`,
+    name: e.name,
+    keywords: e.description ? e.description.toLowerCase().split(/\s+/) : [],
+    category: "symbols",
+  };
+}
+
+function matchCustom(set: readonly InlineEmoji[], query: string): Emoji[] {
+  const q = query.toLowerCase();
+  if (!q) return [];
+  return set
+    .filter(
+      (e) =>
+        e.name.includes(q) ||
+        (e.description ?? "").toLowerCase().includes(q),
+    )
+    .slice(0, 16)
+    .map(customToEmoji);
+}
 
 export type EditableProps = {
   source: string;
@@ -89,6 +115,9 @@ export const Editable = forwardRef<HTMLDivElement, EditableProps>(
       inlineEmojiTrigger = true,
     } = props;
 
+    const emojiSet = useInlineEmojiSet();
+    const emojiSetRef = useRef(emojiSet);
+    emojiSetRef.current = emojiSet;
     const elRef = useRef<HTMLDivElement | null>(null);
     const lastWrittenSourceRef = useRef<string | null>(null);
     const [trigger, setTrigger] = useState<TriggerState | null>(null);
@@ -120,6 +149,21 @@ export const Editable = forwardRef<HTMLDivElement, EditableProps>(
       el.contentEditable = locked ? "false" : "true";
     }, [locked]);
 
+    // The custom-emoji set arrives asynchronously. A block rendered
+    // before it lands painted ":brand:" as literal text; repaint once
+    // the set changes, but never while the caret is inside.
+    useEffect(() => {
+      const el = elRef.current;
+      if (!el) return;
+      if (el.ownerDocument?.activeElement === el) return;
+      const next = inlineToHtml(source);
+      if (next !== el.innerHTML) {
+        el.innerHTML = next;
+        lastWrittenSourceRef.current = source;
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [emojiSet]);
+
     const caretRect = (): { top: number; left: number; bottom: number } | null => {
       const win = elRef.current?.ownerDocument?.defaultView;
       if (!win) return null;
@@ -150,7 +194,10 @@ export const Editable = forwardRef<HTMLDivElement, EditableProps>(
         setTrigger(null);
         return;
       }
-      const found = searchEmoji(res.query, 24);
+      const found = [
+        ...matchCustom(emojiSetRef.current, res.query),
+        ...searchEmoji(res.query, 24),
+      ];
       if (found.length === 0) {
         setTrigger(null);
         return;
@@ -211,10 +258,19 @@ export const Editable = forwardRef<HTMLDivElement, EditableProps>(
       return () => doc.removeEventListener("selectionchange", onSel);
     }, [trigger, source]);
 
-    const results = useMemo<Emoji[]>(() => {
-      if (!trigger) return [];
-      return searchEmoji(trigger.query, 24);
-    }, [trigger]);
+    // Custom first, then unicode — ONE flat array so keyboard highlight
+    // indexes stay simple, plus the split for the section labels.
+    const split = useMemo(() => {
+      if (!trigger) return { custom: [] as Emoji[], uni: [] as Emoji[] };
+      return {
+        custom: matchCustom(emojiSet, trigger.query),
+        uni: searchEmoji(trigger.query, 24),
+      };
+    }, [trigger, emojiSet]);
+    const results = useMemo<Emoji[]>(
+      () => [...split.custom, ...split.uni],
+      [split],
+    );
 
     const insertEmoji = (emoji: string) => {
       if (!trigger) return;
@@ -297,6 +353,7 @@ export const Editable = forwardRef<HTMLDivElement, EditableProps>(
           ? createPortal(
               <TriggerPopup
                 rect={trigger.rect}
+                customCount={split.custom.length}
                 items={results}
                 highlight={trigger.highlight}
                 onPick={(em) => insertEmoji(em.char)}
@@ -315,12 +372,14 @@ export const Editable = forwardRef<HTMLDivElement, EditableProps>(
 function TriggerPopup({
   rect,
   items,
+  customCount,
   highlight,
   onPick,
   onHover,
 }: {
   rect: { top: number; left: number; bottom: number };
   items: Emoji[];
+  customCount: number;
   highlight: number;
   onPick: (e: Emoji) => void;
   onHover: (i: number) => void;
@@ -354,12 +413,32 @@ function TriggerPopup({
       }}
       className="rounded-lg border border-line bg-surface p-1.5 shadow-popover animate-popIn"
     >
-      <EmojiGrid
-        items={items}
-        highlight={highlight}
-        onPick={onPick}
-        onHover={onHover}
-      />
+      {customCount > 0 ? (
+        <>
+          <div className="px-1 pb-1 pt-0.5 text-[11px] font-bold uppercase tracking-wide text-muted">
+            Custom
+          </div>
+          <EmojiGrid
+            items={items.slice(0, customCount)}
+            highlight={highlight}
+            onPick={onPick}
+            onHover={onHover}
+          />
+          {items.length > customCount ? (
+            <div className="px-1 pb-1 pt-1.5 text-[11px] font-bold uppercase tracking-wide text-muted">
+              Emoji
+            </div>
+          ) : null}
+        </>
+      ) : null}
+      {items.length > customCount ? (
+        <EmojiGrid
+          items={items.slice(customCount)}
+          highlight={highlight - customCount}
+          onPick={onPick}
+          onHover={(i) => onHover(i + customCount)}
+        />
+      ) : null}
     </div>
   );
 }

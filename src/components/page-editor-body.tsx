@@ -24,6 +24,7 @@ import {
 } from "@/lib/reorder";
 import { writeBlocksClipboard } from "@/lib/blocks-clipboard";
 import { renderInlineWithOffsets } from "@/lib/inline-markdown";
+import { Ico } from "./emoji-icon";
 import { numberedOrdinals } from "@/lib/blocks";
 import { rowsInBand } from "@/lib/marquee";
 import { rowsInScope, sameScope, type ScopeRef } from "@/lib/marquee-scope";
@@ -3490,12 +3491,7 @@ function CalloutIconPicker({
   if (disabled) {
     return (
       <div className="shrink-0" style={wrapStyle} aria-label="Callout icon">
-        <div
-          className="grid place-items-center"
-          style={{ width: 24, height: 24, fontSize: 18, lineHeight: 1 }}
-        >
-          {icon}
-        </div>
+        <Ico icon={icon} size={18} pad={3} />
       </div>
     );
   }
@@ -3513,9 +3509,12 @@ function CalloutIconPicker({
             aria-expanded={open}
             title="Change icon"
             className="grid place-items-center cursor-pointer transition-colors group-hover:bg-sunken/60 hover:bg-sunken/60"
-            style={{ width: 24, height: 24, fontSize: 18, lineHeight: 1, borderRadius: 4 }}
+            style={{ width: 24, height: 24, borderRadius: 4 }}
           >
-            {icon}
+            {/* THE only sanctioned icon renderer. 18px glyph + 3px pad =
+                the 24px box this button always had, so a custom emoji
+                paints at exactly the size the unicode glyph did. */}
+            <Ico icon={icon} size={18} pad={3} />
           </button>
         )}
       >

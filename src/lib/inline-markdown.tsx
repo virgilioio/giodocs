@@ -41,10 +41,49 @@
 import type { ReactNode } from "react";
 import { Fragment } from "react";
 import {
+  EMOJI_ATTR,
+  inlineEmojiNames,
   safeUrl,
   tokenizeInline,
+  type InlineOpts,
   type InlineToken,
 } from "./inline-tokens";
+import { getInlineEmojiSet } from "./emoji-registry";
+
+/* Rendering options. `emoji` is the SAME set the offset map is handed —
+ * both default to the module registry, never to an empty set. `emojiAs`
+ * lets the export path swap the background-image span for something a
+ * standalone file can carry (see export.ts). */
+export type InlineRenderOpts = InlineOpts & {
+  /** "span" (default, on-screen) | "alt" (export: shortcode text only). */
+  emojiAs?: "span" | "alt";
+};
+
+function emojiUrl(name: string, opts?: InlineOpts): string {
+  const list = opts?.emoji ?? getInlineEmojiSet();
+  return list.find((e) => e.name === name)?.url ?? "";
+}
+
+/* The inline emoji box. Explicit width AND height — a text-only span has
+ * no intrinsic box, so a background image on it renders invisibly. The
+ * shortcode stays in the DOM as a text node (screen readers, copy-paste)
+ * inside a zero-size overflow-hidden wrapper; ce-offsets skips that
+ * subtree so it contributes zero rendered characters. Never an <img>. */
+const EMOJI_BOX: React.CSSProperties = {
+  display: "inline-block",
+  width: "1.15em",
+  height: "1.15em",
+  verticalAlign: "-0.2em",
+  backgroundSize: "contain",
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "center",
+};
+const EMOJI_SR: React.CSSProperties = {
+  display: "inline-block",
+  width: 0,
+  height: 0,
+  overflow: "hidden",
+};
 
 // Re-exported for existing callers (floating-toolbar, tests) so the
 // import surface of this module is unchanged.
@@ -52,7 +91,7 @@ export { safeUrl };
 
 /* ─────────────────────────── ReactNode renderer ─────────────────────────── */
 
-type Ctx = { keyCounter: number };
+type Ctx = { keyCounter: number; opts?: InlineRenderOpts };
 
 function renderChildren(
   tokens: InlineToken[],
@@ -87,6 +126,24 @@ function renderChildren(
       continue;
     }
     flush();
+    if (t.kind === "emoji") {
+      const url = emojiUrl(t.name, ctx.opts);
+      out.push(
+        <span
+          key={ctx.keyCounter++}
+          data-o={withOffsets ? t.sourceStart : undefined}
+          {...{ [EMOJI_ATTR]: t.name }}
+          title={`:${t.name}:`}
+          style={{
+            ...EMOJI_BOX,
+            backgroundImage: url ? `url("${url}")` : undefined,
+          }}
+        >
+          <span style={EMOJI_SR}>{`:${t.name}:`}</span>
+        </span>,
+      );
+      continue;
+    }
     if (t.kind === "code") {
       out.push(
         <code
@@ -183,16 +240,30 @@ function renderChildren(
   return out;
 }
 
-export function renderInline(text: string): ReactNode[] {
-  return renderChildren(tokenizeInline(text ?? ""), { keyCounter: 0 }, false);
+export function renderInline(
+  text: string,
+  opts?: InlineRenderOpts,
+): ReactNode[] {
+  return renderChildren(
+    tokenizeInline(text ?? "", opts),
+    { keyCounter: 0, opts },
+    false,
+  );
 }
 
 /* renderInlineWithOffsets — same output but each rendered node carries a
  * data-o="<source offset>" attribute so a click can be mapped back to a
  * character position in the original markdown string. Used by the editor
  * to place the caret at the clicked character when swapping div→textarea. */
-export function renderInlineWithOffsets(text: string): ReactNode[] {
-  return renderChildren(tokenizeInline(text ?? ""), { keyCounter: 0 }, true);
+export function renderInlineWithOffsets(
+  text: string,
+  opts?: InlineRenderOpts,
+): ReactNode[] {
+  return renderChildren(
+    tokenizeInline(text ?? "", opts),
+    { keyCounter: 0, opts },
+    true,
+  );
 }
 
 /* ─────────────────────────── HTML string emitter ─────────────────────────── */
@@ -209,7 +280,10 @@ function escHtml(s: string): string {
 /* Convert inline markdown to a safe HTML string. User text is HTML-escaped
  * FIRST and only then wrapped in structural tags — escaping is never
  * bypassed. Consumes the same tokenizer as renderInline. */
-function tokensToHtml(tokens: InlineToken[]): string {
+function tokensToHtml(
+  tokens: InlineToken[],
+  opts?: InlineRenderOpts,
+): string {
   let out = "";
   let buf = "";
   const flush = () => {
@@ -224,34 +298,51 @@ function tokensToHtml(tokens: InlineToken[]): string {
       continue;
     }
     flush();
+    if (t.kind === "emoji") {
+      const sc = `:${t.name}:`;
+      if (opts?.emojiAs === "alt") {
+        // Export path: no external request may survive the file, and a
+        // signed URL 404s within the hour. The shortcode text is the
+        // documented loss (see EXPORT_LOSS in export.ts).
+        out += escHtml(sc);
+        continue;
+      }
+      const url = emojiUrl(t.name, opts);
+      out += `<span ${EMOJI_ATTR}="${escHtml(t.name)}" title="${escHtml(
+        sc,
+      )}" style="display:inline-block;width:1.15em;height:1.15em;vertical-align:-0.2em;background-size:contain;background-repeat:no-repeat;background-position:center;${
+        url ? `background-image:url(&quot;${escHtml(url)}&quot;)` : ""
+      }"><span style="display:inline-block;width:0;height:0;overflow:hidden">${escHtml(
+        sc,
+      )}</span></span>`;
+      continue;
+    }
     if (t.kind === "code") {
       out += `<code>${escHtml(t.text)}</code>`;
       continue;
     }
     if (t.kind === "bold") {
-      out += `<strong>${tokensToHtml(t.children)}</strong>`;
+      out += `<strong>${tokensToHtml(t.children, opts)}</strong>`;
       continue;
     }
     if (t.kind === "strike") {
-      out += `<s>${tokensToHtml(t.children)}</s>`;
+      out += `<s>${tokensToHtml(t.children, opts)}</s>`;
       continue;
     }
     if (t.kind === "highlight") {
-      out += `<mark>${tokensToHtml(t.children)}</mark>`;
+      out += `<mark>${tokensToHtml(t.children, opts)}</mark>`;
       continue;
     }
     if (t.kind === "italic") {
-      out += `<em>${tokensToHtml(t.children)}</em>`;
+      out += `<em>${tokensToHtml(t.children, opts)}</em>`;
       continue;
     }
     if (t.kind === "underline") {
-      out += `<u>${tokensToHtml(t.children)}</u>`;
+      out += `<u>${tokensToHtml(t.children, opts)}</u>`;
       continue;
     }
     if (t.kind === "link") {
-      out += `<a href="${escHtml(t.url)}" target="_blank" rel="noopener noreferrer">${tokensToHtml(
-        t.children,
-      )}</a>`;
+      out += `<a href="${escHtml(t.url)}" target="_blank" rel="noopener noreferrer">${tokensToHtml(t.children, opts)}</a>`;
       continue;
     }
   }
@@ -259,6 +350,9 @@ function tokensToHtml(tokens: InlineToken[]): string {
   return out;
 }
 
-export function inlineToHtml(text: string): string {
-  return tokensToHtml(tokenizeInline(text ?? ""));
+export function inlineToHtml(text: string, opts?: InlineRenderOpts): string {
+  return tokensToHtml(tokenizeInline(text ?? "", opts), opts);
 }
+
+/** Re-exported so a consumer can prove it shares the tokenizer's set. */
+export { inlineEmojiNames };

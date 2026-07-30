@@ -173,3 +173,80 @@ describe("buildOffsetMap — renderedText matches the actual renderer", () => {
     }
   });
 });
+
+/* ─── custom emoji: the set-dependent token ───────────────────────────
+ * tokenizeInline is shared by the renderer and this offset map, but the
+ * emoji token only exists when the name is in the KNOWN set. If the two
+ * consumers were ever handed different sets, the caret would resolve to
+ * the wrong SOURCE index and ⌘B would insert delimiters in the wrong
+ * place. These tests pass the SAME populated opts to both sides.
+ */
+const EMOJI_OPTS = {
+  emoji: [
+    { name: "brand", url: "https://x.test/brand.png", description: "logo" },
+    { name: "ship-it", url: "https://x.test/ship.png", description: "ship" },
+  ],
+};
+
+/* An inline emoji renders as a span whose only text child is a visually
+ * hidden shortcode. ce-offsets skips that subtree (visibleLen), so the
+ * renderer-side comparison must drop the span WITH its contents — that
+ * is precisely the DOM rule getCaretOffset enforces. */
+const stripEmojiSpans = (html: string): string =>
+  html.replace(/<span data-gio-emoji=[\s\S]*?<\/span><\/span>/g, "");
+const renderedOf = (html: string): string => stripTags(stripEmojiSpans(html));
+
+describe("buildOffsetMap — custom emoji tokens", () => {
+  it("a known shortcode has ZERO rendered length", () => {
+    const m = buildOffsetMap("a:brand:b", EMOJI_OPTS);
+    expect(m.renderedText).toBe("ab");
+  });
+  it("an unknown shortcode stays literal text", () => {
+    const m = buildOffsetMap("Note: hello:", EMOJI_OPTS);
+    expect(m.renderedText).toBe("Note: hello:");
+  });
+  it("a shortcode inside backticks is literal", () => {
+    const m = buildOffsetMap("`:brand:`", EMOJI_OPTS);
+    expect(m.renderedText).toBe(":brand:");
+  });
+  it("with an EMPTY set a shortcode is literal", () => {
+    const m = buildOffsetMap("a:brand:b", { emoji: [] });
+    expect(m.renderedText).toBe("a:brand:b");
+  });
+  it("the caret steps over the whole token", () => {
+    const m = buildOffsetMap("a:brand:b", EMOJI_OPTS);
+    // rendered 1 sits between "a" and "b" → source index of "b" (8).
+    expect(m.toSource(1)).toBe(8);
+    expect(m.toRendered(8)).toBe(1);
+    expect(m.toRendered(4)).toBe(1); // inside ":brand:" clamps
+  });
+  it("toRendered(toSource(r)) === r with emoji present", () => {
+    for (const src of ["a:brand:b", ":ship-it: go", "**x:brand:y**"]) {
+      const m = buildOffsetMap(src, EMOJI_OPTS);
+      for (let r = 0; r <= m.renderedText.length; r++) {
+        expect(m.toRendered(m.toSource(r))).toBe(r);
+      }
+    }
+  });
+});
+
+describe("buildOffsetMap — renderer conformance with a POPULATED emoji set", () => {
+  // THE test that makes renderer/offset-map disagreement impossible
+  // rather than merely unlikely: same source, SAME opts, both sides.
+  const fixtures = [
+    "a:brand:b",
+    ":brand:",
+    ":brand::ship-it:",
+    "**bold :brand: inside**",
+    "`:brand:` literal",
+    "Note: hello:",
+    ":unknown-name: stays",
+    "[label](https://example.com) :ship-it:",
+  ];
+  it("renderedText equals stripTags(inlineToHtml(src, opts)) for the same opts", () => {
+    for (const src of fixtures) {
+      const m = buildOffsetMap(src, EMOJI_OPTS);
+      expect(m.renderedText).toBe(renderedOf(inlineToHtml(src, EMOJI_OPTS)));
+    }
+  });
+});
