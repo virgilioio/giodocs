@@ -1548,7 +1548,7 @@ export function EditableBody({
       };
       marqueeLastClient.current = { x: e.clientX, y: e.clientY };
     },
-    [containerPoint],
+    [containerPoint, containerAtPoint],
   );
 
   // The narrow `.gio-page-body` column is centred inside `<main>`, so a
