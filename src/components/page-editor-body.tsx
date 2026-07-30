@@ -2376,9 +2376,34 @@ export function EditableBody({
     [blocks, commit],
   );
 
+  /* Backspace in an empty block that is the ONLY block of its column, when
+   * EVERY column is likewise empty: the columns block dissolves into a
+   * single empty text block with the caret in it. Without this a `/col3`
+   * you did not mean is permanent unless dragged apart block by block.
+   * One structural commit → one undo snapshot, so ⌘Z restores the columns
+   * block with its contents. Any content anywhere refuses the gesture. */
+  const dissolveColumnsIfEmpty = useCallback(
+    (colRef: ColumnRef) => {
+      if (locked) return false;
+      const pi = blocks.findIndex((b) => b.id === colRef.blockId);
+      if (pi === -1) return false;
+      const parent = blocks[pi];
+      if (parent.type !== "columns" || !Array.isArray(parent.cols)) return false;
+      if (!isColumnsBlockEmpty(parent.cols)) return false;
+      const spawn = newBlock("text");
+      const next = [...blocks];
+      next.splice(pi, 1, spawn);
+      commit(next);
+      setFocusRequest({ id: spawn.id, caret: "start" });
+      return true;
+    },
+    [blocks, commit, locked],
+  );
+
   const selectAllTopLevel = useCallback(() => {
     setSelectedIds(new Set(blocks.map((x) => x.id)));
   }, [blocks]);
+
 
   /* Column → top-level exit for ArrowUp/ArrowDown/ArrowLeft/ArrowRight at
    * the column's top or bottom edge. Focuses the nearest top-level block
