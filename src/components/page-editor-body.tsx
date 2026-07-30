@@ -1925,8 +1925,8 @@ export function EditableBody({
 
   const copyBlockLink = useCallback(
     (blockId: string) => {
-      const run = getRunIndicesForBlock(blockId);
-      const firstId = run.length ? blocks[run[0]].id : blockId;
+      const t = runTargetFor(blockId);
+      const firstId = t && t.run.length ? t.list[t.run[0]].id : blockId;
       const url = `${window.location.origin}/p/${pageId}#${firstId}`;
       const write = navigator.clipboard?.writeText?.(url);
       const after = () => toast.push("Link copied");
@@ -1934,7 +1934,7 @@ export function EditableBody({
         (write as Promise<void>).then(after).catch(() => after());
       } else after();
     },
-    [blocks, pageId, toast, getRunIndicesForBlock],
+    [runTargetFor, pageId, toast],
   );
 
   /* Duplicate and delete acting on the whole active block-selection —
