@@ -233,9 +233,23 @@ describe("columns block serialisation", () => {
     expect(md).not.toMatch(/col2|columns|::col/i);
   });
 
-  it("toHtml emits a real CSS grid with repeat(N,minmax(0,1fr))", () => {
+  it("toHtml emits a real CSS grid, equal tracks when no widths are stored", () => {
     const html = toHtml({ title: "T", blocks: [cb(3)] });
-    expect(html).toContain('grid-template-columns:repeat(3,minmax(0,1fr))');
+    expect(html).toContain("grid-template-columns:repeat(3, minmax(0, 1fr))");
+    expect(html).toContain("alpha-0");
+    expect(html).toContain("alpha-2");
+  });
+
+  it("toHtml carries stored column weights into the grid template", () => {
+    const block = { ...cb(2), widths: [1.6, 0.4] };
+    const html = toHtml({ title: "T", blocks: [block] });
+    expect(html).toContain(
+      "grid-template-columns:minmax(0, 1.6fr) minmax(0, 0.4fr)",
+    );
+  });
+
+  it("toHtml still renders the column contents (unchanged path)", () => {
+    const html = toHtml({ title: "T", blocks: [cb(3)] });
     expect(html).toContain("alpha-0");
     expect(html).toContain("alpha-2");
     // User text is escaped through the normal path
