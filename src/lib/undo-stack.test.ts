@@ -5,6 +5,7 @@ import {
   undo,
   redo,
   shouldCoalesce,
+  remotePatch,
   UNDO_CAP,
   COALESCE_MS,
   type UndoEntry,
@@ -108,5 +109,47 @@ describe("undo-stack", () => {
     expect(u.entry.caret).toEqual({ blockId: "b1", offset: 3 });
     const r = redo(u.state, u.entry)!;
     expect(r.entry.caret).toEqual({ blockId: "b2", offset: 0 });
+  });
+});
+
+describe("undo-stack — cap, coalescing and remote patches", () => {
+  it("pushing 250 entries keeps the newest 200 and drops the oldest", () => {
+    let s = createUndoState<B>();
+    for (let i = 0; i < 250; i++) s = push(s, mk([{ id: "a", text: `v${i}` }]));
+    expect(UNDO_CAP).toBe(200);
+    expect(s.past.length).toBe(200);
+    expect(s.past[0].blocks[0].text).toBe("v50");
+    expect(s.past[199].blocks[0].text).toBe("v249");
+  });
+
+  it("a typing burst of 40 keystrokes within the window produces ONE entry", () => {
+    // Mirrors commit()'s rule: push only when shouldCoalesce() is false,
+    // and refresh the marker on every keystroke.
+    let s = createUndoState<B>();
+    let lastAt: number | null = null;
+    let lastKey: string | null = null;
+    let t = 1_000;
+    for (let i = 0; i < 40; i++) {
+      if (!shouldCoalesce(lastAt, t, lastKey, "blk1")) {
+        s = push(s, mk([{ id: "blk1", text: "x".repeat(i) }]));
+      }
+      lastAt = t;
+      lastKey = "blk1";
+      t += 50; // 50ms apart — well inside COALESCE_MS
+    }
+    expect(s.past.length).toBe(1);
+    expect(s.past[0].blocks[0].text).toBe("");
+  });
+
+  it("a remote patch clears future and preserves past", () => {
+    let s = createUndoState<B>();
+    s = push(s, mk([{ id: "a", text: "one" }]));
+    s = push(s, mk([{ id: "a", text: "two" }]));
+    const u = undo(s, mk([{ id: "a", text: "three" }]))!;
+    expect(u.state.future.length).toBe(1);
+    const after = remotePatch(u.state);
+    expect(after.future).toEqual([]);
+    expect(after.past).toEqual(u.state.past);
+    expect(after.past.length).toBe(1);
   });
 });
