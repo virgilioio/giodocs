@@ -270,15 +270,25 @@
    any ancestor. Tailwind's `group-hover` matched any ancestor with `group`,
    so a columns or callout row wrapping inner rows lit every inner gutter at
    once. The direct-child selector keeps it to one row, one gutter, in every
-   container. `--gio-gutter-x` is the row's negative offset: 42px at page
-   level (it has the page's 44px margin to sit in), 34px inside a column so
-   it lives in the 40px grid gap instead of over the neighbour. */
+   container.
+
+   The offset lives on the ABSOLUTE gutter, never on the row: a negative
+   row margin plus a compensating padding consumed real layout space, which
+   inside a `columns` grid track pushed the row out of its track (blank
+   strip on the left, overflow on the right). `--gio-gutter-x` is that
+   offset: 42px at page level (it has the page's 44px margin to sit in),
+   34px inside a column so it lives in the 40px grid gap instead of over
+   the neighbour. */
 .gio-row {
   --gio-gutter-x: 42px;
-  margin-left: calc(-1 * var(--gio-gutter-x));
-  padding-left: var(--gio-gutter-x);
 }
-.gio-row:hover > .gio-block-gutter {
+.gio-block-gutter {
+  left: calc(-1 * var(--gio-gutter-x));
+}
+/* Once revealed, the gutter keeps itself alive while hovered — it sits
+   outside the row's box, so the row's own :hover ends at its edge. */
+.gio-row:hover > .gio-block-gutter,
+.gio-block-gutter:hover {
   opacity: 1;
   pointer-events: auto;
 }

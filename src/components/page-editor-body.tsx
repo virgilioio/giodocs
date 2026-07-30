@@ -1799,90 +1799,112 @@ export function EditableBody({
 
   /* ────────── Block-handle menu: run ops (Move up/down, Duplicate, Delete, Copy link) ────────── */
 
-  const getRunIndicesForBlock = useCallback(
-    (blockId: string): number[] => {
-      const ids = blocks.map((b) => b.id);
+  /* A handle op resolves the block's OWN container first. A block inside a
+   * column or a callout has no top-level index, so the old top-level-only
+   * lookup returned an empty run and every handle op (Delete, Move,
+   * Duplicate, Turn into) silently no-opped inside a container. */
+  type RunTarget = { scope: ScopeRef; list: Blk[]; run: number[] };
+
+  const runTargetFor = useCallback(
+    (blockId: string): RunTarget | null => {
+      const scope: ScopeRef = rowColRefById.current.get(blockId) ?? null;
+      const list = scopedList(scope, blocks);
+      if (!list) return null;
+      const ids = list.map((b) => b.id);
       const idx = ids.indexOf(blockId);
-      if (idx < 0) return [];
-      // Only a TOP-LEVEL selection turns a handle op into a run op — a
-      // selection scoped to a container has no top-level indices.
+      if (idx < 0) return null;
+      // A multi-block selection turns a handle op into a run op only when
+      // the selection lives in THIS container.
       if (
-        selScopeRef.current === null &&
+        sameScope(selScopeRef.current, scope) &&
         selectedIds.has(blockId) &&
         selectedIds.size > 1
       ) {
-        return ids
-          .map((id, i) => (selectedIds.has(id) ? i : -1))
-          .filter((i) => i >= 0)
-          .sort((a, b) => a - b);
+        return {
+          scope,
+          list,
+          run: ids
+            .map((id, i) => (selectedIds.has(id) ? i : -1))
+            .filter((i) => i >= 0)
+            .sort((a, b) => a - b),
+        };
       }
-      return [idx];
+      return { scope, list, run: [idx] };
     },
-    [blocks, selectedIds],
+    [blocks, scopedList, selectedIds],
+  );
+
+  const commitScoped = useCallback(
+    (scope: ScopeRef, nextList: Blk[]) => {
+      const next =
+        scope === null ? nextList : (setContainerList(blocks, scope, nextList) as Blk[]);
+      commit(next);
+    },
+    [blocks, commit],
   );
 
   const runMoveUp = useCallback(
     (blockId: string) => {
-      const run = getRunIndicesForBlock(blockId);
-      if (!run.length || run[0] === 0) return;
-      const runStart = run[0];
-      const runEnd = run[run.length - 1];
+      const t = runTargetFor(blockId);
+      if (!t || !t.run.length || t.run[0] === 0) return;
+      const runStart = t.run[0];
+      const runEnd = t.run[t.run.length - 1];
       const raw =
-        run.length === 1
-          ? moveBlock(blocks, runStart, runStart - 1)
-          : moveRun(blocks, runStart, runEnd, runStart - 1);
-      commit(reclampIndents(raw));
+        t.run.length === 1
+          ? moveBlock(t.list, runStart, runStart - 1)
+          : moveRun(t.list, runStart, runEnd, runStart - 1);
+      commitScoped(t.scope, reclampIndents(raw));
     },
-    [blocks, commit, getRunIndicesForBlock],
+    [runTargetFor, commitScoped],
   );
 
   const runMoveDown = useCallback(
     (blockId: string) => {
-      const run = getRunIndicesForBlock(blockId);
-      if (!run.length) return;
-      const runStart = run[0];
-      const runEnd = run[run.length - 1];
-      if (runEnd >= blocks.length - 1) return;
+      const t = runTargetFor(blockId);
+      if (!t || !t.run.length) return;
+      const runStart = t.run[0];
+      const runEnd = t.run[t.run.length - 1];
+      if (runEnd >= t.list.length - 1) return;
       const raw =
-        run.length === 1
-          ? moveBlock(blocks, runStart, runStart + 1)
-          : moveRun(blocks, runStart, runEnd, runEnd + 2);
-      commit(reclampIndents(raw));
+        t.run.length === 1
+          ? moveBlock(t.list, runStart, runStart + 1)
+          : moveRun(t.list, runStart, runEnd, runEnd + 2);
+      commitScoped(t.scope, reclampIndents(raw));
     },
-    [blocks, commit, getRunIndicesForBlock],
+    [runTargetFor, commitScoped],
   );
 
   const runDuplicate = useCallback(
     (blockId: string) => {
-      const run = getRunIndicesForBlock(blockId);
-      if (!run.length) return;
-      const runEnd = run[run.length - 1];
-      const copies: Blk[] = run.map((i) => ({ ...blocks[i], id: nanoid(10) }));
-      const next = [...blocks];
-      next.splice(runEnd + 1, 0, ...copies);
-      commit(next);
+      const t = runTargetFor(blockId);
+      if (!t || !t.run.length) return;
+      const runEnd = t.run[t.run.length - 1];
+      const copies: Blk[] = t.run.map((i) => ({ ...t.list[i], id: nanoid(10) }));
+      const nextList = [...t.list];
+      nextList.splice(runEnd + 1, 0, ...copies);
+      commitScoped(t.scope, nextList);
     },
-    [blocks, commit, getRunIndicesForBlock],
+    [runTargetFor, commitScoped],
   );
 
   const runDelete = useCallback(
     (blockId: string) => {
-      const run = getRunIndicesForBlock(blockId);
-      if (!run.length) return;
-      const next = deleteIndices(blocks, run, () => newBlock("text"));
+      const t = runTargetFor(blockId);
+      if (!t || !t.run.length) return;
+      const nextList = deleteIndices(t.list, t.run, () => newBlock("text"));
       clearSelection();
-      commit(next);
+      commitScoped(t.scope, nextList);
     },
-    [blocks, commit, clearSelection, getRunIndicesForBlock],
+    [runTargetFor, commitScoped, clearSelection],
   );
 
   const runTurnInto = useCallback(
     (blockId: string, type: BlockType, extra?: Partial<Blk>) => {
-      const run = getRunIndicesForBlock(blockId);
-      if (!run.length) return;
-      const next = [...blocks];
-      for (const i of run) {
-        const prev = next[i];
+      const t = runTargetFor(blockId);
+      if (!t || !t.run.length) return;
+      const nextList = [...t.list];
+      for (const i of t.run) {
+        const prev = nextList[i];
         const nb: Blk = { ...prev, type, ...(extra ?? {}) };
         if (type === "todo" && nb.checked == null) nb.checked = false;
         if (type === "toggle" && nb.open == null) nb.open = false;
@@ -1894,17 +1916,17 @@ export function EditableBody({
           if (type !== "toggle") delete nb.level;
           else if (!extra?.level) delete nb.level;
         }
-        next[i] = nb;
+        nextList[i] = nb;
       }
-      commit(next);
+      commitScoped(t.scope, nextList);
     },
-    [blocks, commit, getRunIndicesForBlock],
+    [runTargetFor, commitScoped],
   );
 
   const copyBlockLink = useCallback(
     (blockId: string) => {
-      const run = getRunIndicesForBlock(blockId);
-      const firstId = run.length ? blocks[run[0]].id : blockId;
+      const t = runTargetFor(blockId);
+      const firstId = t && t.run.length ? t.list[t.run[0]].id : blockId;
       const url = `${window.location.origin}/p/${pageId}#${firstId}`;
       const write = navigator.clipboard?.writeText?.(url);
       const after = () => toast.push("Link copied");
@@ -1912,7 +1934,7 @@ export function EditableBody({
         (write as Promise<void>).then(after).catch(() => after());
       } else after();
     },
-    [blocks, pageId, toast, getRunIndicesForBlock],
+    [runTargetFor, pageId, toast],
   );
 
   /* Duplicate and delete acting on the whole active block-selection —
@@ -1961,15 +1983,17 @@ export function EditableBody({
       blockId: string,
       mctx: { setSpec: (s: MenuSpec) => void; close: () => void },
     ): MenuSpec => {
-      const run = getRunIndicesForBlock(blockId);
+      const t = runTargetFor(blockId);
+      const list: Blk[] = t?.list ?? blocks;
+      const run: number[] = t?.run ?? [];
       const runStart = run[0] ?? 0;
       const runEnd = run[run.length - 1] ?? 0;
       const isMulti = run.length > 1;
-      const target = blocks[runStart];
+      const target = list[runStart];
       const targetName = blockTypeName(target);
       const title = isMulti ? `${run.length} blocks` : targetName;
       const atTop = runStart === 0;
-      const atEnd = runEnd >= blocks.length - 1;
+      const atEnd = runEnd >= list.length - 1;
       const curLevel = (target as { level?: unknown } | undefined)?.level;
 
       const turnIntoSub: MenuRow[] = [
@@ -2012,7 +2036,7 @@ export function EditableBody({
       // Colour is a per-callout attribute. Show ONLY when every block in
       // the run is a callout — a colour row that silently skips non-
       // callouts is worse than no row.
-      const allCallout = run.every((i) => blocks[i]?.type === "callout");
+      const allCallout = run.length > 0 && run.every((i) => list[i]?.type === "callout");
       const currentColor: CalloutColor =
         (target && (target as { color?: unknown }).color &&
           (CALLOUT_COLORS as readonly string[]).includes(
@@ -2029,7 +2053,7 @@ export function EditableBody({
         swRing: calloutRing(c),
         checked: c === currentColor,
         onPick: () => {
-          const next = [...blocks];
+          const next = [...list];
           for (const i of run) {
             if (next[i]?.type !== "callout") continue;
             const nb: Blk = { ...next[i] };
@@ -2039,7 +2063,7 @@ export function EditableBody({
             else nb.color = c;
             next[i] = nb;
           }
-          commit(next);
+          commitScoped(t?.scope ?? null, next);
           // Return to the block menu rather than closing: people try two
           // or three against the surrounding text.
           mctx.setSpec(buildBlockHandleSpec(blockId, mctx));
@@ -2149,9 +2173,10 @@ export function EditableBody({
     [
       blocks,
       copyBlockLink,
+      commitScoped,
       editedRel,
       editorFirstName,
-      getRunIndicesForBlock,
+      runTargetFor,
       runDelete,
       runDuplicate,
       runMoveDown,
@@ -2436,8 +2461,17 @@ export function EditableBody({
       }}
       onPointerDown={handleContainerPointerDown}
       onFocusCapture={(e) => {
+        // Caret entering ANY text surface drops the block selection. After
+        // the WYSIWYG swap a block is a contenteditable, not a textarea —
+        // without this the selection survived a click into a block and
+        // Backspace/Delete then hit the typing guard and appeared dead.
         const t = e.target as HTMLElement;
-        if (t.tagName === "TEXTAREA" || t.tagName === "INPUT") clearSelection();
+        if (
+          t.tagName === "TEXTAREA" ||
+          t.tagName === "INPUT" ||
+          t.isContentEditable
+        )
+          clearSelection();
       }}
       onContextMenu={(e) => {
         // Right-click INSIDE a selected block opens the multi-block menu.
@@ -2959,7 +2993,9 @@ function BlockRow({
         <div
           className="gio-block-gutter pointer-events-none absolute top-0 flex select-none items-center gap-0.5 opacity-0 transition-opacity duration-100"
           style={{
-            left: 0,
+            // `left` comes from .gio-block-gutter in styles.css
+            // (calc(-1 * var(--gio-gutter-x))) — the row no longer carries a
+            // negative margin, so the offset must live here.
             height: "var(--gio-block-lh)",
             width: 39,
 
