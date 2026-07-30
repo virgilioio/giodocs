@@ -1534,7 +1534,7 @@ function EmojiPane() {
                         {
                           kind: "row",
                           label: "Copy shortcode",
-                          icon: "copy",
+                          icon: "dup",
                           hint: { text: `:${it.custom!.name}:`, mono: true },
                           onPick: () => {
                             void navigator.clipboard?.writeText(`:${it.custom!.name}:`);
