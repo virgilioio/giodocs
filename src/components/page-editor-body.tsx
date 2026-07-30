@@ -831,7 +831,7 @@ export function EditableBody({
         indicator: null,
       });
     },
-    [blocks, selectedIds],
+    [scopedList, selectedIds],
   );
 
   const computeGap = useCallback(
