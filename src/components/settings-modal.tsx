@@ -32,7 +32,7 @@ import type { PendingInvite } from "./add-members-modal";
 import { SpecMenuTrigger } from "./row-menu";
 import { Ico } from "./emoji-icon";
 import { CustomEmojiComposer } from "./custom-emoji-composer";
-import { isShortcode, type CustomEmoji } from "@/lib/custom-emoji";
+import { type CustomEmoji } from "@/lib/custom-emoji";
 import {
   useCreateCustomEmoji,
   useCustomEmoji,
@@ -207,7 +207,7 @@ function SettingsNav({ pane, onPick }: { pane: SettingsPane; onPick: (p: Setting
     { key: "preferences", label: "Preferences", path: ICON_SLIDERS, group: "ACCOUNT" },
     { key: "general", label: "General", path: ICON_GEAR, group: "WORKSPACE" },
     { key: "people", label: "People", path: ICON_PEOPLE, group: "WORKSPACE" },
-    { key: "emoji", label: "Emoji", path: ICON_SMILEY, group: "WORKSPACE" },
+    { key: "emoji", label: "Custom emoji", path: ICON_SMILEY, group: "WORKSPACE" },
   ];
 
   const groups: Array<{ name: "ACCOUNT" | "WORKSPACE"; items: NavItem[] }> = [];
@@ -1194,20 +1194,22 @@ function MemberAvatar({
   tint,
   ink,
   initials,
+  size = 28,
 }: {
   tint: string | null;
   ink: string | null;
   initials: string;
+  size?: number;
 }) {
   return (
     <span
       className="grid shrink-0 place-items-center rounded-full"
       style={{
-        width: 28,
-        height: 28,
+        width: size,
+        height: size,
         background: tint ?? "var(--color-sunken)",
         color: ink ?? "var(--color-noir)",
-        fontSize: 11.5,
+        fontSize: size >= 28 ? 11.5 : 9,
         fontWeight: 700,
       }}
       aria-hidden
@@ -1217,12 +1219,11 @@ function MemberAvatar({
   );
 }
 
-/* ─────────────────────────── Emoji pane ───────────────────────────
+/* ─────────────────────── Custom emoji pane ───────────────────────
  *
- * One table, two provenances. CUSTOM EMOJI SORT ABOVE UNICODE — they are
- * the only rows anyone can act on, and burying them under fifty inherited
- * unicode rows is how a workspace ends up with three copies of the same
- * logo. Within each group, by usage.
+ * CUSTOM ONLY. Unicode has no lifecycle — it cannot be renamed, deleted
+ * or authored — so it has nothing to manage. The one derived thing kept
+ * is the usage count, because it is what blocks a delete.
  */
 
 function EmojiPane() {
@@ -1230,21 +1231,14 @@ function EmojiPane() {
   const shell = useWorkspaceShell(ws);
   const auth = useAuth();
   const toast = useToast();
-  const pages = (shell.pages.data ?? []) as PageListItem[];
-  const propDefs = (shell.propDefs.data ?? []) as Array<{
-    key?: string | null;
-    options?: unknown;
-  }>;
-  const views = (shell.views.data ?? []) as Array<{
-    id: string;
-    name?: string | null;
-    icon?: string | null;
-    updated_at?: string | null;
-    created_at?: string | null;
-  }>;
   const members = (shell.members.data ?? []) as Array<{
     user_id: string;
-    profiles?: { full_name?: string | null; email?: string | null } | null;
+    profiles?: {
+      full_name?: string | null;
+      email?: string | null;
+      avatar_tint?: string | null;
+      avatar_ink?: string | null;
+    } | null;
   }>;
   const fmt = useFormatDate();
   const [query, setQuery] = useState("");
@@ -1261,95 +1255,38 @@ function EmojiPane() {
     { anchor: DOMRect | null; editing: CustomEmoji | null } | null
   >(null);
 
-  type Usage =
-    | { kind: "page"; label: string; when: number }
-    | { kind: "area"; label: string; when: number }
-    | { kind: "view"; label: string; when: number };
-
-  const inventory = useMemo(() => {
-    const m = new Map<string, Usage[]>();
-    const push = (icon: string | null | undefined, u: Usage) => {
-      const key = (icon ?? "").trim();
-      if (!key) return;
-      const arr = m.get(key) ?? [];
-      arr.push(u);
-      m.set(key, arr);
-    };
-    for (const p of pages) {
-      push(p.icon, {
-        kind: "page",
-        label: p.title || "Untitled",
-        when: new Date(p.edited_at).getTime(),
-      });
-    }
-    const areaDef = propDefs.find((d) => d?.key === "area");
-    const options = Array.isArray(areaDef?.options)
-      ? (areaDef!.options as Array<{ value?: string; label?: string; icon?: string }>)
-      : [];
-    for (const opt of options) {
-      push(opt?.icon, {
-        kind: "area",
-        label: opt?.label || opt?.value || "Area",
-        when: 0,
-      });
-    }
-    for (const v of views) {
-      push(v.icon, {
-        kind: "view",
-        label: v.name || "View",
-        when: new Date(v.updated_at ?? v.created_at ?? 0).getTime(),
-      });
-    }
-    return m;
-  }, [pages, propDefs, views]);
-
   const q = query.trim().toLowerCase();
 
-  type Row = {
-    key: string;
-    icon: string;
-    custom: CustomEmoji | null;
-    usages: Usage[];
-    count: number;
-    lastEdited: number;
-  };
+  type Row = { key: string; icon: string; custom: CustomEmoji; count: number };
 
   const rows = useMemo<Row[]>(() => {
-    const mk = (icon: string, c: CustomEmoji | null): Row => {
-      const usages = inventory.get(icon) ?? [];
-      return {
-        key: icon,
-        icon,
-        custom: c,
-        usages,
-        count: c ? (usage.get(c.name) ?? usages.length) : usages.length,
-        lastEdited: usages.reduce((a, u) => (u.when > a ? u.when : a), 0),
-      };
-    };
-    const customRows = custom.map((c) => mk(`:${c.name}:`, c));
-    const customKeys = new Set(customRows.map((r) => r.key));
-    const unicodeRows = [...inventory.keys()]
-      .filter((k) => !customKeys.has(k) && !isShortcode(k))
-      .map((k) => mk(k, null));
-    const byUse = (a: Row, b: Row) => b.count - a.count || (a.key < b.key ? -1 : 1);
-    const match = (r: Row) =>
-      !q ||
-      r.key.toLowerCase().includes(q) ||
-      (r.custom?.description ?? "").toLowerCase().includes(q) ||
-      r.usages.some((u) => u.label.toLowerCase().includes(q));
-    return [...customRows.sort(byUse), ...unicodeRows.sort(byUse)].filter(match);
-  }, [custom, inventory, usage, q]);
+    const all: Row[] = custom.map((c) => ({
+      key: `:${c.name}:`,
+      icon: `:${c.name}:`,
+      custom: c,
+      count: usage.get(c.name) ?? 0,
+    }));
+    all.sort((a, b) => b.count - a.count || (a.custom.name < b.custom.name ? -1 : 1));
+    return all.filter(
+      (r) =>
+        !q ||
+        r.custom.name.toLowerCase().includes(q) ||
+        (r.custom.description ?? "").toLowerCase().includes(q),
+    );
+  }, [custom, usage, q]);
 
-  const kindLabel = (k: Usage["kind"]) =>
-    k === "page" ? "Page" : k === "area" ? "Area" : "View";
+  const memberOf = (id: string | null) =>
+    id ? members.find((x) => x.user_id === id) : undefined;
 
-  const authorOf = (id: string | null) => {
-    if (!id) return "";
-    const m = members.find((x) => x.user_id === id);
-    return m?.profiles?.full_name || m?.profiles?.email || "";
+  const firstNameOf = (id: string | null) => {
+    const m = memberOf(id);
+    const n = m?.profiles?.full_name || m?.profiles?.email || "";
+    return n ? (n.split(/[\s@]+/)[0] || n) : "—";
   };
 
-  const GRID = "44px minmax(0,1.5fr) 74px minmax(0,1.1fr) 30px";
+  const GRID = "44px minmax(0,1.6fr) 84px minmax(0,1fr) 96px 30px";
+
+  const pagesLabel = (n: number) => `${n} page${n === 1 ? "" : "s"}`;
 
   const saveComposer = async (v: {
     name: string;
@@ -1388,14 +1325,13 @@ function EmojiPane() {
   return (
     <div>
       <PaneHeader
-        title="Emoji"
-        sub="Custom emoji anyone here can use, plus every icon already in use across the workspace."
+        title="Custom emoji"
+        sub="Images your workspace uses as page icons. Anyone here can type their name."
       />
       <div style={{ padding: "0 30px 30px" }}>
         <div className="mt-2 flex items-center gap-3">
           <div className="text-secondary" style={{ fontSize: 13.5 }}>
-            <b className="text-noir tnum">{custom.length}</b> custom ·{" "}
-            <b className="text-noir tnum">{rows.length - custom.length}</b> unicode in use
+            <b className="text-noir tnum">{custom.length}</b> custom emoji
           </div>
           <div className="flex-1" />
           <input
@@ -1421,155 +1357,175 @@ function EmojiPane() {
           </button>
         </div>
 
-        <div className="mt-3 border border-line overflow-hidden" style={{ borderRadius: 10 }}>
+        {custom.length === 0 ? (
           <div
-            className="grid bg-canvas border-b border-line text-faint"
-            style={{
-              gridTemplateColumns: GRID,
-              gap: 12,
-              padding: "8px 13px",
-              fontSize: 11.5,
-              fontWeight: 700,
-              textTransform: "uppercase",
-              letterSpacing: "0.05em",
-            }}
+            className="mt-3 border border-line grid place-items-center text-center"
+            style={{ borderRadius: 10, padding: "44px 20px" }}
           >
-            <div>EMOJI</div>
-            <div>NAME &amp; USE</div>
-            <div>COUNT</div>
-            <div>MOST RECENT</div>
-            <div />
-          </div>
-          {rows.length === 0 && (
-            <div className="text-secondary" style={{ padding: 20, fontSize: 13.5 }}>
-              {q ? "Nothing matches that search." : "No emoji yet."}
+            <svg
+              width={16}
+              height={16}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              className="text-whisper"
+              aria-hidden
+            >
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <circle cx="8.5" cy="9.5" r="1.5" />
+              <path d="M21 16l-5-5-6 6-2-2-5 5" />
+            </svg>
+            <div className="mt-2 text-secondary" style={{ fontSize: 14 }}>
+              No custom emoji yet.
             </div>
-          )}
-          {rows.map((it, i) => (
+            <div className="mt-1 text-muted" style={{ fontSize: 13.5 }}>
+              Upload an image to make one — it gets a name, and anyone here can type it.
+            </div>
+          </div>
+        ) : (
+          <div className="mt-3 border border-line overflow-hidden" style={{ borderRadius: 10 }}>
             <div
-              key={it.key}
-              className="grid items-center"
+              className="grid bg-canvas border-b border-line text-faint"
               style={{
                 gridTemplateColumns: GRID,
                 gap: 12,
-                padding: "9px 13px",
-                borderBottom:
-                  i === rows.length - 1 ? "none" : "1px solid var(--color-lineSoft)",
+                padding: "8px 13px",
+                fontSize: 11.5,
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
               }}
             >
-              <Ico icon={it.icon} size={26} set={custom} />
-              <div className="min-w-0">
-                {it.custom ? (
-                  <div className="truncate">
-                    <span className="font-mono text-strong" style={{ fontSize: 12.5 }}>
-                      :{it.custom.name}:
-                    </span>
-                    {it.custom.description ? (
-                      <span className="text-secondary" style={{ fontSize: 12.5 }}>
-                        {" "}
-                        · {it.custom.description}
-                      </span>
-                    ) : null}
-                    {authorOf(it.custom.created_by) ? (
-                      <span className="text-faint" style={{ fontSize: 11.5 }}>
-                        {" "}
-                        · added by {authorOf(it.custom.created_by)}
-                      </span>
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="truncate text-secondary" style={{ fontSize: 13.5 }}>
-                    {it.usages.slice(0, 3).map((u, idx) => (
-                      <span key={idx}>
-                        {idx > 0 ? ", " : ""}
-                        <span
-                          className="text-faint"
-                          style={{
-                            fontSize: 11.5,
-                            fontWeight: 700,
-                            textTransform: "uppercase",
-                            letterSpacing: "0.04em",
-                          }}
-                        >
-                          {kindLabel(u.kind)}
-                        </span>{" "}
-                        {u.label}
-                      </span>
-                    ))}
-                    {it.usages.length > 3 && ` +${it.usages.length - 3} more`}
-                  </div>
-                )}
-              </div>
-              <div className="text-noir tnum" style={{ fontSize: 13.5, fontWeight: 700 }}>
-                {it.count}
-              </div>
-              <div className="text-muted" style={{ fontSize: 12.5 }}>
-                {it.lastEdited ? fmt(new Date(it.lastEdited).toISOString()) : "—"}
-              </div>
-              <div>
-                {it.custom ? (
-                  <SpecMenuTrigger
-                    size="sm"
-                    ariaLabel={`Actions for :${it.custom.name}:`}
-                    build={({ close }) => ({
-                      title: `:${it.custom!.name}:`,
-                      width: 272,
-                      footer:
-                        it.count > 0
-                          ? `Used on ${it.count} page${it.count === 1 ? "" : "s"}. Renaming updates all of them.`
-                          : "Not used on any page yet.",
-                      rows: [
-                        {
-                          kind: "row",
-                          label: "Edit",
-                          icon: "pencil",
-                          onPick: () => {
-                            const r = document
-                              .querySelector<HTMLElement>("[data-emoji-pane-add]")
-                              ?.getBoundingClientRect();
-                            setComposer({ anchor: r ?? null, editing: it.custom });
-                            close();
-                          },
-                        },
-                        {
-                          kind: "row",
-                          label: "Copy shortcode",
-                          icon: "dup",
-                          hint: { text: `:${it.custom!.name}:`, mono: true },
-                          onPick: () => {
-                            void navigator.clipboard?.writeText(`:${it.custom!.name}:`);
-                            toast.push("Shortcode copied.");
-                            close();
-                          },
-                        },
-                        { kind: "sep" },
-                        {
-                          kind: "row",
-                          label: "Delete",
-                          icon: "trash",
-                          danger: true,
-                          onPick: () => {
-                            void remove
-                              .mutateAsync({ name: it.custom!.name, path: it.custom!.path })
-                              .then(() => toast.push(`Deleted :${it.custom!.name}:.`))
-                              .catch((e: Error) =>
-                                toast.push(e.message || "Could not delete that emoji."),
-                              );
-                            close();
-                          },
-                        },
-                      ],
-                    })}
-                  />
-                ) : null}
-              </div>
+              <div>IMAGE</div>
+              <div>NAME</div>
+              <div>USAGE</div>
+              <div>ADDED BY</div>
+              <div>ADDED</div>
+              <div />
             </div>
-          ))}
-        </div>
+            {rows.length === 0 && (
+              <div className="text-secondary" style={{ padding: 20, fontSize: 13.5 }}>
+                Nothing matches that search.
+              </div>
+            )}
+            {rows.map((it, i) => {
+              const m = memberOf(it.custom.created_by);
+              const who = m?.profiles?.full_name || m?.profiles?.email || "";
+              return (
+                <div
+                  key={it.key}
+                  className="grid items-center"
+                  style={{
+                    gridTemplateColumns: GRID,
+                    gap: 12,
+                    padding: "9px 13px",
+                    borderBottom:
+                      i === rows.length - 1 ? "none" : "1px solid var(--color-lineSoft)",
+                  }}
+                >
+                  <Ico icon={it.icon} size={26} set={custom} />
+                  <div className="min-w-0">
+                    <div className="truncate font-mono text-strong" style={{ fontSize: 12.5 }}>
+                      :{it.custom.name}:
+                    </div>
+                    <div className="truncate text-whisper" style={{ fontSize: 12 }}>
+                      {it.custom.description || "No description"}
+                    </div>
+                  </div>
+                  <div
+                    className={it.count > 0 ? "text-noir tnum" : "text-whisper"}
+                    style={{ fontSize: 13, fontWeight: it.count > 0 ? 700 : 400 }}
+                  >
+                    {it.count > 0 ? pagesLabel(it.count) : "Not used"}
+                  </div>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <MemberAvatar
+                      size={19}
+                      tint={m?.profiles?.avatar_tint ?? null}
+                      ink={m?.profiles?.avatar_ink ?? null}
+                      initials={initialsOf(who || "?")}
+                    />
+                    <span className="truncate text-secondary" style={{ fontSize: 13 }}>
+                      {firstNameOf(it.custom.created_by)}
+                    </span>
+                  </div>
+                  <div className="text-muted" style={{ fontSize: 12.5 }}>
+                    {it.custom.created_at ? fmt(it.custom.created_at) : "—"}
+                  </div>
+                  <div>
+                    <SpecMenuTrigger
+                      size="sm"
+                      ariaLabel={`Actions for :${it.custom.name}:`}
+                      build={({ close }) => ({
+                        title: `:${it.custom.name}:`,
+                        width: 272,
+                        footer:
+                          it.count > 0
+                            ? `In use on ${pagesLabel(it.count)}. Nothing that is worn can be deleted.`
+                            : "Editing the name changes it everywhere it is typed.",
+                        rows: [
+                          {
+                            kind: "row",
+                            label: "Edit",
+                            icon: "pencil",
+                            onPick: () => {
+                              const r = document
+                                .querySelector<HTMLElement>("[data-emoji-pane-add]")
+                                ?.getBoundingClientRect();
+                              setComposer({ anchor: r ?? null, editing: it.custom });
+                              close();
+                            },
+                          },
+                          {
+                            kind: "row",
+                            label: "Copy shortcode",
+                            icon: "dup",
+                            hint: { text: `:${it.custom.name}:`, mono: true },
+                            onPick: () => {
+                              void navigator.clipboard?.writeText(`:${it.custom.name}:`);
+                              toast.push("Shortcode copied.");
+                              close();
+                            },
+                          },
+                          { kind: "sep" },
+                          {
+                            kind: "row",
+                            label: "Delete",
+                            icon: "trash",
+                            danger: it.count === 0,
+                            hint:
+                              it.count > 0 ? { text: pagesLabel(it.count) } : undefined,
+                            onPick: () => {
+                              if (it.count > 0) {
+                                toast.push(
+                                  `${pagesLabel(it.count)} still wear this — rename or replace it instead.`,
+                                );
+                                close();
+                                return;
+                              }
+                              void remove
+                                .mutateAsync({ name: it.custom.name, path: it.custom.path })
+                                .then(() => toast.push(`Deleted :${it.custom.name}:.`))
+                                .catch((e: Error) =>
+                                  toast.push(e.message || "Could not delete that emoji."),
+                                );
+                              close();
+                            },
+                          },
+                        ],
+                      })}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <p className="mt-3 text-caption text-muted">
-          Custom emoji live in this workspace. Unicode rows are derived from what pages,
-          areas and views actually wear — nothing to configure.
+          A custom emoji is an image with a name. Rename it and every page wearing it
+          follows; delete it only once nothing does.
         </p>
       </div>
 
