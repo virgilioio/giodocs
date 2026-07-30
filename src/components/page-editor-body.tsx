@@ -35,6 +35,19 @@ import { isTypingTarget, shouldCopyBlocks } from "@/lib/is-typing";
 import { nextEditableIndex } from "@/lib/block-nav";
 import { stripNestedColumns } from "@/lib/columns";
 import {
+  columnsGridTemplate,
+  equalColumnWidths,
+  normalizeColumnWidths,
+  resetColumnPair,
+  resizeColumnPair,
+} from "@/lib/column-widths";
+
+/** Columns grid gap. Wide enough that a column's block gutter (which sits
+ *  at -34px inside a column) lives in the gap instead of painting over the
+ *  neighbour, with ~6px clearance each side. Mirrored in src/styles.css
+ *  (the stacking breakpoint) and in the HTML exporter. */
+const COLS_GAP = 40;
+import {
   push as undoPush,
   undo as undoDo,
   redo as undoRedo,
