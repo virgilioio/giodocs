@@ -61,13 +61,21 @@ export type Blk = {
    *  column count by the pure ops in src/lib/table-ops.ts — a stale align
    *  is the silent-corruption failure mode for the block. */
   align?: ("left" | "center" | "right")[];
-  /** Only meaningful when type === "table". One entry per column, in
-   *  PIXELS. Absent means auto/equal (today's behaviour); present means
-   *  the table renders with an explicit <colgroup> and its own width is
-   *  the sum of these entries, so it may exceed its container. Kept in
-   *  sync with the column count by the widths-splicing ops in
-   *  src/lib/table-ops.ts — a stale widths array offsets every column
-   *  past the mismatch, exactly like a stale align. Clamp: [56, 1200]. */
+  /** Meaningful for `table` and `columns`, with DIFFERENT units:
+   *
+   *  table — PIXELS, one per column. Absent means auto/equal; present means
+   *  the table renders with an explicit <colgroup> and its own width is the
+   *  sum of these entries, so it may exceed its container. Clamp [56, 1200].
+   *  Kept in sync with the column count by the widths-splicing ops in
+   *  src/lib/table-ops.ts — a stale widths array offsets every column past
+   *  the mismatch, exactly like a stale align.
+   *
+   *  columns — FRACTIONAL WEIGHTS, one per column, absent meaning equal.
+   *  `fr` tracks absorb the grid gap, so no percentage arithmetic drifts.
+   *  A columns block always fills the text column, so a drag redistributes
+   *  between the two adjacent columns only, preserving their sum. Min
+   *  0.35fr. Lockstep with the column count is enforced by
+   *  normalizeColumnWidths in src/lib/column-widths.ts. */
   widths?: number[];
   /** Only meaningful when type === "table". Header-ness is a BLOCK
    *  attribute, never row/column data: no cell has to move when either

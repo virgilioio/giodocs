@@ -265,11 +265,64 @@
   }
 }
 
+/* ── Block row + gutter reveal ────────────────────────────────────────────
+   The gutter (+ / drag handle) is revealed by hovering the ROW ITSELF, not
+   any ancestor. Tailwind's `group-hover` matched any ancestor with `group`,
+   so a columns or callout row wrapping inner rows lit every inner gutter at
+   once. The direct-child selector keeps it to one row, one gutter, in every
+   container. `--gio-gutter-x` is the row's negative offset: 42px at page
+   level (it has the page's 44px margin to sit in), 34px inside a column so
+   it lives in the 40px grid gap instead of over the neighbour. */
+.gio-row {
+  --gio-gutter-x: 42px;
+  margin-left: calc(-1 * var(--gio-gutter-x));
+  padding-left: var(--gio-gutter-x);
+}
+.gio-row:hover > .gio-block-gutter {
+  opacity: 1;
+  pointer-events: auto;
+}
+.gio-cols .gio-row {
+  --gio-gutter-x: 34px;
+}
+
+/* Columns resize handle: one per boundary between columns, centred on the
+   gap. Transparent at rest, a 1px rule on hover, blue while dragging. */
+.gio-col-resize {
+  width: 8px;
+  cursor: col-resize;
+  position: relative;
+  z-index: 5;
+  align-self: stretch;
+}
+.gio-col-resize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  background: transparent;
+  transition: background 100ms ease;
+}
+.gio-col-resize:hover::after {
+  background: var(--color-rule);
+}
+.gio-col-resize[data-dragging="true"]::after {
+  background: var(--color-blue);
+}
+
 /* Columns block: collapse to a single vertical stack below 900px so a
- * narrow window stays readable. Above 900px, the declared count wins. */
+ * narrow window stays readable. Above 900px, the declared count wins and
+ * per-column weights apply. Stacked, the 40px gap would read as a page
+ * break, so it collapses to the normal block rhythm and the handles go. */
 @media (max-width: 900px) {
   .gio-cols {
     grid-template-columns: 1fr !important;
+    gap: var(--gio-block-gap, 13px) !important;
+  }
+  .gio-col-resize {
+    display: none;
   }
 }
 

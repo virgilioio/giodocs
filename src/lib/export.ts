@@ -13,6 +13,7 @@
 
 import type { Block } from "./types";
 import { numberedOrdinals } from "./blocks";
+import { columnsGridTemplate, normalizeColumnWidths } from "./column-widths";
 import { peekSignedUrl } from "./image-url-cache";
 import { readAlign, readCols, readPaths, readW } from "./image-ops";
 import { inlineToHtml } from "./inline-markdown";
@@ -559,9 +560,10 @@ function blockHtml(b: Block, ordinal = 1): string {
       return `<table${tableAttrs}>${colgroup}${thead}<tbody>${body}</tbody></table>`;
     }
     case "columns": {
-      // Real CSS grid. minmax(0,1fr) prevents long words from blowing the
-      // track out. Inner blocks serialise recursively with per-column
-      // numbered ordinals so `1.` starts fresh in each column.
+      // Real CSS grid. minmax(0,Nfr) prevents long words from blowing the
+      // track out and carries the block's stored proportional weights so
+      // an exported page keeps them. Inner blocks serialise recursively
+      // with per-column numbered ordinals so `1.` starts fresh in each.
       const cols = Array.isArray(b.cols) ? (b.cols as Block[][]) : [];
       const n = cols.length;
       if (n === 0) return "";
@@ -572,7 +574,11 @@ function blockHtml(b: Block, ordinal = 1): string {
           return `<div>${renderBlocksHtml(col, ords)}</div>`;
         })
         .join("");
-      return `<div class="cols" style="display:grid;grid-template-columns:repeat(${n},minmax(0,1fr));gap:20px">${inner}</div>`;
+      const tpl = columnsGridTemplate(
+        normalizeColumnWidths((b as { widths?: unknown }).widths, n),
+        n,
+      );
+      return `<div class="cols" style="display:grid;grid-template-columns:${tpl};gap:40px">${inner}</div>`;
     }
     default:
       warnUnknownBlock(t);
