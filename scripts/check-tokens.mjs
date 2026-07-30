@@ -23,7 +23,12 @@ const ROOT = join(CWD, "src");
 // byte-identical in light and dark themes (see the theming rule in avatar.ts).
 // A worn portrait's disc is also fixed to a light pastel literal there, for
 // the same reason: hair contrast on the disc must not collapse in dark mode.
+// custom-emoji-composer.tsx is exempt: its preview panel shows the emoji on
+// TWO literal grounds — white and near-black — at the same time, so the
+// uploader can see whether a transparent PNG survives both themes. Themed
+// tokens would make half that preview a lie.
 const EXEMPT = new Set([
+  "src/components/custom-emoji-composer.tsx",
   "src/styles.css",
   "src/lib/export.ts",
   "src/lib/avatar.ts",
