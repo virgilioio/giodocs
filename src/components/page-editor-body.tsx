@@ -1769,7 +1769,13 @@ export function EditableBody({
       const ids = blocks.map((b) => b.id);
       const idx = ids.indexOf(blockId);
       if (idx < 0) return [];
-      if (selectedIds.has(blockId) && selectedIds.size > 1) {
+      // Only a TOP-LEVEL selection turns a handle op into a run op — a
+      // selection scoped to a container has no top-level indices.
+      if (
+        selScopeRef.current === null &&
+        selectedIds.has(blockId) &&
+        selectedIds.size > 1
+      ) {
         return ids
           .map((id, i) => (selectedIds.has(id) ? i : -1))
           .filter((i) => i >= 0)
