@@ -1983,15 +1983,17 @@ export function EditableBody({
       blockId: string,
       mctx: { setSpec: (s: MenuSpec) => void; close: () => void },
     ): MenuSpec => {
-      const run = getRunIndicesForBlock(blockId);
+      const t = runTargetFor(blockId);
+      const list: Blk[] = t?.list ?? blocks;
+      const run: number[] = t?.run ?? [];
       const runStart = run[0] ?? 0;
       const runEnd = run[run.length - 1] ?? 0;
       const isMulti = run.length > 1;
-      const target = blocks[runStart];
+      const target = list[runStart];
       const targetName = blockTypeName(target);
       const title = isMulti ? `${run.length} blocks` : targetName;
       const atTop = runStart === 0;
-      const atEnd = runEnd >= blocks.length - 1;
+      const atEnd = runEnd >= list.length - 1;
       const curLevel = (target as { level?: unknown } | undefined)?.level;
 
       const turnIntoSub: MenuRow[] = [
