@@ -1439,6 +1439,8 @@ export function EditableBody({
     originX: number; // container-space
     originY: number; // container-space
     originTarget: HTMLElement | null;
+    /** The container the gesture STARTED in. Fixed for the whole drag. */
+    scope: ScopeRef;
     moved: boolean;
   } | null>(null);
   const marqueeScrollDirRef = useRef<0 | 1 | -1>(0);
@@ -1457,17 +1459,43 @@ export function EditableBody({
     [],
   );
 
-  const selectByMarqueeY = useCallback((y1: number, y2: number) => {
-    // Build the row list in DOCUMENT ORDER (as rendered), using `offsetTop`
-    // which is container-space and scroll-invariant.
-    const rows: { id: string; top: number; height: number }[] = [];
-    rowEls.current.forEach((el, id) => {
-      rows.push({ id, top: el.offsetTop, height: el.offsetHeight });
-    });
-    rows.sort((a, b) => a.top - b.top);
-    const ids = new Set<string>(rowsInBand(rows, y1, y2));
-    setSelectedIds(ids);
-  }, []);
+  const selectByMarqueeY = useCallback(
+    (scope: ScopeRef, y1: number, y2: number) => {
+      /* Row rects are measured in the SAME container space as the band's
+       * anchor (client rect minus the container's client rect), which is
+       * scroll-invariant: both move together, so their difference doesn't
+       * change as the container auto-scrolls. Rects rather than offsetTop
+       * because a row inside a column has a positioned ancestor of its own.
+       *
+       * Then rowsInScope enforces the scope rule: a page-scoped band never
+       * sees container children, and a container-scoped band never sees the
+       * parent, a sibling column, or a top-level block. */
+      const c = containerRef.current;
+      if (!c) return;
+      const cTop = c.getBoundingClientRect().top;
+      const rows: {
+        id: string;
+        top: number;
+        height: number;
+        scope: ScopeRef;
+      }[] = [];
+      rowEls.current.forEach((el, id) => {
+        const r = el.getBoundingClientRect();
+        rows.push({
+          id,
+          top: r.top - cTop,
+          height: r.height,
+          scope: rowColRefById.current.get(id) ?? null,
+        });
+      });
+      rows.sort((a, b) => a.top - b.top);
+      const candidates = rowsInScope(scope, rows);
+      const ids = new Set<string>(rowsInBand(candidates, y1, y2));
+      setSelectedIds(ids);
+      setSelScope(ids.size === 0 ? null : scope);
+    },
+    [],
+  );
 
   const applyMarqueeFromLastPointer = useCallback(() => {
     const m = marqueeRef.current;
@@ -1475,7 +1503,7 @@ export function EditableBody({
     if (!m || !m.active || !lp) return;
     const p = containerPoint(lp.x, lp.y);
     setMarquee({ x1: m.originX, y1: m.originY, x2: p.x, y2: p.y });
-    selectByMarqueeY(m.originY, p.y);
+    selectByMarqueeY(m.scope, m.originY, p.y);
   }, [containerPoint, selectByMarqueeY]);
 
   const tickMarqueeScroll = useCallback(() => {
