@@ -1194,20 +1194,22 @@ function MemberAvatar({
   tint,
   ink,
   initials,
+  size = 28,
 }: {
   tint: string | null;
   ink: string | null;
   initials: string;
+  size?: number;
 }) {
   return (
     <span
       className="grid shrink-0 place-items-center rounded-full"
       style={{
-        width: 28,
-        height: 28,
+        width: size,
+        height: size,
         background: tint ?? "var(--color-sunken)",
         color: ink ?? "var(--color-noir)",
-        fontSize: 11.5,
+        fontSize: size >= 28 ? 11.5 : 9,
         fontWeight: 700,
       }}
       aria-hidden
