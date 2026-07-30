@@ -33,7 +33,7 @@ import { useWorkspaceId } from "@/lib/workspace-context";
 import { RowMenu, type MenuSpec, type MenuRow } from "./row-menu";
 import { isTypingTarget, shouldCopyBlocks } from "@/lib/is-typing";
 import { nextEditableIndex } from "@/lib/block-nav";
-import { stripNestedColumns } from "@/lib/columns";
+import { stripNestedColumns, isColumnsBlockEmpty } from "@/lib/columns";
 import {
   columnsGridTemplate,
   equalColumnWidths,
@@ -177,6 +177,10 @@ type ColumnBridge = {
   selectedIds: Set<string>;
   /** Shift-click on a handle inside a container extends WITHIN it. */
   shiftClick: (id: string, colRef: ColumnRef) => void;
+  /** Backspace in the sole empty block of a column: dissolve the whole
+   *  columns block when EVERY column is empty. Returns false (no-op) when
+   *  any column still has content. */
+  dissolveColumns: (colRef: ColumnRef) => boolean;
 };
 const ColumnBridgeCtx = createContext<ColumnBridge | null>(null);
 
@@ -2444,8 +2448,9 @@ export function EditableBody({
       exitVertical: exitVerticalFromColumn,
       selectedIds,
       shiftClick: (id, colRef) => handleShiftClick(id, colRef),
+      dissolveColumns: dissolveColumnsIfEmpty,
     }),
-    [registerRowEl, registerColTrack, beginDrag, escapeColumn, selectAllTopLevel, exitVerticalFromColumn, selectedIds, handleShiftClick],
+    [registerRowEl, registerColTrack, beginDrag, escapeColumn, selectAllTopLevel, exitVerticalFromColumn, selectedIds, handleShiftClick, dissolveColumnsIfEmpty],
   );
 
 
@@ -4109,6 +4114,13 @@ function ColumnStack({
               case "merge-prev":
                 e.preventDefault();
                 applyOp(opsMerge(blocks, b.id));
+                return;
+              case "dissolve-columns":
+                // Sole empty block of its column. The parent refuses unless
+                // EVERY column is empty, so the old guard survives for
+                // every other case.
+                e.preventDefault();
+                bridge?.dissolveColumns(colRef);
                 return;
               case "escape-column":
                 e.preventDefault();
