@@ -95,7 +95,7 @@ export function CustomEmojiComposer({
 
   const accept = async (file: File) => {
     if (!isImageMime(file.type)) {
-      toast.show("That file is not an image.");
+      toast.push("That file is not an image.");
       return;
     }
     try {
@@ -107,7 +107,7 @@ export function CustomEmojiComposer({
       });
       if (!name) setName(nameFromFilename(file.name));
     } catch {
-      toast.show("Could not read that image.");
+      toast.push("Could not read that image.");
     }
   };
 
