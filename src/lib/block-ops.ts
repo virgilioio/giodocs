@@ -69,6 +69,13 @@ export type Blk = {
    *  src/lib/table-ops.ts — a stale widths array offsets every column
    *  past the mismatch, exactly like a stale align. Clamp: [56, 1200]. */
   widths?: number[];
+  /** Only meaningful when type === "table". Header-ness is a BLOCK
+   *  attribute, never row/column data: no cell has to move when either
+   *  is toggled, and every structural op in table-ops stays untouched.
+   *  `headerRow` absent === true (row 0 is the header, today's
+   *  behaviour); `headerCol` absent === false. */
+  headerRow?: boolean;
+  headerCol?: boolean;
   language?: string;
   /** Only meaningful when type === "toggle". Absent = today's plain toggle. */
   level?: ToggleLevel;

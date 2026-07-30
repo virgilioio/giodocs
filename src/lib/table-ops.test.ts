@@ -371,8 +371,10 @@ describe("markdown alignment round-trip", () => {
         } as never,
       ],
     });
-    expect(html).toContain('<th style="text-align:left">a</th>');
-    expect(html).toContain('<th style="text-align:right">b</th>');
+    // Header cells now carry scope="col" (semantics for screen readers);
+    // alignment is still the per-column inline style.
+    expect(html).toContain('<th scope="col" style="text-align:left">a</th>');
+    expect(html).toContain('<th scope="col" style="text-align:right">b</th>');
     expect(html).toContain('<td style="text-align:right">2</td>');
   });
 });
