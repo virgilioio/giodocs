@@ -1665,6 +1665,8 @@ export function EditableBody({
         const id = noEditor.getAttribute("data-block-id");
         if (id) {
           anchorId.current = id;
+          // The row's own container is the selection's scope.
+          setSelScope(rowColRefById.current.get(id) ?? null);
           setSelectedIds(new Set([id]));
           blurAndClearDomSelection();
           return;
@@ -1672,6 +1674,7 @@ export function EditableBody({
       }
       // Otherwise: clear any existing selection.
       setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
+      setSelScope(null);
       anchorId.current = null;
     };
     window.addEventListener("pointermove", onMove);
