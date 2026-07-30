@@ -36,7 +36,7 @@ export type UndoState<B> = {
   future: UndoEntry<B>[];
 };
 
-export const UNDO_CAP = 100;
+export const UNDO_CAP = 200;
 export const COALESCE_MS = 600;
 
 export function createUndoState<B>(): UndoState<B> {
