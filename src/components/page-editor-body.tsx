@@ -729,24 +729,39 @@ export function EditableBody({
     }
   }, []);
 
+  /* Shift-click on a handle extends the selection WITHIN ONE CONTAINER.
+   * The scope is the clicked row's own container (columns/callout children
+   * register theirs in rowColRefById), so a shift-click can never bridge a
+   * container boundary — if the anchor lives elsewhere, the clicked row
+   * becomes the new anchor instead of producing a scrambled cross-container
+   * selection. */
   const handleShiftClick = useCallback(
-    (id: string) => {
-      const ids = blocks.map((b) => b.id);
+    (id: string, colRef: ColumnRef | null = null) => {
+      const scope: ScopeRef = colRef ?? rowColRefById.current.get(id) ?? null;
+      const list = scopedList(scope);
+      if (!list) return;
+      const ids = list.map((b) => b.id);
       const targetIdx = ids.indexOf(id);
       if (targetIdx < 0) return;
       const anchor = anchorId.current;
-      if (!anchor || ids.indexOf(anchor) < 0) {
+      const anchorInScope =
+        !!anchor &&
+        ids.indexOf(anchor) >= 0 &&
+        sameScope(selScopeRef.current, scope);
+      if (!anchorInScope) {
         anchorId.current = id;
+        setSelScope(scope);
         setSelectedIds(new Set([id]));
         blurAndClearDomSelection();
         return;
       }
-      const aIdx = ids.indexOf(anchor);
+      const aIdx = ids.indexOf(anchor!);
       const [lo, hi] = aIdx <= targetIdx ? [aIdx, targetIdx] : [targetIdx, aIdx];
+      setSelScope(scope);
       setSelectedIds(new Set(ids.slice(lo, hi + 1)));
       blurAndClearDomSelection();
     },
-    [blocks, blurAndClearDomSelection],
+    [scopedList, blurAndClearDomSelection],
   );
 
   const [handleMenu, setHandleMenu] = useState<{
