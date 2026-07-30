@@ -152,7 +152,7 @@ export function useUpdateCustomEmoji() {
         p_old: v.oldName,
         p_new: v.name,
         p_desc: v.description,
-        p_path: path,
+        p_path: path as unknown as string,
       });
       if (error) throw error;
       return (data ?? 0) as number;
