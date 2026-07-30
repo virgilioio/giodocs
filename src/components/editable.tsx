@@ -415,7 +415,7 @@ function TriggerPopup({
     >
       {customCount > 0 ? (
         <>
-          <div className="px-1 pb-1 pt-0.5 text-[11px] font-bold uppercase tracking-wide text-muted">
+          <div className="px-1 pb-1 pt-0.5 text-label uppercase text-faint">
             Custom
           </div>
           <EmojiGrid
@@ -425,7 +425,7 @@ function TriggerPopup({
             onHover={onHover}
           />
           {items.length > customCount ? (
-            <div className="px-1 pb-1 pt-1.5 text-[11px] font-bold uppercase tracking-wide text-muted">
+            <div className="px-1 pb-1 pt-1.5 text-label uppercase text-faint">
               Emoji
             </div>
           ) : null}
