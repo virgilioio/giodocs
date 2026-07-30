@@ -1407,6 +1407,7 @@ function EmojiPane() {
           />
           <button
             type="button"
+            data-emoji-pane-add
             className="bg-btn text-btnFg"
             style={{ fontSize: 13, fontWeight: 700, padding: "6px 12px", borderRadius: 8 }}
             onClick={(e) =>
