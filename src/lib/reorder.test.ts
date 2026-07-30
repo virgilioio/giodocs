@@ -395,3 +395,33 @@ describe("moveRunAcross — multi-block runs into a callout", () => {
     expect(next).toEqual(bs);
   });
 });
+
+/* Handle ops (Delete / Move / Duplicate / Turn into) resolve a block's own
+ * container first. These assert the scoped read-modify-write the editor
+ * performs, including the top-level (null scope) case. */
+describe("container list round-trip for handle ops", () => {
+  const inner = [
+    { id: "c0", type: "text", text: "one" },
+    { id: "c1", type: "text", text: "two" },
+  ];
+  const doc = [
+    { id: "t0", type: "text", text: "top" },
+    { id: "cols", type: "columns", cols: [inner, []] },
+  ];
+
+  it("deletes inside a column without touching top level", () => {
+    const list = getContainerList(doc, { blockId: "cols", colIndex: 0 })!;
+    const next = deleteIndices(list, [0], () => ({ id: "x", type: "text", text: "" }));
+    const out = setContainerList(doc, { blockId: "cols", colIndex: 0 }, next);
+    expect(getContainerList(out, { blockId: "cols", colIndex: 0 })!.map((b) => b.id)).toEqual(["c1"]);
+    expect(out.map((b) => b.id)).toEqual(["t0", "cols"]);
+  });
+
+  it("null scope reads and writes the top-level list", () => {
+    const list = getContainerList(doc, null)!;
+    expect(list.map((b) => b.id)).toEqual(["t0", "cols"]);
+    const next = deleteIndices(list, [0], () => ({ id: "x", type: "text", text: "" }));
+    expect(next.map((b) => b.id)).toEqual(["cols"]);
+    expect(setContainerList(doc, null, next).map((b) => b.id)).toEqual(["cols"]);
+  });
+});
