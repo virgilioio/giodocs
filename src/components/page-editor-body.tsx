@@ -1378,8 +1378,10 @@ export function EditableBody({
       let next: Blk[];
       const focusId = parsed[parsed.length - 1].id;
 
-      // If a block-selection is active, replace the selected run.
-      if (selectedIds.size > 0) {
+      // If a TOP-LEVEL block-selection is active, replace the selected run.
+      // A selection scoped to a container is handled by that container's
+      // own paste path, so we never splice its ids into the page list.
+      if (selectedIds.size > 0 && selScopeRef.current === null) {
         const keep: Blk[] = [];
         let inserted = false;
         for (const b of blocks) {
