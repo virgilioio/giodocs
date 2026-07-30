@@ -2036,7 +2036,7 @@ export function EditableBody({
       // Colour is a per-callout attribute. Show ONLY when every block in
       // the run is a callout — a colour row that silently skips non-
       // callouts is worse than no row.
-      const allCallout = run.every((i) => blocks[i]?.type === "callout");
+      const allCallout = run.length > 0 && run.every((i) => list[i]?.type === "callout");
       const currentColor: CalloutColor =
         (target && (target as { color?: unknown }).color &&
           (CALLOUT_COLORS as readonly string[]).includes(
@@ -2053,7 +2053,7 @@ export function EditableBody({
         swRing: calloutRing(c),
         checked: c === currentColor,
         onPick: () => {
-          const next = [...blocks];
+          const next = [...list];
           for (const i of run) {
             if (next[i]?.type !== "callout") continue;
             const nb: Blk = { ...next[i] };
@@ -2063,7 +2063,7 @@ export function EditableBody({
             else nb.color = c;
             next[i] = nb;
           }
-          commit(next);
+          commitScoped(t?.scope ?? null, next);
           // Return to the block menu rather than closing: people try two
           // or three against the surrounding text.
           mctx.setSpec(buildBlockHandleSpec(blockId, mctx));
@@ -2173,9 +2173,10 @@ export function EditableBody({
     [
       blocks,
       copyBlockLink,
+      commitScoped,
       editedRel,
       editorFirstName,
-      getRunIndicesForBlock,
+      runTargetFor,
       runDelete,
       runDuplicate,
       runMoveDown,
