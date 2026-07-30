@@ -299,3 +299,22 @@ export function moveRunAcross<B extends BlkLite>(
   intermediate = setList(intermediate, to.col, nextTarget);
   return intermediate as B[];
 }
+
+/** Public reads/writes of a container's block list, for callers that need
+ *  to operate on a scoped selection (delete / copy / cut inside a column
+ *  or callout) without reimplementing the container shape. `col: null`
+ *  means the top-level list. */
+export function getContainerList<B extends BlkLite>(
+  blocks: readonly B[],
+  col: ColumnRef | null,
+): B[] | null {
+  return getList(blocks, col);
+}
+
+export function setContainerList<B extends BlkLite>(
+  blocks: readonly B[],
+  col: ColumnRef | null,
+  next: readonly B[],
+): B[] {
+  return setList(blocks, col, next);
+}

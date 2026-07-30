@@ -36,7 +36,7 @@ export type UndoState<B> = {
   future: UndoEntry<B>[];
 };
 
-export const UNDO_CAP = 100;
+export const UNDO_CAP = 200;
 export const COALESCE_MS = 600;
 
 export function createUndoState<B>(): UndoState<B> {
@@ -91,4 +91,11 @@ export function shouldCoalesce(
   if (lastBlockId == null) return false;
   if (lastBlockId !== currentBlockId) return false;
   return now - lastPushTime < COALESCE_MS;
+}
+
+/** A remote (realtime) patch replaced the local blocks. Policy: DO NOT
+ *  rebase — clear `future` and leave `past` alone. Correct multi-user undo
+ *  needs OT/CRDT; that's out of scope. */
+export function remotePatch<B>(state: UndoState<B>): UndoState<B> {
+  return { past: state.past, future: [] };
 }

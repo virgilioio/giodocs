@@ -17,6 +17,8 @@ import {
   deleteIndices,
   moveBlockAcross,
   moveRunAcross,
+  getContainerList,
+  setContainerList,
   type Path as ReorderPath,
   type ColumnRef,
 } from "@/lib/reorder";
@@ -24,6 +26,7 @@ import { writeBlocksClipboard } from "@/lib/blocks-clipboard";
 import { renderInlineWithOffsets } from "@/lib/inline-markdown";
 import { numberedOrdinals } from "@/lib/blocks";
 import { rowsInBand } from "@/lib/marquee";
+import { rowsInScope, sameScope, type ScopeRef } from "@/lib/marquee-scope";
 import { blockHandleFooter } from "@/lib/block-handle-footer";
 import { useToast } from "@/lib/toast";
 import { useWorkspaceId } from "@/lib/workspace-context";
@@ -32,14 +35,18 @@ import { isTypingTarget, shouldCopyBlocks } from "@/lib/is-typing";
 import { nextEditableIndex } from "@/lib/block-nav";
 import { stripNestedColumns } from "@/lib/columns";
 import {
-  createUndoState,
   push as undoPush,
   undo as undoDo,
   redo as undoRedo,
   shouldCoalesce,
-  type UndoState,
   type UndoEntry,
 } from "@/lib/undo-stack";
+import {
+  getUndoState,
+  setUndoState,
+  getTypingMarker,
+  setTypingMarker,
+} from "@/lib/undo-store";
 import {
   type Align,
   type AlignList,
@@ -151,6 +158,12 @@ type ColumnBridge = {
     dir: 1 | -1,
     caret: "start" | "end",
   ) => void;
+  /** The page-level block selection, so a container's rows can render
+   *  their selected state when a marquee scoped to that container picked
+   *  them. Ids are globally unique; the scope lives outside. */
+  selectedIds: Set<string>;
+  /** Shift-click on a handle inside a container extends WITHIN it. */
+  shiftClick: (id: string, colRef: ColumnRef) => void;
 };
 const ColumnBridgeCtx = createContext<ColumnBridge | null>(null);
 
@@ -394,16 +407,40 @@ export function EditableBody({
   const [focusRequest, setFocusRequest] = useState<{
     id: string;
     caret?: number | "end" | "start";
+    /** Scroll offset captured BEFORE a state commit (undo/redo restore).
+     *  The focus effect writes it back so the restore is scroll-neutral. */
+    preserveScrollTop?: number | null;
   } | null>(null);
   // Which block currently owns focus. Drives the "formatted vs raw" swap:
   // the focused block shows a textarea with raw markdown; every other
   // block renders renderInline(text) inside a matching-geometry div.
   const [focusedId, setFocusedId] = useState<string | null>(null);
 
-  useEffect(() => {
+  /* Focus + caret placement.
+   *
+   * BUG: ⌘Z used to snap the page to the top. Restoring a snapshot
+   * rewrites every Editable's innerHTML, so the focused node is destroyed
+   * and recreated; focusing the new one (and writing a caret into it)
+   * scrolls it into view from a fresh layout. Fix: run in a LAYOUT effect,
+   * every focus uses `preventScroll`, and the restore path hands us the
+   * scrollTop it captured BEFORE the state commit so we can write it back
+   * in the same frame. Only then, if the target is genuinely outside the
+   * scroll viewport, do we nudge with `block:'nearest'` — never 'center',
+   * never smooth. */
+  useLayoutEffect(() => {
     if (!focusRequest) return;
+    const sc = (containerRef.current?.closest("main") ?? null) as HTMLElement | null;
+    const keep = focusRequest.preserveScrollTop;
+    const restoreScroll = () => {
+      if (sc && keep != null && sc.scrollTop !== keep) sc.scrollTop = keep;
+    };
+    restoreScroll();
     const el = refs.current[focusRequest.id];
-    if (!el) return;
+    if (!el) {
+      restoreScroll();
+      setFocusRequest(null);
+      return;
+    }
     el.focus({ preventScroll: true });
     const src = blocks.find((b) => b.id === focusRequest.id)?.text ?? "";
     const c =
@@ -417,20 +454,25 @@ export function EditableBody({
     } catch {
       /* elements that don't support caret placement */
     }
+    restoreScroll();
     const rect = el.getBoundingClientRect();
-    if (rect.top < 0 || rect.bottom > window.innerHeight) {
-      el.scrollIntoView({ block: "nearest" });
+    const vTop = sc ? sc.getBoundingClientRect().top : 0;
+    const vBottom = sc ? sc.getBoundingClientRect().bottom : window.innerHeight;
+    if (rect.bottom < vTop || rect.top > vBottom) {
+      el.scrollIntoView({ block: "nearest", behavior: "auto" });
     }
     setFocusRequest(null);
   }, [focusRequest, blocks]);
 
   /* ────────── Undo/redo ──────────
    *
-   * A per-page snapshot stack held in refs (never state — we don't want
-   * component re-renders on every push). See src/lib/undo-stack.ts for the
-   * pure model + tests. The rule: PUSH BEFORE a change, not after. Typing
-   * is coalesced (one push per burst) via shouldCoalesce(). Structural ops
-   * always push. Restoring bypasses commit() so it can't push itself. */
+   * The snapshot stack lives in a MODULE-LEVEL store keyed by page id
+   * (src/lib/undo-store.ts), not in a ref — refs die with the component
+   * and this editor is remounted more often than it looks (see the store's
+   * header). See src/lib/undo-stack.ts for the pure model + tests. The
+   * rule: PUSH BEFORE a change, not after. Typing is coalesced (one push
+   * per burst) via shouldCoalesce(). Structural ops always push. Restoring
+   * bypasses commit() so it can't push itself. */
   const blocksRef = useRef<Blk[]>(blocks);
   useEffect(() => {
     blocksRef.current = blocks;
@@ -439,18 +481,7 @@ export function EditableBody({
   useEffect(() => {
     focusedIdRef.current = focusedId;
   }, [focusedId]);
-  // (undo state below)
-  const undoStateRef = useRef<UndoState<Blk>>(createUndoState<Blk>());
-  const lastTypingAtRef = useRef<number | null>(null);
-  const lastTypingKeyRef = useRef<string | null>(null);
   const isRestoringRef = useRef(false);
-  // Reset the stack when the page id changes (also handled in the resync
-  // effect above — kept here as a belt so a fresh EditableBody starts fresh).
-  useEffect(() => {
-    undoStateRef.current = createUndoState<Blk>();
-    lastTypingAtRef.current = null;
-    lastTypingKeyRef.current = null;
-  }, [pageId]);
 
   function getCurrentCaret(): UndoEntry<Blk>["caret"] {
     const id = focusedIdRef.current;
@@ -476,43 +507,41 @@ export function EditableBody({
           blocks: blocksRef.current,
           caret: getCurrentCaret(),
         };
+        const marker = getTypingMarker(pageId);
         if (key) {
           const now = Date.now();
-          const coalesce = shouldCoalesce(
-            lastTypingAtRef.current,
-            now,
-            lastTypingKeyRef.current,
-            key,
-          );
+          const coalesce = shouldCoalesce(marker.at, now, marker.key, key);
           if (!coalesce) {
-            undoStateRef.current = undoPush(undoStateRef.current, prevEntry);
+            setUndoState(pageId, undoPush(getUndoState<Blk>(pageId), prevEntry));
           } else {
             // Any new action clears future, even on coalesce.
-            undoStateRef.current = {
-              past: undoStateRef.current.past,
+            setUndoState(pageId, {
+              past: getUndoState<Blk>(pageId).past,
               future: [],
-            };
+            });
           }
-          lastTypingAtRef.current = now;
-          lastTypingKeyRef.current = key;
+          setTypingMarker(pageId, now, key);
         } else {
           // Structural: push and end any in-flight typing burst.
-          undoStateRef.current = undoPush(undoStateRef.current, prevEntry);
-          lastTypingAtRef.current = null;
-          lastTypingKeyRef.current = null;
+          setUndoState(pageId, undoPush(getUndoState<Blk>(pageId), prevEntry));
+          setTypingMarker(pageId, null, null);
         }
       }
       setBlocks(next);
       onChange(next);
     },
-    [onChange],
+    [onChange, pageId],
   );
 
   const restoreEntry = useCallback(
     (entry: UndoEntry<Blk>) => {
       isRestoringRef.current = true;
-      lastTypingAtRef.current = null;
-      lastTypingKeyRef.current = null;
+      setTypingMarker(pageId, null, null);
+      // Capture the scroll position BEFORE the state commit, and hand it to
+      // the focus effect so the whole restore is scroll-neutral.
+      const sc = (containerRef.current?.closest("main") ??
+        null) as HTMLElement | null;
+      const keep = sc ? sc.scrollTop : null;
       setBlocks(entry.blocks);
       onChange(entry.blocks);
       // Restore focus. If the caret block still exists, focus it with the
@@ -529,13 +558,18 @@ export function EditableBody({
         targetId = survivors[0].id;
         targetOff = "start";
       }
-      if (targetId) setFocusRequest({ id: targetId, caret: targetOff });
+      if (targetId)
+        setFocusRequest({
+          id: targetId,
+          caret: targetOff,
+          preserveScrollTop: keep,
+        });
       // Release the guard on the next tick so re-render's effects don't push.
       queueMicrotask(() => {
         isRestoringRef.current = false;
       });
     },
-    [onChange],
+    [onChange, pageId],
   );
 
   const performUndo = useCallback(() => {
@@ -543,22 +577,22 @@ export function EditableBody({
       blocks: blocksRef.current,
       caret: getCurrentCaret(),
     };
-    const r = undoDo(undoStateRef.current, cur);
+    const r = undoDo(getUndoState<Blk>(pageId), cur);
     if (!r) return;
-    undoStateRef.current = r.state;
+    setUndoState(pageId, r.state);
     restoreEntry(r.entry);
-  }, [restoreEntry]);
+  }, [restoreEntry, pageId]);
 
   const performRedo = useCallback(() => {
     const cur: UndoEntry<Blk> = {
       blocks: blocksRef.current,
       caret: getCurrentCaret(),
     };
-    const r = undoRedo(undoStateRef.current, cur);
+    const r = undoRedo(getUndoState<Blk>(pageId), cur);
     if (!r) return;
-    undoStateRef.current = r.state;
+    setUndoState(pageId, r.state);
     restoreEntry(r.entry);
-  }, [restoreEntry]);
+  }, [restoreEntry, pageId]);
 
   // Window-level ⌘Z / ⌘⇧Z / ⌘Y — deliberate EXCEPTION to isTypingTarget,
   // alongside ⌘K and ⌘,. preventDefault always, so the browser's own
@@ -594,6 +628,18 @@ export function EditableBody({
   /* ────────── Selection & drag state ────────── */
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  /* THE CONTAINER SCOPE OF THE CURRENT SELECTION.
+   *
+   * `null` = the top-level (page) list; otherwise the column or callout
+   * whose children the selection lives in. Block ids are globally unique
+   * so `selectedIds` can stay flat, but every consumer (Delete, ⌘C/⌘X,
+   * ⌘A, shift-click, dragging a selected run) needs to know WHICH list to
+   * act on — and a selection may never span two containers. */
+  const [selScope, setSelScope] = useState<ScopeRef>(null);
+  const selScopeRef = useRef<ScopeRef>(null);
+  useEffect(() => {
+    selScopeRef.current = selScope;
+  }, [selScope]);
   const anchorId = useRef<string | null>(null);
   const rowEls = useRef<Map<string, HTMLElement>>(new Map());
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -651,11 +697,21 @@ export function EditableBody({
     else colTracks.current.delete(k);
   }, []);
 
-  // Clear selection when clicking into any textarea/input.
+  // Clear selection when clicking into any textarea/input. Escape and
+  // every other clear path drop the SCOPE with it.
   const clearSelection = useCallback(() => {
     setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
+    setSelScope(null);
     anchorId.current = null;
   }, []);
+
+  /** The list a scope names: `null` → the top-level blocks, otherwise the
+   *  container's children. Returns null when the container has vanished. */
+  const scopedList = useCallback(
+    (scope: ScopeRef, source?: Blk[]): Blk[] | null =>
+      getContainerList(source ?? blocksRef.current, scope),
+    [],
+  );
 
   /* When a block selection is created (marquee / shift-click on a handle /
    * click on a no-editor row) we blur any focused contenteditable and drop
@@ -679,24 +735,39 @@ export function EditableBody({
     }
   }, []);
 
+  /* Shift-click on a handle extends the selection WITHIN ONE CONTAINER.
+   * The scope is the clicked row's own container (columns/callout children
+   * register theirs in rowColRefById), so a shift-click can never bridge a
+   * container boundary — if the anchor lives elsewhere, the clicked row
+   * becomes the new anchor instead of producing a scrambled cross-container
+   * selection. */
   const handleShiftClick = useCallback(
-    (id: string) => {
-      const ids = blocks.map((b) => b.id);
+    (id: string, colRef: ColumnRef | null = null) => {
+      const scope: ScopeRef = colRef ?? rowColRefById.current.get(id) ?? null;
+      const list = scopedList(scope);
+      if (!list) return;
+      const ids = list.map((b) => b.id);
       const targetIdx = ids.indexOf(id);
       if (targetIdx < 0) return;
       const anchor = anchorId.current;
-      if (!anchor || ids.indexOf(anchor) < 0) {
+      const anchorInScope =
+        !!anchor &&
+        ids.indexOf(anchor) >= 0 &&
+        sameScope(selScopeRef.current, scope);
+      if (!anchorInScope) {
         anchorId.current = id;
+        setSelScope(scope);
         setSelectedIds(new Set([id]));
         blurAndClearDomSelection();
         return;
       }
-      const aIdx = ids.indexOf(anchor);
+      const aIdx = ids.indexOf(anchor!);
       const [lo, hi] = aIdx <= targetIdx ? [aIdx, targetIdx] : [targetIdx, aIdx];
+      setSelScope(scope);
       setSelectedIds(new Set(ids.slice(lo, hi + 1)));
       blurAndClearDomSelection();
     },
-    [blocks, blurAndClearDomSelection],
+    [scopedList, blurAndClearDomSelection],
   );
 
   const [handleMenu, setHandleMenu] = useState<{
@@ -734,18 +805,22 @@ export function EditableBody({
       ev: React.PointerEvent<HTMLElement>,
       sourceCol: ColumnRef | null = null,
     ) => {
-      const sourceIsTopLevel = sourceCol === null;
+      // Multi-drag applies when the handle belongs to a currently-selected
+      // block AND the selection's scope is the drag's source list — a
+      // selection inside a column drags as a run within that column.
       let dragIds: string[] = [id];
-      if (sourceIsTopLevel) {
-        // Top-level multi-select: only drag the run when the handle
-        // belongs to a currently-selected top-level block.
-        const ids = blocks.map((b) => b.id);
-        if (ids.indexOf(id) < 0) return;
-        const isMulti = selectedIds.size > 1 && selectedIds.has(id);
-        if (isMulti) dragIds = ids.filter((x) => selectedIds.has(x));
-      }
+      const list = scopedList(sourceCol);
+      if (!list) return;
+      const ids = list.map((b) => b.id);
+      if (ids.indexOf(id) < 0) return;
+      const isMulti =
+        selectedIds.size > 1 &&
+        selectedIds.has(id) &&
+        sameScope(selScopeRef.current, sourceCol);
+      if (isMulti) dragIds = ids.filter((x) => selectedIds.has(x));
       if (dragIds.length === 1) {
         setSelectedIds(new Set());
+        setSelScope(null);
         anchorId.current = null;
       }
       try {
@@ -762,7 +837,7 @@ export function EditableBody({
         indicator: null,
       });
     },
-    [blocks, selectedIds],
+    [scopedList, selectedIds],
   );
 
   const computeGap = useCallback(
@@ -968,6 +1043,51 @@ export function EditableBody({
     [blocks],
   );
 
+  /* ────────── Which container is this point in? ──────────
+   *
+   * The same CONTAINMENT hit-test computeGap uses (columns tracks first,
+   * then callout boxes), minus the indicator arithmetic. It answers the
+   * marquee's only question at pointerdown: "which list did this gesture
+   * start in?" — null meaning the page background. Recorded once per
+   * gesture; never recomputed mid-drag, or dragging past a container's
+   * edge would silently change the selection's scope. */
+  const containerAtPoint = useCallback(
+    (clientX: number, clientY: number): ScopeRef => {
+      const inside = (r: DOMRect) =>
+        clientY >= r.top &&
+        clientY <= r.bottom &&
+        clientX >= r.left &&
+        clientX <= r.right;
+      for (const b of blocksRef.current) {
+        if (b.type === "columns" && Array.isArray(b.cols)) {
+          const colsEl = rowEls.current.get(b.id);
+          if (!colsEl || !inside(colsEl.getBoundingClientRect())) continue;
+          for (let i = 0; i < b.cols.length; i++) {
+            const el = colTracks.current.get(
+              trackKey({ blockId: b.id, colIndex: i }),
+            );
+            if (!el) continue;
+            const r = el.getBoundingClientRect();
+            if (clientX >= r.left && clientX <= r.right)
+              return { blockId: b.id, colIndex: i };
+          }
+          continue;
+        }
+        if (b.type === "callout") {
+          const outer = rowEls.current.get(b.id);
+          if (!outer || !inside(outer.getBoundingClientRect())) continue;
+          // Only a MIGRATED callout (one with children) has child rows the
+          // marquee could scope to; a legacy text-only callout stays a unit.
+          if (!Array.isArray(b.children)) continue;
+          return { blockId: b.id, callout: true };
+        }
+      }
+      return null;
+    },
+    [],
+  );
+
+
   // Auto-scroll while dragging near edges.
   const scrollContainerRef = useRef<HTMLElement | null>(null);
   const scrollRafRef = useRef<number | null>(null);
@@ -1083,12 +1203,45 @@ export function EditableBody({
     };
   }, [dragging, onPointerMove, endDrag]);
 
+  /* ────────── Scoped selection operations ──────────
+   * Every consumer of a block selection goes through these two helpers, so
+   * a selection inside a column or callout is deleted / copied / cut from
+   * ITS OWN list and never from the top-level one. */
+
+  const selectedInScope = useCallback(
+    (source?: Blk[]): { list: Blk[]; picked: Blk[]; scope: ScopeRef } | null => {
+      const scope = selScopeRef.current;
+      const list = scopedList(scope, source);
+      if (!list) return null;
+      const picked = list.filter((b) => selectedIds.has(b.id));
+      if (picked.length === 0) return null;
+      return { list, picked, scope };
+    },
+    [scopedList, selectedIds],
+  );
+
+  const deleteSelection = useCallback(() => {
+    const s = selectedInScope(blocks);
+    if (!s) return;
+    const toDrop = s.list
+      .map((b, i) => (selectedIds.has(b.id) ? i : -1))
+      .filter((i) => i >= 0);
+    const nextList = deleteIndices(s.list, toDrop, () => newBlock("text"));
+    const next =
+      s.scope === null
+        ? nextList
+        : setContainerList(blocks, s.scope, nextList);
+    clearSelection();
+    commit(next as Blk[]);
+  }, [selectedInScope, selectedIds, blocks, clearSelection, commit]);
+
   /* ────────── Document keydown: Escape / Delete for selection ────────── */
 
   useEffect(() => {
     if (selectedIds.size === 0) return;
     const onKey = (e: KeyboardEvent) => {
-      // Escape is a deliberate exception to the typing guard.
+      // Escape is a deliberate exception to the typing guard. It clears
+      // BOTH the selection and its scope.
       if (e.key === "Escape") {
         e.preventDefault();
         clearSelection();
@@ -1097,18 +1250,12 @@ export function EditableBody({
       if (isTypingTarget(e.target)) return;
       if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
-        const ids = blocks.map((b) => b.id);
-        const toDrop = ids
-          .map((id, i) => (selectedIds.has(id) ? i : -1))
-          .filter((i) => i >= 0);
-        const next = deleteIndices(blocks, toDrop, () => newBlock("text"));
-        clearSelection();
-        commit(next);
+        deleteSelection();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedIds, blocks, commit, clearSelection]);
+  }, [selectedIds, clearSelection, deleteSelection]);
 
   /* ────────── Copy / Cut a block selection ──────────
    *
@@ -1123,8 +1270,9 @@ export function EditableBody({
 
   const runCopySelection = useCallback(
     (opts: { cut: boolean }) => {
-      if (selectedIds.size === 0) return;
-      const selected = blocks.filter((b) => selectedIds.has(b.id));
+      const s = selectedInScope(blocks);
+      if (!s) return;
+      const selected = s.picked;
       const p = writeBlocksClipboard(selected as unknown as Parameters<
         typeof writeBlocksClipboard
       >[0]);
@@ -1132,20 +1280,12 @@ export function EditableBody({
         toast.push(
           `Copied ${selected.length} ${selected.length === 1 ? "block" : "blocks"}`,
         );
-        if (opts.cut && !locked) {
-          const ids = blocks.map((b) => b.id);
-          const toDrop = ids
-            .map((id, i) => (selectedIds.has(id) ? i : -1))
-            .filter((i) => i >= 0);
-          const next = deleteIndices(blocks, toDrop, () => newBlock("text"));
-          clearSelection();
-          commit(next);
-        }
+        if (opts.cut && !locked) deleteSelection();
       };
       if (p && typeof p.then === "function") p.then(after).catch(() => after());
       else after();
     },
-    [selectedIds, blocks, commit, clearSelection, locked, toast],
+    [selectedInScope, blocks, deleteSelection, locked, toast],
   );
 
   useEffect(() => {
@@ -1168,7 +1308,8 @@ export function EditableBody({
    * The in-textarea two-stage behaviour lives in the textarea onKeyDown.
    * This handler only fires when a block-selection is already active AND
    * focus is outside a text field, so ⌘A extends that selection to the
-   * whole document. */
+   * whole of ITS SCOPE — the container's children when the selection lives
+   * in one, the page otherwise. */
   useEffect(() => {
     if (selectedIds.size === 0) return;
     const onKey = (e: KeyboardEvent) => {
@@ -1176,11 +1317,13 @@ export function EditableBody({
       if (e.key.toLowerCase() !== "a") return;
       if (isTypingTarget(e.target)) return;
       e.preventDefault();
-      setSelectedIds(new Set(blocks.map((b) => b.id)));
+      const list = scopedList(selScopeRef.current, blocks);
+      if (!list) return;
+      setSelectedIds(new Set(list.map((b) => b.id)));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedIds, blocks]);
+  }, [selectedIds, blocks, scopedList]);
 
   /* ────────── Paste Markdown → real blocks ──────────
    * Inverse of the copy path above. If the pasted text has no newline and
@@ -1241,8 +1384,10 @@ export function EditableBody({
       let next: Blk[];
       const focusId = parsed[parsed.length - 1].id;
 
-      // If a block-selection is active, replace the selected run.
-      if (selectedIds.size > 0) {
+      // If a TOP-LEVEL block-selection is active, replace the selected run.
+      // A selection scoped to a container is handled by that container's
+      // own paste path, so we never splice its ids into the page list.
+      if (selectedIds.size > 0 && selScopeRef.current === null) {
         const keep: Blk[] = [];
         let inserted = false;
         for (const b of blocks) {
@@ -1302,6 +1447,8 @@ export function EditableBody({
     originX: number; // container-space
     originY: number; // container-space
     originTarget: HTMLElement | null;
+    /** The container the gesture STARTED in. Fixed for the whole drag. */
+    scope: ScopeRef;
     moved: boolean;
   } | null>(null);
   const marqueeScrollDirRef = useRef<0 | 1 | -1>(0);
@@ -1320,17 +1467,43 @@ export function EditableBody({
     [],
   );
 
-  const selectByMarqueeY = useCallback((y1: number, y2: number) => {
-    // Build the row list in DOCUMENT ORDER (as rendered), using `offsetTop`
-    // which is container-space and scroll-invariant.
-    const rows: { id: string; top: number; height: number }[] = [];
-    rowEls.current.forEach((el, id) => {
-      rows.push({ id, top: el.offsetTop, height: el.offsetHeight });
-    });
-    rows.sort((a, b) => a.top - b.top);
-    const ids = new Set<string>(rowsInBand(rows, y1, y2));
-    setSelectedIds(ids);
-  }, []);
+  const selectByMarqueeY = useCallback(
+    (scope: ScopeRef, y1: number, y2: number) => {
+      /* Row rects are measured in the SAME container space as the band's
+       * anchor (client rect minus the container's client rect), which is
+       * scroll-invariant: both move together, so their difference doesn't
+       * change as the container auto-scrolls. Rects rather than offsetTop
+       * because a row inside a column has a positioned ancestor of its own.
+       *
+       * Then rowsInScope enforces the scope rule: a page-scoped band never
+       * sees container children, and a container-scoped band never sees the
+       * parent, a sibling column, or a top-level block. */
+      const c = containerRef.current;
+      if (!c) return;
+      const cTop = c.getBoundingClientRect().top;
+      const rows: {
+        id: string;
+        top: number;
+        height: number;
+        scope: ScopeRef;
+      }[] = [];
+      rowEls.current.forEach((el, id) => {
+        const r = el.getBoundingClientRect();
+        rows.push({
+          id,
+          top: r.top - cTop,
+          height: r.height,
+          scope: rowColRefById.current.get(id) ?? null,
+        });
+      });
+      rows.sort((a, b) => a.top - b.top);
+      const candidates = rowsInScope(scope, rows);
+      const ids = new Set<string>(rowsInBand(candidates, y1, y2));
+      setSelectedIds(ids);
+      setSelScope(ids.size === 0 ? null : scope);
+    },
+    [],
+  );
 
   const applyMarqueeFromLastPointer = useCallback(() => {
     const m = marqueeRef.current;
@@ -1338,7 +1511,7 @@ export function EditableBody({
     if (!m || !m.active || !lp) return;
     const p = containerPoint(lp.x, lp.y);
     setMarquee({ x1: m.originX, y1: m.originY, x2: p.x, y2: p.y });
-    selectByMarqueeY(m.originY, p.y);
+    selectByMarqueeY(m.scope, m.originY, p.y);
   }, [containerPoint, selectByMarqueeY]);
 
   const tickMarqueeScroll = useCallback(() => {
@@ -1377,11 +1550,13 @@ export function EditableBody({
         originX: p.x,
         originY: p.y,
         originTarget: t,
+        // The marquee operates within the container where it STARTED.
+        scope: containerAtPoint(e.clientX, e.clientY),
         moved: false,
       };
       marqueeLastClient.current = { x: e.clientX, y: e.clientY };
     },
-    [containerPoint],
+    [containerPoint, containerAtPoint],
   );
 
   // The narrow `.gio-page-body` column is centred inside `<main>`, so a
@@ -1418,13 +1593,16 @@ export function EditableBody({
         originX: p.x,
         originY: p.y,
         originTarget: t,
+        // A press in the lateral margin is by definition outside every
+        // container, so this is page scope — but ask, don't assume.
+        scope: containerAtPoint(e.clientX, e.clientY),
         moved: false,
       };
       marqueeLastClient.current = { x: e.clientX, y: e.clientY };
     };
     main.addEventListener("pointerdown", onDown);
     return () => main.removeEventListener("pointerdown", onDown);
-  }, [containerPoint]);
+  }, [containerPoint, containerAtPoint]);
 
 
   useEffect(() => {
@@ -1439,6 +1617,7 @@ export function EditableBody({
       if (!m.moved) {
         m.moved = true;
         setSelectedIds(new Set());
+        setSelScope(null);
         anchorId.current = null;
         document.body.style.userSelect = "none";
       }
@@ -1460,7 +1639,7 @@ export function EditableBody({
         }
       }
       setMarquee({ x1: m.originX, y1: m.originY, x2: p.x, y2: p.y });
-      selectByMarqueeY(m.originY, p.y);
+      selectByMarqueeY(m.scope, m.originY, p.y);
     };
     const onUp = () => {
       const m = marqueeRef.current;
@@ -1494,6 +1673,8 @@ export function EditableBody({
         const id = noEditor.getAttribute("data-block-id");
         if (id) {
           anchorId.current = id;
+          // The row's own container is the selection's scope.
+          setSelScope(rowColRefById.current.get(id) ?? null);
           setSelectedIds(new Set([id]));
           blurAndClearDomSelection();
           return;
@@ -1501,6 +1682,7 @@ export function EditableBody({
       }
       // Otherwise: clear any existing selection.
       setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
+      setSelScope(null);
       anchorId.current = null;
     };
     window.addEventListener("pointermove", onMove);
@@ -1593,7 +1775,13 @@ export function EditableBody({
       const ids = blocks.map((b) => b.id);
       const idx = ids.indexOf(blockId);
       if (idx < 0) return [];
-      if (selectedIds.has(blockId) && selectedIds.size > 1) {
+      // Only a TOP-LEVEL selection turns a handle op into a run op — a
+      // selection scoped to a container has no top-level indices.
+      if (
+        selScopeRef.current === null &&
+        selectedIds.has(blockId) &&
+        selectedIds.size > 1
+      ) {
         return ids
           .map((id, i) => (selectedIds.has(id) ? i : -1))
           .filter((i) => i >= 0)
@@ -1704,30 +1892,24 @@ export function EditableBody({
    * splices N copies contiguously right after the last selected index;
    * delete drops every selected index in one commit. */
   const runDuplicateSelected = useCallback(() => {
-    if (selectedIds.size === 0) return;
+    const s = selectedInScope(blocks);
+    if (!s) return;
     const idxs: number[] = [];
-    blocks.forEach((b, i) => {
+    s.list.forEach((b, i) => {
       if (selectedIds.has(b.id)) idxs.push(i);
     });
     if (!idxs.length) return;
-    const copies: Blk[] = idxs.map((i) => ({ ...blocks[i], id: nanoid(10) }));
-    const insertAt = idxs[idxs.length - 1] + 1;
-    const next = [...blocks];
-    next.splice(insertAt, 0, ...copies);
-    commit(next);
-  }, [blocks, commit, selectedIds]);
+    const copies: Blk[] = idxs.map((i) => ({ ...s.list[i], id: nanoid(10) }));
+    const nextList = [...s.list];
+    nextList.splice(idxs[idxs.length - 1] + 1, 0, ...copies);
+    const next =
+      s.scope === null ? nextList : setContainerList(blocks, s.scope, nextList);
+    commit(next as Blk[]);
+  }, [selectedInScope, blocks, commit, selectedIds]);
 
   const runDeleteSelected = useCallback(() => {
-    if (selectedIds.size === 0) return;
-    const idxs: number[] = [];
-    blocks.forEach((b, i) => {
-      if (selectedIds.has(b.id)) idxs.push(i);
-    });
-    if (!idxs.length) return;
-    const next = deleteIndices(blocks, idxs, () => newBlock("text"));
-    clearSelection();
-    commit(next);
-  }, [blocks, commit, clearSelection, selectedIds]);
+    deleteSelection();
+  }, [deleteSelection]);
 
   // ⌘D duplicates the current block-selection run. Yields to text fields
   // — inside a textarea the browser's native ⌘D (or nothing) wins.
@@ -2181,8 +2363,10 @@ export function EditableBody({
       escapeColumn,
       selectAllTopLevel,
       exitVertical: exitVerticalFromColumn,
+      selectedIds,
+      shiftClick: (id, colRef) => handleShiftClick(id, colRef),
     }),
-    [registerRowEl, registerColTrack, beginDrag, escapeColumn, selectAllTopLevel, exitVerticalFromColumn],
+    [registerRowEl, registerColTrack, beginDrag, escapeColumn, selectAllTopLevel, exitVerticalFromColumn, selectedIds, handleShiftClick],
   );
 
 
@@ -2613,15 +2797,7 @@ export function EditableBody({
               </span>
               <button
                 type="button"
-                onClick={() => {
-                  const ids = blocks.map((b) => b.id);
-                  const toDrop = ids
-                    .map((id, i) => (selectedIds.has(id) ? i : -1))
-                    .filter((i) => i >= 0);
-                  const next = deleteIndices(blocks, toDrop, () => newBlock("text"));
-                  clearSelection();
-                  commit(next);
-                }}
+                onClick={deleteSelection}
                 className="bar-btn rounded-md px-2 py-1"
                 style={{ color: "var(--color-track)", fontWeight: 600 }}
               >
@@ -3590,7 +3766,7 @@ function ColumnStack({
           block={b}
           ordinal={b.type === "numbered" ? (ordinalMap.get(b.id) ?? 1) : undefined}
           locked={locked}
-          selected={false}
+          selected={bridge?.selectedIds.has(b.id) ?? false}
           dimmed={false}
           onEditorFocus={() => setFocusedId(b.id)}
           onEditorBlur={() =>
@@ -3607,7 +3783,7 @@ function ColumnStack({
             });
             setHandleMenu({ blockId: b.id, anchor, spec: initial });
           }}
-          onHandleShiftClick={() => {}}
+          onHandleShiftClick={() => bridge?.shiftClick(b.id, colRef)}
           registerRef={(el) => {
             if (el) refs.current[b.id] = el;
             else delete refs.current[b.id];
