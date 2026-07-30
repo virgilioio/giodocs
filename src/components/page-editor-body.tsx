@@ -2461,8 +2461,17 @@ export function EditableBody({
       }}
       onPointerDown={handleContainerPointerDown}
       onFocusCapture={(e) => {
+        // Caret entering ANY text surface drops the block selection. After
+        // the WYSIWYG swap a block is a contenteditable, not a textarea —
+        // without this the selection survived a click into a block and
+        // Backspace/Delete then hit the typing guard and appeared dead.
         const t = e.target as HTMLElement;
-        if (t.tagName === "TEXTAREA" || t.tagName === "INPUT") clearSelection();
+        if (
+          t.tagName === "TEXTAREA" ||
+          t.tagName === "INPUT" ||
+          t.isContentEditable
+        )
+          clearSelection();
       }}
       onContextMenu={(e) => {
         // Right-click INSIDE a selected block opens the multi-block menu.
