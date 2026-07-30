@@ -401,6 +401,9 @@ export function EditableBody({
   const [focusRequest, setFocusRequest] = useState<{
     id: string;
     caret?: number | "end" | "start";
+    /** Scroll offset captured BEFORE a state commit (undo/redo restore).
+     *  The focus effect writes it back so the restore is scroll-neutral. */
+    preserveScrollTop?: number | null;
   } | null>(null);
   // Which block currently owns focus. Drives the "formatted vs raw" swap:
   // the focused block shows a textarea with raw markdown; every other
