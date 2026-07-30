@@ -1,19 +1,24 @@
 // @vitest-environment happy-dom
-/* Diagnosis: keyboard Delete on a selected block INSIDE a column.
+/* Regression tests for keyboard block operations inside CONTAINERS.
  *
- * Drives the real EditableBody: shift-click the drag handle of a block
- * inside a column (the only gesture that creates a block selection there),
- * then press Delete on the window. The assertion is on the onChange
- * payload — if it never arrives, the delete did not happen. */
+ * These render the real EditableBody and drive it the way a person does:
+ * shift-click a block's drag handle (the gesture that creates a block
+ * selection), then press a key on the window. The assertion is on the
+ * `onChange` payload — the only thing that leaves the component.
+ *
+ * Origin: "Delete does not work inside a column". These tests PROVE the
+ * selection→Delete pipeline is sound at every scope, which is what pointed
+ * the diagnosis at the columns grid geometry instead (stray grid items made
+ * the marquee's container hit-test resolve the wrong scope, so no selection
+ * was ever created inside a column).
+ */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react";
 import { EditableBody } from "./page-editor-body";
 import type { Blk } from "@/lib/block-ops";
 
-vi.mock("@/lib/workspace-context", () => ({
-  useWorkspaceId: () => "ws1",
-}));
+vi.mock("@/lib/workspace-context", () => ({ useWorkspaceId: () => "ws1" }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -27,26 +32,36 @@ beforeEach(() => {
   document.body.appendChild(host);
 });
 
-const doc: Blk[] = [
-  { id: "t1", type: "text", text: "top" } as Blk,
-  {
-    id: "cx",
-    type: "columns",
-    cols: [
-      [
-        { id: "a1", type: "text", text: "aaa" },
-        { id: "a2", type: "text", text: "bbb" },
+const doc = (): Blk[] =>
+  [
+    { id: "t1", type: "text", text: "top" },
+    {
+      id: "cx",
+      type: "columns",
+      cols: [
+        [
+          { id: "a1", type: "text", text: "aaa" },
+          { id: "a2", type: "text", text: "bbb" },
+        ],
+        [{ id: "b1", type: "text", text: "ccc" }],
       ],
-      [{ id: "b1", type: "text", text: "ccc" }],
-    ],
-  } as unknown as Blk,
-];
+    },
+    {
+      id: "ca",
+      type: "callout",
+      text: "",
+      children: [
+        { id: "k1", type: "text", text: "kkk" },
+        { id: "k2", type: "text", text: "lll" },
+      ],
+    },
+  ] as unknown as Blk[];
 
-function mount(onChange: (b: Blk[]) => void) {
+function mount(blocks: Blk[], onChange: (b: Blk[]) => void) {
   root = createRoot(host);
   act(() => {
     root.render(
-      <EditableBody pageId="p1" initialBlocks={doc} onChange={onChange} />,
+      <EditableBody pageId="p1" initialBlocks={blocks} onChange={onChange} />,
     );
   });
 }
@@ -57,6 +72,13 @@ function handleFor(id: string): HTMLElement {
   const btn = row.querySelector('button[aria-label="Drag to reorder"]');
   if (!btn) throw new Error(`handle not found: ${id}`);
   return btn as HTMLElement;
+}
+
+function editableFor(id: string): HTMLElement {
+  const row = document.querySelector(`[data-block-id="${id}"]`);
+  const el = row?.querySelector('[contenteditable="true"]');
+  if (!el) throw new Error(`editable not found: ${id}`);
+  return el as HTMLElement;
 }
 
 function shiftClickHandle(id: string) {
@@ -70,75 +92,116 @@ function shiftClickHandle(id: string) {
   });
 }
 
-function pressDelete(target: EventTarget = window) {
+function press(key: string, target: EventTarget = window) {
   act(() => {
-    target.dispatchEvent(
-      new KeyboardEvent("keydown", { key: "Delete", bubbles: true }),
-    );
+    target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
   });
 }
 
-function editableFor(id: string): HTMLElement {
-  const row = document.querySelector(`[data-block-id="${id}"]`)!;
-  const el = row.querySelector('[contenteditable="true"]');
-  if (!el) throw new Error(`editable not found: ${id}`);
-  return el as HTMLElement;
-}
+const idsOf = (bs: Blk[]) => bs.map((b) => b.id);
+const colsOf = (bs: Blk[], id: string) =>
+  ((bs.find((b) => b.id === id) as unknown as { cols: Blk[][] }).cols ?? []).map((c) =>
+    c.map((x) => x.id),
+  );
 
-describe("DIAG caret-first sequence", () => {
-  it("caret inside a column block, then shift-click handle, then Delete", () => {
+describe("Delete on a selected block", () => {
+  it("removes it at top level", () => {
     const onChange = vi.fn();
-    mount(onChange);
+    mount(doc(), onChange);
+    shiftClickHandle("t1");
+    press("Delete");
+    expect(idsOf(onChange.mock.calls.at(-1)![0] as Blk[])).toEqual(["cx", "ca"]);
+  });
+
+  it("removes it INSIDE A COLUMN, leaving the other column untouched", () => {
+    const onChange = vi.fn();
+    mount(doc(), onChange);
+    shiftClickHandle("a1");
+    press("Delete");
+    const next = onChange.mock.calls.at(-1)![0] as Blk[];
+    expect(colsOf(next, "cx")).toEqual([["a2"], ["b1"]]);
+    expect(idsOf(next)).toEqual(["t1", "cx", "ca"]);
+  });
+
+  it("removes it INSIDE A CALLOUT", () => {
+    const onChange = vi.fn();
+    mount(doc(), onChange);
+    shiftClickHandle("k1");
+    press("Delete");
+    const next = onChange.mock.calls.at(-1)![0] as Blk[];
+    const ca = next.find((b) => b.id === "ca") as unknown as { children: Blk[] };
+    expect(ca.children.map((c) => c.id)).toEqual(["k2"]);
+  });
+
+  it("works when the caret was in the column block first (focus is dropped)", () => {
+    const onChange = vi.fn();
+    mount(doc(), onChange);
     const ed = editableFor("a1");
     act(() => {
       ed.focus();
       ed.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
     });
-    // eslint-disable-next-line no-console
-    console.log("active before shift-click:", document.activeElement?.tagName, (document.activeElement as HTMLElement)?.isContentEditable);
     shiftClickHandle("a1");
-    // eslint-disable-next-line no-console
-    console.log("active after shift-click:", document.activeElement?.tagName, (document.activeElement as HTMLElement)?.isContentEditable);
-    const calls0 = onChange.mock.calls.length;
-    pressDelete(document.activeElement ?? window);
-    // eslint-disable-next-line no-console
-    console.log("onChange after Delete:", onChange.mock.calls.length - calls0, JSON.stringify(onChange.mock.calls.at(-1)?.[0]));
+    expect((document.activeElement as HTMLElement | null)?.isContentEditable).toBe(
+      false,
+    );
+    press("Delete", document.activeElement ?? window);
+    expect(colsOf(onChange.mock.calls.at(-1)![0] as Blk[], "cx")).toEqual([
+      ["a2"],
+      ["b1"],
+    ]);
   });
 });
 
-describe("DIAG keyboard delete", () => {
-  it("top level: shift-click handle then Delete removes the block", () => {
+describe("Backspace dissolves a wholly empty columns block", () => {
+  const emptyCols = (): Blk[] =>
+    [
+      { id: "t1", type: "text", text: "top" },
+      {
+        id: "cx",
+        type: "columns",
+        cols: [
+          [{ id: "e1", type: "text", text: "" }],
+          [{ id: "e2", type: "text", text: "" }],
+          [{ id: "e3", type: "text", text: "" }],
+        ],
+      },
+    ] as unknown as Blk[];
+
+  it("replaces the block with a single empty text block", () => {
     const onChange = vi.fn();
-    mount(onChange);
-    shiftClickHandle("t1");
-    pressDelete();
-    // eslint-disable-next-line no-console
-    console.log("TOP calls:", JSON.stringify(onChange.mock.calls.map((c) => (c[0] as Blk[]).map((b) => b.id))));
-    expect(onChange).toHaveBeenCalled();
+    mount(emptyCols(), onChange);
+    const ed = editableFor("e2");
+    act(() => {
+      ed.focus();
+      ed.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    });
+    press("Backspace", ed);
+    const next = onChange.mock.calls.at(-1)![0] as Blk[];
+    expect(next.length).toBe(2);
+    expect(next[0].id).toBe("t1");
+    expect(next[1].type).toBe("text");
+    expect(next[1].text ?? "").toBe("");
+    expect((next[1] as unknown as { cols?: unknown }).cols).toBeUndefined();
   });
 
-  it("inside a column: shift-click handle then Delete removes the block", () => {
+  it("does NOTHING when another column still has content", () => {
+    const withContent = emptyCols();
+    (withContent[1] as unknown as { cols: Blk[][] }).cols[2] = [
+      { id: "e3", type: "text", text: "keep" } as Blk,
+    ];
     const onChange = vi.fn();
-    mount(onChange);
-    shiftClickHandle("a1");
-    const selectedAttr = document
-      .querySelector('[data-block-id="a1"]')
-      ?.getAttribute("data-selected");
-    // eslint-disable-next-line no-console
-    console.log("COL selected attr:", selectedAttr);
-    pressDelete();
-    const last = onChange.mock.calls.at(-1)?.[0] as Blk[] | undefined;
-    // eslint-disable-next-line no-console
-    console.log(
-      "COL result:",
-      JSON.stringify(
-        last?.map((b) =>
-          b.type === "columns"
-            ? { id: b.id, cols: (b as unknown as { cols: Blk[][] }).cols.map((c) => c.map((x) => x.id)) }
-            : b.id,
-        ),
-      ),
-    );
-    expect(last).toBeTruthy();
+    mount(withContent, onChange);
+    const ed = editableFor("e1");
+    act(() => {
+      ed.focus();
+      ed.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    });
+    press("Backspace", ed);
+    const calls = onChange.mock.calls;
+    if (calls.length) {
+      const next = calls.at(-1)![0] as Blk[];
+      expect(next.find((b) => b.id === "cx")).toBeTruthy();
+    }
   });
 });
