@@ -1542,6 +1542,8 @@ export function EditableBody({
         originX: p.x,
         originY: p.y,
         originTarget: t,
+        // The marquee operates within the container where it STARTED.
+        scope: containerAtPoint(e.clientX, e.clientY),
         moved: false,
       };
       marqueeLastClient.current = { x: e.clientX, y: e.clientY };
