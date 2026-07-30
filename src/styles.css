@@ -292,6 +292,16 @@
   opacity: 1;
   pointer-events: auto;
 }
+/* A container row's own gutter yields while an inner row is hovered. Two
+   gutters cannot share the page margin: column 1's track starts at the text
+   column's left edge, so its children's gutters land exactly where the
+   parent columns block's gutter already is. One gutter at a time, belonging
+   to whatever the pointer is over. The parent's handle stays reachable by
+   hovering the columns block outside any child — the gap or its top edge. */
+.gio-row:has(.gio-row:hover) > .gio-block-gutter {
+  opacity: 0;
+  pointer-events: none;
+}
 .gio-cols .gio-row {
   --gio-gutter-x: 34px;
 }
