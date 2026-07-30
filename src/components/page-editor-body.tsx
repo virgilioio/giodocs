@@ -691,11 +691,21 @@ export function EditableBody({
     else colTracks.current.delete(k);
   }, []);
 
-  // Clear selection when clicking into any textarea/input.
+  // Clear selection when clicking into any textarea/input. Escape and
+  // every other clear path drop the SCOPE with it.
   const clearSelection = useCallback(() => {
     setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
+    setSelScope(null);
     anchorId.current = null;
   }, []);
+
+  /** The list a scope names: `null` → the top-level blocks, otherwise the
+   *  container's children. Returns null when the container has vanished. */
+  const scopedList = useCallback(
+    (scope: ScopeRef, source?: Blk[]): Blk[] | null =>
+      getContainerList(source ?? blocksRef.current, scope),
+    [],
+  );
 
   /* When a block selection is created (marquee / shift-click on a handle /
    * click on a no-editor row) we blur any focused contenteditable and drop
