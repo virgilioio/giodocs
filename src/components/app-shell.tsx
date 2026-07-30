@@ -1819,7 +1819,7 @@ function AreaEmojiSlot({
               style={{ width: 18, height: 18 }}
             >
               {icon ? (
-                <span className="text-row leading-none">{icon}</span>
+                <Ico icon={icon} size={15} />
               ) : hoverRow ? (
                 <span
                   aria-hidden
@@ -2083,7 +2083,7 @@ function FooterAccount({
                 style={{ width: 30, height: 30, borderRadius: 8, fontSize: 16 }}
                 aria-hidden
               >
-                {workspaceIcon}
+                <Ico icon={workspaceIcon} size={16} />
               </span>
               <div className="min-w-0 flex-1">
                 <div
@@ -2139,7 +2139,7 @@ function FooterAccount({
                   style={{ width: 22, height: 22, borderRadius: 6, fontSize: 12 }}
                   aria-hidden
                 >
-                  {workspaceIcon}
+                  <Ico icon={workspaceIcon} size={12} />
                 </span>
                 <span className="min-w-0 flex-1 truncate text-body">
                   {workspaceName}
