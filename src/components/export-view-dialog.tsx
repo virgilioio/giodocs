@@ -159,7 +159,7 @@ export function ExportViewDialog({
         style={{
           position: "fixed",
           inset: 0,
-          zIndex: 90,
+          zIndex: "var(--z-modal)",
           background: "rgba(13,13,9,.32)",
           backdropFilter: "blur(3px)",
           WebkitBackdropFilter: "blur(3px)",
@@ -176,7 +176,7 @@ export function ExportViewDialog({
           left: "50%",
           transform: "translate(-50%, -50%)",
           width: 460,
-          zIndex: 91,
+          zIndex: "calc(var(--z-modal) + 1)",
           background: "var(--color-surface)",
           border: "1px solid var(--color-line)",
           borderRadius: 14,
