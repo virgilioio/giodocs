@@ -3488,13 +3488,99 @@ function ColumnsBlock({
     [cols, onChange],
   );
 
+  // Stored weights, always brought into lockstep with the column count —
+  // a widths array out of step renders every later column at the wrong
+  // size and nothing says why.
+  const widths = useMemo(
+    () => normalizeColumnWidths((block as { widths?: unknown }).widths, n),
+    [block, n],
+  );
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  // While a drag is in flight we render `dragWidths` (never persisted);
+  // the commit lands once, on pointerup, so undo sees ONE entry per drag.
+  const [dragWidths, setDragWidths] = useState<number[] | null>(null);
+  const dragRef = useRef<{
+    index: number;
+    startX: number;
+    base: number[];
+    pxPerFr: number;
+    pointerId: number;
+    handle: HTMLElement;
+  } | null>(null);
+  const effective = dragWidths ?? widths;
+
+  const beginResize = (e: React.PointerEvent<HTMLDivElement>, i: number) => {
+    if (locked) return;
+    // Seed from the current equal split so nothing jumps as the drag begins.
+    const base = (effective ?? equalColumnWidths(n)).slice();
+    const gridW = gridRef.current?.getBoundingClientRect().width ?? 0;
+    const totalFr = base.reduce((a, w) => a + w, 0) || n;
+    const tracksW = Math.max(1, gridW - COLS_GAP * Math.max(0, n - 1));
+    const handleEl = e.currentTarget;
+    try {
+      handleEl.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore — non-mouse pointers work without capture */
+    }
+    dragRef.current = {
+      index: i,
+      startX: e.clientX,
+      base,
+      pxPerFr: tracksW / totalFr,
+      pointerId: e.pointerId,
+      handle: handleEl,
+    };
+    document.body.style.userSelect = "none";
+    setDragWidths(base);
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  const onResizeMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const deltaFr = (e.clientX - d.startX) / (d.pxPerFr || 1);
+    setDragWidths(resizeColumnPair(d.base, d.index, deltaFr));
+  };
+  const endResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    try {
+      d.handle.releasePointerCapture?.(d.pointerId);
+    } catch {
+      /* ignore */
+    }
+    const final = dragWidths ?? d.base;
+    dragRef.current = null;
+    setDragWidths(null);
+    document.body.style.userSelect = "";
+    onChange({ widths: final } as Partial<Blk>);
+    e.stopPropagation();
+  };
+  const onHandleDoubleClick = (
+    e: React.MouseEvent<HTMLDivElement>,
+    i: number,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (locked) return;
+    if (e.altKey) {
+      // Alt/Option: clear widths entirely — back to the equal split.
+      onChange({ widths: undefined } as Partial<Blk>);
+      return;
+    }
+    onChange({
+      widths: resetColumnPair(effective ?? equalColumnWidths(n), i),
+    } as Partial<Blk>);
+  };
+
   return (
     <div
-      className="gio-cols"
+      ref={gridRef}
+      className="gio-cols relative"
       style={{
         display: "grid",
-        gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`,
-        gap: 20,
+        gridTemplateColumns: columnsGridTemplate(effective, n),
+        gap: COLS_GAP,
       }}
     >
       {cols.map((col, i) => (
@@ -3506,6 +3592,28 @@ function ColumnsBlock({
           locked={locked}
         />
       ))}
+      {/* One handle per BOUNDARY between columns (N-1) — there is nothing
+          outside the outer edges to trade width with. Centred on the gap,
+          invisible at rest. Hidden below the stacking breakpoint. */}
+      {!locked &&
+        cols.slice(0, Math.max(0, n - 1)).map((_, i) => (
+          <div
+            key={`h${i}`}
+            className="gio-col-resize"
+            data-dragging={dragRef.current?.index === i ? "true" : undefined}
+            style={{
+              gridColumn: i + 1,
+              gridRow: 1,
+              justifySelf: "end",
+              marginRight: -(COLS_GAP / 2) - 4,
+            }}
+            onPointerDown={(e) => beginResize(e, i)}
+            onPointerMove={onResizeMove}
+            onPointerUp={endResize}
+            onPointerCancel={endResize}
+            onDoubleClick={(e) => onHandleDoubleClick(e, i)}
+          />
+        ))}
     </div>
   );
 }
