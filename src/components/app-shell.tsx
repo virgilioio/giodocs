@@ -14,6 +14,7 @@ import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { useRealtimeWorkspace } from "@/hooks/use-realtime";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
 import { getPageOrigin } from "@/lib/page-origin";
+import { Ico } from "./emoji-icon";
 import { resolvePageIdParam } from "@/lib/slug";
 
 import {
@@ -1299,7 +1300,7 @@ function ViewIconSlot({
             style={{ width: 18, height: 18 }}
           >
             {view.icon ? (
-              <span className="text-row leading-none">{view.icon}</span>
+              <Ico icon={view.icon} size={15} />
             ) : (
               <LayoutGlyph layout={effectiveLayout} />
             )}

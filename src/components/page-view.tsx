@@ -6,6 +6,7 @@ import {
   usePage,
   usePageAccess,
 } from "@/hooks/use-workspace-data";
+import { Ico } from "./emoji-icon";
 import {
   useRenamePage,
   useSetPageIcon,
@@ -1367,7 +1368,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
               className="grid select-none place-items-center rounded-md hover:bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               style={{ width: 42, height: 42, fontSize: 34, lineHeight: 1, flex: "none" }}
             >
-              {page.icon || "📄"}
+              <Ico icon={page.icon || "📄"} size={34} />
             </button>
           )}
         >

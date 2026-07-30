@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { useCreatePage } from "@/hooks/use-page-mutations";
+import { Ico } from "./emoji-icon";
 import { setPageOrigin } from "@/lib/page-origin";
 
 import { filterLabel } from "@/lib/filter-label";
@@ -415,7 +416,7 @@ function PaletteRow({
     const sub = [area, owner].filter(Boolean).join(" · ");
     return (
       <button type="button" className={cls} onMouseEnter={onEnter} onClick={onSelect}>
-        <span className="text-ui">{p.icon || "📄"}</span>
+        <Ico icon={p.icon || "📄"} size={20} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-ui text-body">
             {highlight(p.title || "Untitled", term)}
