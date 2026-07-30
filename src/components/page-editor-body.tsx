@@ -622,6 +622,18 @@ export function EditableBody({
   /* ────────── Selection & drag state ────────── */
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  /* THE CONTAINER SCOPE OF THE CURRENT SELECTION.
+   *
+   * `null` = the top-level (page) list; otherwise the column or callout
+   * whose children the selection lives in. Block ids are globally unique
+   * so `selectedIds` can stay flat, but every consumer (Delete, ⌘C/⌘X,
+   * ⌘A, shift-click, dragging a selected run) needs to know WHICH list to
+   * act on — and a selection may never span two containers. */
+  const [selScope, setSelScope] = useState<ScopeRef>(null);
+  const selScopeRef = useRef<ScopeRef>(null);
+  useEffect(() => {
+    selScopeRef.current = selScope;
+  }, [selScope]);
   const anchorId = useRef<string | null>(null);
   const rowEls = useRef<Map<string, HTMLElement>>(new Map());
   const containerRef = useRef<HTMLDivElement | null>(null);
