@@ -4054,7 +4054,7 @@ function ColumnStack({
  * which reaches the outer undo stack via the existing commit path — so a
  * single ⌘Z reverses a single table operation.
  */
-function TableBlock({
+export function TableBlock({
   block,
   locked,
   onChange,
@@ -4195,6 +4195,53 @@ function TableBlock({
     updateFades();
   }, [widths, dragWidths, nCols, nRows, updateFades]);
 
+  // Handle geometry — MEASURED from the rendered table, not assumed. Rows
+  // wrap to different heights and columns can carry explicit widths, so an
+  // equal-share strip drifts out of register with the grid: the handle you
+  // click is then not the row or column you get, which reads as "delete
+  // doesn't work". These offsets are relative to the table's own box, and
+  // the strips are inset by the same 23px padding, so they line up exactly.
+  type GridMetrics = {
+    cols: { left: number; width: number }[];
+    rows: { top: number; height: number }[];
+  };
+  const [metrics, setMetrics] = useState<GridMetrics | null>(null);
+  const measureGrid = useCallback(() => {
+    const tbl = tableRef.current;
+    if (!tbl) return;
+    const base = tbl.getBoundingClientRect();
+    const trs = Array.from(tbl.querySelectorAll("tr"));
+    const first = trs[0];
+    const next: GridMetrics = {
+      cols: first
+        ? Array.from(first.children).map((c) => {
+            const r = (c as HTMLElement).getBoundingClientRect();
+            return { left: r.left - base.left, width: r.width };
+          })
+        : [],
+      rows: trs.map((tr) => {
+        const r = tr.getBoundingClientRect();
+        return { top: r.top - base.top, height: r.height };
+      }),
+    };
+    setMetrics((prev) =>
+      JSON.stringify(prev) === JSON.stringify(next) ? prev : next,
+    );
+  }, []);
+  useEffect(() => {
+    const tbl = tableRef.current;
+    if (!tbl) return;
+    measureGrid();
+    const ro = new ResizeObserver(measureGrid);
+    ro.observe(tbl);
+    for (const tr of Array.from(tbl.querySelectorAll("tr"))) ro.observe(tr);
+    return () => ro.disconnect();
+  }, [measureGrid, nRows, nCols]);
+  useEffect(() => {
+    measureGrid();
+  }, [measureGrid, rows, widths, dragWidths]);
+
+
   // Any structural op commits rows and (when they changed) align and
   // widths, in ONE onChange call — the outer undo stack sees a single
   // entry per user action. `nextWidths === null` explicitly clears the
@@ -4259,7 +4306,14 @@ function TableBlock({
     if (!sel) return;
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
-      const inCell = !!(t && rootRef.current?.contains(t) && t.tagName === "INPUT");
+      // Cells are contenteditable now — identify them by their data attr
+      // rather than by tag name, or every keystroke in a cell would reach
+      // the clear/copy handlers below.
+      const inCell = !!(
+        t &&
+        rootRef.current?.contains(t) &&
+        t.closest("[data-table-cell]")
+      );
       if ((e.metaKey || e.ctrlKey) && (e.key === "c" || e.key === "C")) {
         if (inCell) return;
         e.preventDefault();
@@ -4281,6 +4335,122 @@ function TableBlock({
     const next = rows.map((row) => row.slice());
     next[r][c] = v;
     commit(next);
+  }
+
+  // Header flags live on the BLOCK, not in the matrix: no row or column
+  // needs migrating when they change, and every structural op keeps
+  // working untouched. `headerRow` defaults ON (today's behaviour),
+  // `headerCol` defaults OFF.
+  const headerRow = (block as { headerRow?: unknown }).headerRow !== false;
+  const headerCol = (block as { headerCol?: unknown }).headerCol === true;
+
+  /** Focus a cell after the commit that created or moved it has landed. */
+  const focusCell = useCallback(
+    (r: number, c: number, caret: "start" | "end" = "end") => {
+      requestAnimationFrame(() => {
+        const el = rootRef.current?.querySelector<HTMLElement>(
+          `[data-table-cell="${r},${c}"]`,
+        );
+        if (!el) return;
+        try {
+          el.focus({ preventScroll: true });
+          const src = el.textContent ?? "";
+          writeCaret(el, src, caret === "start" ? 0 : src.length);
+        } catch {
+          /* noop */
+        }
+      });
+    },
+    [],
+  );
+
+  // Cell keys: Tab / Shift-Tab walk the grid (and grow it from the last
+  // cell), Enter moves down (cells stay one line), Escape blurs, and the
+  // inline-format shortcuts apply through the SAME toggleWrap the prose
+  // blocks and the floating toolbar use.
+  function onCellKeyDown(
+    e: React.KeyboardEvent<HTMLDivElement>,
+    r: number,
+    c: number,
+  ) {
+    if (locked) return;
+    const meta = e.metaKey || e.ctrlKey;
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      (e.currentTarget as HTMLElement).blur();
+      return;
+    }
+    if (e.key === "Tab") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.shiftKey) {
+        if (c > 0) focusCell(r, c - 1);
+        else if (r > 0) focusCell(r - 1, nCols - 1);
+        return;
+      }
+      if (c < nCols - 1) {
+        focusCell(r, c + 1);
+        return;
+      }
+      if (r < nRows - 1) {
+        focusCell(r + 1, 0);
+        return;
+      }
+      commit(addRow(rows, nRows));
+      focusCell(nRows, 0);
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.shiftKey) {
+        if (r > 0) focusCell(r - 1, c);
+        return;
+      }
+      if (r < nRows - 1) {
+        focusCell(r + 1, c);
+        return;
+      }
+      commit(addRow(rows, nRows));
+      focusCell(nRows, c);
+      return;
+    }
+    if (meta) {
+      const k = e.key.toLowerCase();
+      const pair: [string, string] | null = !e.shiftKey
+        ? k === "b"
+          ? ["**", "**"]
+          : k === "i"
+            ? ["*", "*"]
+            : k === "u"
+              ? ["<u>", "</u>"]
+              : k === "e"
+                ? ["`", "`"]
+                : null
+        : k === "h"
+          ? ["==", "=="]
+          : k === "x"
+            ? ["~~", "~~"]
+            : null;
+      if (!pair) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const el = e.currentTarget as HTMLElement;
+      const src = rows[r]?.[c] ?? "";
+      const cur = readCaret(el, src);
+      if (!cur) return;
+      const res = toggleWrap(src, cur.start, cur.end, pair[0], pair[1]);
+      setCell(r, c, res.text);
+      requestAnimationFrame(() => {
+        try {
+          el.focus({ preventScroll: true });
+          writeCaret(el, res.text, res.start, res.end);
+        } catch {
+          /* noop */
+        }
+      });
+    }
   }
 
   // Column menu. Structural operations only — sort/filter/formula/convert-
@@ -4378,6 +4548,21 @@ function TableBlock({
           hint: { text: alignLabel },
           onPick: () => openSubmenu(spec),
         },
+        ...(index === 0
+          ? ([
+              {
+                kind: "row" as const,
+                label: "Use as header column",
+                icon: "board",
+                checked: headerCol,
+                onPick: () => {
+                  onChange({ headerCol: !headerCol });
+                  closeMenu();
+                },
+              },
+              { kind: "sep" as const },
+            ] as MenuRow[])
+          : []),
         {
           kind: "row",
           label: "Clear contents",
@@ -4428,7 +4613,7 @@ function TableBlock({
     const isFirst = index === 0;
     const isLast = index === nRows - 1;
     const rowCells = nCols;
-    const isHeader = index === 0;
+    const isHeader = index === 0 && headerRow;
     const footer =
       `${nCols} column${nCols === 1 ? "" : "s"} · row ${index + 1} of ${nRows}` +
       (isHeader ? " · header" : "");
@@ -4493,6 +4678,21 @@ function TableBlock({
           },
         },
         { kind: "sep" },
+        ...(index === 0
+          ? ([
+              {
+                kind: "row" as const,
+                label: "Use as header row",
+                icon: "list",
+                checked: headerRow,
+                onPick: () => {
+                  onChange({ headerRow: !headerRow });
+                  closeMenu();
+                },
+              },
+              { kind: "sep" as const },
+            ] as MenuRow[])
+          : []),
         {
           kind: "row",
           label: "Clear contents",
@@ -4605,8 +4805,8 @@ function TableBlock({
   function onTableContextMenu(e: React.MouseEvent<HTMLDivElement>) {
     if (locked) return;
     const el = (e.target as HTMLElement | null)?.closest?.(
-      "input[data-table-cell]",
-    ) as HTMLInputElement | null;
+      "[data-table-cell]",
+    ) as HTMLElement | null;
     if (!el) return;
     const attr = el.getAttribute("data-table-cell");
     if (!attr) return;
@@ -4748,9 +4948,14 @@ function TableBlock({
             )}
             <tbody>
               {rows.map((row, ri) => (
-                <tr key={ri}>
+                <tr key={ri} data-row={ri}>
                   {row.map((cell, ci) => {
-                    const Tag: "th" | "td" = ri === 0 ? "th" : "td";
+                    // Header-ness is a BLOCK attribute, never row data:
+                    // `headerRow` (default on) and `headerCol` (default
+                    // off) decide which cells render as <th>.
+                    const isHead =
+                      (headerRow && ri === 0) || (headerCol && ci === 0);
+                    const Tag: "th" | "td" = isHead ? "th" : "td";
                     const selected =
                       (sel?.kind === "row" && sel.index === ri) ||
                       (sel?.kind === "col" && sel.index === ci);
@@ -4760,7 +4965,7 @@ function TableBlock({
                         data-col={ci}
                         className={
                           "relative border border-line p-0 " +
-                          (ri === 0
+                          (isHead
                             ? "text-label uppercase text-secondary"
                             : "text-body")
                         }
@@ -4768,16 +4973,20 @@ function TableBlock({
                           selected ? { background: "var(--color-blueTint)" } : undefined
                         }
                       >
-                        <input
-                          type="text"
-                          value={cell ?? ""}
-                          disabled={locked}
-                          data-table-cell={`${ri},${ci}`}
+                        {/* Cells are contenteditable so inline markdown
+                            renders in place, exactly like prose blocks.
+                            Enter never inserts a newline here — it moves
+                            down a row, so a cell stays one line. */}
+                        <Editable
+                          source={cell ?? ""}
+                          locked={locked}
+                          onSourceChange={(v) => setCell(ri, ci, v)}
+                          onKeyDown={(e) => onCellKeyDown(e, ri, ci)}
                           onFocus={() => setSel(null)}
-                          onChange={(e) => setCell(ri, ci, e.target.value)}
                           onBlur={onBlur}
-                          className="w-full border-0 bg-transparent px-2 py-1 outline-none"
-                          style={{ textAlign: align[ci] ?? "left" }}
+                          ariaLabel={`Row ${ri + 1} column ${ci + 1}`}
+                          dataAttrs={{ "data-table-cell": `${ri},${ci}` }}
+                          className="w-full px-2 py-1 outline-none"
                         />
                         {ri === 0 && !locked && (
                           // Resize grip on the right border of each
@@ -4825,16 +5034,37 @@ function TableBlock({
                 className="pointer-events-none absolute opacity-0 transition-opacity group-hover/table:opacity-100"
                 style={{ top: 0, left: 23, right: 23, height: 16 }}
               >
-                <div className="pointer-events-auto flex h-full items-stretch gap-0">
+                <div
+                  className="pointer-events-auto"
+                  style={{ position: "relative", width: "100%", height: "100%" }}
+                >
                   {Array.from({ length: nCols }, (_, ci) => {
                     const active = sel?.kind === "col" && sel.index === ci;
+                    // MEASURED geometry, never an equal share: columns can
+                    // have different widths, and a handle that doesn't sit
+                    // over its own column means the menu you open — and the
+                    // column you delete — is not the one you pointed at.
+                    const m = metrics?.cols[ci];
+                    const box = m
+                      ? { left: m.left, width: m.width }
+                      : { left: `${(ci * 100) / nCols}%`, width: `${100 / nCols}%` };
                     return (
-                      <ColumnHandle
+                      <div
                         key={ci}
-                        ci={ci}
-                        active={active}
-                        onClick={onColumnHandleClick}
-                      />
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          height: "100%",
+                          display: "flex",
+                          ...box,
+                        }}
+                      >
+                        <ColumnHandle
+                          ci={ci}
+                          active={active}
+                          onClick={onColumnHandleClick}
+                        />
+                      </div>
                     );
                   })}
                 </div>
@@ -4846,16 +5076,33 @@ function TableBlock({
                 className="pointer-events-none absolute opacity-0 transition-opacity group-hover/table:opacity-100"
                 style={{ left: 0, top: 23, bottom: 23, width: 16 }}
               >
-                <div className="pointer-events-auto flex h-full flex-col items-stretch gap-0">
+                <div
+                  className="pointer-events-auto"
+                  style={{ position: "relative", width: "100%", height: "100%" }}
+                >
                   {rows.map((_, ri) => {
                     const active = sel?.kind === "row" && sel.index === ri;
+                    const m = metrics?.rows[ri];
+                    const box = m
+                      ? { top: m.top, height: m.height }
+                      : { top: `${(ri * 100) / nRows}%`, height: `${100 / nRows}%` };
                     return (
-                      <RowHandle
+                      <div
                         key={ri}
-                        ri={ri}
-                        active={active}
-                        onClick={onRowHandleClick}
-                      />
+                        style={{
+                          position: "absolute",
+                          left: 0,
+                          width: "100%",
+                          display: "flex",
+                          ...box,
+                        }}
+                      >
+                        <RowHandle
+                          ri={ri}
+                          active={active}
+                          onClick={onRowHandleClick}
+                        />
+                      </div>
                     );
                   })}
                 </div>
@@ -4866,12 +5113,7 @@ function TableBlock({
                 axis="col"
                 onClick={() => {
                   commit(addColumn(rows, nCols), addAlign(align, nCols), addWidth(widths, nCols));
-                  requestAnimationFrame(() => {
-                    const el = rootRef.current?.querySelector<HTMLInputElement>(
-                      `input[data-table-cell="0,${nCols}"]`,
-                    );
-                    el?.focus();
-                  });
+                  focusCell(0, nCols);
                 }}
               />
 
@@ -4880,12 +5122,7 @@ function TableBlock({
                 axis="row"
                 onClick={() => {
                   commit(addRow(rows, nRows));
-                  requestAnimationFrame(() => {
-                    const el = rootRef.current?.querySelector<HTMLInputElement>(
-                      `input[data-table-cell="${nRows},0"]`,
-                    );
-                    el?.focus();
-                  });
+                  focusCell(nRows, 0);
                 }}
               />
             </>

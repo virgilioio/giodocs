@@ -277,7 +277,12 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
       const padded = rows.map((r) => {
         const copy = r.slice();
         while (copy.length < width) copy.push("");
-        return copy;
+        // A literal "|" would end the cell and a newline would end the
+        // table, so both are neutralised here. Cell text is otherwise
+        // already markdown and passes through untouched.
+        return copy.map((c) =>
+          c.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " "),
+        );
       });
       // Per-column alignment survives via the GFM pipe-table separator row:
       //   left ":---"   center ":---:"   right "---:"   default "---".
@@ -289,10 +294,16 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
         if (a === "left") return ":---";
         return "---";
       });
+      // A GFM table always needs a header line; when the block has its
+      // header row turned off we emit an EMPTY one so every data row is
+      // still a data row rather than being silently promoted.
+      const headerRow = (b as { headerRow?: unknown }).headerRow !== false;
       const lines: string[] = [];
-      lines.push(`| ${padded[0].join(" | ")} |`);
+      lines.push(
+        `| ${(headerRow ? padded[0] : padded[0].map(() => "")).join(" | ")} |`,
+      );
       lines.push(`| ${sep.join(" | ")} |`);
-      for (let i = 1; i < padded.length; i++) {
+      for (let i = headerRow ? 1 : 0; i < padded.length; i++) {
         lines.push(`| ${padded[i].join(" | ")} |`);
       }
       return lines.join("\n");
@@ -524,19 +535,28 @@ function blockHtml(b: Block, ordinal = 1): string {
         const sum = w.reduce((a, n) => a + n, 0);
         tableAttrs = ` style="table-layout:fixed;width:${sum}px"`;
       }
-      const head = pad(rows[0])
-        .map((c, i) => `<th${styleFor(i)}>${esc(c)}</th>`)
-        .join("");
-      const body = rows
-        .slice(1)
-        .map(
-          (r) =>
-            `<tr>${pad(r)
-              .map((c, i) => `<td${styleFor(i)}>${esc(c)}</td>`)
-              .join("")}</tr>`,
-        )
-        .join("");
-      return `<table${tableAttrs}>${colgroup}<thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+      // Header flags are BLOCK attributes, not row data: `headerRow`
+      // defaults on (today's behaviour), `headerCol` defaults off. They
+      // decide which cells become <th> — semantics, not styling, so a
+      // screen reader announces the same headers the editor shows.
+      const headerRow = (b as { headerRow?: unknown }).headerRow !== false;
+      const headerCol = (b as { headerCol?: unknown }).headerCol === true;
+      // Cells carry inline markdown now, so they go through `inline`
+      // (which escapes first, then inserts tags) — never raw `esc`.
+      const th = (c: string, i: number, scope: "col" | "row") =>
+        `<th scope="${scope}"${styleFor(i)}>${inline(c)}</th>`;
+      const td = (c: string, i: number) => `<td${styleFor(i)}>${inline(c)}</td>`;
+      const bodyRow = (r: string[]) =>
+        `<tr>${pad(r)
+          .map((c, i) => (headerCol && i === 0 ? th(c, i, "row") : td(c, i)))
+          .join("")}</tr>`;
+      const thead = headerRow
+        ? `<thead><tr>${pad(rows[0])
+            .map((c, i) => th(c, i, "col"))
+            .join("")}</tr></thead>`
+        : "";
+      const body = (headerRow ? rows.slice(1) : rows).map(bodyRow).join("");
+      return `<table${tableAttrs}>${colgroup}${thead}<tbody>${body}</tbody></table>`;
     }
     case "columns": {
       // Real CSS grid. minmax(0,1fr) prevents long words from blowing the
