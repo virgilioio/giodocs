@@ -1609,6 +1609,7 @@ export function EditableBody({
       if (!m.moved) {
         m.moved = true;
         setSelectedIds(new Set());
+        setSelScope(null);
         anchorId.current = null;
         document.body.style.userSelect = "none";
       }
@@ -1630,7 +1631,7 @@ export function EditableBody({
         }
       }
       setMarquee({ x1: m.originX, y1: m.originY, x2: p.x, y2: p.y });
-      selectByMarqueeY(m.originY, p.y);
+      selectByMarqueeY(m.scope, m.originY, p.y);
     };
     const onUp = () => {
       const m = marqueeRef.current;
