@@ -407,10 +407,31 @@ export function EditableBody({
   // block renders renderInline(text) inside a matching-geometry div.
   const [focusedId, setFocusedId] = useState<string | null>(null);
 
-  useEffect(() => {
+  /* Focus + caret placement.
+   *
+   * BUG: ⌘Z used to snap the page to the top. Restoring a snapshot
+   * rewrites every Editable's innerHTML, so the focused node is destroyed
+   * and recreated; focusing the new one (and writing a caret into it)
+   * scrolls it into view from a fresh layout. Fix: run in a LAYOUT effect,
+   * every focus uses `preventScroll`, and the restore path hands us the
+   * scrollTop it captured BEFORE the state commit so we can write it back
+   * in the same frame. Only then, if the target is genuinely outside the
+   * scroll viewport, do we nudge with `block:'nearest'` — never 'center',
+   * never smooth. */
+  useLayoutEffect(() => {
     if (!focusRequest) return;
+    const sc = (containerRef.current?.closest("main") ?? null) as HTMLElement | null;
+    const keep = focusRequest.preserveScrollTop;
+    const restoreScroll = () => {
+      if (sc && keep != null && sc.scrollTop !== keep) sc.scrollTop = keep;
+    };
+    restoreScroll();
     const el = refs.current[focusRequest.id];
-    if (!el) return;
+    if (!el) {
+      restoreScroll();
+      setFocusRequest(null);
+      return;
+    }
     el.focus({ preventScroll: true });
     const src = blocks.find((b) => b.id === focusRequest.id)?.text ?? "";
     const c =
@@ -424,20 +445,25 @@ export function EditableBody({
     } catch {
       /* elements that don't support caret placement */
     }
+    restoreScroll();
     const rect = el.getBoundingClientRect();
-    if (rect.top < 0 || rect.bottom > window.innerHeight) {
-      el.scrollIntoView({ block: "nearest" });
+    const vTop = sc ? sc.getBoundingClientRect().top : 0;
+    const vBottom = sc ? sc.getBoundingClientRect().bottom : window.innerHeight;
+    if (rect.bottom < vTop || rect.top > vBottom) {
+      el.scrollIntoView({ block: "nearest", behavior: "auto" });
     }
     setFocusRequest(null);
   }, [focusRequest, blocks]);
 
   /* ────────── Undo/redo ──────────
    *
-   * A per-page snapshot stack held in refs (never state — we don't want
-   * component re-renders on every push). See src/lib/undo-stack.ts for the
-   * pure model + tests. The rule: PUSH BEFORE a change, not after. Typing
-   * is coalesced (one push per burst) via shouldCoalesce(). Structural ops
-   * always push. Restoring bypasses commit() so it can't push itself. */
+   * The snapshot stack lives in a MODULE-LEVEL store keyed by page id
+   * (src/lib/undo-store.ts), not in a ref — refs die with the component
+   * and this editor is remounted more often than it looks (see the store's
+   * header). See src/lib/undo-stack.ts for the pure model + tests. The
+   * rule: PUSH BEFORE a change, not after. Typing is coalesced (one push
+   * per burst) via shouldCoalesce(). Structural ops always push. Restoring
+   * bypasses commit() so it can't push itself. */
   const blocksRef = useRef<Blk[]>(blocks);
   useEffect(() => {
     blocksRef.current = blocks;
@@ -446,18 +472,7 @@ export function EditableBody({
   useEffect(() => {
     focusedIdRef.current = focusedId;
   }, [focusedId]);
-  // (undo state below)
-  const undoStateRef = useRef<UndoState<Blk>>(createUndoState<Blk>());
-  const lastTypingAtRef = useRef<number | null>(null);
-  const lastTypingKeyRef = useRef<string | null>(null);
   const isRestoringRef = useRef(false);
-  // Reset the stack when the page id changes (also handled in the resync
-  // effect above — kept here as a belt so a fresh EditableBody starts fresh).
-  useEffect(() => {
-    undoStateRef.current = createUndoState<Blk>();
-    lastTypingAtRef.current = null;
-    lastTypingKeyRef.current = null;
-  }, [pageId]);
 
   function getCurrentCaret(): UndoEntry<Blk>["caret"] {
     const id = focusedIdRef.current;
