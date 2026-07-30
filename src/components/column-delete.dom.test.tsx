@@ -78,6 +78,34 @@ function pressDelete(target: EventTarget = window) {
   });
 }
 
+function editableFor(id: string): HTMLElement {
+  const row = document.querySelector(`[data-block-id="${id}"]`)!;
+  const el = row.querySelector('[contenteditable="true"]');
+  if (!el) throw new Error(`editable not found: ${id}`);
+  return el as HTMLElement;
+}
+
+describe("DIAG caret-first sequence", () => {
+  it("caret inside a column block, then shift-click handle, then Delete", () => {
+    const onChange = vi.fn();
+    mount(onChange);
+    const ed = editableFor("a1");
+    act(() => {
+      ed.focus();
+      ed.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    });
+    // eslint-disable-next-line no-console
+    console.log("active before shift-click:", document.activeElement?.tagName, (document.activeElement as HTMLElement)?.isContentEditable);
+    shiftClickHandle("a1");
+    // eslint-disable-next-line no-console
+    console.log("active after shift-click:", document.activeElement?.tagName, (document.activeElement as HTMLElement)?.isContentEditable);
+    const calls0 = onChange.mock.calls.length;
+    pressDelete(document.activeElement ?? window);
+    // eslint-disable-next-line no-console
+    console.log("onChange after Delete:", onChange.mock.calls.length - calls0, JSON.stringify(onChange.mock.calls.at(-1)?.[0]));
+  });
+});
+
 describe("DIAG keyboard delete", () => {
   it("top level: shift-click handle then Delete removes the block", () => {
     const onChange = vi.fn();
