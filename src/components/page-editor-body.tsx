@@ -2993,7 +2993,9 @@ function BlockRow({
         <div
           className="gio-block-gutter pointer-events-none absolute top-0 flex select-none items-center gap-0.5 opacity-0 transition-opacity duration-100"
           style={{
-            left: 0,
+            // `left` comes from .gio-block-gutter in styles.css
+            // (calc(-1 * var(--gio-gutter-x))) — the row no longer carries a
+            // negative margin, so the offset must live here.
             height: "var(--gio-block-lh)",
             width: 39,
 
