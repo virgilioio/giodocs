@@ -159,7 +159,7 @@ function MenuShell({
       <div
         aria-hidden
         onMouseDown={onClose}
-        style={{ position: "fixed", inset: 0, zIndex: 100 }}
+        style={{ position: "fixed", inset: 0, zIndex: "var(--z-menu)" }}
       />
       <div
         role="menu"
