@@ -373,7 +373,11 @@ function blockHtml(b: Block, ordinal = 1): string {
   // Inline markdown (bold, italic, code, links, …) inside text-carrying
   // positions is converted to HTML via inlineToHtml, which escapes user
   // text FIRST and then inserts tags. Escaping is never bypassed.
-  const inline = (s: string) => inlineToHtml(s);
+  // Custom emoji become their shortcode text in exported HTML. An
+  // exported file must open with ZERO external requests, and a signed
+  // storage URL 404s within the hour — so ":brand:" is emitted verbatim
+  // and listed as a documented loss alongside caption and columns.
+  const inline = (s: string) => inlineToHtml(s, { emojiAs: "alt" });
   switch (t) {
     case "text":
       return `<p>${inline(text)}</p>`;
@@ -606,7 +610,9 @@ function readIndent(b: Block): number {
 
 function listItemInner(b: Block, ordinal: number): string {
   const text = blockText(b);
-  const inline = (s: string) => inlineToHtml(s);
+  // Same documented loss as blockHtml: a custom emoji exports as its
+  // shortcode text, never as a signed URL that expires.
+  const inline = (s: string) => inlineToHtml(s, { emojiAs: "alt" });
   if (b.type === "todo") {
     return `<input type="checkbox" disabled${
       b.checked ? " checked" : ""

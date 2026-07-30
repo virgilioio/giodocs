@@ -41,10 +41,12 @@ export function isShortcode(icon: string | null | undefined): boolean {
 }
 
 /** The custom emoji an icon string names, or null when it is unicode. */
+export type IconEmoji = { name: string; url: string };
+
 export function customFor(
   icon: string | null | undefined,
-  set: readonly CustomEmoji[],
-): CustomEmoji | null {
+  set: readonly IconEmoji[],
+): IconEmoji | null {
   if (!isShortcode(icon)) return null;
   const name = icon!.slice(1, -1);
   return set.find((e) => e.name === name) ?? null;
@@ -53,7 +55,7 @@ export function customFor(
 /** `background-image` for an icon span. */
 export function icoBg(
   icon: string | null | undefined,
-  set: readonly CustomEmoji[],
+  set: readonly IconEmoji[],
 ): string {
   const c = customFor(icon, set);
   return c && c.url ? `url("${c.url}")` : "none";
@@ -62,7 +64,7 @@ export function icoBg(
 /** The text child of an icon span — empty for a custom emoji. */
 export function icoCh(
   icon: string | null | undefined,
-  set: readonly CustomEmoji[],
+  set: readonly IconEmoji[],
 ): string {
   return customFor(icon, set) ? "" : (icon ?? "");
 }

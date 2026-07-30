@@ -16,8 +16,8 @@
  * announces and what a copy-paste picks up. Never swap it for an <img>.
  */
 
-import { useEmojiSet } from "@/hooks/use-custom-emoji";
-import { icoBg, icoCh, type CustomEmoji } from "@/lib/custom-emoji";
+import { useInlineEmojiSet } from "@/lib/emoji-registry";
+import { icoBg, icoCh, type IconEmoji } from "@/lib/custom-emoji";
 
 export function Ico({
   icon,
@@ -35,9 +35,12 @@ export function Ico({
   pad?: number;
   style?: React.CSSProperties;
   /** Pass a set explicitly to avoid a hook (used inside the picker grid). */
-  set?: readonly CustomEmoji[];
+  set?: readonly IconEmoji[];
 }) {
-  const hooked = useEmojiSet();
+  // The set comes from the module registry (fed once by AppShell from
+  // the useEmojiSet() query) — the SAME source the inline tokenizer and
+  // the offset map read, and it needs no QueryClient in scope.
+  const hooked = useInlineEmojiSet();
   const set = setIn ?? hooked;
   const box = size + pad * 2;
   return (
