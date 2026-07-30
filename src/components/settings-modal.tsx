@@ -29,6 +29,17 @@ import { useFormatDate } from "@/lib/format";
 import type { PageListItem } from "@/lib/types";
 import { PALETTE, SKIN, FACES, avaBg, DEFAULT_TINT, DEFAULT_INK } from "@/lib/avatar";
 import type { PendingInvite } from "./add-members-modal";
+import { SpecMenuTrigger } from "./row-menu";
+import { Ico } from "./emoji-icon";
+import { CustomEmojiComposer } from "./custom-emoji-composer";
+import { isShortcode, type CustomEmoji } from "@/lib/custom-emoji";
+import {
+  useCreateCustomEmoji,
+  useCustomEmoji,
+  useCustomEmojiUsage,
+  useDeleteCustomEmoji,
+  useUpdateCustomEmoji,
+} from "@/hooks/use-custom-emoji";
 
 export type SettingsPane = "profile" | "preferences" | "general" | "people" | "emoji";
 
@@ -1547,10 +1558,6 @@ function EmojiPane() {
                           },
                         },
                       ],
-                      confirm:
-                        it.count > 0
-                          ? undefined
-                          : undefined,
                     })}
                   />
                 ) : null}
