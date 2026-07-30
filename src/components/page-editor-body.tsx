@@ -17,6 +17,8 @@ import {
   deleteIndices,
   moveBlockAcross,
   moveRunAcross,
+  getContainerList,
+  setContainerList,
   type Path as ReorderPath,
   type ColumnRef,
 } from "@/lib/reorder";
@@ -24,6 +26,7 @@ import { writeBlocksClipboard } from "@/lib/blocks-clipboard";
 import { renderInlineWithOffsets } from "@/lib/inline-markdown";
 import { numberedOrdinals } from "@/lib/blocks";
 import { rowsInBand } from "@/lib/marquee";
+import { rowsInScope, sameScope, type ScopeRef } from "@/lib/marquee-scope";
 import { blockHandleFooter } from "@/lib/block-handle-footer";
 import { useToast } from "@/lib/toast";
 import { useWorkspaceId } from "@/lib/workspace-context";
@@ -32,14 +35,18 @@ import { isTypingTarget, shouldCopyBlocks } from "@/lib/is-typing";
 import { nextEditableIndex } from "@/lib/block-nav";
 import { stripNestedColumns } from "@/lib/columns";
 import {
-  createUndoState,
   push as undoPush,
   undo as undoDo,
   redo as undoRedo,
   shouldCoalesce,
-  type UndoState,
   type UndoEntry,
 } from "@/lib/undo-stack";
+import {
+  getUndoState,
+  setUndoState,
+  getTypingMarker,
+  setTypingMarker,
+} from "@/lib/undo-store";
 import {
   type Align,
   type AlignList,
