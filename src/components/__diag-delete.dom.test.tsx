@@ -3,7 +3,8 @@ import { describe, expect, it, beforeEach } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react";
 import { EditableBody } from "./page-editor-body";
-import { WorkspaceProvider } from "@/lib/workspace-context";
+import { vi } from "vitest";
+vi.mock("@/lib/workspace-context", () => ({ useWorkspaceId: () => "w1" }));
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -24,9 +25,7 @@ describe("diag delete", () => {
     root = createRoot(host);
     act(() => {
       root.render(
-        <WorkspaceProvider>
-          <EditableBody pageId="p1" initialBlocks={initial} onChange={(b) => { latest = b; }} />
-        </WorkspaceProvider>,
+        <EditableBody pageId="p1" initialBlocks={initial} onChange={(b) => { latest = b; }} />,
       );
     });
     const rows = host.querySelectorAll("[data-block-id]");
