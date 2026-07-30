@@ -158,6 +158,12 @@ type ColumnBridge = {
     dir: 1 | -1,
     caret: "start" | "end",
   ) => void;
+  /** The page-level block selection, so a container's rows can render
+   *  their selected state when a marquee scoped to that container picked
+   *  them. Ids are globally unique; the scope lives outside. */
+  selectedIds: Set<string>;
+  /** Shift-click on a handle inside a container extends WITHIN it. */
+  shiftClick: (id: string, colRef: ColumnRef) => void;
 };
 const ColumnBridgeCtx = createContext<ColumnBridge | null>(null);
 
@@ -2357,8 +2363,10 @@ export function EditableBody({
       escapeColumn,
       selectAllTopLevel,
       exitVertical: exitVerticalFromColumn,
+      selectedIds,
+      shiftClick: (id, colRef) => handleShiftClick(id, colRef),
     }),
-    [registerRowEl, registerColTrack, beginDrag, escapeColumn, selectAllTopLevel, exitVerticalFromColumn],
+    [registerRowEl, registerColTrack, beginDrag, escapeColumn, selectAllTopLevel, exitVerticalFromColumn, selectedIds, handleShiftClick],
   );
 
 
@@ -2789,15 +2797,7 @@ export function EditableBody({
               </span>
               <button
                 type="button"
-                onClick={() => {
-                  const ids = blocks.map((b) => b.id);
-                  const toDrop = ids
-                    .map((id, i) => (selectedIds.has(id) ? i : -1))
-                    .filter((i) => i >= 0);
-                  const next = deleteIndices(blocks, toDrop, () => newBlock("text"));
-                  clearSelection();
-                  commit(next);
-                }}
+                onClick={deleteSelection}
                 className="bar-btn rounded-md px-2 py-1"
                 style={{ color: "var(--color-track)", fontWeight: 600 }}
               >
@@ -3766,7 +3766,7 @@ function ColumnStack({
           block={b}
           ordinal={b.type === "numbered" ? (ordinalMap.get(b.id) ?? 1) : undefined}
           locked={locked}
-          selected={false}
+          selected={bridge?.selectedIds.has(b.id) ?? false}
           dimmed={false}
           onEditorFocus={() => setFocusedId(b.id)}
           onEditorBlur={() =>
@@ -3783,7 +3783,7 @@ function ColumnStack({
             });
             setHandleMenu({ blockId: b.id, anchor, spec: initial });
           }}
-          onHandleShiftClick={() => {}}
+          onHandleShiftClick={() => bridge?.shiftClick(b.id, colRef)}
           registerRef={(el) => {
             if (el) refs.current[b.id] = el;
             else delete refs.current[b.id];
