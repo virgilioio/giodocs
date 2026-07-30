@@ -124,3 +124,29 @@ export async function gcImagePaths(
     p_paths: paths as string[],
   });
 }
+
+/**
+ * Normalise an uploaded image into a 128×128 PNG for use as a custom
+ * emoji: centre-crop to a square, then downscale. An emoji renders at
+ * 15–50px, so a retina screenshot is pure waste, and non-square art
+ * letterboxes inconsistently across a dozen sites unless it is
+ * normalised once at the source.
+ */
+export const EMOJI_EDGE = 128;
+
+export async function squareEmojiPng(file: File | Blob): Promise<Blob> {
+  const bmp = await createImageBitmap(file);
+  const side = Math.min(bmp.width, bmp.height);
+  const sx = Math.round((bmp.width - side) / 2);
+  const sy = Math.round((bmp.height - side) / 2);
+  const canvas = document.createElement("canvas");
+  canvas.width = EMOJI_EDGE;
+  canvas.height = EMOJI_EDGE;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Could not process that image.");
+  ctx.drawImage(bmp, sx, sy, side, side, 0, 0, EMOJI_EDGE, EMOJI_EDGE);
+  bmp.close?.();
+  const out = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/png"));
+  if (!out) throw new Error("Could not process that image.");
+  return out;
+}
