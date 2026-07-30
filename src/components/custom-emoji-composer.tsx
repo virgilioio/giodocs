@@ -144,8 +144,9 @@ export function CustomEmojiComposer({
     <div
       role="dialog"
       aria-label={editing ? "Edit custom emoji" : "Add custom emoji"}
-      className="fixed z-[120] bg-surface border border-line shadow-popover animate-popIn"
+      className="fixed bg-surface border border-line shadow-popover animate-popIn"
       style={{
+        zIndex: "calc(var(--z-menu) + 3)",
         top: pos.top,
         left: pos.left,
         width: W,
