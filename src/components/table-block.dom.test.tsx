@@ -49,8 +49,10 @@ const menuItem = (label: string): HTMLElement => {
 };
 
 const handle = (kind: "row" | "col", i: number): HTMLElement => {
-  const label = kind === "row" ? `Row ${i + 1}` : `Column ${i + 1}`;
-  const el = document.querySelector(`[aria-label^="${label}"]`);
+  const label = kind === "row" ? `Row ${i + 1} actions` : `Column ${i + 1} actions`;
+  // Must be the BUTTON: cells also carry aria-labels that start with
+  // "Row 2 …", and clicking one of those does nothing.
+  const el = document.querySelector(`button[aria-label="${label}"]`);
   if (!el) throw new Error(`handle not found: ${label}`);
   return el as HTMLElement;
 };
