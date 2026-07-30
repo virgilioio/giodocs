@@ -137,7 +137,7 @@ export function SettingsModal({
       aria-label="Settings"
       className="fixed inset-0 flex items-center justify-center"
       style={{
-        zIndex: 110,
+        zIndex: "var(--z-modal)",
         background: "rgba(13,13,9,.32)",
         backdropFilter: "blur(3px)",
         padding: "4vh 3vw",
@@ -1532,7 +1532,8 @@ function EmojiPane() {
       {composer ? (
         <>
           <div
-            className="fixed inset-0 z-[119]"
+            className="fixed inset-0"
+            style={{ zIndex: "calc(var(--z-menu) + 2)" }}
             onPointerDown={() => setComposer(null)}
           />
           <CustomEmojiComposer

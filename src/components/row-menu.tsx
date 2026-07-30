@@ -170,7 +170,7 @@ function MenuShell({
           top: pos.top,
           left: pos.left,
           width,
-          zIndex: 101,
+          zIndex: "calc(var(--z-menu) + 1)",
           background: "var(--color-surface)",
           border: "1px solid var(--color-line)",
           borderRadius: 12,

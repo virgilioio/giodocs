@@ -264,7 +264,7 @@ export function AddMembersModal({
       aria-label="Add members"
       className="fixed inset-0 flex items-center justify-center"
       style={{
-        zIndex: 115,
+        zIndex: "calc(var(--z-modal) + 5)",
         background: "rgba(13,13,9,.32)",
         backdropFilter: "blur(3px)",
         padding: "5vh 4vw",
