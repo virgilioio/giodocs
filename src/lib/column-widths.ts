@@ -46,15 +46,53 @@ export function normalizeColumnWidths(
   return out;
 }
 
-/** `grid-template-columns` value. minmax(0, …) on every track so a wide
- *  image or a long word cannot push a track past its share. */
-export function columnsGridTemplate(
+/** The fixed width of the track between two adjacent columns. This used to
+ *  be the grid's `gap`; it is now a real track so the resize handles have a
+ *  cell of their own (see columnsGridTemplate). */
+export const COL_GAP_PX = 40;
+
+/** `grid-template-columns` for the PLAIN case (no handle children) — one
+ *  track per column, spacing supplied by the grid's own `gap`. Used by the
+ *  HTML exporter, which never renders resize handles. */
+export function columnsGridTemplatePlain(
   widths: ColWidths | undefined,
   n: number,
 ): string {
   if (!widths || widths.length !== n) return `repeat(${n}, minmax(0, 1fr))`;
   return widths.map((w) => `minmax(0, ${w}fr)`).join(" ");
 }
+
+/**
+ * `grid-template-columns` for the EDITOR: weight tracks and fixed gap
+ * tracks INTERLEAVED — `{w1}fr 40px {w2}fr 40px {w3}fr`.
+ *
+ * Why: the resize handles are grid items. With one track per column there
+ * were 2N-1 children for N tracks, so every surplus child flowed into an
+ * implicit row — the columns appeared to wrap onto the next line with a
+ * blank strip where a handle occupied a column track. Giving each boundary
+ * its own 40px track makes child count match track count exactly, and the
+ * handle track supplies the spacing the grid `gap` used to (so the grid's
+ * gap must be 0).
+ *
+ * minmax(0, …) on every weight track so a wide image or a long word cannot
+ * push a track past its share. The stored `widths` array is unchanged: one
+ * weight per COLUMN. Handle tracks are never part of the model.
+ */
+export function columnsGridTemplate(
+  widths: ColWidths | undefined,
+  n: number,
+): string {
+  if (n <= 0) return "";
+  const w = widths && widths.length === n ? widths : null;
+  const track = (i: number) => `minmax(0, ${w ? w[i] : 1}fr)`;
+  const parts: string[] = [];
+  for (let i = 0; i < n; i++) {
+    if (i > 0) parts.push(`${COL_GAP_PX}px`);
+    parts.push(track(i));
+  }
+  return parts.join(" ");
+}
+
 
 /**
  * Drag the boundary between column `i` and `i + 1` by `deltaFr` weights.

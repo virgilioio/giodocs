@@ -33,7 +33,7 @@ import { useWorkspaceId } from "@/lib/workspace-context";
 import { RowMenu, type MenuSpec, type MenuRow } from "./row-menu";
 import { isTypingTarget, shouldCopyBlocks } from "@/lib/is-typing";
 import { nextEditableIndex } from "@/lib/block-nav";
-import { stripNestedColumns } from "@/lib/columns";
+import { stripNestedColumns, isColumnsBlockEmpty } from "@/lib/columns";
 import {
   columnsGridTemplate,
   equalColumnWidths,
@@ -177,6 +177,10 @@ type ColumnBridge = {
   selectedIds: Set<string>;
   /** Shift-click on a handle inside a container extends WITHIN it. */
   shiftClick: (id: string, colRef: ColumnRef) => void;
+  /** Backspace in the sole empty block of a column: dissolve the whole
+   *  columns block when EVERY column is empty. Returns false (no-op) when
+   *  any column still has content. */
+  dissolveColumns: (colRef: ColumnRef) => boolean;
 };
 const ColumnBridgeCtx = createContext<ColumnBridge | null>(null);
 
@@ -2376,9 +2380,34 @@ export function EditableBody({
     [blocks, commit],
   );
 
+  /* Backspace in an empty block that is the ONLY block of its column, when
+   * EVERY column is likewise empty: the columns block dissolves into a
+   * single empty text block with the caret in it. Without this a `/col3`
+   * you did not mean is permanent unless dragged apart block by block.
+   * One structural commit → one undo snapshot, so ⌘Z restores the columns
+   * block with its contents. Any content anywhere refuses the gesture. */
+  const dissolveColumnsIfEmpty = useCallback(
+    (colRef: ColumnRef) => {
+      if (locked) return false;
+      const pi = blocks.findIndex((b) => b.id === colRef.blockId);
+      if (pi === -1) return false;
+      const parent = blocks[pi];
+      if (parent.type !== "columns" || !Array.isArray(parent.cols)) return false;
+      if (!isColumnsBlockEmpty(parent.cols)) return false;
+      const spawn = newBlock("text");
+      const next = [...blocks];
+      next.splice(pi, 1, spawn);
+      commit(next);
+      setFocusRequest({ id: spawn.id, caret: "start" });
+      return true;
+    },
+    [blocks, commit, locked],
+  );
+
   const selectAllTopLevel = useCallback(() => {
     setSelectedIds(new Set(blocks.map((x) => x.id)));
   }, [blocks]);
+
 
   /* Column → top-level exit for ArrowUp/ArrowDown/ArrowLeft/ArrowRight at
    * the column's top or bottom edge. Focuses the nearest top-level block
@@ -2419,8 +2448,9 @@ export function EditableBody({
       exitVertical: exitVerticalFromColumn,
       selectedIds,
       shiftClick: (id, colRef) => handleShiftClick(id, colRef),
+      dissolveColumns: dissolveColumnsIfEmpty,
     }),
-    [registerRowEl, registerColTrack, beginDrag, escapeColumn, selectAllTopLevel, exitVerticalFromColumn, selectedIds, handleShiftClick],
+    [registerRowEl, registerColTrack, beginDrag, escapeColumn, selectAllTopLevel, exitVerticalFromColumn, selectedIds, handleShiftClick, dissolveColumnsIfEmpty],
   );
 
 
@@ -3633,34 +3663,34 @@ function ColumnsBlock({
       className="gio-cols relative"
       style={{
         display: "grid",
+        // Weight tracks and 40px handle tracks INTERLEAVED, so the number of
+        // grid children (N columns + N-1 handles) equals the number of
+        // tracks. The handle tracks ARE the spacing, hence gap 0.
         gridTemplateColumns: columnsGridTemplate(effective, n),
-        gap: COLS_GAP,
+        gap: 0,
       }}
     >
       {cols.map((col, i) => (
-        <ColumnStack
-          key={i}
-          colRef={{ blockId: block.id, colIndex: i }}
-          blocks={col}
-          setBlocks={(next) => setColumn(i, next)}
-          locked={locked}
-        />
+        <div key={i} style={{ gridColumn: 2 * i + 1, gridRow: 1, minWidth: 0 }}>
+          <ColumnStack
+            colRef={{ blockId: block.id, colIndex: i }}
+            blocks={col}
+            setBlocks={(next) => setColumn(i, next)}
+            locked={locked}
+          />
+        </div>
       ))}
       {/* One handle per BOUNDARY between columns (N-1) — there is nothing
-          outside the outer edges to trade width with. Centred on the gap,
-          invisible at rest. Hidden below the stacking breakpoint. */}
+          outside the outer edges to trade width with. Each handle owns its
+          own 40px track, so the whole gap is the hit area and the 1px rule
+          is centred inside it. Hidden below the stacking breakpoint. */}
       {!locked &&
         cols.slice(0, Math.max(0, n - 1)).map((_, i) => (
           <div
             key={`h${i}`}
             className="gio-col-resize"
             data-dragging={dragRef.current?.index === i ? "true" : undefined}
-            style={{
-              gridColumn: i + 1,
-              gridRow: 1,
-              justifySelf: "end",
-              marginRight: -(COLS_GAP / 2) - 4,
-            }}
+            style={{ gridColumn: 2 * i + 2, gridRow: 1 }}
             onPointerDown={(e) => beginResize(e, i)}
             onPointerMove={onResizeMove}
             onPointerUp={endResize}
@@ -3668,6 +3698,7 @@ function ColumnsBlock({
             onDoubleClick={(e) => onHandleDoubleClick(e, i)}
           />
         ))}
+
     </div>
   );
 }
@@ -4083,6 +4114,13 @@ function ColumnStack({
               case "merge-prev":
                 e.preventDefault();
                 applyOp(opsMerge(blocks, b.id));
+                return;
+              case "dissolve-columns":
+                // Sole empty block of its column. The parent refuses unless
+                // EVERY column is empty, so the old guard survives for
+                // every other case.
+                e.preventDefault();
+                bridge?.dissolveColumns(colRef);
                 return;
               case "escape-column":
                 e.preventDefault();

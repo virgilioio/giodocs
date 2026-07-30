@@ -296,10 +296,11 @@
   --gio-gutter-x: 34px;
 }
 
-/* Columns resize handle: one per boundary between columns, centred on the
-   gap. Transparent at rest, a 1px rule on hover, blue while dragging. */
+/* Columns resize handle: one per boundary between columns. It OWNS its own
+   40px grid track (see columnsGridTemplate) — the whole gap is the hit
+   area — with a 1px rule centred inside it. Transparent at rest, a rule on
+   hover, blue while dragging. */
 .gio-col-resize {
-  width: 8px;
   cursor: col-resize;
   position: relative;
   z-index: 5;
@@ -310,7 +311,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 3px;
+  left: 50%;
   width: 1px;
   background: transparent;
   transition: background 100ms ease;
@@ -324,17 +325,25 @@
 
 /* Columns block: collapse to a single vertical stack below 900px so a
  * narrow window stays readable. Above 900px, the declared count wins and
- * per-column weights apply. Stacked, the 40px gap would read as a page
- * break, so it collapses to the normal block rhythm and the handles go. */
+ * per-column weights apply. Stacked, the 40px gap track would read as a
+ * page break, so it collapses to the normal block rhythm and the handles
+ * go. `!important` beats the inline grid style (an important declaration
+ * outranks inline), and every child is forced back to column 1 — the
+ * inline `grid-column` that places each stack in its interleaved track
+ * would otherwise create implicit columns. */
 @media (max-width: 900px) {
   .gio-cols {
     grid-template-columns: 1fr !important;
     gap: var(--gio-block-gap, 13px) !important;
   }
+  .gio-cols > * {
+    grid-column: 1 !important;
+  }
   .gio-col-resize {
     display: none;
   }
 }
+
 
 /* ─────────────────────────────────────────────────────────────────────────
    PAGE BODY VERTICAL RHYTHM

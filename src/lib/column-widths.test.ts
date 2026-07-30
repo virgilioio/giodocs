@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   COL_MIN_FR,
   columnsGridTemplate,
+  columnsGridTemplatePlain,
   equalColumnWidths,
   normalizeColumnWidths,
   resetColumnPair,
@@ -57,14 +58,47 @@ describe("normalizeColumnWidths (lockstep with the column count)", () => {
   });
 });
 
-describe("columnsGridTemplate", () => {
+describe("columnsGridTemplatePlain", () => {
   it("falls back to equal tracks when widths are absent or out of step", () => {
-    expect(columnsGridTemplate(undefined, 3)).toBe("repeat(3, minmax(0, 1fr))");
-    expect(columnsGridTemplate([1, 1], 3)).toBe("repeat(3, minmax(0, 1fr))");
+    expect(columnsGridTemplatePlain(undefined, 3)).toBe(
+      "repeat(3, minmax(0, 1fr))",
+    );
+    expect(columnsGridTemplatePlain([1, 1], 3)).toBe(
+      "repeat(3, minmax(0, 1fr))",
+    );
   });
   it("emits minmax(0, Nfr) per track", () => {
-    expect(columnsGridTemplate([1.4, 0.6], 2)).toBe(
+    expect(columnsGridTemplatePlain([1.4, 0.6], 2)).toBe(
       "minmax(0, 1.4fr) minmax(0, 0.6fr)",
+    );
+  });
+});
+
+describe("columnsGridTemplate — interleaved handle tracks", () => {
+  it("2 columns: one 40px track between them", () => {
+    expect(columnsGridTemplate(undefined, 2)).toBe(
+      "minmax(0, 1fr) 40px minmax(0, 1fr)",
+    );
+    expect(columnsGridTemplate([1.4, 0.6], 2)).toBe(
+      "minmax(0, 1.4fr) 40px minmax(0, 0.6fr)",
+    );
+  });
+  it("3 columns: two 40px tracks", () => {
+    expect(columnsGridTemplate(undefined, 3)).toBe(
+      "minmax(0, 1fr) 40px minmax(0, 1fr) 40px minmax(0, 1fr)",
+    );
+  });
+  it("child count matches track count for 2..6 columns", () => {
+    for (let n = 2; n <= 6; n++) {
+      const tracks = columnsGridTemplate(undefined, n).split(" 40px ");
+      expect(tracks.length).toBe(n);
+      // n column children + (n-1) handle children === 2n-1 tracks
+      expect(columnsGridTemplate(undefined, n).split(" ").length / 2).toBeGreaterThan(0);
+    }
+  });
+  it("widths out of step fall back to equal weights, tracks still interleaved", () => {
+    expect(columnsGridTemplate([1, 1], 3)).toBe(
+      "minmax(0, 1fr) 40px minmax(0, 1fr) 40px minmax(0, 1fr)",
     );
   });
 });
