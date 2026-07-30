@@ -1535,11 +1535,27 @@ export function EditableBody({
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
       const t = e.target as HTMLElement;
+      // Editable content: the browser owns this gesture. Blocks became
+      // contenteditable in the WYSIWYG migration and this list still only
+      // named textarea, so every drag across a word opened a marquee instead
+      // of selecting text.
+      //
+      // The click branch in onUp used to clear a block selection for this
+      // case; it no longer runs (no marquee session is opened), so clear here.
       if (
         t.closest(
-          "textarea, input, button, [data-slash-menu], [data-block-handle]",
+          '[contenteditable="true"], textarea, input, select, [data-table-cell]',
         )
       ) {
+        setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
+        setSelScope(null);
+        anchorId.current = null;
+        return;
+      }
+      // Interactive chrome: bail WITHOUT clearing — shift-clicking block
+      // handles is how a selection gets built, so clearing here would make
+      // range selection impossible.
+      if (t.closest("button, [data-slash-menu], [data-block-handle]")) {
         return;
       }
       // If a drag is in progress, do not start a marquee session.
