@@ -207,7 +207,7 @@ function SettingsNav({ pane, onPick }: { pane: SettingsPane; onPick: (p: Setting
     { key: "preferences", label: "Preferences", path: ICON_SLIDERS, group: "ACCOUNT" },
     { key: "general", label: "General", path: ICON_GEAR, group: "WORKSPACE" },
     { key: "people", label: "People", path: ICON_PEOPLE, group: "WORKSPACE" },
-    { key: "emoji", label: "Emoji", path: ICON_SMILEY, group: "WORKSPACE" },
+    { key: "emoji", label: "Custom emoji", path: ICON_SMILEY, group: "WORKSPACE" },
   ];
 
   const groups: Array<{ name: "ACCOUNT" | "WORKSPACE"; items: NavItem[] }> = [];
