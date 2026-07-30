@@ -32,7 +32,7 @@ import type { PendingInvite } from "./add-members-modal";
 import { SpecMenuTrigger } from "./row-menu";
 import { Ico } from "./emoji-icon";
 import { CustomEmojiComposer } from "./custom-emoji-composer";
-import { isShortcode, type CustomEmoji } from "@/lib/custom-emoji";
+import { type CustomEmoji } from "@/lib/custom-emoji";
 import {
   useCreateCustomEmoji,
   useCustomEmoji,
