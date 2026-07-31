@@ -554,11 +554,9 @@ export function AppShell() {
               }
               selection={selection}
             />
-          ) : (
-            <div className="mx-auto max-w-view px-6 py-10">
-              <p className="text-meta text-muted">Loading…</p>
-            </div>
-          )}
+          ) : showShellSkeleton ? (
+            <ViewSkeleton layout="table" />
+          ) : null}
         </main>
       </div>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
