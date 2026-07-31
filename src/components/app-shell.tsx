@@ -48,6 +48,8 @@ import { useToast } from "@/lib/toast";
 import { formatTimestamp } from "@/lib/format";
 import type { PageListItem } from "@/lib/types";
 import { MainView } from "./main-view";
+import { ViewSkeleton } from "./skeletons";
+import { useDelayedPending } from "./sk";
 import { PageEditor } from "./page-view";
 import { PageTopbarActions } from "./page-topbar-actions";
 import { CommandPalette } from "./command-palette";
@@ -347,6 +349,8 @@ export function AppShell() {
     .slice(0, 2)
     .join("")
     .toUpperCase();
+
+  const showShellSkeleton = useDelayedPending(!selection);
 
   const loading =
     shell.pages.isLoading || shell.views.isLoading || shell.workspace.isLoading;
