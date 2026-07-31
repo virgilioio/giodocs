@@ -48,6 +48,8 @@ import { useToast } from "@/lib/toast";
 import { formatTimestamp } from "@/lib/format";
 import type { PageListItem } from "@/lib/types";
 import { MainView } from "./main-view";
+import { ViewSkeleton } from "./skeletons";
+import { useDelayedPending } from "./sk";
 import { PageEditor } from "./page-view";
 import { PageTopbarActions } from "./page-topbar-actions";
 import { CommandPalette } from "./command-palette";
@@ -348,6 +350,8 @@ export function AppShell() {
     .join("")
     .toUpperCase();
 
+  const showShellSkeleton = useDelayedPending(!selection);
+
   const loading =
     shell.pages.isLoading || shell.views.isLoading || shell.workspace.isLoading;
 
@@ -554,11 +558,9 @@ export function AppShell() {
               }
               selection={selection}
             />
-          ) : (
-            <div className="mx-auto max-w-view px-6 py-10">
-              <p className="text-meta text-muted">Loading…</p>
-            </div>
-          )}
+          ) : showShellSkeleton ? (
+            <ViewSkeleton layout="table" />
+          ) : null}
         </main>
       </div>
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
