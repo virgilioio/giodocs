@@ -876,7 +876,7 @@ ${propsHtml}
   // keep the file self-contained.
   const markHtml = GIO_DOCS_LOGO_DATA_URI
     ? `<img src="${GIO_DOCS_LOGO_DATA_URI}" alt="Gio Docs"/>`
-    : `<span style="font-weight:700;letter-spacing:-0.02em;color:${muted};">Gio Docs</span>`;
+    : `<span style="font-size:20px;font-weight:700;letter-spacing:-0.02em;color:${muted};">Gio Docs</span>`;
   const wsName = (ctx.workspaceName ?? "").trim();
   const mastheadHtml = `<header class="masthead">
 ${markHtml}
