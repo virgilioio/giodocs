@@ -210,7 +210,36 @@ describe("callout with children serialisation", () => {
     );
     expect(md).toBe("> 💡 hi");
   });
+
+  it("toHtml puts BOTH children's markup inside one .callout-body, and the stylesheet gives that div a width", () => {
+    const html = toHtml({ title: "T", blocks: [cwith()] });
+    // The emission half: the body div exists once and contains both
+    // children. A callout that lost a child, or that emitted children as
+    // siblings of the icon, prints wrong.
+    const body = html.match(/<div class="callout-body">([\s\S]*?)<\/div><\/aside>/);
+    expect(body).not.toBeNull();
+    expect(body![1]).toContain("<p>one</p>");
+    expect(body![1]).toContain("<li>two</li>");
+    expect(html.match(/callout-body">/g)!.length).toBe(1);
+    // The layout half: without a flex basis the div collapses to a sliver
+    // inside the flex `aside` and its block children print as nothing.
+    expect(html).toContain("aside .callout-body { flex: 1 1 auto; min-width: 0; }");
+  });
+
+  it("toHtml defines the callout colour tokens the inline background depends on", () => {
+    // blockHtml emits background:var(--color-*); an exported file has no
+    // @theme, so the document must declare them or every callout prints
+    // with no colour at all.
+    const html = toHtml({
+      title: "T",
+      blocks: [B("callout", { text: "n", icon: "💡", color: "blue" as unknown })],
+    });
+    expect(html).toContain("background:var(--color-blueTint)");
+    expect(html).toContain("--color-blueTint: #DBEAFE");
+    expect(html).toContain("--color-rail: #F4F3EF");
+  });
 });
+
 
 describe("columns block serialisation", () => {
   const cb = (n: number) => ({
