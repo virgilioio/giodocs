@@ -65,9 +65,20 @@ describe("Open allowlist", () => {
       "jpeg",
       "gif",
       "svg",
+      "webp",
+      "avif",
+      "bmp",
+      "ico",
       "txt",
       "md",
       "csv",
+      "json",
+      "xml",
+      "html",
+      "mp4",
+      "webm",
+      "mp3",
+      "wav",
     ]);
   });
   it("excludes docx, xlsx, zip, key and pptx", () => {
