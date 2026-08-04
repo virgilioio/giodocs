@@ -21,6 +21,7 @@ import { useFormatDate } from "@/lib/format";
 import { useToast } from "@/lib/toast";
 import {
   badgeLabel,
+  displayFileName,
   fileKind,
   fileMetaLine,
   fileTone,
@@ -38,6 +39,10 @@ const KIND_ICON: Record<FileKind, string> = {
   image:
     "M4.5 5h15A1.5 1.5 0 0 1 21 6.5v11a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11A1.5 1.5 0 0 1 4.5 5zM3 15.4l5-4.4 4.6 4M15.6 8.4h.01",
   zip: "M13.4 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9.1zM13.4 3.5v5.6H19M11 6h2M11 9h2M11 12h2M11 15h2",
+  code: "M9.2 8.4 5.6 12l3.6 3.6M14.8 8.4 18.4 12l-3.6 3.6",
+  video:
+    "M4.5 5.5h11A1.5 1.5 0 0 1 17 7v10a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 17V7a1.5 1.5 0 0 1 1.5-1.5zM17 10l4-2.5v9L17 14",
+  audio: "M14.5 4.5v11.2M14.5 4.5 8.5 6v8.2M8.5 14.2a2.2 2.2 0 1 1-2.2 2.2 2.2 2.2 0 0 1 2.2-2.2zM14.5 15.7a2.2 2.2 0 1 1-2.2 2.2 2.2 2.2 0 0 1 2.2-2.2z",
   generic:
     "M13.4 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9.1zM13.4 3.5v5.6H19",
 };
