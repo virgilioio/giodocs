@@ -580,3 +580,44 @@ describe("blockToMarkdown — indent prefix", () => {
     ).toBe("  - [x] z");
   });
 });
+
+describe("file block export stays clickable", () => {
+  it("markdown emits a real link, no emoji prefix", async () => {
+    const { rememberSignedUrl } = await import("./image-url-cache");
+    rememberSignedUrl("ws/pg/files/u.pdf", "https://signed.example/u.pdf?tok=1");
+    const md = blockToMarkdown(
+      B("file", {
+        path: "ws/pg/files/u.pdf",
+        fname: "Dash concepts — round 2.pdf",
+        fsize: 10,
+      }),
+    );
+    expect(md).toBe(
+      "[Dash concepts — round 2.pdf](https://signed.example/u.pdf?tok=1)",
+    );
+  });
+
+  it("html escapes the filename in both href and text and sets download", async () => {
+    const { rememberSignedUrl } = await import("./image-url-cache");
+    rememberSignedUrl("ws/pg/files/q.pdf", "https://signed.example/q.pdf?a=1&b=2");
+    const html = toHtml({
+      title: "T",
+      blocks: [
+        B("file", {
+          path: "ws/pg/files/q.pdf",
+          fname: 'Q&A "final" — v2.pdf',
+          fsize: 10,
+        }),
+      ],
+    });
+    expect(html).toContain(
+      '<a href="https://signed.example/q.pdf?a=1&amp;b=2" download="Q&amp;A &quot;final&quot; — v2.pdf">',
+    );
+    expect(html).not.toContain("📎");
+  });
+
+  it("an empty file block exports as nothing", () => {
+    expect(blockToMarkdown(B("file", {}))).toBe("");
+    expect(blockToMarkdown(B("file", { fname: "a.pdf" }))).toBe("");
+  });
+});
