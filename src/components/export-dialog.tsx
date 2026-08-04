@@ -19,6 +19,7 @@ import {
 } from "@/lib/export";
 import { prefetchSignedUrls } from "@/lib/images";
 import { collectImagePaths } from "@/lib/image-ops";
+import { hasFileBlock } from "@/lib/file-ops";
 
 export type ExportFormat = "PDF" | "HTML" | "Markdown";
 type Paper = "Letter" | "A4" | "Legal" | "Tabloid" | "A3";
@@ -287,6 +288,11 @@ export function ExportDialog({
           )}
         </div>
 
+        {hasFileBlock(ctx.blocks) ? (
+          <div className="text-caption text-faint" style={{ marginTop: 10 }}>
+            File links stay live for one hour.
+          </div>
+        ) : null}
 
         {err ? (
           <div

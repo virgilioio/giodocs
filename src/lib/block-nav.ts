@@ -10,7 +10,7 @@
 
 export type BlockLike = { type: string };
 
-const NON_EDITABLE = new Set(["divider", "table", "image", "imagerow"]);
+const NON_EDITABLE = new Set(["divider", "table", "image", "imagerow", "file"]);
 
 export function nextEditableIndex<T extends BlockLike>(
   blocks: T[],

@@ -11,6 +11,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { rememberSignedUrl } from "./image-url-cache";
+import { filesStoragePath, extOfName } from "./file-ops";
 import {
   IMAGE_BUCKET,
   IMAGE_MAX_EDGE,
@@ -104,6 +105,29 @@ export async function uploadImage(
   const { error } = await supabase.storage
     .from(IMAGE_BUCKET)
     .upload(path, body, { contentType: file.type, upsert: false });
+  if (error) throw error;
+  return path;
+}
+
+/**
+ * Upload a FILE block's document. Same bucket, same page-scoped policies,
+ * under a `files/` prefix — no second access rule to keep in sync. Returns
+ * the STORAGE PATH; the caller stores that, never a signed URL. Size is
+ * validated by the caller (src/lib/file-ops.rejectFileReason); type is not
+ * validated at all, by design.
+ */
+export async function uploadFile(
+  file: File,
+  workspaceId: string,
+  pageId: string,
+): Promise<string> {
+  const path = filesStoragePath(workspaceId, pageId, uuid(), extOfName(file.name));
+  const { error } = await supabase.storage
+    .from(IMAGE_BUCKET)
+    .upload(path, file, {
+      contentType: file.type || "application/octet-stream",
+      upsert: false,
+    });
   if (error) throw error;
   return path;
 }
