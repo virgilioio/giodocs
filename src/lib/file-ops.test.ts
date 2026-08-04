@@ -138,3 +138,72 @@ describe("hasFileBlock", () => {
     expect(hasFileBlock(undefined)).toBe(false);
   });
 });
+
+describe("any file type is recognised", () => {
+  it("maps images beyond the original five", () => {
+    for (const n of ["a.webp", "a.avif", "a.heic", "a.bmp", "a.tiff", "a.ico"]) {
+      expect(fileKind(n)).toBe("image");
+      expect(fileTone(n).ink).toBe("purple");
+    }
+  });
+  it("maps every common archive to the zip tile", () => {
+    for (const n of ["a.zip", "a.rar", "a.7z", "a.tar", "a.gz", "a.tgz"]) {
+      expect(fileKind(n)).toBe("zip");
+      expect(fileTone(n).ink).toBe("amberInk");
+    }
+  });
+  it("maps data and code to the code tile", () => {
+    for (const n of ["a.json", "a.xml", "a.yaml", "a.sql", "a.ts", "a.css", "a.sh"]) {
+      expect(fileKind(n)).toBe("code");
+    }
+  });
+  it("maps media to video and audio tiles", () => {
+    expect(fileKind("clip.mp4")).toBe("video");
+    expect(fileKind("clip.webm")).toBe("video");
+    expect(fileKind("take.mp3")).toBe("audio");
+    expect(fileKind("take.wav")).toBe("audio");
+  });
+  it("gives design files the pink generic tile", () => {
+    expect(fileKind("cover.psd")).toBe("generic");
+    expect(fileTone("cover.psd").ink).toBe("pink");
+  });
+  it("still badges an unknown extension rather than blanking", () => {
+    expect(fileKind("thing.wobble")).toBe("generic");
+    expect(badgeLabel("thing.wobble")).toBe("WOBB");
+  });
+  it("opens only what a browser genuinely renders", () => {
+    for (const n of ["a.webp", "a.json", "a.mp4", "a.mp3", "a.html"]) {
+      expect(isOpenable(n)).toBe(true);
+    }
+    for (const n of ["a.heic", "a.psd", "a.zip", "a.docx", "a.pptx"]) {
+      expect(isOpenable(n)).toBe(false);
+    }
+  });
+});
+
+describe("no card ever claims 0 B", () => {
+  it("drops the size segment when the size is unknown", () => {
+    expect(fileMetaLine(0, "Priya", "4d ago")).toBe("added by Priya · 4d ago");
+    expect(fileMetaLine(0)).toBe("");
+  });
+});
+
+describe("displayFileName", () => {
+  it("prefers the stored name", () => {
+    expect(displayFileName("Report.pdf", "ws/pg/files/u.pdf")).toBe("Report.pdf");
+  });
+  it("falls back to the path's extension when the name was lost", () => {
+    expect(displayFileName("", "ws/pg/files/u.pdf")).toBe("File.pdf");
+    expect(displayFileName(undefined, "ws/pg/files/u.zip")).toBe("File.zip");
+  });
+  it("never renders empty", () => {
+    expect(displayFileName(null, null)).toBe("File");
+  });
+});
+
+describe("nameFromPath", () => {
+  it("takes the last segment", () => {
+    expect(nameFromPath("ws/pg/files/u.pdf")).toBe("u.pdf");
+    expect(nameFromPath(null)).toBe("");
+  });
+});
