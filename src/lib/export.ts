@@ -251,6 +251,15 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
       const img = `![${alt}](${src})`;
       return cap ? `${img}\n*${cap}*` : img;
     }
+    // A file exports as a REAL LINK, so an exported page still reaches the
+    // document rather than merely naming it. No emoji prefix. An empty
+    // file block exports as NOTHING — no placeholder line.
+    case "file": {
+      const name = String((b as { fname?: string }).fname ?? "");
+      const src = peekSignedUrl((b as { path?: string }).path);
+      if (!name || !src) return "";
+      return `[${name}](${src})`;
+    }
     case "imagerow": {
       const cap = String((b as { cap?: string }).cap ?? "");
       const imgs = readPaths(b)
@@ -468,6 +477,14 @@ function blockHtml(b: Block, ordinal = 1): string {
       )}" alt="${esc(alt)}" style="width:100%;height:auto;border-radius:9px"/>${
         cap ? `<figcaption>${esc(cap)}</figcaption>` : ""
       }</figure>`;
+    }
+    case "file": {
+      // The filename is escaped in BOTH the href attribute and the text:
+      // filenames routinely carry &, quotes and em dashes.
+      const name = String((b as { fname?: string }).fname ?? "");
+      const src = peekSignedUrl((b as { path?: string }).path);
+      if (!name || !src) return "";
+      return `<p><a href="${esc(src)}" download="${esc(name)}">${esc(name)}</a></p>`;
     }
     case "imagerow": {
       const cap = String((b as { cap?: string }).cap ?? "");

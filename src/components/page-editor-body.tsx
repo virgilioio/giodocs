@@ -117,6 +117,7 @@ import {
 import { resolveKey, type Op as KeyOp } from "@/lib/block-key-handler";
 import { toggleWrap } from "@/lib/toggle-wrap";
 import { ImageBlock, ImageRowBlock, PageImageCtx } from "@/components/image-block";
+import { FileBlock } from "@/components/file-block";
 import { collectImagePaths, droppedImagePaths, rejectReason } from "@/lib/image-ops";
 import { gcImagePaths, uploadImage } from "@/lib/images";
 import { FloatingToolbar } from "./floating-toolbar";
@@ -208,6 +209,8 @@ type MenuItem = {
    *  menu, the Turn-into submenu and the parent "Turn into" row all read
    *  it from here, so the three can never drift apart. */
   ic: IconKey;
+  /** Extra search terms for the slash menu, beyond name and type. */
+  kw?: string;
   /** For "columns" entries only: the column count to create. */
   count?: number;
 };
@@ -240,6 +243,17 @@ const BLOCK_MENU: MenuItem[] = [
     desc: "Two or three images side by side.",
     icon: "▥",
     ic: "bImageRow",
+  },
+  {
+    type: "file",
+    name: "File",
+    desc: "Attach a document. It stays with the page, and with every export.",
+    // A typographic mark, like every other glyph in this column — an emoji
+    // here would be the only one that breaks the set, and emoji are user
+    // content in this product, never UI chrome.
+    icon: "\u2398",
+    ic: "bFile",
+    kw: "file attachment pdf doc docx upload attach download",
   },
 ];
 
@@ -1747,7 +1761,11 @@ export function EditableBody({
     const q = (slash?.query ?? "").toLowerCase().trim();
     if (!q) return all;
     return all.filter(
-      (m) => m.name.toLowerCase().includes(q) || m.type.includes(q) || (m.count != null && `col${m.count}`.includes(q)),
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        m.type.includes(q) ||
+        (m.kw != null && m.kw.includes(q)) ||
+        (m.count != null && `col${m.count}`.includes(q)),
     );
   }, [slash]);
   const [menuIdx, setMenuIdx] = useState(0);
@@ -2979,7 +2997,8 @@ function BlockRow({
   const noEditor =
     block.type === "divider" ||
     block.type === "image" ||
-    block.type === "imagerow";
+    block.type === "imagerow" ||
+    block.type === "file";
   // Gutter (+ / drag handle) must centre vertically on the block's FIRST
   // line box, not the row centre. We publish the block's own line-height
   // as a pixel value on the row via `--gio-block-lh`; the gutter consumes
@@ -3196,6 +3215,17 @@ function BlockContent({
   if (t === "image") {
     return (
       <ImageBlock
+        block={block}
+        locked={locked}
+        onChange={onChange}
+        onDelete={onDelete}
+      />
+    );
+  }
+
+  if (t === "file") {
+    return (
+      <FileBlock
         block={block}
         locked={locked}
         onChange={onChange}
@@ -3753,7 +3783,10 @@ function ColumnStack({
     const q = (slash?.query ?? "").toLowerCase().trim();
     if (!q) return base;
     return base.filter(
-      (m) => m.name.toLowerCase().includes(q) || m.type.includes(q),
+      (m) =>
+        m.name.toLowerCase().includes(q) ||
+        m.type.includes(q) ||
+        (m.kw != null && m.kw.includes(q)),
     );
   }, [slash, isCallout]);
 

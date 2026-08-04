@@ -40,7 +40,8 @@ export type BlockType =
   | "table"
   | "columns"
   | "image"
-  | "imagerow";
+  | "imagerow"
+  | "file";
 
 /** Optional heading level for `toggle` blocks. Absent = plain toggle (today's
  *  rendering). Present = the summary renders at the given heading level, and

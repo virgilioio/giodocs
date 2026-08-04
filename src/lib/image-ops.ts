@@ -133,7 +133,11 @@ export function collectImagePaths(blocks: readonly Blk[] | undefined): string[] 
     if (!Array.isArray(list)) return;
     for (const b of list) {
       if (!b || typeof b !== "object") continue;
-      if (b.type === "image") {
+      // `file` blocks live in the same bucket under a files/ prefix, so
+      // signing, export prefetching and GC all flow through this one
+      // collector — a removed file block's object is reclaimed by exactly
+      // the same path as a removed image's.
+      if (b.type === "image" || b.type === "file") {
         const p = (b as { path?: unknown }).path;
         if (typeof p === "string" && p) out.push(p);
       }
