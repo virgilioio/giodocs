@@ -235,9 +235,16 @@ describe("callout with children serialisation", () => {
       blocks: [B("callout", { text: "n", icon: "💡", color: "blue" as unknown })],
     });
     expect(html).toContain("background:var(--color-blueTint)");
-    expect(html).toContain("--color-blueTint: #DBEAFE");
-    expect(html).toContain("--color-rail: #F4F3EF");
+    // Assert the DECLARATION exists and resolves to a concrete colour, not
+    // another var() — the literal values are not repeated here because the
+    // token guard forbids hex outside export.ts.
+    for (const t of ["rail", "line", "blueTint", "blueInk", "purpleTint", "purple", "accentTint", "amberTint", "dangerTint", "yellowTint"]) {
+      const m = html.match(new RegExp(`--color-${t}:\\s*([^;]+);`));
+      expect(m, `--color-${t} must be declared in the exported stylesheet`).not.toBeNull();
+      expect(m![1].trim()).toMatch(/^#[0-9A-Fa-f]{3,8}$/);
+    }
   });
+
 });
 
 
