@@ -812,14 +812,14 @@ const HTML_CSS = `
   /* Masthead — a letterhead. Rendered once at the top of the document,
      never repeated per sheet. Replaces the old fixed-position footer,
      which fought pagination on every long export. */
-  header.masthead {
-    display: flex; align-items: center; gap: 10px;
-    padding-bottom: 12px; margin-bottom: 18px;
-    border-bottom: 1px solid ${line};
-    font-family: Poppins, -apple-system, BlinkMacSystemFont, sans-serif;
-    font-size: 11px; color: ${muted}; letter-spacing: -0.01em;
-  }
-  header.masthead img { height: 20px; width: auto; display: block; flex: none; }
+   header.masthead {
+     display: flex; align-items: center; gap: 12px;
+     padding-bottom: 16px; margin-bottom: 22px;
+     border-bottom: 1px solid ${line};
+     font-family: Poppins, -apple-system, BlinkMacSystemFont, sans-serif;
+     font-size: 12.5px; color: ${muted}; letter-spacing: -0.01em;
+   }
+   header.masthead img { height: 34px; width: auto; display: block; flex: none; }
   header.masthead .ws { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Page-break control — the difference between "printed a web page"
      and "a document". Headings never strand at the bottom of a page;
@@ -876,7 +876,7 @@ ${propsHtml}
   // keep the file self-contained.
   const markHtml = GIO_DOCS_LOGO_DATA_URI
     ? `<img src="${GIO_DOCS_LOGO_DATA_URI}" alt="Gio Docs"/>`
-    : `<span style="font-weight:700;letter-spacing:-0.02em;color:${muted};">Gio Docs</span>`;
+    : `<span style="font-size:20px;font-weight:700;letter-spacing:-0.02em;color:${muted};">Gio Docs</span>`;
   const wsName = (ctx.workspaceName ?? "").trim();
   const mastheadHtml = `<header class="masthead">
 ${markHtml}
