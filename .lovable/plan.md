@@ -31,3 +31,22 @@ The metadata for that one already-uploaded PDF is unrecoverable beyond its exten
 - `src/components/file-block.tsx` — full-metadata completion patch, path-derived fallback
 - `src/lib/file-ops.ts` — helper to derive a display name from a storage path
 - tests alongside the above
+
+## Any file type
+
+Already true and staying true: the picker has no `accept` filter, the bucket's mime restriction is off, and validation is size-only (25 MB) — PNGs, ZIPs, videos, anything uploads today. What is thin is *recognition*: only 16 extensions map to a tint and icon; everything else falls to the grey generic tile.
+
+So the type table grows, using existing palette pairs only:
+
+- images: `webp`, `avif`, `heic`, `bmp`, `tiff`, `ico` → image tile, purple
+- archives: `rar`, `7z`, `tar`, `gz`, `tgz` → zip tile, amber
+- sheets/docs: `ods`, `odt`, `rtf`, `pages`, `numbers` → matching doc/sheet tiles
+- data & code: `json`, `xml`, `yml`, `yaml`, `sql`, `ts`, `tsx`, `js`, `css`, `html`, `sh` → code tile (`<>` glyph), sunken/secondary
+- media: `mp4`, `mov`, `webm` → video tile; `mp3`, `wav`, `m4a` → audio tile — both blue
+- design: `psd`, `ai`, `sketch`, `fig` → generic tile, pink
+
+Two new tile glyphs are needed for video and audio (single-path, 24 grid, 1.8 stroke, matching the set) plus the code glyph reusing the existing `<>` mark. Anything still unmapped keeps the generic tile and the uppercased 4-char badge — never blank.
+
+`OPENABLE_EXTS` gains only what a browser genuinely renders in a tab: `webp`, `avif`, `bmp`, `ico`, `json`, `xml`, `html`, `mp4`, `webm`, `mp3`, `wav`. `heic`, `psd`, `zip`, `docx` and friends stay download-only, for the reason already in the code comment.
+
+Not in scope unless you ask: inline previews (image thumbnails in the tile, an audio player, a video frame). That is a different block, not a smarter card.
