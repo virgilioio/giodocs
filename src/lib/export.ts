@@ -768,6 +768,15 @@ const HTML_CSS = `
   blockquote { margin: 10px 0; padding: 4px 14px; border-left: 3px solid ${lineStrong}; color: ${muted}; font-style: italic; }
   aside, .callout { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; padding: 12px 14px; background: ${sunken}; border-radius: 10px; }
   aside .ico { flex: none; font-size: 18px; line-height: 1.3; }
+  /* A multi-child callout wraps its children in this div. Without a basis
+     it is a shrink-to-fit flex item next to the icon and collapses to a
+     sliver, so its block-level children print as nothing. min-width: 0 is
+     load-bearing: a long word or a <pre> inside the callout would
+     otherwise push the track wider than the sheet — the same trap the
+     columns grid guards with minmax(0, 1fr). */
+  aside .callout-body { flex: 1 1 auto; min-width: 0; }
+  aside .callout-body > *:first-child { margin-top: 0; }
+  aside .callout-body > *:last-child { margin-bottom: 0; }
   pre { margin: 10px 0; padding: 12px 14px; background: ${sunken}; border-radius: 8px;
     font-family: "Spline Sans Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px;
     white-space: pre-wrap; word-break: break-word; }
