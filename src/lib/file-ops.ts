@@ -215,16 +215,39 @@ export function filesStoragePath(
   return `${workspaceId}/${pageId}/files/${uuid}${suffix}`;
 }
 
-/** "2.3 MB · added by Priya · 4d ago" — each segment omitted when unknown. */
+/** "2.3 MB · added by Priya · 4d ago" — each segment omitted when unknown.
+ *  A size of 0 or less is UNKNOWN, not empty: a card must never claim a
+ *  real file is 0 B, so the size segment is dropped instead. */
 export function fileMetaLine(
   fsize: number,
   by?: string | null,
   when?: string | null,
 ): string {
-  const parts = [formatBytes(fsize)];
+  const parts: string[] = [];
+  if (Number.isFinite(fsize) && fsize > 0) parts.push(formatBytes(fsize));
   if (by) parts.push(`added by ${by}`);
   if (when) parts.push(when);
   return parts.join(" · ");
+}
+
+/** Last segment of a storage path, extension intact — the display name of
+ *  last resort when a block lost its `fname`. */
+export function nameFromPath(path: string | null | undefined): string {
+  const p = String(path ?? "");
+  const seg = p.split("/").pop() ?? "";
+  return seg;
+}
+
+/** What to SHOW as the filename: the stored name, else something honest
+ *  derived from the storage path ("File.pdf"), else "File". */
+export function displayFileName(
+  fname: string | null | undefined,
+  path: string | null | undefined,
+): string {
+  const n = String(fname ?? "").trim();
+  if (n) return n;
+  const ext = extOfName(nameFromPath(path));
+  return ext ? `File.${ext}` : "File";
 }
 
 /** Does this block tree hold a file block anywhere (columns, callouts
