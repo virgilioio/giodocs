@@ -151,3 +151,19 @@ export function fileMetaLine(
   if (when) parts.push(when);
   return parts.join(" · ");
 }
+
+/** Does this block tree hold a file block anywhere (columns, callouts
+ *  included)? Drives the export dialog's one-hour shelf-life note. */
+export function hasFileBlock(blocks: unknown): boolean {
+  if (!Array.isArray(blocks)) return false;
+  for (const b of blocks) {
+    if (!b || typeof b !== "object") continue;
+    const rec = b as { type?: unknown; children?: unknown; cols?: unknown };
+    if (rec.type === "file") return true;
+    if (hasFileBlock(rec.children)) return true;
+    if (Array.isArray(rec.cols)) {
+      for (const col of rec.cols) if (hasFileBlock(col)) return true;
+    }
+  }
+  return false;
+}

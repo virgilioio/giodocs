@@ -8,6 +8,7 @@ import {
   fileTone,
   filesStoragePath,
   formatBytes,
+  hasFileBlock,
   isOpenable,
   rejectFileReason,
   FILE_MAX_BYTES,
@@ -116,5 +117,24 @@ describe("fileMetaLine", () => {
   it("omits unknown segments", () => {
     expect(fileMetaLine(1024)).toBe("1 KB");
     expect(fileMetaLine(1024, null, "now")).toBe("1 KB · now");
+  });
+});
+
+describe("hasFileBlock", () => {
+  it("finds a file nested inside a callout inside a column", () => {
+    const tree = [
+      { type: "text" },
+      {
+        type: "columns",
+        cols: [[{ type: "text" }], [{ type: "callout", children: [{ type: "file" }] }]],
+      },
+    ];
+    expect(hasFileBlock(tree)).toBe(true);
+  });
+  it("is false for a tree with no file block", () => {
+    expect(hasFileBlock([{ type: "image" }, { type: "columns", cols: [[{ type: "text" }]] }])).toBe(
+      false,
+    );
+    expect(hasFileBlock(undefined)).toBe(false);
   });
 });
