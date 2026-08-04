@@ -1,30 +1,33 @@
-## What we actually know about Malena
+# File block shows 0 B — diagnosed
 
-I checked `workspace_invites`, `profiles`, and `auth.users` for anything matching `%malena%`. There is nothing — no invite row, no profile, no auth user. So the "record already exists" theory is not the cause. What's really happening: the edge function is returning a per-invite failure, and the error toast is being rendered *behind* the modal's blurred backdrop, so the reason never becomes visible.
+## What is actually wrong
 
-## Scope
+The uploaded file's metadata is being erased right after it is written. I read the stored block for the page you are on:
 
-Two small, surgical fixes. No schema changes, no edge-function changes.
+```json
+{ "id": "Sd2IpV0R88", "type": "file",
+  "path": ".../files/c5171eaf-....pdf",
+  "text": "", "open": false, "checked": false }
+```
 
-### 1. Toast layering (`src/lib/toast.tsx`)
+`fname`, `fsize`, `fmime`, `fby`, `fat` are all gone — so the card renders size `0 B`. The file itself uploaded fine; only its description was lost.
 
-The toast container is `z-50`. The Add Members modal (and every other modal in the app — Settings, Export, etc.) is `fixed inset-0` with `backdropFilter: blur(3px)` and no explicit z-index, so it stacks above `z-50` because it mounts later in the DOM. Raise the toast container to `z-[200]` so toasts always sit above every modal backdrop, popover, and command palette (`z-[80]`).
+Cause: the upload writes twice. First patch (filename, size, mime, author, date) applies immediately. When the upload resolves, the second patch (`path`) is applied by a callback captured *before* the first patch landed, so it merges into the pre-upload blocks array and overwrites the metadata away. Classic stale-closure write in `updateBlock`, which maps over the `blocks` value from the render that started the upload.
 
-### 2. Surface the real invite error (`src/components/add-members-modal.tsx`)
+## The fix
 
-Right now, when *every* invite fails the modal stays open and pushes a single toast — which is exactly the toast that gets hidden behind the blur. Add an inline error line inside the modal itself (under the hint row) that shows the per-email failure reason returned by the edge function, so the user sees it even without the toast. Keep the toast too (it will now be visible after fix #1). No new state shape — just render `sendInvites.data.results.filter(r => !r.ok)` when the mutation last resolved with failures.
+1. Make `updateBlock` in `src/components/page-editor-body.tsx` merge against the *current* blocks, not the render-time snapshot — a `blocksRef` kept in sync, read inside `updateBlock`. This is the real bug and it affects every async patch, not just files (image/imagerow upload completion has the same shape).
+2. In `src/components/file-block.tsx`, make the completion patch carry the full metadata alongside `path`, so a single write is self-sufficient even if a patch is dropped. Same for the replace path.
+3. Add a defensive fallback in the card: if `fname` is missing but `path` exists, derive the display name and type from the storage path's extension, and omit the size line rather than printing `0 B`. A card should never claim a file is empty.
+4. Tests: a unit test that a delayed second patch does not clobber an earlier patch, plus a DOM test that a completed upload still shows name, badge and size.
 
-## Out of scope
+## Your existing block
 
-- No changes to `send-workspace-invite`, `create_workspace_invite`, or any migration.
-- No changes to other modals — the toast fix covers all of them at once.
-- Not adding a "retry" button; existing Send button already re-sends.
+The metadata for that one already-uploaded PDF is unrecoverable beyond its extension (only the path survived). After the fix, it will render as a PDF card with no size; re-attaching the file restores the full line. No migration, no SQL.
 
-## Files changed
+## Files to change
 
-- `src/lib/toast.tsx` — bump container z-index to `z-[200]`.
-- `src/components/add-members-modal.tsx` — render inline per-email failure list from the last mutation result.
-
-## Follow-up (after fix ships)
-
-Have the user retry sending to `malena@virgilio.tech`. The inline error will now name the real reason (Resend rejection, RPC failure, invalid email, etc.), and I'll act on that specifically.
+- `src/components/page-editor-body.tsx` — ref-based `updateBlock`
+- `src/components/file-block.tsx` — full-metadata completion patch, path-derived fallback
+- `src/lib/file-ops.ts` — helper to derive a display name from a storage path
+- tests alongside the above
