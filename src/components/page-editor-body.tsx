@@ -2227,12 +2227,17 @@ export function EditableBody({
   );
 
   function updateBlock(id: string, patch: Partial<Blk>) {
-    const next = blocks.map((b) => (b.id === id ? { ...b, ...patch } : b));
+    // Merge against the LIVE block list, not this render's snapshot. An
+    // async writer (an upload finishing) holds the callback from the render
+    // that started it; merging into that stale array would silently undo
+    // every change made in between.
+    const next = blocksRef.current.map((b) => (b.id === id ? { ...b, ...patch } : b));
     // Text-only patch = a keystroke on this block → coalesce as typing.
     const keys = Object.keys(patch);
     const isTyping = keys.length === 1 && keys[0] === "text";
     commit(next, isTyping ? { typingKey: id } : undefined);
   }
+
 
   const insertAfter = useCallback(
     (id: string, type: BlockType = "text") => applyOp(opsInsertAfter(blocks, id, type)),
