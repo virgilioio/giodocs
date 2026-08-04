@@ -559,6 +559,10 @@ export function EditableBody({
           setTypingMarker(pageId, null, null);
         }
       }
+      // Keep the live mirror in step SYNCHRONOUSLY — the effect below runs a
+      // render later, and two commits in the same tick must not read a
+      // pre-commit list.
+      blocksRef.current = next;
       setBlocks(next);
       onChange(next);
     },
