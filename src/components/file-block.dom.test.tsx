@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react";
 import { FileBlock } from "./file-block";
+import { PageImageCtx } from "./image-block";
 import type { Blk } from "@/lib/block-ops";
 
 vi.mock("@/lib/images", () => ({
@@ -87,5 +88,42 @@ describe("file block", () => {
     } as unknown as Blk);
     expect(titles()).not.toContain("Open");
     expect(titles()).toContain("Download");
+  });
+});
+
+/* The regression that showed as "0 bites": the patch that lands when the
+ * upload finishes must carry the metadata itself, because it merges into
+ * whatever the block list is a network round-trip later. */
+describe("upload completion patch", () => {
+  it("repeats name, size and type alongside the path", async () => {
+    const patches: Partial<Blk>[] = [];
+    root = createRoot(host);
+    act(() => {
+      root.render(
+        <PageImageCtx.Provider value={{ workspaceId: "ws", pageId: "pg" }}>
+          <FileBlock
+            block={{ id: "a", type: "file" } as Blk}
+            locked={false}
+            onChange={(p) => patches.push(p)}
+            onDelete={() => {}}
+          />
+        </PageImageCtx.Provider>,
+      );
+    });
+    const input = host.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["hello there"], "notes.pdf", { type: "application/pdf" });
+    Object.defineProperty(input, "files", { value: [file] });
+    await act(async () => {
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(patches.length).toBe(2);
+    const final = patches[1] as Record<string, unknown>;
+    expect(final.path).toBe("ws/pg/files/u.pdf");
+    expect(final.fname).toBe("notes.pdf");
+    expect(final.fsize).toBe(file.size);
+    expect(final.fmime).toBe("application/pdf");
   });
 });

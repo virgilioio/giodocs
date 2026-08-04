@@ -18,8 +18,16 @@
 
 export const FILE_MAX_BYTES = 25 * 1024 * 1024;
 
-/** The four glyph families a file card can wear. */
-export type FileKind = "doc" | "sheet" | "image" | "zip" | "generic";
+/** The glyph families a file card can wear. */
+export type FileKind =
+  | "doc"
+  | "sheet"
+  | "image"
+  | "zip"
+  | "code"
+  | "video"
+  | "audio"
+  | "generic";
 
 /** A tint/ink pair, both EXISTING palette token names — no new colour
  *  values enter the system for this block. */
@@ -34,25 +42,79 @@ const SHEET: Mapping = { kind: "sheet", tone: { tint: "accentTint", ink: "accent
 const IMAGE: Mapping = { kind: "image", tone: { tint: "purpleTint", ink: "purple" } };
 const ZIP: Mapping = { kind: "zip", tone: { tint: "amberTint", ink: "amberInk" } };
 const DECK: Mapping = { kind: "doc", tone: { tint: "pinkTint", ink: "pink" } };
+const CODE: Mapping = { kind: "code", tone: { tint: "sunken", ink: "secondary" } };
+const VIDEO: Mapping = { kind: "video", tone: { tint: "blueTint", ink: "blueInk" } };
+const AUDIO: Mapping = { kind: "audio", tone: { tint: "blueTint", ink: "blueInk" } };
+const DESIGN: Mapping = { kind: "generic", tone: { tint: "pinkTint", ink: "pink" } };
 const GENERIC: Mapping = { kind: "generic", tone: { tint: "sunken", ink: "secondary" } };
 
 const BY_EXT: Record<string, Mapping> = {
+  // Documents
   pdf: DOC_DANGER,
   doc: DOC_BLUE,
   docx: DOC_BLUE,
+  odt: DOC_BLUE,
+  rtf: DOC_BLUE,
+  pages: DOC_BLUE,
   txt: DOC_PLAIN,
   md: DOC_PLAIN,
+  // Sheets
   csv: SHEET,
   xls: SHEET,
   xlsx: SHEET,
+  ods: SHEET,
+  numbers: SHEET,
+  // Images
   png: IMAGE,
   jpg: IMAGE,
   jpeg: IMAGE,
   gif: IMAGE,
   svg: IMAGE,
+  webp: IMAGE,
+  avif: IMAGE,
+  heic: IMAGE,
+  bmp: IMAGE,
+  tif: IMAGE,
+  tiff: IMAGE,
+  ico: IMAGE,
+  // Archives
   zip: ZIP,
+  rar: ZIP,
+  "7z": ZIP,
+  tar: ZIP,
+  gz: ZIP,
+  tgz: ZIP,
+  // Decks
   key: DECK,
   pptx: DECK,
+  ppt: DECK,
+  // Data & code
+  json: CODE,
+  xml: CODE,
+  yml: CODE,
+  yaml: CODE,
+  sql: CODE,
+  ts: CODE,
+  tsx: CODE,
+  js: CODE,
+  jsx: CODE,
+  css: CODE,
+  html: CODE,
+  sh: CODE,
+  // Media
+  mp4: VIDEO,
+  mov: VIDEO,
+  webm: VIDEO,
+  mkv: VIDEO,
+  mp3: AUDIO,
+  wav: AUDIO,
+  m4a: AUDIO,
+  ogg: AUDIO,
+  // Design
+  psd: DESIGN,
+  ai: DESIGN,
+  sketch: DESIGN,
+  fig: DESIGN,
 };
 
 /**
@@ -63,6 +125,8 @@ const BY_EXT: Record<string, Mapping> = {
  * their downloads folder having asked to LOOK at something, and cannot
  * tell whether the button is broken or the file is. An action that
  * silently becomes a different action is worse than not offering it.
+ *
+ * heic, psd, zip and docx stay download-only for exactly that reason.
  */
 export const OPENABLE_EXTS = [
   "pdf",
@@ -71,9 +135,20 @@ export const OPENABLE_EXTS = [
   "jpeg",
   "gif",
   "svg",
+  "webp",
+  "avif",
+  "bmp",
+  "ico",
   "txt",
   "md",
   "csv",
+  "json",
+  "xml",
+  "html",
+  "mp4",
+  "webm",
+  "mp3",
+  "wav",
 ] as const;
 
 const OPENABLE = new Set<string>(OPENABLE_EXTS);
@@ -140,16 +215,39 @@ export function filesStoragePath(
   return `${workspaceId}/${pageId}/files/${uuid}${suffix}`;
 }
 
-/** "2.3 MB · added by Priya · 4d ago" — each segment omitted when unknown. */
+/** "2.3 MB · added by Priya · 4d ago" — each segment omitted when unknown.
+ *  A size of 0 or less is UNKNOWN, not empty: a card must never claim a
+ *  real file is 0 B, so the size segment is dropped instead. */
 export function fileMetaLine(
   fsize: number,
   by?: string | null,
   when?: string | null,
 ): string {
-  const parts = [formatBytes(fsize)];
+  const parts: string[] = [];
+  if (Number.isFinite(fsize) && fsize > 0) parts.push(formatBytes(fsize));
   if (by) parts.push(`added by ${by}`);
   if (when) parts.push(when);
   return parts.join(" · ");
+}
+
+/** Last segment of a storage path, extension intact — the display name of
+ *  last resort when a block lost its `fname`. */
+export function nameFromPath(path: string | null | undefined): string {
+  const p = String(path ?? "");
+  const seg = p.split("/").pop() ?? "";
+  return seg;
+}
+
+/** What to SHOW as the filename: the stored name, else something honest
+ *  derived from the storage path ("File.pdf"), else "File". */
+export function displayFileName(
+  fname: string | null | undefined,
+  path: string | null | undefined,
+): string {
+  const n = String(fname ?? "").trim();
+  if (n) return n;
+  const ext = extOfName(nameFromPath(path));
+  return ext ? `File.${ext}` : "File";
 }
 
 /** Does this block tree hold a file block anywhere (columns, callouts

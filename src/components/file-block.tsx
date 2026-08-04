@@ -21,6 +21,7 @@ import { useFormatDate } from "@/lib/format";
 import { useToast } from "@/lib/toast";
 import {
   badgeLabel,
+  displayFileName,
   fileKind,
   fileMetaLine,
   fileTone,
@@ -38,6 +39,10 @@ const KIND_ICON: Record<FileKind, string> = {
   image:
     "M4.5 5h15A1.5 1.5 0 0 1 21 6.5v11a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11A1.5 1.5 0 0 1 4.5 5zM3 15.4l5-4.4 4.6 4M15.6 8.4h.01",
   zip: "M13.4 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9.1zM13.4 3.5v5.6H19M11 6h2M11 9h2M11 12h2M11 15h2",
+  code: "M9.2 8.4 5.6 12l3.6 3.6M14.8 8.4 18.4 12l-3.6 3.6",
+  video:
+    "M4.5 5.5h11A1.5 1.5 0 0 1 17 7v10a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 17V7a1.5 1.5 0 0 1 1.5-1.5zM17 10l4-2.5v9L17 14",
+  audio: "M14.5 4.5v11.2M14.5 4.5 8.5 6v8.2M8.5 14.2a2.2 2.2 0 1 1-2.2 2.2 2.2 2.2 0 0 1 2.2-2.2zM14.5 15.7a2.2 2.2 0 1 1-2.2 2.2 2.2 2.2 0 0 1 2.2-2.2z",
   generic:
     "M13.4 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9.1zM13.4 3.5v5.6H19",
 };
@@ -201,7 +206,10 @@ export function FileBlock({
   const [failed, setFailed] = useState<File | null>(null);
 
   const path = ((block as { path?: string }).path ?? null) as string | null;
-  const fname = ((block as { fname?: string }).fname ?? pending?.name ?? "") as string;
+  const rawName = ((block as { fname?: string }).fname ?? pending?.name ?? "") as string;
+  // A block that lost its metadata still names its type honestly from the
+  // storage path rather than rendering an empty card.
+  const fname = displayFileName(rawName, path);
   const fsize = Number((block as { fsize?: number }).fsize ?? pending?.size ?? 0);
   const fby = ((block as { fby?: string }).fby ?? null) as string | null;
   const fat = ((block as { fat?: string }).fat ?? null) as string | null;
@@ -225,18 +233,22 @@ export function FileBlock({
       // behind it.
       setPending(file);
       setFailed(null);
-      onChange({
+      const meta: Partial<Blk> = {
         fname: file.name,
         fsize: file.size,
         fmime: file.type || "application/octet-stream",
         fby: profile?.full_name ?? undefined,
         fat: new Date().toISOString(),
-        path: undefined,
-      } as Partial<Blk>);
+      } as Partial<Blk>;
+      onChange({ ...meta, path: undefined } as Partial<Blk>);
       uploadFile(file, ctx.workspaceId, ctx.pageId)
         .then((p) => {
           setPending(null);
-          onChange({ path: p } as Partial<Blk>);
+          // The completion patch REPEATS the metadata. It lands one network
+          // round-trip later, so it must be self-sufficient — a patch that
+          // carried only `path` could merge into a pre-upload snapshot and
+          // erase the name and size that were already written.
+          onChange({ ...meta, path: p } as Partial<Blk>);
           // Replace deletes the object it superseded — the previous file is
           // no longer reachable from any block.
           if (oldPath) void gcImagePaths(ctx.pageId, [oldPath]);
@@ -248,6 +260,7 @@ export function FileBlock({
     },
     [ctx, onChange, profile?.full_name, toast],
   );
+
 
   const openIt = useCallback(async () => {
     if (!path) return;
