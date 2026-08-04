@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   OPENABLE_EXTS,
   badgeLabel,
+  displayFileName,
   extOfName,
   fileKind,
   fileMetaLine,
@@ -10,6 +11,7 @@ import {
   formatBytes,
   hasFileBlock,
   isOpenable,
+  nameFromPath,
   rejectFileReason,
   FILE_MAX_BYTES,
 } from "./file-ops";
