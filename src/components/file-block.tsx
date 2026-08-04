@@ -115,7 +115,7 @@ function EmptyState({
         <Ico d={KIND_ICON.generic} size={19} />
       </span>
       <span className="min-w-0">
-        <span className="block truncate font-display text-prose font-bold text-secondary">
+        <span className="block truncate font-display text-row font-bold text-secondary">
           Attach a file
         </span>
         <span className="block text-caption text-faint">
@@ -324,13 +324,12 @@ export function FileBlock({
 
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center" style={{ gap: 7 }}>
-          <span className="min-w-0 truncate font-display text-prose font-bold text-noir">
+          <span className="min-w-0 truncate font-display text-row font-bold text-noir">
             {fname}
           </span>
           <span
             className="shrink-0 font-display text-nano font-bold"
             style={{
-              letterSpacing: ".06em",
               borderRadius: 5,
               padding: "1px 5px",
               background: `var(--color-${tone.tint})`,
