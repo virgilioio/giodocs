@@ -578,6 +578,7 @@ export function EditableBody({
       const sc = (containerRef.current?.closest("main") ??
         null) as HTMLElement | null;
       const keep = sc ? sc.scrollTop : null;
+      blocksRef.current = entry.blocks;
       setBlocks(entry.blocks);
       onChange(entry.blocks);
       // Restore focus. If the caret block still exists, focus it with the
