@@ -736,7 +736,24 @@ const sunken     = "#F1F0EC"; // --color-sunken   (aside/pre/th surfaces)
 const lineStrong = "#DCDCE4"; // --color-lineStrong (blockquote border)
 
 const HTML_CSS = `
-  :root { color-scheme: light; }
+  /* The callout colour tokens, serialized. blockHtml emits a callout's
+     background and ring as inline var(--color-*) expressions from the same
+     resolver the on-screen render uses; an exported file has no @theme, so
+     without these declarations every var() is invalid at computed-value
+     time and the callout prints with NO background and a dark
+     currentColor border. Light values only — an export is paper. */
+  :root {
+    color-scheme: light;
+    --color-rail: #F4F3EF;
+    --color-line: ${line};
+    --color-accentTint: #DCFBE9; --color-accentRing: #B7EFD6;
+    --color-amberTint: #FEF3C7;  --color-amberRing: #FCE7C8;
+    --color-dangerTint: #FEE2E2; --color-dangerRing: #FBCFCF;
+    --color-yellowTint: #FAF4C4; --color-yellowInk: #7A6A10;
+    --color-blueTint: #DBEAFE;   --color-blueInk: #1D4ED8;
+    --color-purpleTint: #EDE4FF; --color-purple: #5B21B6;
+    --color-pinkTint: #FBE0EE;   --color-pink: #BE185D;
+  }
   /* Real per-page margins. Applies to every sheet, not just the first —
      that was the fixed-footer / body-padding trap. printPdf appends its
      own @page with the user's selected paper size, and because it is
