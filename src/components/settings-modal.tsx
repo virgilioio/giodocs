@@ -749,6 +749,24 @@ function PeoplePane({
 
   const [inviteLinkOn, setInviteLinkOn] = useState(true);
 
+  // Resend goes through the SAME implementation as a first send: the
+  // send-workspace-invite function (bearer attached by supabase-js), which
+  // calls create_workspace_invite and mints a fresh token + expiry.
+  const sendInvites = useSendInvites();
+  const resendInvite = async (inv: PendingInvite) => {
+    try {
+      const res = await sendInvites.mutateAsync({
+        invites: [{ email: inv.email, role: inv.role === "Owner" ? "owner" : "member" }],
+      });
+      const failed = res.results.find((r) => !r.ok);
+      if (failed) toast.push(`Couldn't resend to ${failed.email}: ${failed.error ?? "send failed"}`);
+      else toast.push(`Invite resent to ${inv.email}`);
+    } catch (err) {
+      toast.push(`Couldn't resend to ${inv.email}: ${(err as Error).message}`);
+    }
+  };
+
+
   const updateRole = useUpdateMemberRole();
   const removeMember = useRemoveMember();
   const createView = useCreateView();
