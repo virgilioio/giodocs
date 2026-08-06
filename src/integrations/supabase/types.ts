@@ -603,6 +603,62 @@ export type Database = {
           },
         ]
       }
+      workspace_invites_state: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          email: string | null
+          email_error: string | null
+          email_status: string | null
+          expires_at: string | null
+          id: string | null
+          invited_at: string | null
+          invited_by: string | null
+          role: Database["public"]["Enums"]["member_role"] | null
+          state: string | null
+          token: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          email?: string | null
+          email_error?: string | null
+          email_status?: string | null
+          expires_at?: string | null
+          id?: string | null
+          invited_at?: string | null
+          invited_by?: string | null
+          role?: Database["public"]["Enums"]["member_role"] | null
+          state?: never
+          token?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          email?: string | null
+          email_error?: string | null
+          email_status?: string | null
+          expires_at?: string | null
+          id?: string | null
+          invited_at?: string | null
+          invited_by?: string | null
+          role?: Database["public"]["Enums"]["member_role"] | null
+          state?: never
+          token?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workspace_invites_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       accept_workspace_invite: { Args: { p_token: string }; Returns: string }
