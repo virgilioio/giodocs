@@ -77,8 +77,13 @@ export function useWorkspaceInvites() {
           role: r.role === "owner" ? "Owner" : "Member",
           tint: AVATAR_TINTS[idx],
           ink: AVATAR_INKS[idx],
+          // accepted_at is checked FIRST: an accepted invite is spent and can
+          // never be "expired", however old its expires_at is.
+          accepted: r.accepted_at != null,
+          expiresAt: r.expires_at,
         } satisfies PendingInvite;
       });
+
     },
     staleTime: 30_000,
   });

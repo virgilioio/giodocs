@@ -29,6 +29,8 @@ import { useFormatDate } from "@/lib/format";
 import type { PageListItem } from "@/lib/types";
 import { PALETTE, SKIN, FACES, avaBg, DEFAULT_TINT, DEFAULT_INK } from "@/lib/avatar";
 import type { PendingInvite } from "./add-members-modal";
+import { useSendInvites } from "@/hooks/use-invites";
+
 import { SpecMenuTrigger } from "./row-menu";
 import { Ico } from "./emoji-icon";
 import { CustomEmojiComposer } from "./custom-emoji-composer";
@@ -749,6 +751,24 @@ function PeoplePane({
 
   const [inviteLinkOn, setInviteLinkOn] = useState(true);
 
+  // Resend goes through the SAME implementation as a first send: the
+  // send-workspace-invite function (bearer attached by supabase-js), which
+  // calls create_workspace_invite and mints a fresh token + expiry.
+  const sendInvites = useSendInvites();
+  const resendInvite = async (inv: PendingInvite) => {
+    try {
+      const res = await sendInvites.mutateAsync({
+        invites: [{ email: inv.email, role: inv.role === "Owner" ? "owner" : "member" }],
+      });
+      const failed = res.results.find((r) => !r.ok);
+      if (failed) toast.push(`Couldn't resend to ${failed.email}: ${failed.error ?? "send failed"}`);
+      else toast.push(`Invite resent to ${inv.email}`);
+    } catch (err) {
+      toast.push(`Couldn't resend to ${inv.email}: ${(err as Error).message}`);
+    }
+  };
+
+
   const updateRole = useUpdateMemberRole();
   const removeMember = useRemoveMember();
   const createView = useCreateView();
@@ -996,16 +1016,28 @@ function PeoplePane({
                   email={inv.email}
                   pending
                   owns={
-                    <button
-                      type="button"
-                      onClick={() => toast.push(`Invite resent to ${inv.email}`)}
-                      className="text-body hover:text-noir"
-                      style={{ textDecoration: "underline dotted", fontSize: 13.5 }}
-                    >
-                      Resend
-                    </button>
+                    inv.accepted ? (
+                      <span className="text-whisper">—</span>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={sendInvites.isPending}
+                        onClick={() => resendInvite(inv)}
+                        className="text-body hover:text-noir disabled:opacity-50"
+                        style={{ textDecoration: "underline dotted", fontSize: 13.5 }}
+                      >
+                        {sendInvites.isPending ? "Resending…" : "Resend"}
+                      </button>
+                    )
                   }
-                  stale={<span className="text-whisper">—</span>}
+                  stale={
+                    !inv.accepted && inv.expiresAt && new Date(inv.expiresAt).getTime() < Date.now() ? (
+                      <span className="text-secondary" style={{ fontSize: 13 }}>Expired</span>
+                    ) : (
+                      <span className="text-whisper">—</span>
+                    )
+                  }
+
                   role={
                     <span className="text-secondary" style={{ fontSize: 13.5 }}>
                       {inv.role}

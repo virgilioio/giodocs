@@ -10,7 +10,12 @@ export type PendingInvite = {
   role: InviteRole;
   tint: string;
   ink: string;
+  /** Set once the invite has been accepted — a spent invite can never expire. */
+  accepted?: boolean;
+  /** ISO expiry, only meaningful when `accepted` is false. */
+  expiresAt?: string;
 };
+
 
 const AVATAR_TINTS = [
   "var(--color-accentTint)",
