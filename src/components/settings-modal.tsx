@@ -996,16 +996,28 @@ function PeoplePane({
                   email={inv.email}
                   pending
                   owns={
-                    <button
-                      type="button"
-                      onClick={() => toast.push(`Invite resent to ${inv.email}`)}
-                      className="text-body hover:text-noir"
-                      style={{ textDecoration: "underline dotted", fontSize: 13.5 }}
-                    >
-                      Resend
-                    </button>
+                    inv.accepted ? (
+                      <span className="text-whisper">—</span>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={sendInvites.isPending}
+                        onClick={() => resendInvite(inv)}
+                        className="text-body hover:text-noir disabled:opacity-50"
+                        style={{ textDecoration: "underline dotted", fontSize: 13.5 }}
+                      >
+                        {sendInvites.isPending ? "Resending…" : "Resend"}
+                      </button>
+                    )
                   }
-                  stale={<span className="text-whisper">—</span>}
+                  stale={
+                    !inv.accepted && inv.expiresAt && new Date(inv.expiresAt).getTime() < Date.now() ? (
+                      <span className="text-secondary" style={{ fontSize: 13 }}>Expired</span>
+                    ) : (
+                      <span className="text-whisper">—</span>
+                    )
+                  }
+
                   role={
                     <span className="text-secondary" style={{ fontSize: 13.5 }}>
                       {inv.role}
