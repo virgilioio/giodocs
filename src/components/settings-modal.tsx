@@ -29,6 +29,8 @@ import { useFormatDate } from "@/lib/format";
 import type { PageListItem } from "@/lib/types";
 import { PALETTE, SKIN, FACES, avaBg, DEFAULT_TINT, DEFAULT_INK } from "@/lib/avatar";
 import type { PendingInvite } from "./add-members-modal";
+import { useSendInvites } from "@/hooks/use-invites";
+
 import { SpecMenuTrigger } from "./row-menu";
 import { Ico } from "./emoji-icon";
 import { CustomEmojiComposer } from "./custom-emoji-composer";
