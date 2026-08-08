@@ -12,6 +12,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { act, useState } from "react";
 import { SheetBlockView, SHEET_ROW_NUM_W } from "./sheet-block";
 import { isTypingTarget } from "@/lib/is-typing";
+import { newBlock } from "@/lib/block-ops";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -1276,5 +1277,89 @@ describe("the grid wrapper is the scroll container for BOTH axes", () => {
     const row = cell(0, 1).closest('[role="row"]') as HTMLElement;
     expect(row.style.position).toBe("sticky");
     expect(row.style.top).toBe("26px");
+  });
+});
+
+/* ═════════════ THE EDIT SURVIVES A PICK (bug 1) ═════════════
+ * Every earlier test asserted the INSERTION and stopped there — none
+ * asserted that the edit survived it. The failure needed the FULL browser
+ * gesture: pointerdown, then mousedown (which is the event that moves
+ * focus, and which the cell was not cancelling), then click. */
+
+/** A real click: the whole compatibility sequence, with the focus shift a
+ *  browser performs on an uncancelled mousedown emulated explicitly. */
+function realClick(el: Element) {
+  act(() => {
+    el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 }));
+    const md = new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0 });
+    el.dispatchEvent(md);
+    if (!md.defaultPrevented) (document.activeElement as HTMLElement | null)?.blur?.();
+    el.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true, button: 0 }));
+    el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, button: 0 }));
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+  });
+}
+
+describe("the edit survives a pick", () => {
+  it("a suggestion-row CLICK leaves the edit open, focused, with \"=SUM(\"", () => {
+    mount(<Harness />);
+    click(cell(1, 0));
+    press(grid(), "=");
+    typeFormula(editor()!, "=SU");
+    const first = editor()!;
+    realClick(host.querySelector('[data-sheet-suggestion="SUM"]')!);
+    expect(editor()).toBe(first);
+    expect(document.activeElement).toBe(first);
+    expect(editor()!.value).toBe("=SUM(");
+  });
+
+  it("a cell CLICK during a formula pick leaves the edit open, focused, with \"=SUM(B2\"", () => {
+    mount(<Harness />);
+    click(cell(0, 0));
+    press(grid(), "=");
+    typeFormula(editor()!, "=SUM(");
+    const first = editor()!;
+    realClick(cell(1, 1));
+    expect(editor()).toBe(first);
+    expect(document.activeElement).toBe(first);
+    expect(editor()!.value).toBe("=SUM(B2");
+  });
+
+  it("typing continues after a suggestion click and after a cell pick", () => {
+    mount(<Harness />);
+    click(cell(1, 0));
+    press(grid(), "=");
+    typeFormula(editor()!, "=SU");
+    realClick(host.querySelector('[data-sheet-suggestion="SUM"]')!);
+    realClick(cell(1, 1));
+    expect(editor()!.value).toBe("=SUM(B2");
+    typeFormula(editor()!, editor()!.value + ")");
+    expect(editor()!.value).toBe("=SUM(B2)");
+    expect(document.activeElement).toBe(editor());
+  });
+
+  it("THE ESCAPE HATCH: a cell click with a COMPLETE formula commits and moves", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(<Harness onPatch={(p) => patches.push(p)} />);
+    click(cell(0, 0));
+    press(grid(), "=");
+    typeFormula(editor()!, "=1+1");
+    realClick(cell(2, 0));
+    expect(editor()).toBeNull();
+    expect(rawAt(patches.at(-1)!, 0, 0)).toBe("=1+1");
+  });
+});
+
+/* A brand-new sheet must be usable on arrival — 10 rows × 5 columns, the
+ * first column wider. A sheet you have to grow before you can use it is a
+ * sheet nobody uses. */
+describe("a brand-new sheet", () => {
+  it("renders 10 rows × 5 columns with the first column wider", () => {
+    mount(<SheetBlockView block={newBlock("sheet") as unknown as Record<string, unknown>} />);
+    expect(host.querySelectorAll('[role="row"]').length).toBe(10);
+    expect(host.querySelectorAll('[data-sheet-cell^="0,"]').length).toBe(5);
+    expect(grid().style.gridTemplateColumns).toBe(
+      `${SHEET_ROW_NUM_W}px 160px 120px 120px 120px`,
+    );
   });
 });
