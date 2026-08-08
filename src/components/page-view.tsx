@@ -470,68 +470,56 @@ function EditableValue({
     );
   }
 
-  /* ── Checkbox ── (direct toggle, no popover). Uses a native input so
-   * accent-color themes the tick without a custom glyph. */
+  /* ── Checkbox ── (direct toggle, no popover). Shared with the table
+   * cell so the tick, the accent colour and the "absent means false"
+   * rule can never drift between the two sites. */
   if (def?.type === "checkbox") {
-    const on = !!raw;
-    return (
-      <label
-        className={VALUE_CELL_CLASS}
-        style={VALUE_CELL_STYLE}
-        aria-label={def.label}
-      >
-        <input
-          type="checkbox"
-          checked={on}
-          onChange={(e) => onSet(e.currentTarget.checked)}
-          style={{
-            width: 15,
-            height: 15,
-            margin: 0,
-            accentColor: "var(--color-accent)",
-            cursor: "pointer",
-          }}
-        />
-      </label>
-    );
+    return <CheckboxToggle value={raw} onSet={onSet} label={def.label} />;
   }
 
   /* ── Number ── */
   if (def?.type === "number") {
     return (
-      <NumberInline
-        value={typeof raw === "number" ? raw : null}
+      <NumberEditor
+        value={raw}
         onSet={onSet}
         onOpenChange={onOpenChange}
-        propKey={propKey}
-        defType={def?.type}
+        emptyLabel={emptyCopy(propKey, def.type)}
+        triggerClassName={VALUE_CELL_CLASS + " tnum"}
+        triggerStyle={VALUE_CELL_STYLE}
       />
     );
   }
 
-  /* ── Date ── */
+  /* ── Date ── overdue is judged against the page's own status: a
+   * finished page is never late. */
   if (def?.type === "date") {
     return (
-      <DateInline
-        value={typeof raw === "string" ? raw : null}
+      <DatePicker
+        value={raw}
         onSet={onSet}
         onOpenChange={onOpenChange}
-        propKey={propKey}
-        defType={def?.type}
+        terminal={isTerminalStatus(propsOf(page)["status"])}
+        emptyLabel={emptyCopy(propKey, def.type)}
+        triggerClassName={VALUE_CELL_CLASS}
+        triggerStyle={VALUE_CELL_STYLE}
       />
     );
   }
 
   /* ── Text / default ── */
   return (
-    <TextInline
-      value={typeof raw === "string" ? raw : ""}
+    <TextEditor
+      value={raw}
       onSet={onSet}
-      propKey={propKey}
-      defType={def?.type}
+      onOpenChange={onOpenChange}
+      emptyLabel={emptyCopy(propKey, def?.type)}
+      triggerClassName={VALUE_CELL_CLASS + " w-full"}
+      triggerStyle={VALUE_CELL_STYLE}
     />
   );
 }
+
 
 function StatusChipInline({
   label,
