@@ -1,4 +1,5 @@
 import React, { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { toClipboard } from "@/lib/clipboard";
 import { usePrefs } from "@/lib/preferences";
 import { formatTimestamp } from "@/lib/format";
 import { useNavigate } from "@tanstack/react-router";
@@ -1769,7 +1770,7 @@ export function MainView({ selection }: { selection: Selection }) {
         : view
           ? `${origin}/v/${view.id}`
           : origin;
-    void navigator.clipboard?.writeText?.(url);
+    toClipboard(url);
     const name =
       selection.kind === "area"
         ? selection.area

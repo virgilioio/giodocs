@@ -10,6 +10,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { nanoid } from "nanoid";
+import { toClipboard } from "@/lib/clipboard";
 import { createPortal } from "react-dom";
 import {
   moveBlock,
@@ -1967,11 +1968,8 @@ export function EditableBody({
       const t = runTargetFor(blockId);
       const firstId = t && t.run.length ? t.list[t.run[0]].id : blockId;
       const url = `${window.location.origin}/p/${pageId}#${firstId}`;
-      const write = navigator.clipboard?.writeText?.(url);
-      const after = () => toast.push("Link copied");
-      if (write && typeof (write as Promise<void>).then === "function") {
-        (write as Promise<void>).then(after).catch(() => after());
-      } else after();
+      toClipboard(url);
+      toast.push("Link copied");
     },
     [runTargetFor, pageId, toast],
   );
@@ -4554,9 +4552,7 @@ export function TableBlock({
     let text = "";
     if (sel.kind === "row") text = rows[sel.index].join("\t");
     else text = rows.map((r) => r[sel.index] ?? "").join("\n");
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
-      void navigator.clipboard.writeText(text);
-    }
+    toClipboard(text);
   }, [sel, rows]);
 
   // Escape is layered: an open menu closes first, then a second Escape

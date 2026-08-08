@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { toClipboard } from "@/lib/clipboard";
 import { supabase } from "@/integrations/supabase/client";
 import { qk } from "@/lib/query-keys";
 import { useNavigate } from "@tanstack/react-router";
@@ -840,7 +841,7 @@ function PeoplePane({
             disabled={!inviteLinkOn}
             onClick={() => {
               if (typeof navigator !== "undefined" && inviteUrl) {
-                navigator.clipboard?.writeText(inviteUrl);
+                toClipboard(inviteUrl);
                 toast.push("Link copied");
               }
             }}
@@ -1515,7 +1516,7 @@ function EmojiPane() {
                             icon: "dup",
                             hint: { text: `:${it.custom.name}:`, mono: true },
                             onPick: () => {
-                              void navigator.clipboard?.writeText(`:${it.custom.name}:`);
+                              toClipboard(`:${it.custom.name}:`);
                               toast.push("Shortcode copied.");
                               close();
                             },

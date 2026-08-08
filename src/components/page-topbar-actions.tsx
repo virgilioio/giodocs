@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toClipboard } from "@/lib/clipboard";
 import { useIsMutating } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useWorkspaceId } from "@/lib/workspace-context";
@@ -278,11 +279,7 @@ export function PageTopbarActions({
   const doCopyLink = useCallback(async () => {
     if (!listRow) return;
     const url = pageUrl(listRow.id, listRow.title);
-    try {
-      await navigator.clipboard.writeText(url);
-    } catch {
-      /* Never fail silently; the toast still surfaces success below. */
-    }
+    toClipboard(url);
     toast.push("Link copied");
   }, [listRow, toast]);
 
