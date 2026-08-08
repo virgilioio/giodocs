@@ -1591,9 +1591,6 @@ export function SheetBlockView({
                         if (e.button !== 0) return;
                         const live = editRef.current;
                         if (live && canPick(live.draft, caretRef.current, pickRef.current)) {
-                          // ⚠ THE WHOLE TRICK: without this the editor
-                          // blurs, the draft commits, and the formula is
-                          // gone before the reference lands.
                           e.preventDefault();
                           pickDrag.current = { r, c };
                           insertReference(r, c, r, c);
@@ -1604,6 +1601,24 @@ export function SheetBlockView({
                         dragging.current = true;
                         pickCell(r, c, e.shiftKey);
                       }}
+                      onMouseDown={(e) => {
+                        // ⚠ THE WHOLE TRICK. Cancelling pointerdown does NOT
+                        // stop the focus shift — only cancelling MOUSEDOWN
+                        // does. Without this the editor blurred, the draft
+                        // committed, and "=SUM(B2" landed in the cell as
+                        // #NAME. Same predicate as pointerdown and the
+                        // keyboard: canPick() is the single decision.
+                        const live = editRef.current;
+                        if (live && canPick(live.draft, caretRef.current, pickRef.current))
+                          e.preventDefault();
+                      }}
+                      onClick={(e) => {
+                        // A pick already happened on pointerdown; the click
+                        // must not re-enter the "leave this cell" path.
+                        const live = editRef.current;
+                        if (live && (holdRef.current || pickRef.current)) e.stopPropagation();
+                      }}
+
                       onPointerMove={(e) => {
                         // A fill drag outranks everything: it started on the
                         // handle, so no other gesture can be live.
