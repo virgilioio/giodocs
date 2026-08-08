@@ -14,6 +14,8 @@ import {
   CheckboxToggle,
 } from "./property-pickers";
 
+(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
 const NOW = new Date(2026, 7, 8, 16, 30, 0); // 8 Aug 2026, 4:30pm local
 
 let host: HTMLDivElement;
@@ -43,8 +45,14 @@ function click(el: Element) {
   });
 }
 function type(input: HTMLInputElement, value: string) {
+  // React tracks the last value it wrote, so a plain assignment can be
+  // swallowed as "unchanged". Go through the native setter.
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value",
+  )?.set;
   act(() => {
-    input.value = value;
+    setter?.call(input, value);
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
 }
