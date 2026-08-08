@@ -652,7 +652,11 @@ export function format(
   if (!Number.isFinite(n)) return String(value);
 
   if (f === "num") return group(n, clampDec(d ?? 0));
-  if (f === "cur") return `$${group(n, clampDec(d ?? 2))}`;
+  if (f === "cur") {
+    // Sign leads the symbol: "-$9,876.50" reads as a debit, "$-9,876.50" reads as a typo.
+    const body = group(Math.abs(n), clampDec(d ?? 2));
+    return `${n < 0 ? "-" : ""}$${body}`;
+  }
   // pct
   const scaled = n * 100;
   const dec = d !== undefined ? clampDec(d) : Math.abs(scaled) < 1 && scaled !== 0 ? 2 : 1;
