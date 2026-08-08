@@ -63,6 +63,20 @@ import {
   type OpId,
   type SpanKind,
 } from "@/lib/sheet-structure";
+import {
+  activeCall,
+  canPick,
+  footerText,
+  insertFunction,
+  insertRef,
+  moveHighlight,
+  panelPlacement,
+  PANEL_MAX_H,
+  PANEL_W,
+  refFor,
+  suggestFor,
+  type PickSpan,
+} from "@/lib/sheet-formula";
 import { fillToken, inkToken } from "@/lib/sheet-palette";
 import { SHEET_GRID_ATTR } from "@/lib/is-typing";
 import { useToast } from "@/lib/toast";
@@ -193,6 +207,23 @@ export function SheetBlockView({
    * the text so the next keystroke replaces everything typed so far — the
    * same visible symptom as a remounting input, a different cause. */
   const focusStamp = useRef<string | null>(null);
+  /* ── Chunk 5 state. The caret is tracked so the panel can read the WORD
+   * UNDER IT rather than the tail of the draft. `pendingCaret` is how a
+   * deliberate insertion places the caret: a `force` bump invalidates the
+   * stamp, the ref callback re-runs, and it honours this instead of the
+   * end of the value. ── */
+  const [caret, setCaret] = useState(0);
+  const [panelIdx, setPanelIdx] = useState(0);
+  const [dismissed, setDismissed] = useState(false);
+  const [pick, setPick] = useState<PickSpan | null>(null);
+  const [pickRect, setPickRect] = useState<{
+    r0: number;
+    c0: number;
+    r1: number;
+    c1: number;
+  } | null>(null);
+  const pickDrag = useRef<{ r: number; c: number } | null>(null);
+  const pendingCaret = useRef<number | null>(null);
   const blockId = String((block as { id?: unknown }).id ?? "sheet");
 
   const write = useCallback(
@@ -281,6 +312,12 @@ export function SheetBlockView({
   const beginEdit = useCallback(
     (r: number, c: number, seed: string | null, selectAllText: boolean) => {
       if (!editable) return;
+      setDismissed(false);
+      setPanelIdx(0);
+      setPick(null);
+      setPickRect(null);
+      const initial = seed === null ? rawOf(sheet.cells, r, c) : seed;
+      setCaret(initial.length);
       setEdit({
         r,
         c,
