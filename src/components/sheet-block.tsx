@@ -368,8 +368,8 @@ export function SheetBlockView({
   );
 
   const rc = sel ? rect(sel) : null;
-  const overlay = rc ? rangeBox(sheet.cw, rc) : null;
-  const editBox = edit ? cellBox(sheet.cw, edit.r, edit.c) : null;
+  const overlay = rc ? rangeBox(cw, rc) : null;
+  const editBox = edit ? cellBox(cw, edit.r, edit.c) : null;
 
   /* ─────────────────── Formula bar readout ───────────────────
    * Computed through the chunk-1 engine (one summing path, no second
@@ -390,7 +390,7 @@ export function SheetBlockView({
   const barValue = edit ? edit.draft : sel ? rawOf(sheet.cells, sel.fr, sel.fc) : "";
 
   const width = pageScope && typeof sheet.bw === "number" ? sheet.bw : undefined;
-  const template = `${ROW_NUM_W}px ${sheet.cw.map((w) => `${w}px`).join(" ")}`;
+  const template = `${ROW_NUM_W}px ${cw.map((w) => `${w}px`).join(" ")}`;
 
   return (
     <div className="py-1" aria-label="Sheet block">
@@ -476,7 +476,7 @@ export function SheetBlockView({
             }}
           />
           {/* ── Column letters: select the whole column ── */}
-          {sheet.cw.map((_, c) => (
+          {cw.map((_, c) => (
             <div
               key={`h${c}`}
               role="columnheader"
