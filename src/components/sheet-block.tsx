@@ -1906,9 +1906,17 @@ export function SheetBlockView({
                 // COORDINATES FROM STATE, NEVER FROM A CLOSURE.
                 const live = editRef.current;
                 if (!live) return;
+                // A pick is not "leave this cell": refuse the blur and take
+                // focus back, leaving the edit open with its caret intact.
+                if (holdRef.current) {
+                  const el = e.currentTarget;
+                  setTimeout(() => el.focus(), 0);
+                  return;
+                }
                 commitCell(live.r, live.c, e.target.value);
                 setEdit(null);
               }}
+
               style={{
                 position: "absolute",
                 left: editBox.left,
