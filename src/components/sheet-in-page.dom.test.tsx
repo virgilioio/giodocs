@@ -121,7 +121,7 @@ describe("a sheet edit survives the page's pointer gesture", () => {
       setter.call(el, "=S");
       el.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    const row = host.querySelector("[data-sheet-sug]") as HTMLElement | null;
+    const row = host.querySelector("[data-sheet-suggestion]") as HTMLElement | null;
     expect(row).toBeTruthy();
 
     gesture(row!);
