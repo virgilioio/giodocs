@@ -1619,12 +1619,14 @@ export function SheetBlockView({
                         pickCell(r, c, e.shiftKey);
                       }}
                       onMouseDown={(e) => {
-                        // ⚠ THE WHOLE TRICK. Cancelling pointerdown does NOT
-                        // stop the focus shift — only cancelling MOUSEDOWN
-                        // does. Without this the editor blurred, the draft
-                        // committed, and "=SUM(B2" landed in the cell as
-                        // #NAME. Same predicate as pointerdown and the
-                        // keyboard: canPick() is the single decision.
+                        // CROSS-BROWSER FALLBACK ONLY. Chromium dispatches no
+                        // mousedown at all after a cancelled pointerdown, so
+                        // this handler is never reached there (measured in the
+                        // browser). Engines that still emit the compatibility
+                        // mousedown need it, so it stays. The load-bearing
+                        // guards are the cancelled pointerdown plus holdRef.
+                        // Same predicate as pointerdown and the keyboard:
+                        // canPick() is the single decision.
                         const live = editRef.current;
                         if (live && canPick(live.draft, caretRef.current, pickRef.current))
                           e.preventDefault();
