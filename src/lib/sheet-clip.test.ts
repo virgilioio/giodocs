@@ -11,7 +11,9 @@ import {
   toTSV,
   tsvEscape,
 } from "./sheet-clip";
-import { emptySheet, setCell, type SheetBlock } from "./sheet-model";
+import { newSheet, setCell, type SheetBlock } from "./sheet-model";
+
+const emptySheet = () => newSheet(6, 4);
 import { evaluateCell, shiftFormula } from "./sheet-engine";
 import { keyWhenEditing, keyWhenSelected, selAt, rect } from "./sheet-select";
 
@@ -178,10 +180,10 @@ describe("fill handle", () => {
 
   it("formatting travels with a fill", () => {
     let s = emptySheet();
-    s = setCell(s, 0, 0, { v: 5, b: true, f: "currency" });
+    s = setCell(s, 0, 0, { v: 5, b: true, f: "cur" });
     const out = applyFill(s, { r0: 0, c0: 0, r1: 0, c1: 0 }, { r0: 1, c0: 0, r1: 1, c1: 0 }, "down");
     expect(out.cells[1][0]?.b).toBe(true);
-    expect(out.cells[1][0]?.f).toBe("currency");
+    expect(out.cells[1][0]?.f).toBe("cur");
   });
 
   it("the source rectangle comes from the same selection model", () => {
