@@ -16,6 +16,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
+import { toClipboard } from "@/lib/clipboard";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { qk } from "@/lib/query-keys";
@@ -560,14 +561,10 @@ export function PermissionsPopoverHost({
   );
 
   /* ── Copy link ── */
-  const copyLink = useCallback(async () => {
+  const copyLink = useCallback(() => {
     const url = window.location.href;
-    try {
-      await navigator.clipboard.writeText(url);
-      toast.push("Link copied");
-    } catch {
-      toast.push("Couldn't copy link");
-    }
+    toClipboard(url);
+    toast.push("Link copied");
   }, [toast]);
 
   if (!open) return null;

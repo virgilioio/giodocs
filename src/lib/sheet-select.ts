@@ -196,7 +196,18 @@ export type SheetAction =
   | { kind: "panelPrev" }
   | { kind: "panelNext" }
   | { kind: "panelInsert" }
-  | { kind: "panelClose" };
+  | { kind: "panelClose" }
+  /* ── Chunk 7's clipboard keys. The sheet CLAIMS ⌘C / ⌘X / ⌘V while a cell
+   * range is SELECTED — the page binds ⌘C and ⌘X for block selection, and
+   * with focus on the grid container it would otherwise copy the whole
+   * sheet block as Markdown instead of the cells. While EDITING they stay
+   * native, so copy and paste inside the input behave normally. ⌘Z passes
+   * through in BOTH states: a sheet edit is a block commit and the page
+   * owns the history. ── */
+  | { kind: "copy" }
+  | { kind: "cut" }
+  | { kind: "paste" };
+
 
 function isPrintable(k: KeyInfo): boolean {
   return k.key.length === 1 && !k.meta && !k.ctrl && !k.alt;
@@ -214,9 +225,14 @@ export function keyWhenSelected(
     const low = k.key.toLowerCase();
     if (low === "b") return { kind: "bold" };
     if (low === "i") return { kind: "italic" };
-    // ⌘Z, ⌘C, ⌘V and friends belong to the page / the browser.
+    // The clipboard trio is the SHEET's while a range is selected.
+    if (low === "c") return { kind: "copy" };
+    if (low === "x") return { kind: "cut" };
+    if (low === "v") return { kind: "paste" };
+    // ⌘Z and friends belong to the page / the browser.
     return { kind: "pass" };
   }
+
 
   const D: Record<string, [number, number]> = {
     ArrowUp: [-1, 0],

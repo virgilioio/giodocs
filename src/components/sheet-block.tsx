@@ -96,9 +96,23 @@ import {
   type MarkKey,
   type Swatch,
 } from "@/lib/sheet-toolbar";
+import {
+  applyFill,
+  clipFrom,
+  fillTarget,
+  parseTSV,
+  pasteInto,
+  pasteValues,
+  toTSV,
+  truncationText,
+  type FillAxis,
+  type SheetClip,
+} from "@/lib/sheet-clip";
+import { fromClipboard, toClipboard } from "@/lib/clipboard";
 import { IC } from "@/lib/menu-icons";
 import { SHEET_GRID_ATTR } from "@/lib/is-typing";
 import { useToast } from "@/lib/toast";
+
 
 import {
   cellBox,
@@ -118,6 +132,7 @@ import {
   selectAll,
   selectCols,
   selectRows,
+  type Rect,
   type Sel,
 } from "@/lib/sheet-select";
 
@@ -133,6 +148,13 @@ export const SHEET_NUDGE_TEXT =
   "Past 50 rows a sheet is usually a page collection wearing a grid. If each row is a thing someone owns, make them pages.";
 
 const LINE = "1px solid var(--color-lineSoft)";
+
+/* ⚠ THE INTERNAL CLIP IS MODULE-LEVEL, NOT COMPONENT STATE.
+ * A copy in one sheet must paste into another, and a block remounts far
+ * more often than a user expects (a re-keyed editor, a router transition,
+ * StrictMode). Component state would present as "copy works, paste does
+ * nothing". Same shape as the undo store: a plain module value, no React. */
+let sheetClip: SheetClip | null = null;
 
 function cellAlign(cell: Cell | null, value: CellValue | SheetError): "left" | "center" | "right" {
   if (cell?.a) return cell.a;
@@ -279,6 +301,15 @@ export function SheetBlockView({
    * palette opened rarely. ── */
   const [pal, setPal] = useState<"fg" | "bg" | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  /* ── Chunk 7. `ants` is the copied/cut range: ONE animated dashed overlay
+   * at grid level, positioned with rangeBox. A fill drag keeps its source
+   * and live target in refs as well as state, because a pointermove must
+   * not read the previous render's rectangle. ── */
+  const [ants, setAnts] = useState<Rect | null>(null);
+  const [fill, setFill] = useState<{ rect: Rect; axis: FillAxis } | null>(null);
+  const fillDrag = useRef<Rect | null>(null);
+  const fillRef = useRef<{ rect: Rect; axis: FillAxis } | null>(null);
+  fillRef.current = fill;
 
 
 
@@ -447,6 +478,67 @@ export function SheetBlockView({
   );
 
 
+  /* ─────────────────── Clipboard (chunk 7) ───────────────────
+   * ⌘C stores the range INTERNALLY — raw cells, formulas and formatting —
+   * and writes TSV of COMPUTED values to the system clipboard, so a
+   * selection can leave for Google Sheets. ⌘X does the same and marks the
+   * clip as cut; the SOURCE IS CLEARED ONLY WHEN THE PASTE LANDS, so
+   * escaping or copying something else leaves it untouched. */
+  const copyRange = useCallback(
+    (s: Sel, cut: boolean) => {
+      const rc = rect(s);
+      sheetClip = clipFrom(sheet, rc, cut, blockId);
+      toClipboard(toTSV(sheet, rc));
+      setAnts(rc);
+    },
+    [sheet, blockId],
+  );
+
+  /** The internal clip wins when there is one — it carries formulas and
+   *  formatting. Otherwise the system clipboard's TSV is pasted as values.
+   *  ONE write either way, so ONE undo entry per paste. */
+  const pasteAt = useCallback(
+    async (s: Sel) => {
+      if (!editable) return;
+      const rc = rect(s);
+      let result: ReturnType<typeof pasteInto> | null = null;
+      if (sheetClip) {
+        result = pasteInto(sheet, sheetClip, rc.r0, rc.c0, blockId);
+        if (sheetClip.cut) sheetClip = null;
+      } else {
+        const text = await fromClipboard();
+        if (!text) return;
+        result = pasteValues(sheet, parseTSV(text), rc.r0, rc.c0);
+      }
+      write(result.sheet);
+      onBlur?.();
+      setSel({ ar: result.rect.r0, ac: result.rect.c0, fr: result.rect.r1, fc: result.rect.c1 });
+      setAnts(null);
+      const msg = truncationText(result.truncated);
+      if (msg) toast.push(msg);
+    },
+    [editable, sheet, blockId, write, onBlur, toast],
+  );
+
+  /* ── THE FILL HANDLE. Dragging extends along the DOMINANT AXIS only, and
+   * on release each source cell is copied into its target with shiftFormula
+   * applied — the SAME chunk-1 function paste uses. ONE write, ONE undo. ── */
+  const endFill = useCallback(() => {
+    const src = fillDrag.current;
+    const target = fillRef.current;
+    fillDrag.current = null;
+    setFill(null);
+    if (!src || !target || !editable) return;
+    write(applyFill(sheet, src, target.rect, target.axis));
+    onBlur?.();
+    setSel({
+      ar: src.r0,
+      ac: src.c0,
+      fr: Math.max(src.r1, target.rect.r1),
+      fc: Math.max(src.c1, target.rect.c1),
+    });
+  }, [editable, sheet, write, onBlur]);
+
   const beginEdit = useCallback(
     (r: number, c: number, seed: string | null, selectAllText: boolean) => {
       if (!editable) return;
@@ -611,6 +703,8 @@ export function SheetBlockView({
       setPal(null);
       setPick(null);
       setPickRect(null);
+      setAnts(null);
+
     };
     document.addEventListener("mousedown", onDown, true);
     return () => document.removeEventListener("mousedown", onDown, true);
@@ -745,7 +839,22 @@ export function SheetBlockView({
           toggleMark(sel, "i");
           return;
         case "clearSelection":
+          // Escape also drops the ants: a stale marching rectangle after the
+          // selection is gone reads as "something is still pending".
           setSel(null);
+          setAnts(null);
+          return;
+        /* ── The clipboard trio. Only reachable from keyWhenSelected, so a
+              cell being EDITED never gets here and ⌘C/⌘X/⌘V stay native
+              inside the input. ── */
+        case "copy":
+          copyRange(sel, false);
+          return;
+        case "cut":
+          copyRange(sel, true);
+          return;
+        case "paste":
+          void pasteAt(sel);
           return;
         /* ── The panel's keys. It has already won the precedence contest
               inside keyWhenEditing, so there is no branch to get wrong
@@ -767,7 +876,19 @@ export function SheetBlockView({
           return;
       }
     },
-    [sel, rows, cols, beginEdit, commitCell, clearRange, toggleMark, sug, insertSuggestion],
+    [
+      sel,
+      rows,
+      cols,
+      beginEdit,
+      commitCell,
+      clearRange,
+      toggleMark,
+      sug,
+      insertSuggestion,
+      copyRange,
+      pasteAt,
+    ],
   );
 
   /* ───────────────────────── Pointer ───────────────────────── */
@@ -794,6 +915,11 @@ export function SheetBlockView({
 
   const rc = sel ? rect(sel) : null;
   const overlay = rc ? rangeBox(cw, rc) : null;
+  // Both chunk-7 overlays are positioned with the SAME rangeBox arithmetic —
+  // nothing measures a cell to find out where it is.
+  const antsBox = ants ? rangeBox(cw, ants) : null;
+  const fillBox = fill ? rangeBox(cw, fill.rect) : null;
+
   const editBox = edit ? cellBox(cw, edit.r, edit.c) : null;
 
   /* ─────────────────── Formula bar readout ───────────────────
@@ -1173,6 +1299,7 @@ export function SheetBlockView({
           onPointerUp={() => {
             dragging.current = false;
             pickDrag.current = null;
+            if (fillDrag.current) endFill();
           }}
         >
           {/* ── Corner: selects everything ── */}
@@ -1308,6 +1435,13 @@ export function SheetBlockView({
                         pickCell(r, c, e.shiftKey);
                       }}
                       onPointerMove={(e) => {
+                        // A fill drag outranks everything: it started on the
+                        // handle, so no other gesture can be live.
+                        if (fillDrag.current) {
+                          e.preventDefault();
+                          setFill(fillTarget(fillDrag.current, r, c));
+                          return;
+                        }
                         const anchor = pickDrag.current;
                         if (anchor) {
                           e.preventDefault();
@@ -1364,6 +1498,80 @@ export function SheetBlockView({
                   : "transparent",
                 pointerEvents: "none",
                 zIndex: 6,
+              }}
+            />
+          )}
+
+          {/* ── MARCHING ANTS: ONE animated dashed rectangle for the
+                copied or cut range. A cut's ants read the same as a copy's —
+                the difference is only what happens on paste. ── */}
+          {antsBox && (
+            <div
+              aria-hidden
+              data-sheet-ants
+              style={{
+                position: "absolute",
+                left: antsBox.left,
+                top: antsBox.top,
+                width: antsBox.width,
+                height: antsBox.height,
+                pointerEvents: "none",
+                zIndex: 7,
+                backgroundImage:
+                  "linear-gradient(90deg, var(--color-accent) 50%, transparent 0)," +
+                  "linear-gradient(90deg, var(--color-accent) 50%, transparent 0)," +
+                  "linear-gradient(0deg, var(--color-accent) 50%, transparent 0)," +
+                  "linear-gradient(0deg, var(--color-accent) 50%, transparent 0)",
+                backgroundRepeat: "repeat-x, repeat-x, repeat-y, repeat-y",
+                backgroundSize: "14px 1px, 14px 1px, 1px 14px, 1px 14px",
+                backgroundPosition: "0 0, 0 100%, 0 0, 100% 0",
+                animation: "shAnts 0.6s linear infinite",
+              }}
+            />
+          )}
+
+          {/* ── The live fill outline. ── */}
+          {fillBox && (
+            <div
+              aria-hidden
+              data-sheet-fill-preview
+              style={{
+                position: "absolute",
+                left: fillBox.left,
+                top: fillBox.top,
+                width: fillBox.width,
+                height: fillBox.height,
+                border: "1px solid var(--color-accent)",
+                borderRadius: 2,
+                pointerEvents: "none",
+                zIndex: 7,
+              }}
+            />
+          )}
+
+          {/* ── THE FILL HANDLE: a 6px square on the selection's
+                bottom-right corner, only when nothing is being edited. ── */}
+          {editable && overlay && !edit && (
+            <div
+              data-sheet-fill-handle
+              aria-label="Fill"
+              title="Drag to fill"
+              onPointerDown={(e) => {
+                if (e.button !== 0 || !rc) return;
+                e.preventDefault();
+                e.stopPropagation();
+                fillDrag.current = rc;
+                setFill(null);
+              }}
+              style={{
+                position: "absolute",
+                left: overlay.left + overlay.width - 3,
+                top: overlay.top + overlay.height - 3,
+                width: 6,
+                height: 6,
+                background: "var(--color-accent)",
+                cursor: "crosshair",
+                zIndex: 8,
               }}
             />
           )}

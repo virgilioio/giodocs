@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { toClipboard } from "@/lib/clipboard";
 import { Link, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -1183,7 +1184,7 @@ function MyViewRow({
         icon: "link",
         hint: { text: "⌘⌥L", mono: true },
         onPick: () => {
-          void navigator.clipboard?.writeText?.(copyViewLink(v.id));
+          toClipboard(copyViewLink(v.id));
           toast.push(`Copied link to "${v.name}"`);
           mctx.close();
         },
@@ -1428,7 +1429,7 @@ function TeamViewRow({
         icon: "link",
         hint: { text: "⌘⌥L", mono: true },
         onPick: () => {
-          void navigator.clipboard?.writeText?.(copyViewLink(v.id));
+          toClipboard(copyViewLink(v.id));
           toast.push(`Copied link to "${v.name}"`);
           mctx.close();
         },
@@ -1651,7 +1652,7 @@ function AreaLi({
             const origin =
               typeof window !== "undefined" && window.location ? window.location.origin : "";
             const url = `${origin}/a/${encodeURIComponent(area)}`;
-            void navigator.clipboard?.writeText?.(url);
+            toClipboard(url);
             toast.push(`Copied link to "${area}"`);
             ctx.close();
           },
