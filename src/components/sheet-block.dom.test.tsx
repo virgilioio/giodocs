@@ -665,3 +665,167 @@ describe("column width dragging", () => {
     expect(patches.at(-1)!.cw).toEqual([160, 120]);
   });
 });
+
+/* ═══════════════ autocomplete and click-to-reference (chunk 5) ═══════════════
+ *
+ * happy-dom has no layout engine, so offsetHeight/scrollHeight are always 0
+ * here. The anti-squash rule is therefore asserted STRUCTURALLY — every row
+ * carries flex: none and the list is the scroller inside a capped panel,
+ * which is exactly the pair that prevents twenty rows squashing to nothing.
+ */
+
+const panel = () => host.querySelector("[data-sheet-panel]") as HTMLElement | null;
+const panelRows = () =>
+  Array.from(host.querySelectorAll("[data-sheet-suggestion]")) as HTMLElement[];
+const panelFooter = () =>
+  (host.querySelector("[data-sheet-panel-footer]") as HTMLElement | null)?.textContent;
+const chip = () => (host.querySelector("[data-sheet-chip]") as HTMLElement | null)?.textContent;
+const halo = () => host.querySelector("[data-sheet-halo]") as HTMLElement | null;
+
+/** Types a value AND places the caret at the end, which is what the panel
+ *  reads — it looks at the word under the caret, never the tail. */
+function typeFormula(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+  act(() => {
+    setter.call(input, value);
+    input.setSelectionRange(value.length, value.length);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+describe("the suggestion panel", () => {
+  it('"=" opens all twenty functions in a capped, scrolling panel', () => {
+    mount(<Harness />);
+    click(cell(1, 0));
+    press(grid(), "=");
+    expect(panel()).toBeTruthy();
+    expect(panelRows().length).toBe(20);
+    // Each row refuses to shrink; the list scrolls inside the 226px cap.
+    expect(panelRows().every((r) => r.style.flex === "none")).toBe(true);
+    const list = host.querySelector("[data-sheet-panel-list]") as HTMLElement;
+    expect(getComputedStyle(list).overflowY).toBe("auto");
+    expect(panel()!.style.maxHeight).toBe("226px");
+    expect(panelFooter()).toBe("All 20 functions · type to narrow · ↑↓ Tab");
+  });
+
+  it('"=C" narrows to COUNT and CONCAT with the footer reading "2 of 20"', () => {
+    mount(<Harness />);
+    click(cell(1, 0));
+    press(grid(), "=");
+    typeFormula(editor()!, "=C");
+    expect(panelRows().map((r) => r.dataset.sheetSuggestion)).toEqual(["COUNT", "CONCAT"]);
+    expect(panelFooter()).toBe("2 of 20 · ↑↓ to choose · Tab to insert");
+  });
+
+  it('Tab on "=SU" yields "=SUM(" with the caret at index 5', () => {
+    mount(<Harness />);
+    click(cell(1, 0));
+    press(grid(), "=");
+    typeFormula(editor()!, "=SU");
+    press(editor()!, "Tab");
+    expect(editor()!.value).toBe("=SUM(");
+    expect(editor()!.selectionStart).toBe(5);
+  });
+
+  it('typing "=MINUS" keeps focus on the same input node throughout', () => {
+    mount(<Harness />);
+    click(cell(1, 0));
+    press(grid(), "=");
+    const first = editor()!;
+    const nodes: Element[] = [first];
+    const active: (Element | null)[] = [document.activeElement];
+    for (const v of ["=M", "=MI", "=MIN", "=MINU", "=MINUS"]) {
+      typeFormula(editor()!, v);
+      nodes.push(editor()!);
+      active.push(document.activeElement);
+    }
+    expect(new Set(nodes).size).toBe(1);
+    expect(active.every((el) => el === first)).toBe(true);
+    expect(editor()!.value).toBe("=MINUS");
+    expect(panelRows().map((r) => r.dataset.sheetSuggestion)).toEqual(["MINUS"]);
+  });
+
+  it("Escape closes the panel without leaving the cell; a second Escape discards", () => {
+    mount(<Harness />);
+    click(cell(1, 0));
+    press(grid(), "=");
+    press(editor()!, "Escape");
+    expect(panel()).toBeNull();
+    expect(editor()).toBeTruthy();
+    press(editor()!, "Escape");
+    expect(editor()).toBeNull();
+  });
+
+  it("↑↓ with the panel open never reaches the page", () => {
+    mount(<Harness />);
+    click(cell(1, 0));
+    press(grid(), "=");
+    const ev = new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true });
+    act(() => {
+      editor()!.dispatchEvent(ev);
+    });
+    expect(ev.defaultPrevented).toBe(true);
+    expect(panelRows()[1].getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("once the caret is inside a call the chip replaces the list", () => {
+    mount(<Harness />);
+    click(cell(1, 0));
+    press(grid(), "=");
+    typeFormula(editor()!, "=SU");
+    press(editor()!, "Tab");
+    typeFormula(editor()!, "=SUM(A1");
+    expect(panel()).toBeNull();
+    expect(chip()).toBe("SUM(range)");
+  });
+});
+
+describe("click-to-reference", () => {
+  it('"=SUM(" then a cell mousedown is prevented and the draft becomes "=SUM(B2)"', () => {
+    mount(<Harness />);
+    click(cell(0, 0));
+    press(grid(), "=");
+    typeFormula(editor()!, "=SUM(");
+    const first = editor()!;
+    const ev = new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 });
+    act(() => {
+      cell(1, 1).dispatchEvent(ev);
+    });
+    expect(ev.defaultPrevented).toBe(true);
+    expect(editor()).toBe(first);
+    expect(document.activeElement).toBe(first);
+    typeFormula(editor()!, editor()!.value + ")");
+    expect(editor()!.value).toBe("=SUM(B2)");
+    expect(halo()).toBeTruthy();
+  });
+
+  it("clicking a DIFFERENT cell replaces the reference rather than appending", () => {
+    mount(<Harness />);
+    click(cell(0, 0));
+    press(grid(), "=");
+    act(() => {
+      cell(1, 1).dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 }),
+      );
+    });
+    expect(editor()!.value).toBe("=B2");
+    act(() => {
+      cell(2, 1).dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 }),
+      );
+    });
+    expect(editor()!.value).toBe("=B3");
+  });
+
+  it("with a complete formula a cell click still means LEAVE THIS CELL", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(<Harness onPatch={(p) => patches.push(p)} />);
+    click(cell(0, 0));
+    press(grid(), "=");
+    typeFormula(editor()!, "=1+1");
+    click(cell(1, 1));
+    expect(editor()).toBeNull();
+    expect(rawAt(patches.at(-1)!, 0, 0)).toBe("=1+1");
+    expect(cell(1, 1).textContent).toBe("100");
+  });
+});
