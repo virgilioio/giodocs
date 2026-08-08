@@ -296,6 +296,11 @@ export function SheetBlockView({
    * caret or a span from the previous render. */
   const caretRef = useRef(0);
   const pickRef = useRef<PickSpan | null>(null);
+  /** TRUE while a formula pick (a cell reference or a suggestion row) is
+   *  being applied. A pick must never end the edit: any blur that lands
+   *  while this is set is a browser focus side-effect, not "leave this
+   *  cell", so it is refused and the editor takes focus back. */
+  const holdRef = useRef(false);
   const blockId = String((block as { id?: unknown }).id ?? "sheet");
   /* ── Chunk 6. Which palette strip is open, if any. It is a STRIP, not
    * twelve inline swatches: the bar is looked at constantly and the
