@@ -287,9 +287,14 @@ export function SheetBlockView({
   const runSpanOp = useCallback(
     (kind: SpanKind, i0: number, i1: number, op: OpId) => {
       if (!editable) return;
+      const total = kind === "row" ? rows : cols;
+      if (op === "moveBack" && i0 <= 0) return;
+      if (op === "moveFwd" && i1 >= total - 1) return;
       const next = applySpanOp(sheet, kind, i0, i1, op);
-      // The model REFUSED (a floor or a bound). Never a silent no-op.
-      if (next.cells === sheet.cells && next.cw === sheet.cw) return;
+      const totalAfter = kind === "row" ? next.cells.length : next.cw.length;
+      // The model REFUSED — a floor or a bound. The greyed control and its
+      // toast are the user-facing half of the same rule.
+      if (op !== "moveBack" && op !== "moveFwd" && totalAfter === total) return;
       write(next);
       onBlur?.();
 
@@ -319,7 +324,7 @@ export function SheetBlockView({
       editRef.current = shifted;
       setEdit(shifted);
     },
-    [editable, sheet, write, onBlur, blockId],
+    [editable, sheet, rows, cols, write, onBlur, blockId],
   );
 
   /** Blind append at the far edge — always available, inert at the bound. */
