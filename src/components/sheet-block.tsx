@@ -833,10 +833,245 @@ export function SheetBlockView({
     }
   };
 
+  /* ── Toolbar READBACKS. Every one of them is the pure decision from
+   * sheet-toolbar.ts over the SAME cell list the action will write, so an
+   * indicator can never disagree with what its click does. ── */
+  const fmtNow = commonFormat(selCells);
+  const alignNow = commonAlign(selCells);
+  const boldNow = markDecision(selCells, "b");
+  const italicNow = markDecision(selCells, "i");
+  const ruleNow = markDecision(selCells, "rt");
+  const fgNow = commonKey(selCells, "fg");
+  const bgNow = commonKey(selCells, "bg");
+  const canClear = hasFormatting(selCells);
+
+  /** A toolbar control. mousedown preventDefault on EVERY one of them — a
+   *  toolbar click must not blur an open editor and commit a half-typed
+   *  draft. The palette strip is not an input, for the same reason. */
+  const Tb = ({
+    id,
+    title: t,
+    active,
+    onPick,
+    className = "",
+    children,
+  }: {
+    id: string;
+    title: string;
+    active?: boolean;
+    onPick: () => void;
+    className?: string;
+    children: React.ReactNode;
+  }) => (
+    <button
+      type="button"
+      title={t}
+      aria-label={t}
+      aria-pressed={active ? true : undefined}
+      data-sheet-fmt={id}
+      onKeyDown={guardKeys}
+      onMouseDown={(e) => e.preventDefault()}
+      onPointerDown={(e) => e.preventDefault()}
+      onClick={onPick}
+      className={
+        TB_BTN +
+        " " +
+        (active ? "bg-accentTint text-accentInk" : "text-secondary") +
+        " " +
+        className
+      }
+    >
+      {children}
+    </button>
+  );
+
+  /** The colour chip under a colour glyph — "what is set right now". */
+  const ColourBar = ({ token }: { token: string | undefined }) => (
+    <span
+      aria-hidden
+      className="mt-[1px] block w-[15px] rounded-full"
+      style={{ height: 3, background: token ?? "var(--color-lineSoft)" }}
+    />
+  );
+
+  const strip = (which: "fg" | "bg", list: Swatch[], now: string | undefined) => (
+    <div
+      className="flex flex-wrap items-center gap-1 px-1.5 py-1"
+      style={{ borderTop: LINE }}
+      data-sheet-palette={which}
+    >
+      <span className="mr-1 whitespace-nowrap text-caption text-muted">
+        {which === "fg" ? "Text colour" : "Fill"}
+      </span>
+      {list.map((s) => (
+        <button
+          key={s.label}
+          type="button"
+          title={s.label}
+          aria-label={s.label}
+          data-sheet-swatch={s.key ?? "none"}
+          onKeyDown={guardKeys}
+          onMouseDown={(e) => e.preventDefault()}
+          onPointerDown={(e) => e.preventDefault()}
+          onClick={() => setColourKey(which, s.key)}
+          className={
+            "grid h-[22px] place-items-center rounded-md px-1.5 text-caption hover:bg-sunken " +
+            ((s.key ?? null) === (now ?? null) ? "text-accentInk" : "text-secondary")
+          }
+        >
+          <span
+            aria-hidden
+            className="mr-1 inline-block h-[11px] w-[11px] rounded-full border border-line align-middle"
+            style={{ background: s.token ?? "transparent" }}
+          />
+          {s.label}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
-    <div className="group py-1" aria-label="Sheet block" {...{ [SHEET_GRID_ATTR]: "" }}>
+    <div
+      className="group py-1"
+      aria-label="Sheet block"
+      ref={rootRef}
+      data-sheet=""
+      {...{ [SHEET_GRID_ATTR]: "" }}
+    >
+      {/* ── THE FORMATTING TOOLBAR. Only while a cell is selected, and both
+            rows sit on bg-surface with a hairline between them so the sheet
+            reads as ONE WHITE INSTRUMENT rather than a grey panel bolted
+            above a white grid. +row / +col are NOT here — they are edge
+            controls on the grid, and the row/column group lives beside the
+            formula bar. From that trio only Header is new. ── */}
+      {editable && sel && (
+        <div
+          data-sheet-toolbar
+          className="mb-1 overflow-hidden rounded-lg border border-line bg-surface"
+        >
+          <div className="flex flex-wrap items-center gap-1 px-1.5 py-1">
+            {/* Number format: ONE segmented control on bg-track, so it reads
+                as a group against the white bar. It writes `f` only — the
+                stored raw value is never touched. */}
+            <div className="flex items-center gap-0.5 rounded-md bg-track p-0.5">
+              {NUMBER_FORMATS.map((f) => (
+                <Tb
+                  key={f.id}
+                  id={`f-${f.id}`}
+                  title={f.title}
+                  active={fmtNow === f.id}
+                  onPick={() => setFormat(f.id)}
+                  className="px-2"
+                >
+                  {f.label}
+                </Tb>
+              ))}
+            </div>
+            <Tb id="dec-down" title="Fewer decimals" onPick={() => bumpDecimals(-1)}>
+              .0
+            </Tb>
+            <Tb id="dec-up" title="More decimals" onPick={() => bumpDecimals(1)}>
+              .00
+            </Tb>
+          </div>
+
+          <div
+            className="flex flex-wrap items-center gap-1 px-1.5 py-1"
+            style={{ borderTop: LINE }}
+          >
+            <Tb
+              id="bold"
+              title="Bold  ⌘B"
+              active={boldNow.active}
+              onPick={() => toggleMark(sel, "b")}
+            >
+              <span className="font-bold">B</span>
+            </Tb>
+            <Tb
+              id="italic"
+              title="Italic  ⌘I"
+              active={italicNow.active}
+              onPick={() => toggleMark(sel, "i")}
+            >
+              <span className="italic">I</span>
+            </Tb>
+            {ALIGNS.map((a) => (
+              <Tb
+                key={a.id}
+                id={`align-${a.id}`}
+                title={a.title}
+                active={alignNow === a.id}
+                onPick={() => setAlign(a.id)}
+              >
+                <Glyph d={a.id === "left" ? IC.alignL : a.id === "center" ? IC.alignC : IC.alignR} />
+              </Tb>
+            ))}
+            <span aria-hidden className="mx-1 h-4 w-px bg-lineSoft" />
+            {/* Text colour and fill: TWO buttons, each showing ITS CURRENT
+                COLOUR as a small bar, opening ONE labelled strip below. Fill
+                reuses the product's paint droplet. */}
+            <Tb
+              id="pal-fg"
+              title="Text colour"
+              active={pal === "fg"}
+              onPick={() => setPal((p) => (p === "fg" ? null : "fg"))}
+              className="flex-col"
+            >
+              <Glyph d={IC.letterA} />
+              <ColourBar token={inkToken(fgNow)} />
+            </Tb>
+            <Tb
+              id="pal-bg"
+              title="Fill"
+              active={pal === "bg"}
+              onPick={() => setPal((p) => (p === "bg" ? null : "bg"))}
+              className="flex-col"
+            >
+              <Glyph d={IC.droplet} />
+              <ColourBar token={fillToken(bgNow)} />
+            </Tb>
+            {/* A rule above a figure is how a total row has been read in
+                every financial document ever printed — structure, not
+                decoration, and it survives export. */}
+            <Tb
+              id="rule"
+              title="Rule above — a total row"
+              active={ruleNow.active}
+              onPick={() => toggleMark(sel, "rt")}
+            >
+              <Glyph d={IC.ruleTop} />
+            </Tb>
+            <Tb
+              id="clear"
+              title="Clear formatting"
+              onPick={clearFormatting}
+              className={canClear ? "" : "opacity-50"}
+            >
+              <Glyph d={IC.clear} />
+            </Tb>
+            <span className="flex-1" />
+            <Tb
+              id="freeze"
+              title={freeze ? "Header row — on" : "Header row — pin the first row"}
+              active={freeze}
+              onPick={toggleFreeze}
+              className="gap-1 px-2"
+            >
+              <span className="flex items-center gap-1">
+                <Glyph d={IC.freezeRow} />
+                Header
+              </span>
+            </Tb>
+          </div>
+
+          {pal === "fg" && strip("fg", INK_SWATCHES, fgNow)}
+          {pal === "bg" && strip("bg", FILL_SWATCHES, bgNow)}
+        </div>
+      )}
+
       {/* ── Formula bar ── */}
       <div className="mb-1 flex items-center gap-2">
+
         <span className="min-w-14 font-mono text-caption text-muted" data-sheet-ref>
           {sel ? refLabel(sel) : "—"}
         </span>
