@@ -33,7 +33,7 @@
  * of step with the columns is silent corruption.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   colName,
   evaluateCell,
@@ -50,7 +50,10 @@ import {
   setCell,
   setColWidth,
   type Cell,
+  type CellAlign,
+  type CellFormat,
   type SheetBlock,
+
 } from "@/lib/sheet-model";
 import {
   appendControl,
@@ -78,8 +81,25 @@ import {
   type PickSpan,
 } from "@/lib/sheet-formula";
 import { fillToken, inkToken } from "@/lib/sheet-palette";
+import {
+  ALIGNS,
+  clearedCell,
+  commonAlign,
+  commonFormat,
+  commonKey,
+  FILL_SWATCHES,
+  hasFormatting,
+  INK_SWATCHES,
+  markDecision,
+  NUMBER_FORMATS,
+  stepDecimals,
+  type MarkKey,
+  type Swatch,
+} from "@/lib/sheet-toolbar";
+import { IC } from "@/lib/menu-icons";
 import { SHEET_GRID_ATTR } from "@/lib/is-typing";
 import { useToast } from "@/lib/toast";
+
 import {
   cellBox,
   cellsIn,
@@ -153,6 +173,30 @@ function PlusGlyph() {
     </svg>
   );
 }
+
+/** A toolbar glyph: ONE path from the shared icon library, drawn in the
+ *  24-grid at the same stroke as every other menu icon. */
+function Glyph({ d }: { d: string }) {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden focusable="false">
+      <path
+        d={d}
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </svg>
+  );
+}
+
+/** The toolbar's control surface. mousedown preventDefault on EVERY one of
+ *  them: a toolbar click must never blur an open editor, because a blur
+ *  commits a half-typed draft. Same discipline as the suggestion panel. */
+const TB_BTN =
+  "grid h-[26px] min-w-[26px] place-items-center rounded-md px-1 text-caption hover:bg-sunken";
+
 
 function rawOf(cells: (Cell | null)[][], r: number, c: number): string {
   const v = cells[r]?.[c]?.v;
@@ -230,6 +274,13 @@ export function SheetBlockView({
   const caretRef = useRef(0);
   const pickRef = useRef<PickSpan | null>(null);
   const blockId = String((block as { id?: unknown }).id ?? "sheet");
+  /* ── Chunk 6. Which palette strip is open, if any. It is a STRIP, not
+   * twelve inline swatches: the bar is looked at constantly and the
+   * palette opened rarely. ── */
+  const [pal, setPal] = useState<"fg" | "bg" | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+
 
   const write = useCallback(
     (next: SheetBlock) => {
@@ -352,25 +403,49 @@ export function SheetBlockView({
     [editable, sheet, write, onBlur],
   );
 
-  const toggleMark = useCallback(
-    (s: Sel, mark: "b" | "i") => {
+  /* ─────────────── Range-wide formatting (chunk 6) ───────────────
+   * EVERY toolbar control acts on the WHOLE selection and lands as ONE
+   * write, so however many cells it touches it is ONE undo entry. The
+   * mapper returns the cell it WANTS; the cell is cleared first because
+   * setCell merges, and a merge can never remove a key. */
+  const applyRange = useCallback(
+    (s: Sel, map: (cur: Cell) => Cell | null) => {
       if (!editable) return;
-      const cells = cellsIn(rect(s));
-      // Mixed selection turns ON — the behaviour every editor has.
-      const allOn = cells.every(({ r, c }) => sheet.cells[r]?.[c]?.[mark] === true);
       let next = sheet;
-      for (const { r, c } of cells) {
-        const cur = next.cells[r]?.[c] ?? {};
-        const kept: Partial<Cell> = { ...cur };
-        if (allOn) delete kept[mark];
-        else kept[mark] = true;
-        next = setCell(next, r, c, kept);
+      for (const { r, c } of cellsIn(rect(s))) {
+        const want = map({ ...(next.cells[r]?.[c] ?? {}) });
+        next = setCell(next, r, c, null);
+        if (want && Object.keys(want).length) next = setCell(next, r, c, want);
       }
       write(next);
       onBlur?.();
     },
     [editable, sheet, write, onBlur],
   );
+
+  /** The cells under the current selection, for every toolbar READBACK.
+   *  The indicator and the action read the same list, so they agree. */
+  const selCells = useMemo(
+    () => (sel ? cellsIn(rect(sel)).map(({ r, c }) => sheet.cells[r]?.[c] ?? null) : []),
+    [sel, sheet.cells],
+  );
+
+  /** b / i / rt across a possibly-mixed range. The DECISION is pure —
+   *  src/lib/sheet-toolbar.ts — so the toolbar button and ⌘B cannot drift
+   *  into two different behaviours. */
+  const toggleMark = useCallback(
+    (s: Sel, mark: MarkKey) => {
+      const cells = cellsIn(rect(s)).map(({ r, c }) => sheet.cells[r]?.[c] ?? null);
+      const { set } = markDecision(cells, mark);
+      applyRange(s, (cur) => {
+        if (set) cur[mark] = true;
+        else delete cur[mark];
+        return cur;
+      });
+    },
+    [sheet.cells, applyRange],
+  );
+
 
   const beginEdit = useCallback(
     (r: number, c: number, seed: string | null, selectAllText: boolean) => {
@@ -509,6 +584,103 @@ export function SheetBlockView({
     [editable, sheet, write, onBlur],
   );
 
+  /* ── DISMISS ON A CLICK OUTSIDE THE BLOCK. Two dense rows of chrome
+   * sitting permanently above a document compete with the prose around
+   * it, so the toolbar exists only while a cell is selected.
+   *
+   * ⚠ CAPTURE PHASE. Chunk 5's click-to-reference and the suggestion panel
+   * both call preventDefault on mousedown; a bubble-phase listener would
+   * either miss those events or fight them. Capture runs BEFORE any of
+   * that, and the [data-sheet] test means everything inside this block —
+   * cells included — is skipped untouched.
+   *
+   * An open editor is committed EXPLICITLY here rather than relying on
+   * blur: clearing the edit unmounts the input, and a draft lost that way
+   * is silent data loss. */
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Element | null;
+      if (t && typeof t.closest === "function" && t.closest("[data-sheet]")) return;
+      const live = editRef.current;
+      if (live) {
+        commitCell(live.r, live.c, live.draft);
+        editRef.current = null;
+        setEdit(null);
+      }
+      setSel(null);
+      setPal(null);
+      setPick(null);
+      setPickRect(null);
+    };
+    document.addEventListener("mousedown", onDown, true);
+    return () => document.removeEventListener("mousedown", onDown, true);
+  }, [commitCell]);
+
+  /* ── Toolbar actions. Each is ONE write over the whole selection. ── */
+
+  const setFormat = useCallback(
+    (f: CellFormat) => {
+      if (!sel) return;
+      applyRange(sel, (cur) => {
+        cur.f = f;
+        return cur;
+      });
+    },
+    [sel, applyRange],
+  );
+
+  /** Steps `d`. It NEVER writes a display default — format() owns those, so
+   *  a currency cell with no `d` still renders two decimals. */
+  const bumpDecimals = useCallback(
+    (dir: 1 | -1) => {
+      if (!sel) return;
+      const d = stepDecimals(selCells, dir);
+      applyRange(sel, (cur) => {
+        cur.d = d;
+        return cur;
+      });
+    },
+    [sel, selCells, applyRange],
+  );
+
+  const setAlign = useCallback(
+    (a: CellAlign) => {
+      if (!sel) return;
+      const same = commonAlign(selCells) === a;
+      applyRange(sel, (cur) => {
+        if (same) delete cur.a;
+        else cur.a = a;
+        return cur;
+      });
+    },
+    [sel, selCells, applyRange],
+  );
+
+  const setColourKey = useCallback(
+    (which: "bg" | "fg", key: string | null) => {
+      if (!sel) return;
+      applyRange(sel, (cur) => {
+        if (key === null) delete cur[which];
+        else cur[which] = key;
+        return cur;
+      });
+      setPal(null);
+    },
+    [sel, applyRange],
+  );
+
+  /** Resets f d b i a bg fg rt across the range in ONE action, leaving
+   *  every `v` untouched. */
+  const clearFormatting = useCallback(() => {
+    if (!sel) return;
+    applyRange(sel, (cur) => clearedCell(cur));
+  }, [sel, applyRange]);
+
+  const toggleFreeze = useCallback(() => {
+    if (!editable) return;
+    onChange?.({ freeze: !freeze });
+    onBlur?.();
+  }, [editable, onChange, freeze, onBlur]);
 
 
   /* ───────────────────────── Keyboard ─────────────────────────
@@ -661,10 +833,245 @@ export function SheetBlockView({
     }
   };
 
+  /* ── Toolbar READBACKS. Every one of them is the pure decision from
+   * sheet-toolbar.ts over the SAME cell list the action will write, so an
+   * indicator can never disagree with what its click does. ── */
+  const fmtNow = commonFormat(selCells);
+  const alignNow = commonAlign(selCells);
+  const boldNow = markDecision(selCells, "b");
+  const italicNow = markDecision(selCells, "i");
+  const ruleNow = markDecision(selCells, "rt");
+  const fgNow = commonKey(selCells, "fg");
+  const bgNow = commonKey(selCells, "bg");
+  const canClear = hasFormatting(selCells);
+
+  /** A toolbar control. mousedown preventDefault on EVERY one of them — a
+   *  toolbar click must not blur an open editor and commit a half-typed
+   *  draft. The palette strip is not an input, for the same reason. */
+  const Tb = ({
+    id,
+    title: t,
+    active,
+    onPick,
+    className = "",
+    children,
+  }: {
+    id: string;
+    title: string;
+    active?: boolean;
+    onPick: () => void;
+    className?: string;
+    children: React.ReactNode;
+  }) => (
+    <button
+      type="button"
+      title={t}
+      aria-label={t}
+      aria-pressed={active ? true : undefined}
+      data-sheet-fmt={id}
+      onKeyDown={guardKeys}
+      onMouseDown={(e) => e.preventDefault()}
+      onPointerDown={(e) => e.preventDefault()}
+      onClick={onPick}
+      className={
+        TB_BTN +
+        " " +
+        (active ? "bg-accentTint text-accentInk" : "text-secondary") +
+        " " +
+        className
+      }
+    >
+      {children}
+    </button>
+  );
+
+  /** The colour chip under a colour glyph — "what is set right now". */
+  const ColourBar = ({ token }: { token: string | undefined }) => (
+    <span
+      aria-hidden
+      className="mt-[1px] block w-[15px] rounded-full"
+      style={{ height: 3, background: token ?? "var(--color-lineSoft)" }}
+    />
+  );
+
+  const strip = (which: "fg" | "bg", list: Swatch[], now: string | undefined) => (
+    <div
+      className="flex flex-wrap items-center gap-1 px-1.5 py-1"
+      style={{ borderTop: LINE }}
+      data-sheet-palette={which}
+    >
+      <span className="mr-1 whitespace-nowrap text-caption text-muted">
+        {which === "fg" ? "Text colour" : "Fill"}
+      </span>
+      {list.map((s) => (
+        <button
+          key={s.label}
+          type="button"
+          title={s.label}
+          aria-label={s.label}
+          data-sheet-swatch={s.key ?? "none"}
+          onKeyDown={guardKeys}
+          onMouseDown={(e) => e.preventDefault()}
+          onPointerDown={(e) => e.preventDefault()}
+          onClick={() => setColourKey(which, s.key)}
+          className={
+            "grid h-[22px] place-items-center rounded-md px-1.5 text-caption hover:bg-sunken " +
+            ((s.key ?? null) === (now ?? null) ? "text-accentInk" : "text-secondary")
+          }
+        >
+          <span
+            aria-hidden
+            className="mr-1 inline-block h-[11px] w-[11px] rounded-full border border-line align-middle"
+            style={{ background: s.token ?? "transparent" }}
+          />
+          {s.label}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
-    <div className="group py-1" aria-label="Sheet block" {...{ [SHEET_GRID_ATTR]: "" }}>
+    <div
+      className="group py-1"
+      aria-label="Sheet block"
+      ref={rootRef}
+      data-sheet=""
+      {...{ [SHEET_GRID_ATTR]: "" }}
+    >
+      {/* ── THE FORMATTING TOOLBAR. Only while a cell is selected, and both
+            rows sit on bg-surface with a hairline between them so the sheet
+            reads as ONE WHITE INSTRUMENT rather than a grey panel bolted
+            above a white grid. +row / +col are NOT here — they are edge
+            controls on the grid, and the row/column group lives beside the
+            formula bar. From that trio only Header is new. ── */}
+      {editable && sel && (
+        <div
+          data-sheet-toolbar
+          className="mb-1 overflow-hidden rounded-lg border border-line bg-surface"
+        >
+          <div className="flex flex-wrap items-center gap-1 px-1.5 py-1">
+            {/* Number format: ONE segmented control on bg-track, so it reads
+                as a group against the white bar. It writes `f` only — the
+                stored raw value is never touched. */}
+            <div className="flex items-center gap-0.5 rounded-md bg-track p-0.5">
+              {NUMBER_FORMATS.map((f) => (
+                <Tb
+                  key={f.id}
+                  id={`f-${f.id}`}
+                  title={f.title}
+                  active={fmtNow === f.id}
+                  onPick={() => setFormat(f.id)}
+                  className="px-2"
+                >
+                  {f.label}
+                </Tb>
+              ))}
+            </div>
+            <Tb id="dec-down" title="Fewer decimals" onPick={() => bumpDecimals(-1)}>
+              .0
+            </Tb>
+            <Tb id="dec-up" title="More decimals" onPick={() => bumpDecimals(1)}>
+              .00
+            </Tb>
+          </div>
+
+          <div
+            className="flex flex-wrap items-center gap-1 px-1.5 py-1"
+            style={{ borderTop: LINE }}
+          >
+            <Tb
+              id="bold"
+              title="Bold  ⌘B"
+              active={boldNow.active}
+              onPick={() => toggleMark(sel, "b")}
+            >
+              <span className="font-bold">B</span>
+            </Tb>
+            <Tb
+              id="italic"
+              title="Italic  ⌘I"
+              active={italicNow.active}
+              onPick={() => toggleMark(sel, "i")}
+            >
+              <span className="italic">I</span>
+            </Tb>
+            {ALIGNS.map((a) => (
+              <Tb
+                key={a.id}
+                id={`align-${a.id}`}
+                title={a.title}
+                active={alignNow === a.id}
+                onPick={() => setAlign(a.id)}
+              >
+                <Glyph d={a.id === "left" ? IC.alignL : a.id === "center" ? IC.alignC : IC.alignR} />
+              </Tb>
+            ))}
+            <span aria-hidden className="mx-1 h-4 w-px bg-lineSoft" />
+            {/* Text colour and fill: TWO buttons, each showing ITS CURRENT
+                COLOUR as a small bar, opening ONE labelled strip below. Fill
+                reuses the product's paint droplet. */}
+            <Tb
+              id="pal-fg"
+              title="Text colour"
+              active={pal === "fg"}
+              onPick={() => setPal((p) => (p === "fg" ? null : "fg"))}
+              className="flex-col"
+            >
+              <Glyph d={IC.letterA} />
+              <ColourBar token={inkToken(fgNow)} />
+            </Tb>
+            <Tb
+              id="pal-bg"
+              title="Fill"
+              active={pal === "bg"}
+              onPick={() => setPal((p) => (p === "bg" ? null : "bg"))}
+              className="flex-col"
+            >
+              <Glyph d={IC.droplet} />
+              <ColourBar token={fillToken(bgNow)} />
+            </Tb>
+            {/* A rule above a figure is how a total row has been read in
+                every financial document ever printed — structure, not
+                decoration, and it survives export. */}
+            <Tb
+              id="rule"
+              title="Rule above — a total row"
+              active={ruleNow.active}
+              onPick={() => toggleMark(sel, "rt")}
+            >
+              <Glyph d={IC.ruleTop} />
+            </Tb>
+            <Tb
+              id="clear"
+              title="Clear formatting"
+              onPick={clearFormatting}
+              className={canClear ? "" : "opacity-50"}
+            >
+              <Glyph d={IC.clear} />
+            </Tb>
+            <span className="flex-1" />
+            <Tb
+              id="freeze"
+              title={freeze ? "Header row — on" : "Header row — pin the first row"}
+              active={freeze}
+              onPick={toggleFreeze}
+              className="gap-1 px-2"
+            >
+              <span className="flex items-center gap-1">
+                <Glyph d={IC.freezeRow} />
+                Header
+              </span>
+            </Tb>
+          </div>
+
+          {pal === "fg" && strip("fg", INK_SWATCHES, fgNow)}
+          {pal === "bg" && strip("bg", FILL_SWATCHES, bgNow)}
+        </div>
+      )}
+
       {/* ── Formula bar ── */}
       <div className="mb-1 flex items-center gap-2">
+
         <span className="min-w-14 font-mono text-caption text-muted" data-sheet-ref>
           {sel ? refLabel(sel) : "—"}
         </span>

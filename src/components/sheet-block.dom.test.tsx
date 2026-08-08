@@ -831,3 +831,181 @@ describe("click-to-reference", () => {
     expect(cell(1, 1).textContent).toBe("100");
   });
 });
+
+/* ═══════════════════════ the formatting toolbar (chunk 6) ═══════════════════
+ *
+ * The chunk-5 regression guard lives here too: the toolbar installs a
+ * CAPTURE-PHASE document mousedown listener, and capture runs before the
+ * cell's own handler, so click-to-reference is the thing most likely to
+ * break. It is asserted explicitly, with the toolbar mounted.
+ */
+
+const toolbar = () => host.querySelector("[data-sheet-toolbar]") as HTMLElement | null;
+const fmtBtn = (id: string) =>
+  host.querySelector(`[data-sheet-fmt="${id}"]`) as HTMLElement | null;
+const palette = () => host.querySelector("[data-sheet-palette]") as HTMLElement | null;
+
+/** A real click on a toolbar control: mousedown (which the control must
+ *  preventDefault, so an open editor is never blurred) then click. */
+function tbClick(el: Element) {
+  const down = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+  act(() => {
+    el.dispatchEvent(down);
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  return down;
+}
+
+function mouseDownAt(el: EventTarget) {
+  const ev = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+  act(() => {
+    el.dispatchEvent(ev);
+  });
+  return ev;
+}
+
+describe("the toolbar appears with a selection and dismisses outside the block", () => {
+  it("is absent until a cell is selected", () => {
+    mount(<Harness />);
+    expect(toolbar()).toBeNull();
+    click(cell(1, 1));
+    expect(toolbar()).toBeTruthy();
+  });
+
+  it("a mousedown INSIDE [data-sheet] leaves it up", () => {
+    mount(<Harness />);
+    click(cell(1, 1));
+    mouseDownAt(cell(2, 1));
+    expect(toolbar()).toBeTruthy();
+  });
+
+  it("a mousedown OUTSIDE [data-sheet] clears the selection and the toolbar", () => {
+    mount(<Harness />);
+    click(cell(1, 1));
+    mouseDownAt(document.body);
+    expect(toolbar()).toBeNull();
+    expect(refLabel()).toBe("—");
+  });
+});
+
+describe("toolbar writes act on the whole selection", () => {
+  it("Bold over a mixed range sets it on every cell, then clears every cell", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(<Harness onPatch={(p) => patches.push(p)} />);
+    click(cell(1, 0));
+    click(cell(1, 1), { shiftKey: true });
+    tbClick(fmtBtn("bold")!);
+    let cells = patches.at(-1)!.cells as { b?: boolean }[][];
+    expect([cells[1][0].b, cells[1][1].b]).toEqual([true, true]);
+    expect(fmtBtn("bold")!.getAttribute("aria-pressed")).toBe("true");
+    tbClick(fmtBtn("bold")!);
+    cells = patches.at(-1)!.cells as { b?: boolean }[][];
+    expect([cells[1][0].b, cells[1][1].b]).toEqual([undefined, undefined]);
+    expect(fmtBtn("bold")!.getAttribute("aria-pressed")).toBeNull();
+  });
+
+  it("percent format renders a sub-1% value at two decimals via format()", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(
+      <Harness
+        initial={{ ...block, cells: [[{ v: 0.0004 }, { v: "x" }], [{ v: 1 }, { v: 2 }]] }}
+        onPatch={(p) => patches.push(p)}
+      />,
+    );
+    click(cell(0, 0));
+    tbClick(fmtBtn("f-pct")!);
+    expect((patches.at(-1)!.cells as { f?: string }[][])[0][0].f).toBe("pct");
+    expect(cell(0, 0).textContent).toBe("0.04%");
+  });
+
+  it("Clear formatting empties every style key and leaves every value intact", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(
+      <Harness
+        initial={{
+          ...block,
+          cells: [
+            [
+              { v: "Total", b: true, i: true, a: "center", bg: "green", fg: "red", rt: true },
+              { v: 12, f: "currency", d: 3, b: true },
+            ],
+            [{ v: 1 }, { v: 2 }],
+          ],
+        }}
+        onPatch={(p) => patches.push(p)}
+      />,
+    );
+    click(cell(0, 0));
+    click(cell(0, 1), { shiftKey: true });
+    tbClick(fmtBtn("clear")!);
+    const cells = patches.at(-1)!.cells as Record<string, unknown>[][];
+    expect(Object.keys(cells[0][0])).toEqual(["v"]);
+    expect(Object.keys(cells[0][1])).toEqual(["v"]);
+    expect([cells[0][0].v, cells[0][1].v]).toEqual(["Total", 12]);
+  });
+
+  it("the palette strip writes a KEY, and None clears it", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(<Harness onPatch={(p) => patches.push(p)} />);
+    click(cell(1, 1));
+    tbClick(fmtBtn("pal-bg")!);
+    expect(palette()!.dataset.sheetPalette).toBe("bg");
+    tbClick(host.querySelector('[data-sheet-swatch="green"]')!);
+    expect((patches.at(-1)!.cells as { bg?: string }[][])[1][1].bg).toBe("green");
+    tbClick(fmtBtn("pal-bg")!);
+    tbClick(host.querySelector('[data-sheet-swatch="none"]')!);
+    expect((patches.at(-1)!.cells as { bg?: string }[][])[1][1].bg).toBeUndefined();
+  });
+
+  it("Header toggles the block's freeze and reflects it", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(<Harness onPatch={(p) => patches.push(p)} />);
+    click(cell(1, 1));
+    tbClick(fmtBtn("freeze")!);
+    expect(patches.at(-1)!.freeze).toBe(true);
+    expect(fmtBtn("freeze")!.getAttribute("aria-pressed")).toBe("true");
+  });
+});
+
+describe("the toolbar never becomes a second input site", () => {
+  it("clicking Bold mid-edit does not commit or clear the draft", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(<Harness onPatch={(p) => patches.push(p)} />);
+    click(cell(1, 0));
+    press(grid(), "Enter");
+    typeInto(editor()!, "half-typed");
+    const before = patches.length;
+    const down = tbClick(fmtBtn("bold")!);
+    expect(down.defaultPrevented).toBe(true);
+    expect(editor()).toBeTruthy();
+    expect(editor()!.value).toBe("half-typed");
+    expect(patches.length).toBe(before + 1);
+    expect(rawAt(patches.at(-1)!, 1, 0)).toBe("Alpha");
+  });
+
+  it("REGRESSION GUARD: with the capture listener installed, \"=SUM(\" plus a cell mousedown still yields \"=SUM(B2)\"", () => {
+    mount(<Harness />);
+    click(cell(0, 0));
+    press(grid(), "=");
+    typeFormula(editor()!, "=SUM(");
+    const first = editor()!;
+    const ev = new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 });
+    act(() => {
+      cell(1, 1).dispatchEvent(ev);
+      cell(1, 1).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+    });
+    expect(ev.defaultPrevented).toBe(true);
+    expect(editor()).toBe(first);
+    typeFormula(editor()!, editor()!.value + ")");
+    expect(editor()!.value).toBe("=SUM(B2)");
+  });
+
+  it("the suggestion panel survives the capture listener", () => {
+    mount(<Harness />);
+    click(cell(1, 0));
+    press(grid(), "=");
+    mouseDownAt(host.querySelector("[data-sheet-suggestion]")!);
+    expect(panel()).toBeTruthy();
+    expect(editor()).toBeTruthy();
+  });
+});
