@@ -92,9 +92,17 @@ export type MenuBuildCtx = {
 
 /* ═══════════════════════ ONE SHELL ═══════════════════════ */
 
+/** Which edge of the panel lines up with the anchor.
+ *  "end"   — panel's RIGHT edge meets the anchor's right edge (the ⋯ menus).
+ *  "start" — panel's LEFT edge meets the anchor's left edge, for a wide or
+ *            full-width trigger like "Add a property", where right-aligning
+ *            would drop the panel far away from the label that was clicked. */
+export type MenuAlign = "start" | "end";
+
 function usePlacement(
   anchor: HTMLElement | null,
   width: number,
+  align: MenuAlign,
 ): { top: number; left: number; flipped: boolean } | null {
   const [pos, setPos] = useState<
     { top: number; left: number; flipped: boolean } | null
@@ -108,8 +116,7 @@ function usePlacement(
       const r = anchor.getBoundingClientRect();
       const margin = 8;
       const gap = 6;
-      // Opens DOWN AND LEFT — panel's right edge aligns with button's right.
-      let left = r.right - width;
+      let left = align === "start" ? r.left : r.right - width;
       if (left < margin) left = margin;
       const maxLeft = window.innerWidth - width - margin;
       if (left > maxLeft) left = maxLeft;
@@ -132,7 +139,7 @@ function usePlacement(
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [anchor, width]);
+  }, [anchor, width, align]);
   return pos;
 }
 
@@ -145,13 +152,15 @@ function MenuShell({
   width,
   onClose,
   children,
+  align = "end",
 }: {
   anchor: HTMLElement | null;
   width: number;
   onClose: () => void;
   children: ReactNode;
+  align?: MenuAlign;
 }) {
-  const pos = usePlacement(anchor, width);
+  const pos = usePlacement(anchor, width, align);
   if (!anchor || !pos) return null;
   return createPortal(
     <>
@@ -176,7 +185,9 @@ function MenuShell({
           borderRadius: 12,
           padding: 6,
           boxShadow: "0 18px 48px rgba(13,13,9,.16)",
-          transformOrigin: pos.flipped ? "bottom right" : "top right",
+          transformOrigin:
+            (pos.flipped ? "bottom " : "top ") +
+            (align === "start" ? "left" : "right"),
         }}
       >
         {children}
@@ -576,10 +587,12 @@ export function RowMenu({
   spec,
   anchor,
   onClose,
+  align = "end",
 }: {
   spec: MenuSpec | null;
   anchor: HTMLElement | null;
   onClose: () => void;
+  align?: MenuAlign;
 }) {
   // Provider-level Escape covers imperative menus; declarative <RowMenu>
   // needs its own — but it's still ONE listener per open menu, not per row.
@@ -599,7 +612,7 @@ export function RowMenu({
   const baseWidth = spec.width ?? 272;
   const width = spec.confirm ? Math.max(baseWidth, 320) : baseWidth;
   return (
-    <MenuShell anchor={anchor} width={width} onClose={onClose}>
+    <MenuShell anchor={anchor} width={width} onClose={onClose} align={align}>
       <SpecBody spec={spec} onClose={onClose} />
     </MenuShell>
   );
