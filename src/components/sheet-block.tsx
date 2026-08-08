@@ -913,6 +913,11 @@ export function SheetBlockView({
 
   const rc = sel ? rect(sel) : null;
   const overlay = rc ? rangeBox(cw, rc) : null;
+  // Both chunk-7 overlays are positioned with the SAME rangeBox arithmetic —
+  // nothing measures a cell to find out where it is.
+  const antsBox = ants ? rangeBox(cw, ants) : null;
+  const fillBox = fill ? rangeBox(cw, fill.rect) : null;
+
   const editBox = edit ? cellBox(cw, edit.r, edit.c) : null;
 
   /* ─────────────────── Formula bar readout ───────────────────
