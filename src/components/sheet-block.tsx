@@ -108,6 +108,7 @@ import {
   type FillAxis,
   type SheetClip,
 } from "@/lib/sheet-clip";
+import { clampBh, clampBw, readoutText, resizeStyle } from "@/lib/sheet-resize";
 import { fromClipboard, toClipboard } from "@/lib/clipboard";
 import { IC } from "@/lib/menu-icons";
 import { SHEET_GRID_ATTR } from "@/lib/is-typing";
@@ -310,6 +311,27 @@ export function SheetBlockView({
   const fillDrag = useRef<Rect | null>(null);
   const fillRef = useRef<{ rect: Rect; axis: FillAxis } | null>(null);
   fillRef.current = fill;
+  /* ── Chunk 8. The block resize. `colRef` is the bleeding box the clamp
+   * measures against its container; `wrapRef` is the scroll container for
+   * BOTH axes, which is also what chunk 2's sticky headers pin to. The drag
+   * lives in state (so the clamp is felt) AND a ref (so a window
+   * pointermove never reads the previous render). ── */
+  const colRef = useRef<HTMLDivElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  type ResizeDrag = {
+    x: number;
+    y: number;
+    startBw: number;
+    startBh: number;
+    room: number;
+    naturalWidth: number;
+    naturalHeight: number;
+    bw: number;
+    bh: number;
+  };
+  const [resize, setResize] = useState<ResizeDrag | null>(null);
+  const resizeRef = useRef<ResizeDrag | null>(null);
+
 
 
 
@@ -940,7 +962,122 @@ export function SheetBlockView({
 
   const barValue = edit ? edit.draft : sel ? rawOf(sheet.cells, sel.fr, sel.fc) : "";
 
-  const width = pageScope && typeof sheet.bw === "number" ? sheet.bw : undefined;
+  /* ── CHUNK 8: THE BLOCK RESIZE GRIP ──────────────────────────────────
+   * One grip, both axes. Width bleeds symmetrically into the page gutters
+   * (page scope only); height turns the grid wrapper into a scrolling
+   * viewport. The live values are the drag's if one is in flight, otherwise
+   * the block's — so the ceiling is FELT during the drag and only pointerup
+   * writes, which is what makes a drag ONE undo entry.
+   *
+   * ⚠ THE CLAMP MEASURES THE LIVE CONTAINER AT MOUSEDOWN. A constant
+   * ceiling puts the grip past the right edge of a narrow viewport, where
+   * it can be neither grabbed nor double-clicked, and gives the PAGE a
+   * horizontal scrollbar that slides every prose block sideways. */
+  const liveBw = resize ? resize.bw : pageScope && typeof sheet.bw === "number" ? sheet.bw : 0;
+  const liveBh = resize ? resize.bh : typeof sheet.bh === "number" ? sheet.bh : 0;
+
+  const endResize = useCallback(() => {
+    const live = resizeRef.current;
+    resizeRef.current = null;
+    document.body.style.userSelect = "";
+    setResize(null);
+    if (!live) return;
+    // ONE write, so ONE undo entry for the whole drag.
+    if (live.bw !== live.startBw || live.bh !== live.startBh) {
+      onChange?.({ bw: live.bw, bh: live.bh });
+    }
+  }, [onChange]);
+
+  const onGripDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button !== 0) return;
+      const col = colRef.current;
+      const wrap = wrapRef.current;
+      if (!col || !wrap) return;
+      e.preventDefault();
+      e.stopPropagation();
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      const startBw = pageScope && typeof sheet.bw === "number" ? sheet.bw : 0;
+      const startBh = typeof sheet.bh === "number" ? sheet.bh : 0;
+      /* MEASURE THE LIVE CONTAINER: walk up to the nearest horizontally
+       * scrollable ancestor. Falling through to <body> means the page
+       * itself is the only limit, so the viewport is the room — never a
+       * literal. */
+      let host: HTMLElement | null = col.parentElement;
+      while (
+        host &&
+        host !== document.body &&
+        getComputedStyle(host).overflowX !== "auto"
+      ) {
+        host = host.parentElement;
+      }
+      const room = host && host !== document.body ? host.clientWidth : window.innerWidth;
+      const naturalWidth = Math.round(col.getBoundingClientRect().width) - startBw;
+      // Every row visible: the scrollable content, plus the wrapper's own
+      // hairline border, which max-height includes.
+      const naturalHeight = wrap.scrollHeight + 2;
+      const start = {
+        x: e.clientX,
+        y: e.clientY,
+        startBw,
+        startBh,
+        room,
+        naturalWidth,
+        naturalHeight,
+        bw: startBw,
+        bh: startBh,
+      };
+      resizeRef.current = start;
+      setResize(start);
+      document.body.style.userSelect = "none";
+    },
+    [pageScope, sheet.bh, sheet.bw],
+  );
+
+  /* Listeners on WINDOW, not the grip: the block shrinks out from under the
+   * pointer, so the pointer leaves it mid-drag. */
+  useEffect(() => {
+    if (!resize) return;
+    const move = (e: PointerEvent) => {
+      const live = resizeRef.current;
+      if (!live) return;
+      const next = {
+        ...live,
+        bw: pageScope
+          ? clampBw({
+              room: live.room,
+              naturalWidth: live.naturalWidth,
+              startBw: live.startBw,
+              dx: e.clientX - live.x,
+            })
+          : 0,
+        bh: clampBh({
+          startBh: live.startBh,
+          dy: e.clientY - live.y,
+          naturalHeight: live.naturalHeight,
+        }),
+      };
+      resizeRef.current = next;
+      setResize(next);
+    };
+    const up = () => endResize();
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+  }, [resize, endResize, pageScope]);
+
+  const resetSize = useCallback(() => {
+    resizeRef.current = null;
+    setResize(null);
+    document.body.style.userSelect = "";
+    onChange?.({ bw: 0, bh: 0 });
+  }, [onChange]);
+
   const template = `${ROW_NUM_W}px ${cw.map((w) => `${w}px`).join(" ")}`;
 
   /* The contextual group exists only for a FULL span — chunk 3's pure
@@ -1282,12 +1419,19 @@ export function SheetBlockView({
       </div>
 
       <div className="flex items-stretch gap-1">
-        <div className="flex min-w-0 flex-col gap-1">
+        <div
+          ref={colRef}
+          className="relative flex min-w-0 flex-col gap-1"
+          style={resizeStyle({ bw: liveBw, bh: undefined, pageScope })}
+        >
           <div
+            ref={wrapRef}
+            data-sheet-scroll
             className="overflow-auto rounded-lg border border-line bg-surface"
-            style={{ width, maxWidth: "100%", maxHeight: 520 }}
+            style={{ maxWidth: "100%", ...resizeStyle({ bh: liveBh, pageScope: false }) }}
           >
             <div
+
 
           role="table"
           ref={gridRef}
@@ -1770,12 +1914,71 @@ export function SheetBlockView({
                   ? "text-faint hover:bg-sunken hover:text-muted"
                   : "text-whisper hover:bg-sunken")
               }
-              style={{ width: width ?? "100%", maxWidth: "100%" }}
+              style={{ width: "100%", maxWidth: "100%" }}
             >
               <PlusGlyph />
             </button>
           )}
+
+          {/* ── THE BLOCK RESIZE GRIP. Bottom-right corner of the BLOCK,
+                both axes at once. It is deliberately distinguishable from
+                the fill handle, which is the bottom-right corner of the
+                SELECTION, lives INSIDE the scroll container, is a solid
+                accent square and shows a crosshair cursor. This one sits
+                OUTSIDE that container, is a hairline chevron on the block's
+                edge, and shows nwse-resize. Neither can receive the other's
+                press: they are in different boxes. ── */}
+          {editable && (
+            <div
+              data-sheet-grip
+              role="separator"
+              aria-label="Resize sheet — drag to widen or shorten, double-click to reset"
+              title="Drag to resize · double-click to reset"
+              onPointerDown={onGripDown}
+              onDoubleClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                resetSize();
+              }}
+              onKeyDown={guardKeys}
+              style={{
+                position: "absolute",
+                right: -3,
+                bottom: -3,
+                width: 14,
+                height: 14,
+                cursor: "nwse-resize",
+                touchAction: "none",
+                zIndex: 9,
+              }}
+              className="opacity-0 transition-opacity group-hover:opacity-100"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden focusable="false">
+                <path
+                  d="M13 5.5L5.5 13M13 10L10 13"
+                  stroke="var(--color-faint)"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  fill="none"
+                />
+              </svg>
+            </div>
+          )}
+
+          {/* ── The live readout. Only while dragging: a permanent badge on
+                every sheet would be noise. ── */}
+          {resize && (
+            <div
+              data-sheet-size-readout
+              aria-live="polite"
+              className="pointer-events-none absolute rounded-md bg-btn px-[7px] py-[3px] font-mono text-caption text-btnFg"
+              style={{ right: 0, bottom: -26, whiteSpace: "nowrap", zIndex: 10 }}
+            >
+              {readoutText(liveBw, liveBh)}
+            </div>
+          )}
         </div>
+
 
         {/* ── Blind append, RIGHT edge: adds a column at the end. ── */}
         {editable && (

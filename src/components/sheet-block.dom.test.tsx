@@ -123,15 +123,22 @@ describe("sheet renders inside containers", () => {
     expect(grid().style.gridTemplateColumns).toBe(`${SHEET_ROW_NUM_W}px 160px 120px`);
   });
 
+  /* Chunk 8 made `bw` a symmetric BLEED DELTA on the block's own box rather
+     than an absolute width on the scroll container: the sheet grows outward
+     from the text column on both sides, so it stays visually centred. */
   it("ignores the block width outside page scope", () => {
     mount(<SheetBlockView block={block} pageScope={false} />);
+    expect((box().parentElement as HTMLElement).style.width).toBe("");
     expect(box().style.width).toBe("");
   });
 
-  it("honours the block width at page scope", () => {
+  it("honours the block width at page scope, as a symmetric bleed", () => {
     mount(<SheetBlockView block={block} pageScope />);
-    expect(box().style.width).toBe("900px");
+    const bleed = box().parentElement as HTMLElement;
+    expect(bleed.style.width).toBe("calc(100% + 900px)");
+    expect(bleed.style.marginLeft).toBe("-450px");
   });
+
 });
 
 describe("sheet shows computed values", () => {
@@ -1120,5 +1127,154 @@ describe("the fill handle", () => {
     click(cell(1, 1));
     press(grid(), "Enter");
     expect(fillHandle()).toBeNull();
+  });
+});
+
+/* ═══════════════════ chunk 8: the block resize + clamp ═══════════════════ */
+
+const gripEl = () => host.querySelector("[data-sheet-grip]") as HTMLElement;
+const sizeReadout = () =>
+  (host.querySelector("[data-sheet-size-readout]") as HTMLElement | null)?.textContent;
+const scrollBox = () => host.querySelector("[data-sheet-scroll]") as HTMLElement;
+
+/** A grip drag. Listeners are on WINDOW during the drag, because the block
+ *  shrinks out from under the pointer. */
+function dragGrip(dx: number, dy: number) {
+  act(() => {
+    gripEl().dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: 0,
+        clientY: 0,
+      }),
+    );
+  });
+  act(() => {
+    window.dispatchEvent(new PointerEvent("pointermove", { clientX: dx, clientY: dy }));
+  });
+}
+
+function releaseGrip() {
+  act(() => {
+    window.dispatchEvent(new PointerEvent("pointerup", {}));
+  });
+}
+
+describe("the block resize grip", () => {
+  it("writes ONE patch per drag, on release, carrying both axes", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(<Harness initial={{ ...block, bw: 0 }} onPatch={(p) => patches.push(p)} />);
+    dragGrip(60, -40);
+    expect(patches.length).toBe(0); // nothing written mid-drag → one undo entry
+    expect(sizeReadout()).toContain("wide");
+    releaseGrip();
+    expect(patches.length).toBe(1);
+    expect(patches[0]).toHaveProperty("bw");
+    expect(patches[0]).toHaveProperty("bh");
+    expect(sizeReadout()).toBeUndefined();
+  });
+
+  it("clamps the width against the live container, never a constant", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(<Harness initial={{ ...block, bw: 0 }} onPatch={(p) => patches.push(p)} />);
+    dragGrip(100000, 0);
+    releaseGrip();
+    const bw = patches[patches.length - 1].bw as number;
+    // The measured room is the viewport here (no scrollable ancestor), and
+    // the natural width is whatever the block measures — the ceiling must
+    // leave GRIP_PAD, so it can never be the requested 200000.
+    expect(bw).toBeLessThanOrEqual(window.innerWidth - 20);
+    expect(bw).toBeGreaterThanOrEqual(0);
+  });
+
+  /* THE PAGE MUST NEVER GAIN A HORIZONTAL SCROLLBAR — a bw past the
+     container's room slides every prose block on the page sideways, and the
+     grip itself off-screen. happy-dom does not lay out, so this asserts the
+     invariant that the clamp guarantees (the written delta leaves the pad)
+     alongside the document-level check. */
+  it("a maximal drag leaves documentElement.scrollWidth === clientWidth", () => {
+    mount(<Harness initial={{ ...block, bw: 0 }} />);
+    dragGrip(100000, 0);
+    releaseGrip();
+    const de = document.documentElement;
+    expect(de.scrollWidth).toBe(de.clientWidth);
+  });
+
+  it("double-click resets both bw and bh", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(<Harness initial={{ ...block, bw: 400, bh: 200 }} onPatch={(p) => patches.push(p)} />);
+    act(() => {
+      gripEl().dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+    });
+    expect(patches[patches.length - 1]).toEqual({ bw: 0, bh: 0 });
+    expect(scrollBox().style.maxHeight).toBe("");
+  });
+
+  it("bleeds symmetrically at page scope so the sheet stays visually centred", () => {
+    mount(<SheetBlockView block={{ ...block, bw: 160 }} onChange={() => {}} />);
+    const bleed = scrollBox().parentElement as HTMLElement;
+    expect(bleed.style.width).toBe("calc(100% + 160px)");
+    expect(bleed.style.marginLeft).toBe("-80px");
+  });
+
+  it("inside a container ignores bw but still applies bh", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+        <SheetBlockView
+          block={{ ...block, bw: 0, bh: 0 }}
+          pageScope={false}
+          onChange={(p) => patches.push(p)}
+        />
+      </div>,
+    );
+    const bleed = scrollBox().parentElement as HTMLElement;
+    expect(bleed.style.width).toBe("");
+    dragGrip(200, -120);
+    expect(scrollBox().style.maxHeight).not.toBe("");
+    releaseGrip();
+    const last = patches[patches.length - 1];
+    expect(last.bw).toBe(0);
+    expect(last.bh).not.toBe(0);
+  });
+
+  it("does not steal the fill handle's press — they are in different boxes", () => {
+    mount(<Harness initial={{ ...block, bw: 0 }} />);
+    click(cell(1, 1));
+    expect(scrollBox().contains(fillHandle())).toBe(true);
+    expect(scrollBox().contains(gripEl())).toBe(false);
+  });
+});
+
+describe("the grid wrapper is the scroll container for BOTH axes", () => {
+  it("scrolls on x and y, so chunk 2's sticky headers have something to pin to", () => {
+    mount(<SheetBlockView block={block} />);
+    expect(scrollBox().className).toContain("overflow-auto");
+    expect(grid().style.width).toBe("max-content");
+  });
+
+  it("pins the corner, the column letters and the row numbers", () => {
+    mount(<SheetBlockView block={block} />);
+    const corner = host.querySelector('[aria-label="Select all cells"]') as HTMLElement;
+    expect([corner.style.position, corner.style.top, corner.style.left]).toEqual([
+      "sticky",
+      "0px",
+      "0px",
+    ]);
+    const letter = host.querySelectorAll('[role="columnheader"]')[1] as HTMLElement;
+    expect([letter.style.position, letter.style.top]).toEqual(["sticky", "0px"]);
+    const rowNum = host.querySelectorAll('[role="rowheader"]')[1] as HTMLElement;
+    expect([rowNum.style.position, rowNum.style.left]).toEqual(["sticky", "0px"]);
+  });
+
+  it("pins a frozen first row below the column letters", () => {
+    mount(<SheetBlockView block={{ ...block, freeze: true }} />);
+    // The pin lives on the ROW, not the cell — one sticky element per row
+    // rather than one per cell.
+    const row = cell(0, 1).closest('[role="row"]') as HTMLElement;
+    expect(row.style.position).toBe("sticky");
+    expect(row.style.top).toBe("26px");
   });
 });
