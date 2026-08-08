@@ -83,6 +83,8 @@ export const IC = {
   /* A page with a folded corner — the file block. */
   bFile:
     "M13.4 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9.1zM13.4 3.5v5.6H19",
+  bSheet:
+    "M4.5 5h15a1.5 1.5 0 0 1 1.5 1.5v11a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11A1.5 1.5 0 0 1 4.5 5zM3 9.6h18M9 9.6V20M15 9.6V20",
   bTable:
     "M4.5 5h15a1.5 1.5 0 0 1 1.5 1.5v11a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11A1.5 1.5 0 0 1 4.5 5zM3 10h18M9.5 10v9",
 } as const;
