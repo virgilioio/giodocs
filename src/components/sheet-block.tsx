@@ -1820,15 +1820,17 @@ export function SheetBlockView({
                     }
                     style={{ flexGrow: 0, flexShrink: 0, flexBasis: "auto" }}
                     onMouseDown={(e) => {
-                      // A click that blurs the editor commits the draft and
-                      // closes everything — so it must not steal focus.
+                      // The insertion happens HERE, not on click: cancelling
+                      // pointerdown (which the panel does, to hold focus)
+                      // suppresses the compatibility click in Chromium, so a
+                      // click-driven insert never ran. preventDefault keeps
+                      // the editor focused; the edit stays open exactly as
+                      // Tab and Enter leave it.
                       e.preventDefault();
                       setPanelIdx(i);
+                      insertSuggestion(i);
                     }}
-                    onClick={() => {
-                      setPanelIdx(i);
-                      insertSuggestion();
-                    }}
+
                   >
                     <span className="font-mono text-meta text-body">{f.name}</span>
                     <span className="font-mono text-meta text-whisper">{f.args}</span>
