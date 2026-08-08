@@ -61,7 +61,7 @@ describe("suggestFor", () => {
   });
   it("offers from the caret mid-formula", () => {
     const s = suggestFor("=MI+SUM(A1)", 3)!;
-    expect(s.items.map((f) => f.name)).toEqual(["MIN"]);
+    expect(s.items.map((f) => f.name)).toEqual(["MIN", "MINUS"]);
   });
 });
 
