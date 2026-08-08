@@ -661,9 +661,12 @@ function AddPropertyPopover({
         />
         <span>Add a property</span>
       </button>
+      {/* The trigger spans the full strip width, so the panel lines up with
+          its LEFT edge — directly under the "Add a property" label. */}
       <RowMenu
         spec={anchor ? spec : null}
         anchor={anchor}
+        align="start"
         onClose={() => setAnchor(null)}
       />
     </>
