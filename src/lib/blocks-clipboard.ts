@@ -38,30 +38,8 @@ export async function writeBlocksClipboard(
   blocks: readonly Block[],
 ): Promise<void> {
   const { markdown, html } = blocksToClipboard(blocks);
-  const nav =
-    typeof navigator !== "undefined"
-      ? (navigator as Navigator & { clipboard?: Clipboard })
-      : undefined;
-  const clip = nav?.clipboard;
-  const CI = (globalThis as unknown as { ClipboardItem?: typeof ClipboardItem })
-    .ClipboardItem;
-  if (
-    clip &&
-    typeof CI === "function" &&
-    typeof (clip as { write?: unknown }).write === "function"
-  ) {
-    try {
-      const item = new CI({
-        "text/plain": new Blob([markdown], { type: "text/plain" }),
-        "text/html": new Blob([html], { type: "text/html" }),
-      });
-      await (clip as Clipboard).write([item]);
-      return;
-    } catch {
-      /* fall through to writeText below */
-    }
-  }
-  if (clip?.writeText) {
-    await clip.writeText(markdown);
-  }
+  // ONE clipboard path — src/lib/clipboard.ts — so a rejected promise in a
+  // sandboxed frame can never escape as an unhandled rejection.
+  toClipboardRich(markdown, html);
 }
+
