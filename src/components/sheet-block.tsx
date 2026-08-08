@@ -132,6 +132,7 @@ import {
   selectAll,
   selectCols,
   selectRows,
+  type Rect,
   type Sel,
 } from "@/lib/sheet-select";
 
@@ -147,6 +148,13 @@ export const SHEET_NUDGE_TEXT =
   "Past 50 rows a sheet is usually a page collection wearing a grid. If each row is a thing someone owns, make them pages.";
 
 const LINE = "1px solid var(--color-lineSoft)";
+
+/* ⚠ THE INTERNAL CLIP IS MODULE-LEVEL, NOT COMPONENT STATE.
+ * A copy in one sheet must paste into another, and a block remounts far
+ * more often than a user expects (a re-keyed editor, a router transition,
+ * StrictMode). Component state would present as "copy works, paste does
+ * nothing". Same shape as the undo store: a plain module value, no React. */
+let sheetClip: SheetClip | null = null;
 
 function cellAlign(cell: Cell | null, value: CellValue | SheetError): "left" | "center" | "right" {
   if (cell?.a) return cell.a;
