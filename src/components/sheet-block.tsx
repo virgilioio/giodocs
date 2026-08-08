@@ -703,6 +703,8 @@ export function SheetBlockView({
       setPal(null);
       setPick(null);
       setPickRect(null);
+      setAnts(null);
+
     };
     document.addEventListener("mousedown", onDown, true);
     return () => document.removeEventListener("mousedown", onDown, true);
