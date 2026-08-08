@@ -703,7 +703,8 @@ describe("the suggestion panel", () => {
     // Each row refuses to shrink; the list scrolls inside the 226px cap.
     expect(panelRows().every((r) => r.style.flexShrink === "0")).toBe(true);
     const list = host.querySelector("[data-sheet-panel-list]") as HTMLElement;
-    expect(getComputedStyle(list).overflowY).toBe("auto");
+    // No stylesheet in happy-dom, so the scroller is asserted by its class.
+    expect(list.className).toContain("overflow-y-auto");
     expect(panel()!.style.maxHeight).toBe("226px");
     expect(panelFooter()).toBe("All 20 functions · type to narrow · ↑↓ Tab");
   });
