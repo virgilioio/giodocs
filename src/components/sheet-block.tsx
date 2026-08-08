@@ -50,7 +50,10 @@ import {
   setCell,
   setColWidth,
   type Cell,
+  type CellAlign,
+  type CellFormat,
   type SheetBlock,
+
 } from "@/lib/sheet-model";
 import {
   appendControl,
