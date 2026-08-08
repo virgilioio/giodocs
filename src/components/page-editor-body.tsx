@@ -1603,11 +1603,7 @@ export function EditableBody({
       //
       // The click branch in onUp used to clear a block selection for this
       // case; it no longer runs (no marquee session is opened), so clear here.
-      if (
-        t.closest(
-          '[contenteditable="true"], textarea, input, select, [data-table-cell]',
-        )
-      ) {
+      if (t.closest(MARQUEE_SKIP_SEL)) {
         setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
         setSelScope(null);
         anchorId.current = null;
