@@ -108,27 +108,35 @@ describe("a sheet edit survives the page's pointer gesture", () => {
     if (cells) expect(cells[1]?.[0]?.v).toBe("Alpha");
   });
 
-  it("a suggestion-row click keeps the edit open through POINTERUP", () => {
-    mount(doc(), () => {});
+  it("a suggestion-row click INSERTS the function and keeps the edit open through POINTERUP", () => {
+    let latest: Blk[] | null = null;
+    mount(doc(), (b) => {
+      latest = b;
+    });
     openFormulaEdit();
-    // "=S" narrows the panel; the row is inside the sheet root.
+    // "=SU" narrows the panel to SUM; the row is inside the sheet root.
     act(() => {
       const el = editor()!;
       const setter = Object.getOwnPropertyDescriptor(
         HTMLInputElement.prototype,
         "value",
       )!.set!;
-      setter.call(el, "=S");
+      setter.call(el, "=SU");
       el.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    const row = host.querySelector("[data-sheet-suggestion]") as HTMLElement | null;
+    const row = host.querySelector('[data-sheet-suggestion="SUM"]') as HTMLElement | null;
     expect(row).toBeTruthy();
 
     gesture(row!);
 
+    // The insertion actually ran — name plus its open paren, not "=SU".
     expect(editor()).toBeTruthy();
-    expect(editor()!.value.startsWith("=S")).toBe(true);
+    expect(editor()!.value).toBe("=SUM(");
+    // And nothing was committed onto A1.
+    const cells = latest ? sheetOf(latest).cells : null;
+    if (cells) expect(cells[1]?.[0]?.v).toBe("Alpha");
   });
+
 });
 
 describe("MARQUEE_SKIP_SEL", () => {
