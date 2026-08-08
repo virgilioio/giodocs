@@ -1887,8 +1887,13 @@ export function SheetBlockView({
                 pendingCaret.current = null;
                 if (want !== null) {
                   el.setSelectionRange(want, want);
+                  // The mirror must AGREE with the element: a stale select
+                  // event otherwise leaves caretRef behind the insertion,
+                  // and the next pick lands in the wrong place.
+                  caretRef.current = want;
                   return;
                 }
+
                 const caret = el.value.length;
                 if (resuming || live.sel === false) el.setSelectionRange(caret, caret);
                 else el.select();
