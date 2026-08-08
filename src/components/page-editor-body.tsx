@@ -3022,6 +3022,7 @@ function BlockRow({
     block.type === "divider" ||
     block.type === "image" ||
     block.type === "imagerow" ||
+    block.type === "sheet" ||
     block.type === "file";
   // Gutter (+ / drag handle) must centre vertically on the block's FIRST
   // line box, not the row centre. We publish the block's own line-height
