@@ -62,7 +62,7 @@ describe("spanControls", () => {
   });
 
   it("greys Delete at the one-column floor with the right title", () => {
-    const del = spanControls(selectCols(0, 0, 4), 4, 1)!.ops.find((o) => o.id === "delete")!;
+    const del = spanControls(selectCols(0, 0, 4), 4, 1, "col")!.ops.find((o) => o.id === "delete")!;
     expect(del.enabled).toBe(false);
     expect(del.title).toBe("A sheet keeps at least one column");
   });
@@ -74,7 +74,7 @@ describe("spanControls", () => {
     expect(rowIns.every((o) => !o.enabled)).toBe(true);
     expect(rowIns[0].title).toBe("100 rows is the limit");
 
-    const colIns = spanControls(selectCols(0, 0, 4), 4, 26)!.ops.filter((o) =>
+    const colIns = spanControls(selectCols(0, 0, 4), 4, 26, "col")!.ops.filter((o) =>
       o.id.startsWith("insert"),
     );
     expect(colIns.every((o) => !o.enabled)).toBe(true);

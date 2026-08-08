@@ -107,19 +107,23 @@ function noun(kind: SpanKind, count: number): string {
  * span is selected — the group is meaningless without one, which is why
  * chunk 3's `fullSpan` predicate is the single source of that decision.
  *
- * When the selection is the whole grid, rows win: "every row" is the
- * reading a person means when they hit the corner and then reach for a
- * structural op.
+ * When the selection is full in BOTH directions — the corner, or a
+ * one-column sheet where selecting the column also selects every row —
+ * `prefer` decides. The component passes how the selection was MADE, so a
+ * click on a column letter reads as a column even in a 1×n sheet; without
+ * a hint rows win.
  */
 export function spanControls(
   sel: Sel | null,
   rows: number,
   cols: number,
+  prefer?: SpanKind,
 ): SpanControls | null {
   if (!sel) return null;
   const f = fullSpan(sel, rows, cols);
   if (!f.rows && !f.cols) return null;
-  const kind: SpanKind = f.rows ? "row" : "col";
+  const kind: SpanKind =
+    f.rows && f.cols ? (prefer ?? "row") : f.rows ? "row" : "col";
   const rc = rect(sel);
   const i0 = kind === "row" ? rc.r0 : rc.c0;
   const i1 = kind === "row" ? rc.r1 : rc.c1;
