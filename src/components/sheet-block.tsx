@@ -830,12 +830,57 @@ export function SheetBlockView({
               }}
             />
           )}
+            </div>
+          </div>
+
+          {/* ── Blind append, BOTTOM edge: adds a row at the end. Outside
+                the grid so it never fights a cell. ── */}
+          {editable && (
+            <button
+              type="button"
+              title={rowAppend.title}
+              data-sheet-add="row"
+              aria-disabled={!rowAppend.enabled}
+              onKeyDown={guardKeys}
+              onClick={() => append("row")}
+              className={
+                "h-[22px] grid place-items-center rounded opacity-0 transition-opacity group-hover:opacity-100 " +
+                (rowAppend.enabled
+                  ? "text-faint hover:bg-sunken hover:text-muted"
+                  : "text-whisper hover:bg-sunken")
+              }
+              style={{ width: width ?? "100%", maxWidth: "100%" }}
+            >
+              <PlusGlyph />
+            </button>
+          )}
         </div>
+
+        {/* ── Blind append, RIGHT edge: adds a column at the end. ── */}
+        {editable && (
+          <button
+            type="button"
+            title={colAppend.title}
+            data-sheet-add="col"
+            aria-disabled={!colAppend.enabled}
+            onKeyDown={guardKeys}
+            onClick={() => append("col")}
+            className={
+              "w-[22px] shrink-0 grid place-items-center rounded opacity-0 transition-opacity group-hover:opacity-100 " +
+              (colAppend.enabled
+                ? "text-faint hover:bg-sunken hover:text-muted"
+                : "text-whisper hover:bg-sunken")
+            }
+          >
+            <PlusGlyph />
+          </button>
+        )}
       </div>
       {rows > SHEET_NUDGE_ROWS && (
         <p className="mt-1.5 text-caption text-amberInk">{SHEET_NUDGE_TEXT}</p>
       )}
       <span className="sr-only">{`${rows} rows, ${cols} columns`}</span>
+
     </div>
   );
 }
