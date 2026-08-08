@@ -380,16 +380,34 @@ export function SheetBlockView({
     );
   }, []);
 
-  const insertSuggestion = useCallback(() => {
-    const live = editRef.current;
-    if (!live || !sug) return;
-    const next = insertFunction(live.draft, caret, sug.items[hi]);
-    applyDraft(next.draft, next.caret);
-    setPanelIdx(0);
-    pickRef.current = null;
-    setPick(null);
-    setPickRect(null);
-  }, [sug, hi, caret, applyDraft]);
+  /** Holds the edit open across a pick. The flag is cleared a turn later,
+   *  once the browser has finished whatever focus shuffle the gesture
+   *  caused. */
+  const holdEdit = useCallback(() => {
+    holdRef.current = true;
+    setTimeout(() => {
+      holdRef.current = false;
+    }, 0);
+    const el = inputRef.current;
+    if (el && document.activeElement !== el) el.focus();
+  }, []);
+
+  const insertSuggestion = useCallback(
+    (index?: number) => {
+      const live = editRef.current;
+      if (!live || !sug) return;
+      const at = Math.max(0, Math.min(index ?? hi, sug.items.length - 1));
+      const next = insertFunction(live.draft, caret, sug.items[at]);
+      holdEdit();
+      applyDraft(next.draft, next.caret);
+      setPanelIdx(0);
+      pickRef.current = null;
+      setPick(null);
+      setPickRect(null);
+    },
+    [sug, hi, caret, applyDraft, holdEdit],
+  );
+
 
   /* ── CLICK-TO-REFERENCE. preventDefault() on mousedown is the whole
         trick: it is what stops the editor from blurring, and a blur would
