@@ -171,6 +171,30 @@ function PlusGlyph() {
   );
 }
 
+/** A toolbar glyph: ONE path from the shared icon library, drawn in the
+ *  24-grid at the same stroke as every other menu icon. */
+function Glyph({ d }: { d: string }) {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden focusable="false">
+      <path
+        d={d}
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </svg>
+  );
+}
+
+/** The toolbar's control surface. mousedown preventDefault on EVERY one of
+ *  them: a toolbar click must never blur an open editor, because a blur
+ *  commits a half-typed draft. Same discipline as the suggestion panel. */
+const TB_BTN =
+  "grid h-[26px] min-w-[26px] place-items-center rounded-md px-1 text-caption hover:bg-sunken";
+
+
 function rawOf(cells: (Cell | null)[][], r: number, c: number): string {
   const v = cells[r]?.[c]?.v;
   return v === undefined || v === null ? "" : String(v);
