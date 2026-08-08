@@ -837,7 +837,22 @@ export function SheetBlockView({
           toggleMark(sel, "i");
           return;
         case "clearSelection":
+          // Escape also drops the ants: a stale marching rectangle after the
+          // selection is gone reads as "something is still pending".
           setSel(null);
+          setAnts(null);
+          return;
+        /* ── The clipboard trio. Only reachable from keyWhenSelected, so a
+              cell being EDITED never gets here and ⌘C/⌘X/⌘V stay native
+              inside the input. ── */
+        case "copy":
+          copyRange(sel, false);
+          return;
+        case "cut":
+          copyRange(sel, true);
+          return;
+        case "paste":
+          void pasteAt(sel);
           return;
         /* ── The panel's keys. It has already won the precedence contest
               inside keyWhenEditing, so there is no branch to get wrong
@@ -859,7 +874,19 @@ export function SheetBlockView({
           return;
       }
     },
-    [sel, rows, cols, beginEdit, commitCell, clearRange, toggleMark, sug, insertSuggestion],
+    [
+      sel,
+      rows,
+      cols,
+      beginEdit,
+      commitCell,
+      clearRange,
+      toggleMark,
+      sug,
+      insertSuggestion,
+      copyRange,
+      pasteAt,
+    ],
   );
 
   /* ───────────────────────── Pointer ───────────────────────── */
@@ -1265,6 +1292,7 @@ export function SheetBlockView({
           onPointerUp={() => {
             dragging.current = false;
             pickDrag.current = null;
+            if (fillDrag.current) endFill();
           }}
         >
           {/* ── Corner: selects everything ── */}
@@ -1400,6 +1428,13 @@ export function SheetBlockView({
                         pickCell(r, c, e.shiftKey);
                       }}
                       onPointerMove={(e) => {
+                        // A fill drag outranks everything: it started on the
+                        // handle, so no other gesture can be live.
+                        if (fillDrag.current) {
+                          e.preventDefault();
+                          setFill(fillTarget(fillDrag.current, r, c));
+                          return;
+                        }
                         const anchor = pickDrag.current;
                         if (anchor) {
                           e.preventDefault();
@@ -1456,6 +1491,80 @@ export function SheetBlockView({
                   : "transparent",
                 pointerEvents: "none",
                 zIndex: 6,
+              }}
+            />
+          )}
+
+          {/* ── MARCHING ANTS: ONE animated dashed rectangle for the
+                copied or cut range. A cut's ants read the same as a copy's —
+                the difference is only what happens on paste. ── */}
+          {antsBox && (
+            <div
+              aria-hidden
+              data-sheet-ants
+              style={{
+                position: "absolute",
+                left: antsBox.left,
+                top: antsBox.top,
+                width: antsBox.width,
+                height: antsBox.height,
+                pointerEvents: "none",
+                zIndex: 7,
+                backgroundImage:
+                  "linear-gradient(90deg, var(--color-accent) 50%, transparent 0)," +
+                  "linear-gradient(90deg, var(--color-accent) 50%, transparent 0)," +
+                  "linear-gradient(0deg, var(--color-accent) 50%, transparent 0)," +
+                  "linear-gradient(0deg, var(--color-accent) 50%, transparent 0)",
+                backgroundRepeat: "repeat-x, repeat-x, repeat-y, repeat-y",
+                backgroundSize: "14px 1px, 14px 1px, 1px 14px, 1px 14px",
+                backgroundPosition: "0 0, 0 100%, 0 0, 100% 0",
+                animation: "shAnts 0.6s linear infinite",
+              }}
+            />
+          )}
+
+          {/* ── The live fill outline. ── */}
+          {fillBox && (
+            <div
+              aria-hidden
+              data-sheet-fill-preview
+              style={{
+                position: "absolute",
+                left: fillBox.left,
+                top: fillBox.top,
+                width: fillBox.width,
+                height: fillBox.height,
+                border: "1px solid var(--color-accent)",
+                borderRadius: 2,
+                pointerEvents: "none",
+                zIndex: 7,
+              }}
+            />
+          )}
+
+          {/* ── THE FILL HANDLE: a 6px square on the selection's
+                bottom-right corner, only when nothing is being edited. ── */}
+          {editable && overlay && !edit && (
+            <div
+              data-sheet-fill-handle
+              aria-label="Fill"
+              title="Drag to fill"
+              onPointerDown={(e) => {
+                if (e.button !== 0 || !rc) return;
+                e.preventDefault();
+                e.stopPropagation();
+                fillDrag.current = rc;
+                setFill(null);
+              }}
+              style={{
+                position: "absolute",
+                left: overlay.left + overlay.width - 3,
+                top: overlay.top + overlay.height - 3,
+                width: 6,
+                height: 6,
+                background: "var(--color-accent)",
+                cursor: "crosshair",
+                zIndex: 8,
               }}
             />
           )}
