@@ -386,6 +386,10 @@ export function SheetBlockView({
    *  which fired mid-gesture and let the pointerup blur commit the draft.
    *  Idempotent: overlapping picks reuse the single registered listener. */
   const holdCleanup = useRef<(() => void) | null>(null);
+  /** Set when a suggestion ROW handled `pointerdown`; makes the retained
+   *  `onMouseDown` fallback a no-op on engines that emit both, so a pick can
+   *  never insert twice (`SUM(SUM(`). Cleared on the next pointerup/down. */
+  const rowPickedRef = useRef(false);
   const holdEdit = useCallback(() => {
     holdRef.current = true;
     if (!holdCleanup.current) {
