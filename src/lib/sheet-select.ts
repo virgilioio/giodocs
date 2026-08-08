@@ -225,9 +225,14 @@ export function keyWhenSelected(
     const low = k.key.toLowerCase();
     if (low === "b") return { kind: "bold" };
     if (low === "i") return { kind: "italic" };
-    // ⌘Z, ⌘C, ⌘V and friends belong to the page / the browser.
+    // The clipboard trio is the SHEET's while a range is selected.
+    if (low === "c") return { kind: "copy" };
+    if (low === "x") return { kind: "cut" };
+    if (low === "v") return { kind: "paste" };
+    // ⌘Z and friends belong to the page / the browser.
     return { kind: "pass" };
   }
+
 
   const D: Record<string, [number, number]> = {
     ArrowUp: [-1, 0],
