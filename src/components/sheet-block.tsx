@@ -278,6 +278,119 @@ export function SheetBlockView({
     [editable, sheet.cells],
   );
 
+  /* ─────────────────── Structure (chunk 4) ───────────────────
+   * Every mutation is a MODEL call. This code decides nothing about the
+   * grid's shape — sheet-structure.ts does, and sheet-model.ts enforces
+   * the floors, the bounds and cw lockstep. */
+
+  /** A contextual span op. ONE write, so ONE undo entry. */
+  const runSpanOp = useCallback(
+    (kind: SpanKind, i0: number, i1: number, op: OpId) => {
+      if (!editable) return;
+      const next = applySpanOp(sheet, kind, i0, i1, op);
+      // The model REFUSED (a floor or a bound). Never a silent no-op.
+      if (next.cells === sheet.cells && next.cw === sheet.cw) return;
+      write(next);
+      onBlur?.();
+
+      const rowsAfter = next.cells.length;
+      const colsAfter = next.cw.length;
+      setSel(selAfterOp(kind, i0, i1, op, rowsAfter, colsAfter));
+      setSpanPref(kind);
+
+      /* ⚠ THE EDIT-COORDINATE SHIFT. Inserting a row above the cell being
+       * edited moves that cell down. The edit's coordinates are shifted
+       * explicitly AND the focus stamp is rewritten to match, so the focus
+       * guard sees no change: the caret stays where it was and the draft
+       * is not re-selected or lost. If the edited cell was deleted the
+       * editor closes rather than pointing at a stranger's value. */
+      const live = editRef.current;
+      if (!live) return;
+      const idx = kind === "row" ? live.r : live.c;
+      const moved = shiftIndex(idx, op, i0, i1);
+      if (moved === null) {
+        editRef.current = null;
+        setEdit(null);
+        return;
+      }
+      if (moved === idx) return;
+      const shifted: Edit = kind === "row" ? { ...live, r: moved } : { ...live, c: moved };
+      focusStamp.current = `${blockId}:${shifted.r}:${shifted.c}#${shifted.force}`;
+      editRef.current = shifted;
+      setEdit(shifted);
+    },
+    [editable, sheet, write, onBlur, blockId],
+  );
+
+  /** Blind append at the far edge — always available, inert at the bound. */
+  const append = useCallback(
+    (kind: SpanKind) => {
+      if (!editable) return;
+      const info = appendControl(kind, rows, cols);
+      if (!info.enabled) {
+        toast.push(info.title);
+        return;
+      }
+      write(kind === "row" ? addRow(sheet, rows) : addCol(sheet, cols, defaultCw(cols)));
+      onBlur?.();
+    },
+    [editable, rows, cols, sheet, write, onBlur, toast],
+  );
+
+  /* ── Column width dragging: PIXELS AND INDEPENDENT, like a table column.
+     Widening one column never narrows its neighbour — a sheet is allowed
+     to be wider than the text column and scrolls. Listeners go on the
+     WINDOW because the pointer leaves a shrinking column. ── */
+  const startWidthDrag = useCallback(
+    (c: number, e: React.PointerEvent) => {
+      if (!editable) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const base = sheet.cw[c] ?? defaultCw(c);
+      const startX = e.clientX;
+      const el = e.currentTarget as HTMLElement;
+      el.setPointerCapture?.(e.pointerId);
+      const prevSelect = document.body.style.userSelect;
+      document.body.style.userSelect = "none";
+      setDrag({ c, px: base });
+
+      const onMove = (ev: PointerEvent) => {
+        setDrag({ c, px: dragWidth(base, ev.clientX - startX) });
+      };
+      const onUp = (ev: PointerEvent) => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+        document.body.style.userSelect = prevSelect;
+        const px = dragWidth(base, ev.clientX - startX);
+        setDrag(null);
+        // ONE write at the END of the drag — one undo entry, not one per
+        // pointermove.
+        if (px !== base) {
+          write(setColWidth(sheet, c, px));
+          onBlur?.();
+        }
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+    },
+    [editable, sheet, write, onBlur],
+  );
+
+  const resetWidth = useCallback(
+    (c: number) => {
+      if (!editable) return;
+      const px = defaultCw(c);
+      if (sheet.cw[c] === px) return;
+      write(setColWidth(sheet, c, px));
+      onBlur?.();
+    },
+    [editable, sheet, write, onBlur],
+  );
+
+
+
   /* ───────────────────────── Keyboard ─────────────────────────
    * §E: the page around this sheet already binds arrows, Backspace,
    * Delete, Enter, Tab, ⌘B and ⌘I. Every key the sheet handles is
