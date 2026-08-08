@@ -2976,6 +2976,7 @@ function BlockRow({
   block,
   ordinal,
   locked,
+  pageScope = true,
   selected,
   dimmed,
   onEditorFocus,
@@ -2997,6 +2998,8 @@ function BlockRow({
   block: Blk;
   ordinal?: number;
   locked: boolean;
+  /** False when this row lives inside a column or a callout. */
+  pageScope?: boolean;
   selected: boolean;
   dimmed: boolean;
   onEditorFocus: () => void;
@@ -4036,6 +4039,7 @@ function ColumnStack({
         <BlockRow
           key={b.id}
           block={b}
+          pageScope={false}
           ordinal={b.type === "numbered" ? (ordinalMap.get(b.id) ?? 1) : undefined}
           locked={locked}
           selected={bridge?.selectedIds.has(b.id) ?? false}
