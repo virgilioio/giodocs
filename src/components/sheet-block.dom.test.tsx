@@ -123,15 +123,22 @@ describe("sheet renders inside containers", () => {
     expect(grid().style.gridTemplateColumns).toBe(`${SHEET_ROW_NUM_W}px 160px 120px`);
   });
 
+  /* Chunk 8 made `bw` a symmetric BLEED DELTA on the block's own box rather
+     than an absolute width on the scroll container: the sheet grows outward
+     from the text column on both sides, so it stays visually centred. */
   it("ignores the block width outside page scope", () => {
     mount(<SheetBlockView block={block} pageScope={false} />);
+    expect((box().parentElement as HTMLElement).style.width).toBe("");
     expect(box().style.width).toBe("");
   });
 
-  it("honours the block width at page scope", () => {
+  it("honours the block width at page scope, as a symmetric bleed", () => {
     mount(<SheetBlockView block={block} pageScope />);
-    expect(box().style.width).toBe("900px");
+    const bleed = box().parentElement as HTMLElement;
+    expect(bleed.style.width).toBe("calc(100% + 900px)");
+    expect(bleed.style.marginLeft).toBe("-450px");
   });
+
 });
 
 describe("sheet shows computed values", () => {
