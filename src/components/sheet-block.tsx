@@ -224,6 +224,10 @@ export function SheetBlockView({
   } | null>(null);
   const pickDrag = useRef<{ r: number; c: number } | null>(null);
   const pendingCaret = useRef<number | null>(null);
+  /* Live mirrors: a pointermove during a reference drag must not read a
+   * caret or a span from the previous render. */
+  const caretRef = useRef(0);
+  const pickRef = useRef<PickSpan | null>(null);
   const blockId = String((block as { id?: unknown }).id ?? "sheet");
 
   const write = useCallback(
@@ -259,6 +263,7 @@ export function SheetBlockView({
    *  typing must never bump it or the focus guard stops guarding. */
   const applyDraft = useCallback((draft: string, nextCaret: number) => {
     pendingCaret.current = nextCaret;
+    caretRef.current = nextCaret;
     setCaret(nextCaret);
     setEdit((prev) =>
       prev ? { ...prev, draft, sel: false, force: prev.force + 1, via: "grid" } : prev,
@@ -271,9 +276,32 @@ export function SheetBlockView({
     const next = insertFunction(live.draft, caret, sug.items[hi]);
     applyDraft(next.draft, next.caret);
     setPanelIdx(0);
+    pickRef.current = null;
     setPick(null);
     setPickRect(null);
   }, [sug, hi, caret, applyDraft]);
+
+  /* ── CLICK-TO-REFERENCE. preventDefault() on mousedown is the whole
+        trick: it is what stops the editor from blurring, and a blur would
+        commit the draft and close everything. A second pick REPLACES the
+        first, which is why the inserted span is tracked. ── */
+  const pickRef2 = useCallback(
+    (r0: number, c0: number, r1: number, c1: number) => {
+      const live = editRef.current;
+      if (!live) return;
+      const next = insertRef(live.draft, caretRef.current, refFor(r0, c0, r1, c1), pickRef.current);
+      applyDraft(next.draft, next.caret);
+      pickRef.current = next.span;
+      setPick(next.span);
+      setPickRect({
+        r0: Math.min(r0, r1),
+        c0: Math.min(c0, c1),
+        r1: Math.max(r0, r1),
+        c1: Math.max(c0, c1),
+      });
+    },
+    [applyDraft],
+  );
 
   /** Commit a raw draft onto (r, c). Coordinates are ALWAYS passed in from
    *  live state by the caller — never read from a closure. */
@@ -588,6 +616,9 @@ export function SheetBlockView({
     [commitCell],
   );
 
+  caretRef.current = caret;
+  pickRef.current = pick;
+
   const rc = sel ? rect(sel) : null;
   const overlay = rc ? rangeBox(cw, rc) : null;
   const editBox = edit ? cellBox(cw, edit.r, edit.c) : null;
@@ -733,6 +764,7 @@ export function SheetBlockView({
           onKeyDown={onGridKeyDown}
           onPointerUp={() => {
             dragging.current = false;
+            pickDrag.current = null;
           }}
         >
           {/* ── Corner: selects everything ── */}
@@ -852,10 +884,28 @@ export function SheetBlockView({
                       className="overflow-hidden whitespace-nowrap px-1.5"
                       onPointerDown={(e) => {
                         if (e.button !== 0) return;
+                        const live = editRef.current;
+                        if (live && canPick(live.draft, caretRef.current, pickRef.current)) {
+                          // ⚠ THE WHOLE TRICK: without this the editor
+                          // blurs, the draft commits, and the formula is
+                          // gone before the reference lands.
+                          e.preventDefault();
+                          pickDrag.current = { r, c };
+                          pickRef2(r, c, r, c);
+                          return;
+                        }
+                        // Anywhere else a click still means "leave this
+                        // cell": commit and move.
                         dragging.current = true;
                         pickCell(r, c, e.shiftKey);
                       }}
-                      onPointerMove={() => {
+                      onPointerMove={(e) => {
+                        const anchor = pickDrag.current;
+                        if (anchor) {
+                          e.preventDefault();
+                          pickRef2(anchor.r, anchor.c, r, c);
+                          return;
+                        }
                         if (!dragging.current) return;
                         setSel((prev) => (prev ? { ...prev, fr: r, fc: c } : selAt(r, c)));
                       }}
@@ -927,6 +977,14 @@ export function SheetBlockView({
                 focusStamp.current = stamp;
                 if (live.via === "bar") return;
                 el.focus();
+                // A deliberate insertion (autocomplete, a picked reference)
+                // says exactly where the caret belongs.
+                const want = pendingCaret.current;
+                pendingCaret.current = null;
+                if (want !== null) {
+                  el.setSelectionRange(want, want);
+                  return;
+                }
                 const caret = el.value.length;
                 if (resuming || live.sel === false) el.setSelectionRange(caret, caret);
                 else el.select();
@@ -935,9 +993,27 @@ export function SheetBlockView({
               data-sheet-editor
               className="bg-surface px-1.5 font-mono text-meta text-body outline-none"
               value={edit!.draft}
-              onChange={(e) =>
-                setEdit((prev) => (prev ? { ...prev, draft: e.target.value, via: "grid" } : prev))
-              }
+              onChange={(e) => {
+                // Typing ENDS a reference pick, so the next click inserts
+                // fresh rather than replacing what was just typed over.
+                const pos = e.target.selectionStart ?? e.target.value.length;
+                caretRef.current = pos;
+                setCaret(pos);
+                pickRef.current = null;
+                setPick(null);
+                setPickRect(null);
+                setDismissed(false);
+                setPanelIdx(0);
+                setEdit((prev) =>
+                  prev ? { ...prev, draft: e.target.value, via: "grid" } : prev,
+                );
+              }}
+              onSelect={(e) => {
+                const el = e.currentTarget;
+                const pos = el.selectionStart ?? el.value.length;
+                caretRef.current = pos;
+                setCaret(pos);
+              }}
               onKeyDown={onGridKeyDown}
               onBlur={(e) => {
                 // COORDINATES FROM STATE, NEVER FROM A CLOSURE.
