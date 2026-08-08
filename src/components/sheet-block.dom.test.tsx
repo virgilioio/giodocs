@@ -474,6 +474,13 @@ const addRowBtn = () => host.querySelector('[data-sheet-add="row"]') as HTMLButt
 const addColBtn = () => host.querySelector('[data-sheet-add="col"]') as HTMLButtonElement;
 const divider = (c: number) => host.querySelector(`[data-sheet-divider="${c}"]`) as HTMLElement;
 
+/** Buttons respond to a real click, not to the pointer pair `click()` sends. */
+function tap(el: Element) {
+  act(() => {
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  });
+}
+
 function bigBlock(rows: number, cols = 2) {
   return {
     id: "s3",
@@ -502,7 +509,7 @@ describe("the contextual group appears only for a full span", () => {
     click(rowNums()[1]);
     click(rowNums()[2], { shiftKey: true });
     expect(spanLabel()).toBe("Rows 2–3");
-    click(op("insertBefore")!);
+    tap(op("insertBefore")!);
     const cells = patches.at(-1)!.cells as { v?: unknown }[][];
     expect(cells.length).toBe(7);
     // The span moved down by two and kept its internal order.
@@ -515,7 +522,7 @@ describe("the contextual group appears only for a full span", () => {
     click(colLetters()[1]);
     click(colLetters()[2], { shiftKey: true });
     expect(spanLabel()).toBe("Columns B–C");
-    click(op("moveBack")!);
+    tap(op("moveBack")!);
     const cells = patches.at(-1)!.cells as { v?: unknown }[][];
     expect(cells[0].map((c) => c.v)).toEqual(["01", "02", "00"]);
   });
@@ -529,7 +536,7 @@ describe("floors, bounds and greyed controls", () => {
     const del = op("delete")!;
     expect(del.getAttribute("aria-disabled")).toBe("true");
     expect(del.title).toBe("A sheet keeps at least two rows");
-    click(del);
+    tap(del);
     expect(onPatch).not.toHaveBeenCalled();
   });
 
@@ -552,7 +559,7 @@ describe("floors, bounds and greyed controls", () => {
   it("the bottom + appends a row at the end", () => {
     const patches: Record<string, unknown>[] = [];
     mount(<Harness initial={bigBlock(3)} onPatch={(p) => patches.push(p)} />);
-    act(() => addRowBtn().click());
+    tap(addRowBtn());
     const cells = patches.at(-1)!.cells as ({ v?: unknown } | null)[][];
     expect(cells.length).toBe(4);
     expect(cells[3][0]).toBeNull();
@@ -561,7 +568,7 @@ describe("floors, bounds and greyed controls", () => {
   it("the right + appends a column with the default width", () => {
     const patches: Record<string, unknown>[] = [];
     mount(<Harness initial={bigBlock(3)} onPatch={(p) => patches.push(p)} />);
-    act(() => addColBtn().click());
+    tap(addColBtn());
     expect(patches.at(-1)!.cw).toEqual([160, 120, 120]);
   });
 });
@@ -571,38 +578,24 @@ describe("selection and the open editor survive a structural change", () => {
     mount(<Harness initial={bigBlock(4)} />);
     click(rowNums()[2]);
     expect(refLabel()).toBe("A3:B3");
-    click(op("delete")!);
+    tap(op("delete")!);
     // The selection lands on the NEW row 3, not on nothing.
     expect(refLabel()).toBe("A3:B3");
     expect(cell(2, 0).textContent).toBe("30");
   });
 
-  it("inserting a row ABOVE the cell being edited shifts the edit and keeps the draft", () => {
-    mount(<Harness initial={bigBlock(4)} />);
+  it("selecting a full row COMMITS an open edit rather than orphaning it", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(<Harness initial={bigBlock(4)} onPatch={(p) => patches.push(p)} />);
     click(cell(2, 0));
     press(grid(), "x");
     typeInto(editor()!, "xyz");
-    const before = editor()!;
-    // Select row 1 through its number, then insert above it.
     click(rowNums()[0]);
-    click(op("insertBefore")!);
-    const after = editor()!;
-    expect(after).toBe(before); // the ONE hoisted input, never remounted
-    expect(after.value).toBe("xyz"); // draft intact
-    expect(after.getAttribute("aria-label")).toBe("Edit A4"); // was A3
-    // top = 26 + 3*29 — the editor followed its cell down one row.
-    expect(after.style.top).toBe("113px");
-    // The focus stamp was rewritten, so the draft is NOT re-selected.
-    expect([after.selectionStart, after.selectionEnd]).toEqual([3, 3]);
-  });
-
-  it("deleting the row being edited closes the editor", () => {
-    mount(<Harness initial={bigBlock(4)} />);
-    click(cell(2, 0));
-    press(grid(), "q");
-    click(rowNums()[2]);
-    click(op("delete")!);
+    // Focus moved to the grid, so the draft landed — no lost keystrokes,
+    // and no editor left hovering over a row that is about to move.
     expect(editor()).toBeNull();
+    expect(rawAt(patches.at(-1)!, 2, 0)).toBe("xyz");
+    expect(spanLabel()).toBe("Row 1");
   });
 
   it("there is still exactly one input inside the grid", () => {
