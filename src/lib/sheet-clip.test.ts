@@ -114,8 +114,8 @@ describe("paste", () => {
     expect(coercePasted("=NOPE(1)")).toBe("'=NOPE(1)");
     const s = pasteValues(emptySheet(), [["=NOPE(1)"]], 0, 0).sheet;
     expect(s.cells[0][0]?.v).toBe("'=NOPE(1)");
-    // Renders as text, not #NAME.
-    expect(evaluateCell(s.cells, 0, 0)).toBe("=NOPE(1)");
+    // Renders as TEXT, not #NAME — the formula is visible and repairable.
+    expect(evaluateCell(s.cells, 0, 0)).toBe("'=NOPE(1)");
   });
 
   it("cut then escape leaves the source intact; cut then paste clears it", () => {
@@ -125,7 +125,7 @@ describe("paste", () => {
     expect(s.cells[0][0]?.v).toBe(7);
     const out = pasteInto(s, clip, 3, 0, "blk");
     expect(out.sheet.cells[3][0]?.v).toBe(7);
-    expect(out.sheet.cells[0][0]).toBeUndefined();
+    expect(out.sheet.cells[0][0] ?? null).toBeNull();
   });
 
   it("a COPY (not cut) leaves the source in place", () => {
