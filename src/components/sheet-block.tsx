@@ -480,6 +480,7 @@ export function SheetBlockView({
         setEdit(null);
       }
       setSel((prev) => (shift && prev ? { ...prev, fr: r, fc: c } : selAt(r, c)));
+      setSpanPref(undefined);
       gridRef.current?.focus();
     },
     [commitCell],
@@ -510,8 +511,24 @@ export function SheetBlockView({
   const width = pageScope && typeof sheet.bw === "number" ? sheet.bw : undefined;
   const template = `${ROW_NUM_W}px ${cw.map((w) => `${w}px`).join(" ")}`;
 
+  /* The contextual group exists only for a FULL span — chunk 3's pure
+   * predicate decides, not this component. */
+  const ctl = editable ? spanControls(sel, rows, cols, spanPref) : null;
+  const rowAppend = appendControl("row", rows, cols);
+  const colAppend = appendControl("col", rows, cols);
+
+  /* §5: a new button must not let Backspace escape to the page and delete
+   * the sheet block. The root also carries data-sheet-grid, so the shared
+   * typing predicate covers anything focused inside this block. */
+  const guardKeys = (e: React.KeyboardEvent) => {
+    if (e.key === "Backspace" || e.key === "Delete") {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+
   return (
-    <div className="py-1" aria-label="Sheet block">
+    <div className="group py-1" aria-label="Sheet block" {...{ [SHEET_GRID_ATTR]: "" }}>
       {/* ── Formula bar ── */}
       <div className="mb-1 flex items-center gap-2">
         <span className="min-w-14 font-mono text-caption text-muted" data-sheet-ref>
