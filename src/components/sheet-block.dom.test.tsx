@@ -317,7 +317,7 @@ describe("selection", () => {
       cell(0, 0).dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
     });
     act(() => {
-      cell(2, 1).dispatchEvent(new PointerEvent("pointerenter", { bubbles: true }));
+      cell(2, 1).dispatchEvent(new PointerEvent("pointermove", { bubbles: true }));
     });
     expect(refLabel()).toBe("A1:B3");
   });

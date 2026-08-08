@@ -165,11 +165,19 @@ export function SheetBlockView({
       const cur = rawOf(sheet.cells, r, c);
       if (cur === raw) return;
       const trimmed = raw;
-      const patch: Partial<Cell> | null =
-        trimmed === ""
-          ? { ...(sheet.cells[r]?.[c] ?? {}), v: undefined }
-          : { v: /^-?\d*\.?\d+$/.test(trimmed.trim()) ? Number(trimmed.trim()) : trimmed };
-      write(setCell(sheet, r, c, patch as Partial<Cell>));
+      if (trimmed === "") {
+        const kept = { ...(sheet.cells[r]?.[c] ?? {}) };
+        delete kept.v;
+        let next = setCell(sheet, r, c, null);
+        if (Object.keys(kept).length) next = setCell(next, r, c, kept);
+        write(next);
+        onBlur?.();
+        return;
+      }
+      const patch: Partial<Cell> = {
+        v: /^-?\d*\.?\d+$/.test(trimmed.trim()) ? Number(trimmed.trim()) : trimmed,
+      };
+      write(setCell(sheet, r, c, patch));
       onBlur?.();
     },
     [editable, sheet, write, onBlur],
@@ -184,7 +192,10 @@ export function SheetBlockView({
         if (!cur || cur.v === undefined) continue;
         const kept = { ...cur };
         delete kept.v;
-        next = setCell(next, r, c, kept);
+        // setCell MERGES, so clearing a value takes two steps: drop the
+        // cell, then re-apply its formatting. Formats survive a clear.
+        next = setCell(next, r, c, null);
+        if (Object.keys(kept).length) next = setCell(next, r, c, kept);
       }
       if (next !== sheet) {
         write(next);
@@ -323,12 +334,14 @@ export function SheetBlockView({
   const readout = useMemo(() => {
     if (!sel || isSingle(sel)) return null;
     const ref = rangeRef(sel);
-    const n = evaluateFormula(`=COUNT(${ref})`, sheet.cells);
+    // Evaluated from a coordinate OUTSIDE the grid: evaluating at (0,0)
+    // would make a range containing A1 look like a self-reference.
+    const n = evaluateFormula(`=COUNT(${ref})`, sheet.cells, rows, cols);
     if (typeof n !== "number" || n < 2) return null;
-    const sum = evaluateFormula(`=SUM(${ref})`, sheet.cells);
-    const avg = evaluateFormula(`=AVG(${ref})`, sheet.cells);
+    const sum = evaluateFormula(`=SUM(${ref})`, sheet.cells, rows, cols);
+    const avg = evaluateFormula(`=AVG(${ref})`, sheet.cells, rows, cols);
     return `Sum ${format(sum, "num", 2).replace(/\.00$/, "")} · Avg ${format(avg, "num", 2).replace(/\.00$/, "")} · ${n} numbers`;
-  }, [sel, sheet.cells]);
+  }, [sel, sheet.cells, rows, cols]);
 
   const barValue = edit ? edit.draft : sel ? rawOf(sheet.cells, sel.fr, sel.fc) : "";
 
@@ -494,7 +507,7 @@ export function SheetBlockView({
                         dragging.current = true;
                         pickCell(r, c, e.shiftKey);
                       }}
-                      onPointerEnter={() => {
+                      onPointerMove={() => {
                         if (!dragging.current) return;
                         setSel((prev) => (prev ? { ...prev, fr: r, fc: c } : selAt(r, c)));
                       }}
