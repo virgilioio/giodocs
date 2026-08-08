@@ -277,13 +277,18 @@ export function SheetBlockView({
           return;
         case "commit": {
           if (live) commitCell(live.r, live.c, live.draft);
+          editRef.current = null;
           setEdit(null);
           setSel(selAt(action.r, action.c));
           gridRef.current?.focus();
           return;
         }
         case "discard":
-          // Escape DISCARDS: the block data is left untouched.
+          // Escape DISCARDS: the block data is left untouched. The live ref
+          // is cleared BEFORE moving focus, because focusing the grid blurs
+          // the input — and the blur handler would otherwise commit the very
+          // draft we are throwing away.
+          editRef.current = null;
           setEdit(null);
           gridRef.current?.focus();
           return;
@@ -315,6 +320,7 @@ export function SheetBlockView({
         // Committing here rather than relying on blur is what keeps a
         // click on a NEIGHBOUR from writing an empty draft into it.
         commitCell(live.r, live.c, live.draft);
+        editRef.current = null;
         setEdit(null);
       }
       setSel((prev) => (shift && prev ? { ...prev, fr: r, fc: c } : selAt(r, c)));
@@ -375,10 +381,12 @@ export function SheetBlockView({
             if (e.key === "Enter" && live) {
               e.preventDefault();
               commitCell(live.r, live.c, live.draft);
+              editRef.current = null;
               setEdit(null);
               gridRef.current?.focus();
             } else if (e.key === "Escape") {
               e.preventDefault();
+              editRef.current = null;
               setEdit(null);
               gridRef.current?.focus();
             }
