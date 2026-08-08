@@ -124,6 +124,21 @@ type Edit = {
   via: "grid" | "bar";
 };
 
+/** A centred 12px plus — an svg, so no raw px font size is involved. */
+function PlusGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden focusable="false">
+      <path
+        d="M6 2.5v7M2.5 6h7"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        fill="none"
+      />
+    </svg>
+  );
+}
+
 function rawOf(cells: (Cell | null)[][], r: number, c: number): string {
   const v = cells[r]?.[c]?.v;
   return v === undefined || v === null ? "" : String(v);
@@ -661,6 +676,7 @@ export function SheetBlockView({
               onPointerDown={(e) => {
                 if (e.shiftKey && sel) setSel({ ...sel, fr: rows - 1, fc: c });
                 else setSel(selectCols(c, c, rows));
+                setSpanPref("col");
                 gridRef.current?.focus();
               }}
               style={{
@@ -674,6 +690,30 @@ export function SheetBlockView({
               }}
             >
               {colName(c)}
+              {/* ── Width divider: a 6px hit zone on the RIGHT EDGE. The
+                    clamp is applied DURING the drag so the limit is felt
+                    rather than snapping back, and ONE write lands on
+                    pointerup — one undo entry per drag. ── */}
+              {editable && (
+                <div
+                  data-sheet-divider={c}
+                  aria-hidden
+                  onPointerDown={(e) => startWidthDrag(c, e)}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    resetWidth(c);
+                  }}
+                  className="group/div absolute top-0 flex h-full justify-end"
+                  style={{ right: -3, width: 6, cursor: "col-resize", zIndex: 4 }}
+                >
+                  <div
+                    className={
+                      "h-full w-px " +
+                      (drag?.c === c ? "bg-blue" : "bg-transparent group-hover/div:bg-rule")
+                    }
+                  />
+                </div>
+              )}
             </div>
           ))}
 
@@ -693,6 +733,7 @@ export function SheetBlockView({
                   onPointerDown={(e) => {
                     if (e.shiftKey && sel) setSel({ ...sel, fr: r, fc: cols - 1 });
                     else setSel(selectRows(r, r, cols));
+                    setSpanPref("row");
                     gridRef.current?.focus();
                   }}
                   style={{
