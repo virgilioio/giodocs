@@ -32,6 +32,7 @@ import {
   MiniAvatar,
   type SelectOption,
 } from "./property-pickers";
+import { isTerminalStatus } from "@/lib/due-date";
 import {
   SpecMenuTrigger,
   type MenuSpec,
