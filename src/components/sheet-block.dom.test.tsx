@@ -1359,7 +1359,7 @@ describe("a brand-new sheet", () => {
     expect(host.querySelectorAll('[role="row"]').length).toBe(10);
     expect(host.querySelectorAll('[data-sheet-cell^="0,"]').length).toBe(5);
     expect(grid().style.gridTemplateColumns).toBe(
-      `${SHEET_ROW_NUM_W}px 160px 120px 120px 120px`,
+      `${SHEET_ROW_NUM_W}px 160px 120px 120px 120px 120px`,
     );
   });
 });
