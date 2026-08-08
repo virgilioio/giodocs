@@ -940,7 +940,122 @@ export function SheetBlockView({
 
   const barValue = edit ? edit.draft : sel ? rawOf(sheet.cells, sel.fr, sel.fc) : "";
 
-  const width = pageScope && typeof sheet.bw === "number" ? sheet.bw : undefined;
+  /* ── CHUNK 8: THE BLOCK RESIZE GRIP ──────────────────────────────────
+   * One grip, both axes. Width bleeds symmetrically into the page gutters
+   * (page scope only); height turns the grid wrapper into a scrolling
+   * viewport. The live values are the drag's if one is in flight, otherwise
+   * the block's — so the ceiling is FELT during the drag and only pointerup
+   * writes, which is what makes a drag ONE undo entry.
+   *
+   * ⚠ THE CLAMP MEASURES THE LIVE CONTAINER AT MOUSEDOWN. A constant
+   * ceiling puts the grip past the right edge of a narrow viewport, where
+   * it can be neither grabbed nor double-clicked, and gives the PAGE a
+   * horizontal scrollbar that slides every prose block sideways. */
+  const liveBw = resize ? resize.bw : pageScope && typeof sheet.bw === "number" ? sheet.bw : 0;
+  const liveBh = resize ? resize.bh : typeof sheet.bh === "number" ? sheet.bh : 0;
+
+  const endResize = useCallback(() => {
+    const live = resizeRef.current;
+    resizeRef.current = null;
+    document.body.style.userSelect = "";
+    setResize(null);
+    if (!live) return;
+    // ONE write, so ONE undo entry for the whole drag.
+    if (live.bw !== live.startBw || live.bh !== live.startBh) {
+      onChange?.({ bw: live.bw, bh: live.bh });
+    }
+  }, [onChange]);
+
+  const onGripDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button !== 0) return;
+      const col = colRef.current;
+      const wrap = wrapRef.current;
+      if (!col || !wrap) return;
+      e.preventDefault();
+      e.stopPropagation();
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      const startBw = pageScope && typeof sheet.bw === "number" ? sheet.bw : 0;
+      const startBh = typeof sheet.bh === "number" ? sheet.bh : 0;
+      /* MEASURE THE LIVE CONTAINER: walk up to the nearest horizontally
+       * scrollable ancestor. Falling through to <body> means the page
+       * itself is the only limit, so the viewport is the room — never a
+       * literal. */
+      let host: HTMLElement | null = col.parentElement;
+      while (
+        host &&
+        host !== document.body &&
+        getComputedStyle(host).overflowX !== "auto"
+      ) {
+        host = host.parentElement;
+      }
+      const room = host && host !== document.body ? host.clientWidth : window.innerWidth;
+      const naturalWidth = Math.round(col.getBoundingClientRect().width) - startBw;
+      // Every row visible: the scrollable content, plus the wrapper's own
+      // hairline border, which max-height includes.
+      const naturalHeight = wrap.scrollHeight + 2;
+      const start = {
+        x: e.clientX,
+        y: e.clientY,
+        startBw,
+        startBh,
+        room,
+        naturalWidth,
+        naturalHeight,
+        bw: startBw,
+        bh: startBh,
+      };
+      resizeRef.current = start;
+      setResize(start);
+      document.body.style.userSelect = "none";
+    },
+    [pageScope, sheet.bh, sheet.bw],
+  );
+
+  /* Listeners on WINDOW, not the grip: the block shrinks out from under the
+   * pointer, so the pointer leaves it mid-drag. */
+  useEffect(() => {
+    if (!resize) return;
+    const move = (e: PointerEvent) => {
+      const live = resizeRef.current;
+      if (!live) return;
+      const next = {
+        ...live,
+        bw: pageScope
+          ? clampBw({
+              room: live.room,
+              naturalWidth: live.naturalWidth,
+              startBw: live.startBw,
+              dx: e.clientX - live.x,
+            })
+          : 0,
+        bh: clampBh({
+          startBh: live.startBh,
+          dy: e.clientY - live.y,
+          naturalHeight: live.naturalHeight,
+        }),
+      };
+      resizeRef.current = next;
+      setResize(next);
+    };
+    const up = () => endResize();
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+  }, [resize, endResize, pageScope]);
+
+  const resetSize = useCallback(() => {
+    resizeRef.current = null;
+    setResize(null);
+    document.body.style.userSelect = "";
+    onChange?.({ bw: 0, bh: 0 });
+  }, [onChange]);
+
   const template = `${ROW_NUM_W}px ${cw.map((w) => `${w}px`).join(" ")}`;
 
   /* The contextual group exists only for a FULL span — chunk 3's pure
