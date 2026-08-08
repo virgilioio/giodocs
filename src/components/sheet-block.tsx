@@ -241,6 +241,40 @@ export function SheetBlockView({
   );
 
 
+  /* ─────────────── Autocomplete derivation (chunk 5) ───────────────
+   * Read from the WORD UNDER THE CARET, so editing a formula in the
+   * middle still offers the right names. The list itself comes from the
+   * engine's FUNCTION_META — there is no second list in this file. */
+  const sug = useMemo(
+    () => (edit && !dismissed ? suggestFor(edit.draft, caret) : null),
+    [edit, dismissed, caret],
+  );
+  const chip = useMemo(
+    () => (edit && !sug ? activeCall(edit.draft, caret) : null),
+    [edit, sug, caret],
+  );
+  const hi = sug ? Math.min(panelIdx, sug.items.length - 1) : 0;
+
+  /** A DELIBERATE caret move — the only thing that bumps `force`. Ordinary
+   *  typing must never bump it or the focus guard stops guarding. */
+  const applyDraft = useCallback((draft: string, nextCaret: number) => {
+    pendingCaret.current = nextCaret;
+    setCaret(nextCaret);
+    setEdit((prev) =>
+      prev ? { ...prev, draft, sel: false, force: prev.force + 1, via: "grid" } : prev,
+    );
+  }, []);
+
+  const insertSuggestion = useCallback(() => {
+    const live = editRef.current;
+    if (!live || !sug) return;
+    const next = insertFunction(live.draft, caret, sug.items[hi]);
+    applyDraft(next.draft, next.caret);
+    setPanelIdx(0);
+    setPick(null);
+    setPickRect(null);
+  }, [sug, hi, caret, applyDraft]);
+
   /** Commit a raw draft onto (r, c). Coordinates are ALWAYS passed in from
    *  live state by the caller — never read from a closure. */
   const commitCell = useCallback(
@@ -467,7 +501,7 @@ export function SheetBlockView({
       };
       const live = editRef.current;
       const action = live
-        ? keyWhenEditing(k, live.r, live.c, rows, cols)
+        ? keyWhenEditing(k, live.r, live.c, rows, cols, !!sug)
         : keyWhenSelected(k, sel, rows, cols);
       if (action.kind === "pass") return;
       e.preventDefault();
@@ -512,11 +546,27 @@ export function SheetBlockView({
         case "clearSelection":
           setSel(null);
           return;
+        /* ── The panel's keys. It has already won the precedence contest
+              inside keyWhenEditing, so there is no branch to get wrong
+              here. Escape closes the panel and STAYS in the cell; the
+              next Escape reaches "discard". ── */
+        case "panelPrev":
+          setPanelIdx((i) => moveHighlight(i, -1, sug ? sug.items.length : 0));
+          return;
+        case "panelNext":
+          setPanelIdx((i) => moveHighlight(i, 1, sug ? sug.items.length : 0));
+          return;
+        case "panelInsert":
+          insertSuggestion();
+          return;
+        case "panelClose":
+          setDismissed(true);
+          return;
         default:
           return;
       }
     },
-    [sel, rows, cols, beginEdit, commitCell, clearRange, toggleMark],
+    [sel, rows, cols, beginEdit, commitCell, clearRange, toggleMark, sug, insertSuggestion],
   );
 
   /* ───────────────────────── Pointer ───────────────────────── */
