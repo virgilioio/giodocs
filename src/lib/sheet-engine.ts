@@ -414,17 +414,29 @@ function factor(p: number): number {
   return Math.pow(10, p);
 }
 
-/** signature: FN(args) — kept beside the implementation so the two cannot drift. */
+/**
+ * signature + description + implementation, in ONE table.
+ *
+ * The autocomplete panel and the argument chip RENDER FROM THIS TABLE
+ * (see FUNCTION_META below). A second list typed into a component would
+ * drift from this one and offer a function the engine does not have.
+ */
 const FUNCTIONS: Record<
   string,
-  { sig: string; run: (args: Val[], grid: Grid, visited: Set<string>) => CellValue }
+  {
+    sig: string;
+    desc: string;
+    run: (args: Val[], grid: Grid, visited: Set<string>) => CellValue;
+  }
 > = {
   SUM: {
     sig: "SUM(range)",
+    desc: "Adds every number in the range",
     run: (a, g, v) => numbers(a, g, v).reduce((s, n) => s + n, 0),
   },
   AVG: {
     sig: "AVG(range)",
+    desc: "Mean of the numbers in the range",
     run: (a, g, v) => {
       const ns = numbers(a, g, v);
       if (!ns.length) throw new EvalError("#DIV/0");
@@ -433,6 +445,7 @@ const FUNCTIONS: Record<
   },
   MIN: {
     sig: "MIN(range)",
+    desc: "Smallest number in the range",
     run: (a, g, v) => {
       const ns = numbers(a, g, v);
       if (!ns.length) return 0;
@@ -441,6 +454,7 @@ const FUNCTIONS: Record<
   },
   MAX: {
     sig: "MAX(range)",
+    desc: "Largest number in the range",
     run: (a, g, v) => {
       const ns = numbers(a, g, v);
       if (!ns.length) return 0;
@@ -449,10 +463,12 @@ const FUNCTIONS: Record<
   },
   COUNT: {
     sig: "COUNT(range)",
+    desc: "How many cells hold a number",
     run: (a, g, v) => numbers(a, g, v).length,
   },
   MEDIAN: {
     sig: "MEDIAN(range)",
+    desc: "Middle value of the numbers",
     run: (a, g, v) => {
       const ns = numbers(a, g, v).sort((x, y) => x - y);
       if (!ns.length) throw new EvalError("#NUM");
@@ -462,17 +478,27 @@ const FUNCTIONS: Record<
   },
   PRODUCT: {
     sig: "PRODUCT(range)",
+    desc: "Multiplies every number in the range",
     run: (a, g, v) => {
       const ns = numbers(a, g, v);
       if (!ns.length) return 0;
       return ns.reduce((p, n) => p * n, 1);
     },
   },
-  ADD: { sig: "ADD(a,b)", run: (a) => toNumber(a[0]) + toNumber(a[1]) },
-  MINUS: { sig: "MINUS(a,b)", run: (a) => toNumber(a[0]) - toNumber(a[1]) },
-  MULTIPLY: { sig: "MULTIPLY(a,b)", run: (a) => toNumber(a[0]) * toNumber(a[1]) },
+  ADD: { sig: "ADD(a,b)", desc: "a plus b", run: (a) => toNumber(a[0]) + toNumber(a[1]) },
+  MINUS: {
+    sig: "MINUS(a,b)",
+    desc: "a minus b",
+    run: (a) => toNumber(a[0]) - toNumber(a[1]),
+  },
+  MULTIPLY: {
+    sig: "MULTIPLY(a,b)",
+    desc: "a times b",
+    run: (a) => toNumber(a[0]) * toNumber(a[1]),
+  },
   DIVIDE: {
     sig: "DIVIDE(a,b)",
+    desc: "a divided by b",
     run: (a) => {
       const d = toNumber(a[1]);
       if (d === 0) throw new EvalError("#DIV/0");
@@ -481,6 +507,7 @@ const FUNCTIONS: Record<
   },
   POWER: {
     sig: "POWER(base,exp)",
+    desc: "base raised to exp",
     run: (a) => {
       const n = Math.pow(toNumber(a[0]), toNumber(a[1]));
       if (!Number.isFinite(n)) throw new EvalError("#NUM");
@@ -489,6 +516,7 @@ const FUNCTIONS: Record<
   },
   SQRT: {
     sig: "SQRT(n)",
+    desc: "Square root of n",
     run: (a) => {
       const n = toNumber(a[0]);
       if (n < 0) throw new EvalError("#NUM");
@@ -497,6 +525,7 @@ const FUNCTIONS: Record<
   },
   ROUND: {
     sig: "ROUND(n,places)",
+    desc: "Rounds n to that many decimals",
     run: (a) => {
       const p = factor(places(a[1]));
       return Math.round(toNumber(a[0]) * p) / p;
@@ -504,6 +533,7 @@ const FUNCTIONS: Record<
   },
   ROUNDUP: {
     sig: "ROUNDUP(n,places)",
+    desc: "Rounds n away from zero",
     run: (a) => {
       const p = factor(places(a[1]));
       const n = toNumber(a[0]) * p;
@@ -512,15 +542,17 @@ const FUNCTIONS: Record<
   },
   ROUNDDOWN: {
     sig: "ROUNDDOWN(n,places)",
+    desc: "Rounds n towards zero",
     run: (a) => {
       const p = factor(places(a[1]));
       const n = toNumber(a[0]) * p;
       return (n < 0 ? -Math.floor(-n) : Math.floor(n)) / p;
     },
   },
-  ABS: { sig: "ABS(n)", run: (a) => Math.abs(toNumber(a[0])) },
+  ABS: { sig: "ABS(n)", desc: "n without its sign", run: (a) => Math.abs(toNumber(a[0])) },
   IF: {
     sig: "IF(test,then,else)",
+    desc: "then when the test holds, else when it does not",
     run: (a) => {
       const branch = truthy(a[0]) ? a[1] : a[2];
       if (branch === undefined) return "";
@@ -530,17 +562,40 @@ const FUNCTIONS: Record<
   },
   CONCAT: {
     sig: "CONCAT(text…)",
+    desc: "Joins the values into one string",
     run: (a, g, v) =>
       a
         .flatMap((x) => expand(x, g, v))
         .map((x) => (x === "" ? "" : toText(x)))
         .join(""),
   },
-  TODAY: { sig: "TODAY()", run: () => todayISO() },
+  TODAY: { sig: "TODAY()", desc: "Today's date", run: () => todayISO() },
 };
 
 /** Function signatures, for a future formula hint UI. */
 export const FUNCTION_SIGNATURES: string[] = Object.values(FUNCTIONS).map((f) => f.sig);
+
+export type FunctionMeta = {
+  /** "SUM" */
+  name: string;
+  /** "(range)" — including the parens, so "()" marks a no-argument call. */
+  args: string;
+  /** "SUM(range)" — what the argument chip shows. */
+  sig: string;
+  desc: string;
+};
+
+/**
+ * THE one list the autocomplete panel renders from. Derived from
+ * FUNCTIONS above, so a function cannot be offered unless the engine
+ * implements it and its arguments cannot drift from its signature.
+ */
+export const FUNCTION_META: FunctionMeta[] = Object.entries(FUNCTIONS).map(([name, f]) => ({
+  name,
+  args: f.sig.slice(name.length),
+  sig: f.sig,
+  desc: f.desc,
+}));
 
 export function todayISO(now: Date = new Date()): string {
   const y = now.getFullYear();

@@ -63,6 +63,20 @@ import {
   type OpId,
   type SpanKind,
 } from "@/lib/sheet-structure";
+import {
+  activeCall,
+  canPick,
+  footerText,
+  insertFunction,
+  insertRef,
+  moveHighlight,
+  panelPlacement,
+  PANEL_MAX_H,
+  PANEL_W,
+  refFor,
+  suggestFor,
+  type PickSpan,
+} from "@/lib/sheet-formula";
 import { fillToken, inkToken } from "@/lib/sheet-palette";
 import { SHEET_GRID_ATTR } from "@/lib/is-typing";
 import { useToast } from "@/lib/toast";
@@ -77,6 +91,7 @@ import {
   rangeRef,
   rect,
   refLabel,
+  rowTop,
   ROW_H,
   ROW_NUM_W,
   selAt,
@@ -193,6 +208,27 @@ export function SheetBlockView({
    * the text so the next keystroke replaces everything typed so far — the
    * same visible symptom as a remounting input, a different cause. */
   const focusStamp = useRef<string | null>(null);
+  /* ── Chunk 5 state. The caret is tracked so the panel can read the WORD
+   * UNDER IT rather than the tail of the draft. `pendingCaret` is how a
+   * deliberate insertion places the caret: a `force` bump invalidates the
+   * stamp, the ref callback re-runs, and it honours this instead of the
+   * end of the value. ── */
+  const [caret, setCaret] = useState(0);
+  const [panelIdx, setPanelIdx] = useState(0);
+  const [dismissed, setDismissed] = useState(false);
+  const [pick, setPick] = useState<PickSpan | null>(null);
+  const [pickRect, setPickRect] = useState<{
+    r0: number;
+    c0: number;
+    r1: number;
+    c1: number;
+  } | null>(null);
+  const pickDrag = useRef<{ r: number; c: number } | null>(null);
+  const pendingCaret = useRef<number | null>(null);
+  /* Live mirrors: a pointermove during a reference drag must not read a
+   * caret or a span from the previous render. */
+  const caretRef = useRef(0);
+  const pickRef = useRef<PickSpan | null>(null);
   const blockId = String((block as { id?: unknown }).id ?? "sheet");
 
   const write = useCallback(
@@ -209,6 +245,64 @@ export function SheetBlockView({
     [drag, sheet.cw],
   );
 
+
+  /* ─────────────── Autocomplete derivation (chunk 5) ───────────────
+   * Read from the WORD UNDER THE CARET, so editing a formula in the
+   * middle still offers the right names. The list itself comes from the
+   * engine's FUNCTION_META — there is no second list in this file. */
+  const sug = useMemo(
+    () => (edit && !dismissed ? suggestFor(edit.draft, caret) : null),
+    [edit, dismissed, caret],
+  );
+  const chip = useMemo(
+    () => (edit && !sug ? activeCall(edit.draft, caret) : null),
+    [edit, sug, caret],
+  );
+  const hi = sug ? Math.min(panelIdx, sug.items.length - 1) : 0;
+
+  /** A DELIBERATE caret move — the only thing that bumps `force`. Ordinary
+   *  typing must never bump it or the focus guard stops guarding. */
+  const applyDraft = useCallback((draft: string, nextCaret: number) => {
+    pendingCaret.current = nextCaret;
+    caretRef.current = nextCaret;
+    setCaret(nextCaret);
+    setEdit((prev) =>
+      prev ? { ...prev, draft, sel: false, force: prev.force + 1, via: "grid" } : prev,
+    );
+  }, []);
+
+  const insertSuggestion = useCallback(() => {
+    const live = editRef.current;
+    if (!live || !sug) return;
+    const next = insertFunction(live.draft, caret, sug.items[hi]);
+    applyDraft(next.draft, next.caret);
+    setPanelIdx(0);
+    pickRef.current = null;
+    setPick(null);
+    setPickRect(null);
+  }, [sug, hi, caret, applyDraft]);
+
+  /* ── CLICK-TO-REFERENCE. preventDefault() on mousedown is the whole
+        trick: it is what stops the editor from blurring, and a blur would
+        commit the draft and close everything. A second pick REPLACES the
+        first, which is why the inserted span is tracked. ── */
+  const insertReference = useCallback(
+    (r0: number, c0: number, r1: number, c1: number) => {
+      const live = editRef.current;
+      if (!live) return;
+      const next = insertRef(live.draft, caretRef.current, refFor(r0, c0, r1, c1), pickRef.current);
+      applyDraft(next.draft, next.caret);
+      pickRef.current = next.span;
+      setPick(next.span);
+      setPickRect({
+        r0: Math.min(r0, r1),
+        c0: Math.min(c0, c1),
+        r1: Math.max(r0, r1),
+        c1: Math.max(c0, c1),
+      });
+    },
+    [applyDraft],
+  );
 
   /** Commit a raw draft onto (r, c). Coordinates are ALWAYS passed in from
    *  live state by the caller — never read from a closure. */
@@ -281,6 +375,12 @@ export function SheetBlockView({
   const beginEdit = useCallback(
     (r: number, c: number, seed: string | null, selectAllText: boolean) => {
       if (!editable) return;
+      setDismissed(false);
+      setPanelIdx(0);
+      setPick(null);
+      setPickRect(null);
+      const initial = seed === null ? rawOf(sheet.cells, r, c) : seed;
+      setCaret(initial.length);
       setEdit({
         r,
         c,
@@ -430,7 +530,7 @@ export function SheetBlockView({
       };
       const live = editRef.current;
       const action = live
-        ? keyWhenEditing(k, live.r, live.c, rows, cols)
+        ? keyWhenEditing(k, live.r, live.c, rows, cols, !!sug)
         : keyWhenSelected(k, sel, rows, cols);
       if (action.kind === "pass") return;
       e.preventDefault();
@@ -475,11 +575,27 @@ export function SheetBlockView({
         case "clearSelection":
           setSel(null);
           return;
+        /* ── The panel's keys. It has already won the precedence contest
+              inside keyWhenEditing, so there is no branch to get wrong
+              here. Escape closes the panel and STAYS in the cell; the
+              next Escape reaches "discard". ── */
+        case "panelPrev":
+          setPanelIdx((i) => moveHighlight(i, -1, sug ? sug.items.length : 0));
+          return;
+        case "panelNext":
+          setPanelIdx((i) => moveHighlight(i, 1, sug ? sug.items.length : 0));
+          return;
+        case "panelInsert":
+          insertSuggestion();
+          return;
+        case "panelClose":
+          setDismissed(true);
+          return;
         default:
           return;
       }
     },
-    [sel, rows, cols, beginEdit, commitCell, clearRange, toggleMark],
+    [sel, rows, cols, beginEdit, commitCell, clearRange, toggleMark, sug, insertSuggestion],
   );
 
   /* ───────────────────────── Pointer ───────────────────────── */
@@ -500,6 +616,9 @@ export function SheetBlockView({
     },
     [commitCell],
   );
+
+  caretRef.current = caret;
+  pickRef.current = pick;
 
   const rc = sel ? rect(sel) : null;
   const overlay = rc ? rangeBox(cw, rc) : null;
@@ -646,6 +765,7 @@ export function SheetBlockView({
           onKeyDown={onGridKeyDown}
           onPointerUp={() => {
             dragging.current = false;
+            pickDrag.current = null;
           }}
         >
           {/* ── Corner: selects everything ── */}
@@ -765,10 +885,28 @@ export function SheetBlockView({
                       className="overflow-hidden whitespace-nowrap px-1.5"
                       onPointerDown={(e) => {
                         if (e.button !== 0) return;
+                        const live = editRef.current;
+                        if (live && canPick(live.draft, caretRef.current, pickRef.current)) {
+                          // ⚠ THE WHOLE TRICK: without this the editor
+                          // blurs, the draft commits, and the formula is
+                          // gone before the reference lands.
+                          e.preventDefault();
+                          pickDrag.current = { r, c };
+                          insertReference(r, c, r, c);
+                          return;
+                        }
+                        // Anywhere else a click still means "leave this
+                        // cell": commit and move.
                         dragging.current = true;
                         pickCell(r, c, e.shiftKey);
                       }}
-                      onPointerMove={() => {
+                      onPointerMove={(e) => {
+                        const anchor = pickDrag.current;
+                        if (anchor) {
+                          e.preventDefault();
+                          insertReference(anchor.r, anchor.c, r, c);
+                          return;
+                        }
                         if (!dragging.current) return;
                         setSel((prev) => (prev ? { ...prev, fr: r, fc: c } : selAt(r, c)));
                       }}
@@ -823,6 +961,107 @@ export function SheetBlockView({
             />
           )}
 
+          {/* ── THE REFERENCE HALO. Without it the pick is blind. A
+                grid-level overlay positioned with rangeBox — never a
+                border on a cell. ── */}
+          {pickRect && edit && (
+            <div
+              aria-hidden
+              data-sheet-halo
+              style={{
+                position: "absolute",
+                ...(() => {
+                  const b = rangeBox(cw, pickRect);
+                  return { left: b.left, top: b.top, width: b.width, height: b.height };
+                })(),
+                border: "1px dashed var(--color-blue)",
+                borderRadius: 2,
+                pointerEvents: "none",
+                zIndex: 7,
+              }}
+            />
+          )}
+
+          {/* ── THE ARGUMENT CHIP. Once the caret is inside a call the
+                question is "what goes here", not "which function". ── */}
+          {chip && edit && (
+            <div
+              data-sheet-chip
+              className="pointer-events-none rounded-md bg-btn px-[7px] py-[3px] font-mono text-caption text-btnFg"
+              style={{
+                position: "absolute",
+                left: cellBox(cw, edit.r, edit.c).left,
+                top: rowTop(edit.r) + ROW_H + 3,
+                zIndex: 9,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {chip.sig}
+            </div>
+          )}
+
+          {/* ── THE SUGGESTION PANEL. A grid-level child: rendered inside
+                the active cell it would remount the editor, and typing
+                would lose focus after one character. It RENDERS FROM THE
+                ENGINE'S TABLE (FUNCTION_META) — there is no second list.
+                Each row carries flex-none because a capped flex column
+                squashes its children instead of scrolling. ── */}
+          {sug && edit && (
+            <div
+              data-sheet-panel
+              className="flex flex-col rounded-[10px] border border-line bg-surface shadow-popover"
+              style={{
+                position: "absolute",
+                left: cellBox(cw, edit.r, edit.c).left,
+                ...(panelPlacement(edit.r, rows) === "above"
+                  ? { top: rowTop(edit.r) - PANEL_MAX_H - 4 }
+                  : { top: rowTop(edit.r) + ROW_H + 2 }),
+                width: PANEL_W,
+                maxHeight: PANEL_MAX_H,
+                zIndex: 10,
+                overflow: "hidden",
+              }}
+              onPointerDown={(e) => e.preventDefault()}
+            >
+              <div data-sheet-panel-list className="min-h-0 flex-1 overflow-y-auto py-1">
+                {sug.items.map((f, i) => (
+                  <div
+                    key={f.name}
+                    data-sheet-suggestion={f.name}
+                    aria-selected={i === hi}
+                    className={
+                      "flex flex-none items-baseline gap-1.5 overflow-hidden whitespace-nowrap px-2.5 py-1 " +
+                      (i === hi ? "bg-sunken" : "")
+                    }
+                    style={{ flexGrow: 0, flexShrink: 0, flexBasis: "auto" }}
+                    onMouseDown={(e) => {
+                      // A click that blurs the editor commits the draft and
+                      // closes everything — so it must not steal focus.
+                      e.preventDefault();
+                      setPanelIdx(i);
+                    }}
+                    onClick={() => {
+                      setPanelIdx(i);
+                      insertSuggestion();
+                    }}
+                  >
+                    <span className="font-mono text-meta text-body">{f.name}</span>
+                    <span className="font-mono text-meta text-whisper">{f.args}</span>
+                    <span className="overflow-hidden text-ellipsis text-caption text-faint">
+                      {f.desc}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div
+                data-sheet-panel-footer
+                className="flex-none border-t border-lineSoft px-2.5 py-1 text-caption text-faint"
+              >
+                {footerText(sug.items.length, sug.total)}
+              </div>
+            </div>
+          )}
+
           {/* ── THE ONE EDITOR ELEMENT. A grid-level child, absolutely
                 positioned over the active cell. Its handlers read the
                 coordinates from STATE. ── */}
@@ -840,6 +1079,14 @@ export function SheetBlockView({
                 focusStamp.current = stamp;
                 if (live.via === "bar") return;
                 el.focus();
+                // A deliberate insertion (autocomplete, a picked reference)
+                // says exactly where the caret belongs.
+                const want = pendingCaret.current;
+                pendingCaret.current = null;
+                if (want !== null) {
+                  el.setSelectionRange(want, want);
+                  return;
+                }
                 const caret = el.value.length;
                 if (resuming || live.sel === false) el.setSelectionRange(caret, caret);
                 else el.select();
@@ -848,9 +1095,27 @@ export function SheetBlockView({
               data-sheet-editor
               className="bg-surface px-1.5 font-mono text-meta text-body outline-none"
               value={edit!.draft}
-              onChange={(e) =>
-                setEdit((prev) => (prev ? { ...prev, draft: e.target.value, via: "grid" } : prev))
-              }
+              onChange={(e) => {
+                // Typing ENDS a reference pick, so the next click inserts
+                // fresh rather than replacing what was just typed over.
+                const pos = e.target.selectionStart ?? e.target.value.length;
+                caretRef.current = pos;
+                setCaret(pos);
+                pickRef.current = null;
+                setPick(null);
+                setPickRect(null);
+                setDismissed(false);
+                setPanelIdx(0);
+                setEdit((prev) =>
+                  prev ? { ...prev, draft: e.target.value, via: "grid" } : prev,
+                );
+              }}
+              onSelect={(e) => {
+                const el = e.currentTarget;
+                const pos = el.selectionStart ?? el.value.length;
+                caretRef.current = pos;
+                setCaret(pos);
+              }}
               onKeyDown={onGridKeyDown}
               onBlur={(e) => {
                 // COORDINATES FROM STATE, NEVER FROM A CLOSURE.

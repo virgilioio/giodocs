@@ -188,7 +188,15 @@ export type SheetAction =
   | { kind: "clearRange" }
   | { kind: "bold" }
   | { kind: "italic" }
-  | { kind: "clearSelection" };
+  | { kind: "clearSelection" }
+  /* ── Suggestion-panel keys. WHEN THE PANEL IS OPEN IT TAKES ↑↓, Tab,
+   * Enter and Escape FIRST — the precedence lives here, in the pure
+   * decision, so it is testable without a DOM. Escape closes the panel;
+   * a SECOND Escape (panel now closed) discards the edit. ── */
+  | { kind: "panelPrev" }
+  | { kind: "panelNext" }
+  | { kind: "panelInsert" }
+  | { kind: "panelClose" };
 
 function isPrintable(k: KeyInfo): boolean {
   return k.key.length === 1 && !k.meta && !k.ctrl && !k.alt;
@@ -243,7 +251,15 @@ export function keyWhenEditing(
   c: number,
   rows: number,
   cols: number,
+  /** The autocomplete panel is showing. It claims ↑↓, Tab, Enter, Escape. */
+  panelOpen = false,
 ): SheetAction {
+  if (panelOpen && !k.meta && !k.ctrl && !k.alt) {
+    if (k.key === "ArrowUp") return { kind: "panelPrev" };
+    if (k.key === "ArrowDown") return { kind: "panelNext" };
+    if (k.key === "Tab" || k.key === "Enter") return { kind: "panelInsert" };
+    if (k.key === "Escape") return { kind: "panelClose" };
+  }
   if (k.key === "Escape") return { kind: "discard" };
   if (k.key === "Enter") {
     // Enter at the last row commits and stays — it never grows the sheet.
