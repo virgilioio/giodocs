@@ -3291,7 +3291,15 @@ function BlockContent({
   // Sheets live entirely in src/components/sheet-block.tsx. This is a mount
   // point and nothing more — no sheet logic belongs in this file.
   if (t === "sheet") {
-    return <SheetBlockView block={block as unknown as Record<string, unknown>} pageScope={pageScope} />;
+    return (
+      <SheetBlockView
+        block={block as unknown as Record<string, unknown>}
+        pageScope={pageScope}
+        locked={locked}
+        onChange={(patch) => onChange(patch as Partial<Blk>)}
+        onBlur={onBlur}
+      />
+    );
   }
 
   if (t === "code") {

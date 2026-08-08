@@ -49,7 +49,6 @@ import {
   cellBox,
   cellsIn,
   HEAD_H,
-  inRect,
   isSingle,
   keyWhenEditing,
   keyWhenSelected,
@@ -240,8 +239,13 @@ export function SheetBlockView({
   const onGridKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (!sel) return;
-      const info = { key: e.key, shift: e.shiftKey, meta: e.metaKey, ctrl: e.ctrlKey, altKey: e.altKey } as const;
-      const k = { key: info.key, shift: info.shift, meta: info.meta, ctrl: info.ctrl, alt: e.altKey };
+      const k = {
+        key: e.key,
+        shift: e.shiftKey,
+        meta: e.metaKey,
+        ctrl: e.ctrlKey,
+        alt: e.altKey,
+      };
       const live = editRef.current;
       const action = live
         ? keyWhenEditing(k, live.r, live.c, rows, cols)
@@ -599,7 +603,6 @@ export function SheetBlockView({
         <p className="mt-1.5 text-caption text-amberInk">{SHEET_NUDGE_TEXT}</p>
       )}
       <span className="sr-only">{`${rows} rows, ${cols} columns`}</span>
-      {rc && inRect(rc, 0, 0) ? null : null}
     </div>
   );
 }
