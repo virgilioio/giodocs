@@ -380,17 +380,29 @@ export function SheetBlockView({
     );
   }, []);
 
-  /** Holds the edit open across a pick. The flag is cleared a turn later,
-   *  once the browser has finished whatever focus shuffle the gesture
-   *  caused. */
+  /** Holds the edit open across a pick. A guard whose job is to survive a
+   *  POINTER GESTURE must expire when that gesture ends, so it is cleared on
+   *  a one-shot window `pointerup` (and `pointercancel`) — never on a timer,
+   *  which fired mid-gesture and let the pointerup blur commit the draft.
+   *  Idempotent: overlapping picks reuse the single registered listener. */
+  const holdCleanup = useRef<(() => void) | null>(null);
   const holdEdit = useCallback(() => {
     holdRef.current = true;
-    setTimeout(() => {
-      holdRef.current = false;
-    }, 0);
+    if (!holdCleanup.current) {
+      const end = () => {
+        holdRef.current = false;
+        window.removeEventListener("pointerup", end, true);
+        window.removeEventListener("pointercancel", end, true);
+        holdCleanup.current = null;
+      };
+      holdCleanup.current = end;
+      window.addEventListener("pointerup", end, true);
+      window.addEventListener("pointercancel", end, true);
+    }
     const el = inputRef.current;
     if (el && document.activeElement !== el) el.focus();
   }, []);
+  useEffect(() => () => holdCleanup.current?.(), []);
 
   const insertSuggestion = useCallback(
     (index?: number) => {
