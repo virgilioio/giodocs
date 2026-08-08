@@ -25,8 +25,14 @@ import {
   OwnerPicker,
   SelectPicker,
   TagsPicker,
+  DatePicker,
+  NumberEditor,
+  TextEditor,
+  CheckboxToggle,
 } from "./property-pickers";
+import { isPropSet, isTerminalStatus } from "@/lib/due-date";
 import { formatTimestamp } from "@/lib/format";
+
 import { EditableBody, EditableTitle } from "./page-editor-body";
 import { createBlocksSaver } from "@/lib/blocks-saver";
 import { useDelayedPending } from "./sk";
@@ -464,68 +470,56 @@ function EditableValue({
     );
   }
 
-  /* ── Checkbox ── (direct toggle, no popover). Uses a native input so
-   * accent-color themes the tick without a custom glyph. */
+  /* ── Checkbox ── (direct toggle, no popover). Shared with the table
+   * cell so the tick, the accent colour and the "absent means false"
+   * rule can never drift between the two sites. */
   if (def?.type === "checkbox") {
-    const on = !!raw;
-    return (
-      <label
-        className={VALUE_CELL_CLASS}
-        style={VALUE_CELL_STYLE}
-        aria-label={def.label}
-      >
-        <input
-          type="checkbox"
-          checked={on}
-          onChange={(e) => onSet(e.currentTarget.checked)}
-          style={{
-            width: 15,
-            height: 15,
-            margin: 0,
-            accentColor: "var(--color-accent)",
-            cursor: "pointer",
-          }}
-        />
-      </label>
-    );
+    return <CheckboxToggle value={raw} onSet={onSet} label={def.label} />;
   }
 
   /* ── Number ── */
   if (def?.type === "number") {
     return (
-      <NumberInline
-        value={typeof raw === "number" ? raw : null}
+      <NumberEditor
+        value={raw}
         onSet={onSet}
         onOpenChange={onOpenChange}
-        propKey={propKey}
-        defType={def?.type}
+        emptyLabel={emptyCopy(propKey, def.type)}
+        triggerClassName={VALUE_CELL_CLASS + " tnum"}
+        triggerStyle={VALUE_CELL_STYLE}
       />
     );
   }
 
-  /* ── Date ── */
+  /* ── Date ── overdue is judged against the page's own status: a
+   * finished page is never late. */
   if (def?.type === "date") {
     return (
-      <DateInline
-        value={typeof raw === "string" ? raw : null}
+      <DatePicker
+        value={raw}
         onSet={onSet}
         onOpenChange={onOpenChange}
-        propKey={propKey}
-        defType={def?.type}
+        terminal={isTerminalStatus(propsOf(page)["status"])}
+        emptyLabel={emptyCopy(propKey, def.type)}
+        triggerClassName={VALUE_CELL_CLASS}
+        triggerStyle={VALUE_CELL_STYLE}
       />
     );
   }
 
   /* ── Text / default ── */
   return (
-    <TextInline
-      value={typeof raw === "string" ? raw : ""}
+    <TextEditor
+      value={raw}
       onSet={onSet}
-      propKey={propKey}
-      defType={def?.type}
+      onOpenChange={onOpenChange}
+      emptyLabel={emptyCopy(propKey, def?.type)}
+      triggerClassName={VALUE_CELL_CLASS + " w-full"}
+      triggerStyle={VALUE_CELL_STYLE}
     />
   );
 }
+
 
 function StatusChipInline({
   label,
@@ -564,196 +558,6 @@ function StatusChipInline({
       ) : null}
       {label}
     </span>
-  );
-}
-
-function NumberInline({
-  value,
-  onSet,
-  onOpenChange,
-  propKey,
-  defType,
-}: {
-  value: number | null;
-  onSet: (v: number | null) => void;
-  onOpenChange: (open: boolean) => void;
-  propKey: string;
-  defType?: string;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<string>(value === null ? "" : String(value));
-  useEffect(() => {
-    onOpenChange(editing);
-  }, [editing, onOpenChange]);
-  useEffect(() => {
-    if (!editing) setDraft(value === null ? "" : String(value));
-  }, [value, editing]);
-  if (!editing) {
-    return (
-      <button
-        type="button"
-        onClick={() => setEditing(true)}
-        className={VALUE_CELL_CLASS + " tnum"}
-        style={VALUE_CELL_STYLE}
-      >
-        {value === null ? (
-          <EmptyValue propKey={propKey} defType={defType} />
-        ) : (
-          <span style={{ fontSize: 14, color: "var(--color-strong)" }}>{value}</span>
-        )}
-      </button>
-    );
-  }
-  return (
-    <input
-      autoFocus
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          (e.target as HTMLInputElement).blur();
-        } else if (e.key === "Escape") {
-          e.preventDefault();
-          setDraft(value === null ? "" : String(value));
-          setEditing(false);
-        }
-      }}
-      onBlur={() => {
-        const t = draft.trim();
-        if (t === "") {
-          onSet(null);
-        } else {
-          const n = Number(t);
-          if (!Number.isNaN(n)) onSet(n);
-        }
-        setEditing(false);
-      }}
-      inputMode="decimal"
-      className="w-full rounded-sm border border-line bg-surface px-2 py-0.5 text-meta tnum"
-    />
-  );
-}
-
-function DateInline({
-  value,
-  onSet,
-  onOpenChange,
-  propKey,
-  defType,
-}: {
-  value: string | null;
-  onSet: (v: string | null) => void;
-  onOpenChange: (open: boolean) => void;
-  propKey: string;
-  defType?: string;
-}) {
-  const label =
-    value && !isNaN(new Date(value).getTime())
-      ? new Date(value).toLocaleDateString()
-      : null;
-  return (
-    <Popover
-      width={220}
-      onOpenChange={onOpenChange}
-      trigger={({ onClick, ref }) => (
-        <button
-          ref={ref}
-          type="button"
-          onClick={onClick}
-          className={VALUE_CELL_CLASS}
-          style={VALUE_CELL_STYLE}
-        >
-          {label ? (
-            <span style={{ fontSize: 14, color: "var(--color-strong)" }}>{label}</span>
-          ) : (
-            <EmptyValue propKey={propKey} defType={defType} />
-          )}
-        </button>
-      )}
-    >
-      {(close) => (
-        <div className="flex flex-col gap-1 p-1">
-          <input
-            type="date"
-            defaultValue={value ?? ""}
-            onChange={(e) => {
-              onSet(e.target.value || null);
-              close();
-            }}
-            className="rounded-sm border border-line bg-surface px-2 py-1 text-meta"
-          />
-          {value ? (
-            <button
-              type="button"
-              className="rounded-sm px-2 py-1 text-left text-meta text-muted hover:bg-rail"
-              onClick={() => {
-                onSet(null);
-                close();
-              }}
-            >
-              Clear
-            </button>
-          ) : null}
-        </div>
-      )}
-    </Popover>
-  );
-}
-
-function TextInline({
-  value,
-  onSet,
-  propKey,
-  defType,
-}: {
-  value: string;
-  onSet: (v: string) => void;
-  propKey: string;
-  defType?: string;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
-  useEffect(() => {
-    if (!editing) setDraft(value);
-  }, [value, editing]);
-  if (!editing) {
-    return (
-      <button
-        type="button"
-        onClick={() => setEditing(true)}
-        className={VALUE_CELL_CLASS + " w-full"}
-        style={VALUE_CELL_STYLE}
-      >
-        {value ? (
-          <span style={{ fontSize: 14, color: "var(--color-strong)" }}>{value}</span>
-        ) : (
-          <EmptyValue propKey={propKey} defType={defType} />
-        )}
-      </button>
-    );
-  }
-  return (
-    <input
-      autoFocus
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          (e.target as HTMLInputElement).blur();
-        } else if (e.key === "Escape") {
-          e.preventDefault();
-          setDraft(value);
-          setEditing(false);
-        }
-      }}
-      onBlur={() => {
-        onSet(draft);
-        setEditing(false);
-      }}
-      className="w-full rounded-sm border border-line bg-surface px-2 py-0.5 text-meta"
-    />
   );
 }
 
@@ -891,7 +695,12 @@ function PropertyStrip({
   onSet: (key: string, value: unknown) => void;
 }) {
   const propsRec = propsOf(page);
-  const present = new Set(Object.keys(propsRec));
+  // null-is-absent: set_page_property stores an explicit null when a value
+  // is cleared rather than dropping the key, so a cleared property must not
+  // count as present — otherwise the strip keeps an unremovable empty row.
+  const present = new Set(
+    Object.keys(propsRec).filter((k) => isPropSet(propsRec[k])),
+  );
   const byPos = [...propDefs].sort(
     (a, b) => (a.position ?? 0) - (b.position ?? 0),
   );

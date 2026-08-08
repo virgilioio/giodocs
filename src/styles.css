@@ -550,8 +550,14 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
 .gio-tbl-cq { container-type: inline-size; container-name: tbl; }
 
 .gio-tbl-grid {
-  --gio-tbl-cols:
-    16px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.9fr) 24px;
+  /* --gio-tbl-lead is every FIXED track except the trailing 24px menu
+     track. Extra property columns are appended after the lead and before
+     the menu track by the table itself, so the ⋯ never leaves the right
+     edge. --gio-tbl-cols is the same list WITH the menu track, kept for
+     any consumer that has no extra columns. */
+  --gio-tbl-lead:
+    16px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.9fr);
+  --gio-tbl-cols: var(--gio-tbl-lead) 24px;
 }
 .gio-tbl-area { display: none; }
 .gio-tbl-tags { display: none; }
@@ -559,25 +565,25 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
 
 @container tbl (min-width: 480px) {
   .gio-tbl-grid {
-    --gio-tbl-cols:
+    --gio-tbl-lead:
       16px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)
-      minmax(0, 0.9fr) 24px;
+      minmax(0, 0.9fr);
   }
   .gio-tbl-area { display: block; }
 }
 @container tbl (min-width: 640px) {
   .gio-tbl-grid {
-    --gio-tbl-cols:
+    --gio-tbl-lead:
       16px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)
-      minmax(0, 1.2fr) minmax(0, 0.9fr) 24px;
+      minmax(0, 1.2fr) minmax(0, 0.9fr);
   }
   .gio-tbl-tags { display: block; }
 }
 @container tbl (min-width: 768px) {
   .gio-tbl-grid {
-    --gio-tbl-cols:
+    --gio-tbl-lead:
       16px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)
-      minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 0.9fr) 24px;
+      minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 0.9fr);
   }
   .gio-tbl-verified { display: block; }
 }

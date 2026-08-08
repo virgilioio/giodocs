@@ -1,5 +1,6 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Popover } from "./popover";
+import { dueLabel, toDueString } from "@/lib/due-date";
 
 /* Shared editing popovers, used by BOTH the table cells (main-view.tsx)
  * and the page properties strip (page-view.tsx). Callers supply the
@@ -423,5 +424,353 @@ function TagsPickerBody({
         </button>
       </div>
     </div>
+  );
+}
+
+/* ────────────── Date / Number / Text / Checkbox ──────────────
+ *
+ * ONE implementation per type, two call sites: the page properties strip
+ * (page-view.tsx) and the table cell (main-view.tsx). `variant` only
+ * changes typography and empty copy — never behaviour, never the value
+ * that gets stored. All four commit through the caller's onSet, which is
+ * the existing useSetPageProperty mutation in both sites. */
+
+type Variant = "strip" | "cell";
+
+const VALUE_FONT: Record<Variant, number> = { strip: 14, cell: 13.5 };
+
+function emptyNode(variant: Variant, label: string) {
+  return variant === "strip" ? (
+    <span style={{ fontSize: 14, color: "var(--color-whisper)" }}>{label}</span>
+  ) : (
+    <span className="text-faint">—</span>
+  );
+}
+
+/* ── Date ── stores "YYYY-MM-DD". Never a timestamptz. */
+
+export function DateValue({
+  value,
+  terminal,
+  variant = "strip",
+  emptyLabel = "Empty",
+  now,
+}: {
+  value: unknown;
+  terminal?: boolean;
+  variant?: Variant;
+  emptyLabel?: string;
+  now?: Date;
+}) {
+  const { state, text } = dueLabel(value, now ?? new Date(), { terminal });
+  if (state === "empty") return emptyNode(variant, emptyLabel);
+  const color =
+    state === "overdue"
+      ? "var(--color-danger)"
+      : state === "today"
+        ? "var(--color-amberInk)"
+        : "var(--color-strong)";
+  return (
+    <span
+      className="inline-flex min-w-0 items-center"
+      style={{ gap: 5, fontSize: VALUE_FONT[variant], color }}
+    >
+      {state === "overdue" ? (
+        <svg
+          viewBox="0 0 24 24"
+          width={13}
+          height={13}
+          aria-hidden
+          style={{ flex: "none" }}
+        >
+          <path
+            d="M12 3l10 18H2L12 3zM12 10v5M12 18h.01"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      ) : null}
+      <span className="truncate">{text}</span>
+    </span>
+  );
+}
+
+export function DatePicker({
+  value,
+  onSet,
+  terminal,
+  variant = "strip",
+  emptyLabel = "Empty",
+  triggerClassName,
+  triggerStyle,
+  onOpenChange,
+}: {
+  value: unknown;
+  onSet: (v: string | null) => void;
+  terminal?: boolean;
+  variant?: Variant;
+  emptyLabel?: string;
+  triggerClassName?: string;
+  triggerStyle?: React.CSSProperties;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const stored = toDueString(value);
+  return (
+    <Popover
+      width={214}
+      onOpenChange={onOpenChange}
+      trigger={({ onClick, ref }) => (
+        <button
+          ref={ref}
+          type="button"
+          onClick={onClick}
+          className={triggerClassName}
+          style={triggerStyle}
+        >
+          <DateValue
+            value={stored}
+            terminal={terminal}
+            variant={variant}
+            emptyLabel={emptyLabel}
+          />
+        </button>
+      )}
+    >
+      {(close) => (
+        <div className="flex flex-col" style={{ gap: 2, padding: 2 }}>
+          <input
+            type="date"
+            defaultValue={stored ?? ""}
+            onChange={(e) => {
+              const next = toDueString(e.target.value);
+              onSet(next);
+              if (next) close();
+            }}
+            className="w-full border border-line bg-track"
+            style={{ fontSize: 13.5, borderRadius: 8, padding: "6px 8px" }}
+          />
+          {stored ? (
+            <button
+              type="button"
+              className="rounded-sm px-2 py-1 text-left text-meta text-muted hover:bg-rail"
+              onClick={() => {
+                onSet(null);
+                close();
+              }}
+            >
+              Clear
+            </button>
+          ) : null}
+        </div>
+      )}
+    </Popover>
+  );
+}
+
+/* ── Number ── inline in place; stores a JSON number, never a string. */
+
+export function NumberEditor({
+  value,
+  onSet,
+  variant = "strip",
+  emptyLabel = "Empty",
+  triggerClassName,
+  triggerStyle,
+  onOpenChange,
+}: {
+  value: unknown;
+  onSet: (v: number | null) => void;
+  variant?: Variant;
+  emptyLabel?: string;
+  triggerClassName?: string;
+  triggerStyle?: React.CSSProperties;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const current = typeof value === "number" && Number.isFinite(value) ? value : null;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(current === null ? "" : String(current));
+  useEffect(() => {
+    onOpenChange?.(editing);
+  }, [editing, onOpenChange]);
+  useEffect(() => {
+    if (!editing) setDraft(current === null ? "" : String(current));
+  }, [current, editing]);
+
+  const commit = () => {
+    const t = draft.trim();
+    if (t === "") {
+      if (current !== null) onSet(null);
+    } else {
+      const n = Number(t);
+      // Reject non-numeric input rather than storing NaN.
+      if (Number.isFinite(n)) {
+        if (n !== current) onSet(n);
+      }
+    }
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        type="number"
+        value={draft}
+        aria-label="Number value"
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            setDraft(current === null ? "" : String(current));
+            setEditing(false);
+          }
+        }}
+        onBlur={commit}
+        className="w-full border border-line bg-track tnum"
+        style={{ fontSize: VALUE_FONT[variant], borderRadius: 8, padding: "3px 7px" }}
+      />
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className={triggerClassName}
+      style={triggerStyle}
+    >
+      {current === null ? (
+        emptyNode(variant, emptyLabel)
+      ) : (
+        <span
+          className="tnum"
+          style={{ fontSize: VALUE_FONT[variant], color: "var(--color-strong)" }}
+        >
+          {current}
+        </span>
+      )}
+    </button>
+  );
+}
+
+/* ── Text ── inline in place, single line, ellipsised with a title. */
+
+export function TextEditor({
+  value,
+  onSet,
+  variant = "strip",
+  emptyLabel = "Empty",
+  triggerClassName,
+  triggerStyle,
+  onOpenChange,
+}: {
+  value: unknown;
+  onSet: (v: string | null) => void;
+  variant?: Variant;
+  emptyLabel?: string;
+  triggerClassName?: string;
+  triggerStyle?: React.CSSProperties;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const current = typeof value === "string" ? value : "";
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(current);
+  useEffect(() => {
+    onOpenChange?.(editing);
+  }, [editing, onOpenChange]);
+  useEffect(() => {
+    if (!editing) setDraft(current);
+  }, [current, editing]);
+
+  const commit = () => {
+    const next = draft;
+    if (next !== current) onSet(next === "" ? null : next);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={draft}
+        aria-label="Text value"
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            setDraft(current);
+            setEditing(false);
+          }
+        }}
+        onBlur={commit}
+        className="w-full border border-line bg-track"
+        style={{ fontSize: VALUE_FONT[variant], borderRadius: 8, padding: "3px 7px" }}
+      />
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className={(triggerClassName ?? "") + " min-w-0"}
+      style={triggerStyle}
+      title={current || undefined}
+    >
+      {current ? (
+        <span
+          className="min-w-0 truncate"
+          style={{ fontSize: VALUE_FONT[variant], color: "var(--color-strong)" }}
+        >
+          {current}
+        </span>
+      ) : (
+        emptyNode(variant, emptyLabel)
+      )}
+    </button>
+  );
+}
+
+/* ── Checkbox ── one click toggles; an absent value is false. */
+
+export function CheckboxToggle({
+  value,
+  onSet,
+  label,
+  variant = "strip",
+}: {
+  value: unknown;
+  onSet: (v: boolean) => void;
+  label: string;
+  variant?: Variant;
+}) {
+  return (
+    <label
+      className={
+        "flex items-center " + (variant === "cell" ? "justify-center w-full" : "")
+      }
+      style={{ minHeight: 24, cursor: "pointer" }}
+      aria-label={label}
+    >
+      <input
+        type="checkbox"
+        checked={value === true}
+        onChange={(e) => onSet(e.currentTarget.checked)}
+        style={{
+          width: 15,
+          height: 15,
+          margin: 0,
+          accentColor: "var(--color-accent)",
+          cursor: "pointer",
+        }}
+      />
+    </label>
   );
 }

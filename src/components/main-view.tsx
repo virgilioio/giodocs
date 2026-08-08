@@ -25,9 +25,14 @@ import {
   OwnerPicker,
   AreaPicker,
   TagsPicker,
+  DatePicker,
+  NumberEditor,
+  TextEditor,
+  CheckboxToggle,
   MiniAvatar,
   type SelectOption,
 } from "./property-pickers";
+import { isTerminalStatus } from "@/lib/due-date";
 import {
   SpecMenuTrigger,
   type MenuSpec,
@@ -1330,6 +1335,68 @@ function TagsCell({
 }
 
 
+/* Extra property columns — the four value types that are not one of the
+ * fixed table columns. They render through the SAME shared editors the
+ * page properties strip uses, so a Due date behaves identically in both
+ * places. Selects, people and tags already have their own dedicated
+ * columns, so they are deliberately not repeated here. */
+const EXTRA_CELL_TYPES = new Set(["date", "number", "text", "checkbox"]);
+const FIXED_KEYS = new Set(["area", "owner", "status", "tags"]);
+
+export function extraColumnDefs(propDefs: PropDef[]): PropDef[] {
+  return [...propDefs]
+    .filter((d) => EXTRA_CELL_TYPES.has(d.type) && !FIXED_KEYS.has(d.key))
+    .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+}
+
+function PropCell({
+  page,
+  def,
+  onSet,
+}: {
+  page: PageListItem;
+  def: PropDef;
+  onSet: (value: unknown) => void;
+}) {
+  const raw = propsOf(page)[def.key];
+  if (def.type === "checkbox")
+    return (
+      <CheckboxToggle
+        value={raw}
+        onSet={onSet}
+        label={def.label}
+        variant="cell"
+      />
+    );
+  if (def.type === "number")
+    return (
+      <NumberEditor
+        value={raw}
+        onSet={onSet}
+        variant="cell"
+        triggerClassName="text-left"
+      />
+    );
+  if (def.type === "date")
+    return (
+      <DatePicker
+        value={raw}
+        onSet={onSet}
+        variant="cell"
+        terminal={isTerminalStatus(propsOf(page)["status"])}
+        triggerClassName="min-w-0 text-left"
+      />
+    );
+  return (
+    <TextEditor
+      value={raw}
+      onSet={onSet}
+      variant="cell"
+      triggerClassName="text-left"
+    />
+  );
+}
+
 /* ─────────────────────────── Main view ─────────────────────────── */
 
 export function MainView({ selection }: { selection: Selection }) {
@@ -1867,6 +1934,7 @@ export function MainView({ selection }: { selection: Selection }) {
         selectAllState={selectAllState}
         onHeaderCheckboxClick={onHeaderCheckboxClick}
         getPageMenuBuild={getPageMenuBuild}
+        propDefs={propDefs}
       />
     );
 
@@ -2487,6 +2555,7 @@ const TableRow = memo(function TableRow({
   anySelection,
   onCheckboxClick,
   buildMenu,
+  extraDefs,
 }: {
   p: PageListItem;
   isStale: boolean;
@@ -2501,6 +2570,7 @@ const TableRow = memo(function TableRow({
   anySelection: boolean;
   onCheckboxClick: (id: string, shift: boolean) => void;
   buildMenu: (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
+  extraDefs: PropDef[];
 }) {
   return (
     <RowGroup pageId={p.id} selected={selected}>
@@ -2557,6 +2627,15 @@ const TableRow = memo(function TableRow({
       <Cell>
         <span className="text-meta text-muted">{relTime(p.edited_at)}</span>
       </Cell>
+      {extraDefs.map((d) => (
+        <Cell key={d.key}>
+          <PropCell
+            page={p}
+            def={d}
+            onSet={(v) => setProp({ pageId: p.id, key: d.key, value: v })}
+          />
+        </Cell>
+      ))}
       <Cell edge data-row-more>
         <SpecMenuTrigger
           build={buildMenu}
@@ -2599,6 +2678,7 @@ function TableBody({
   selectAllState,
   onHeaderCheckboxClick,
   getPageMenuBuild,
+  propDefs,
 }: {
   rows: PageListItem[];
   pages: PageListItem[];
@@ -2614,7 +2694,9 @@ function TableBody({
   selectAllState: "none" | "some" | "all";
   onHeaderCheckboxClick: () => void;
   getPageMenuBuild: (p: PageListItem) => (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
+  propDefs: PropDef[];
 }) {
+  const extraDefs = useMemo(() => extraColumnDefs(propDefs), [propDefs]);
   // Stable tag options: recompute from pages, but keep the same array ref
   // when contents are unchanged so memoized rows don't re-render.
   const tagsRaw = useMemo(() => {
@@ -2674,7 +2756,14 @@ function TableBody({
       <div
         role="table"
         className="min-w-full text-row grid gio-tbl-grid"
-        style={{ gridTemplateColumns: "var(--gio-tbl-cols)" }}
+        style={{
+          // The lead var carries every fixed track EXCEPT the trailing 24px
+          // ⋯ track, so extra property columns slot in before it and the
+          // menu stays pinned to the right edge at every breakpoint.
+          gridTemplateColumns: `var(--gio-tbl-lead) ${extraDefs
+            .map((d) => (d.type === "checkbox" ? "34px" : "minmax(0, 0.9fr)"))
+            .join(" ")} 24px`,
+        }}
         onClickCapture={onGridClickCapture}
       >
         <HeaderCell edge>
@@ -2691,6 +2780,9 @@ function TableBody({
         <HeaderCell className="gio-tbl-tags">Tags</HeaderCell>
         <HeaderCell className="gio-tbl-verified">Verified</HeaderCell>
         <HeaderCell>Edited</HeaderCell>
+        {extraDefs.map((d) => (
+          <HeaderCell key={d.key}>{d.label}</HeaderCell>
+        ))}
         <HeaderCell edge> </HeaderCell>
 
         {rows.map((p) => (
@@ -2709,6 +2801,7 @@ function TableBody({
             anySelection={anySelection}
             onCheckboxClick={onCheckboxClick}
             buildMenu={getPageMenuBuild(p)}
+            extraDefs={extraDefs}
           />
         ))}
       </div>
