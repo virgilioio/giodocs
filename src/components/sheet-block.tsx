@@ -581,6 +581,103 @@ export function SheetBlockView({
     [editable, sheet, write, onBlur],
   );
 
+  /* ── DISMISS ON A CLICK OUTSIDE THE BLOCK. Two dense rows of chrome
+   * sitting permanently above a document compete with the prose around
+   * it, so the toolbar exists only while a cell is selected.
+   *
+   * ⚠ CAPTURE PHASE. Chunk 5's click-to-reference and the suggestion panel
+   * both call preventDefault on mousedown; a bubble-phase listener would
+   * either miss those events or fight them. Capture runs BEFORE any of
+   * that, and the [data-sheet] test means everything inside this block —
+   * cells included — is skipped untouched.
+   *
+   * An open editor is committed EXPLICITLY here rather than relying on
+   * blur: clearing the edit unmounts the input, and a draft lost that way
+   * is silent data loss. */
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Element | null;
+      if (t && typeof t.closest === "function" && t.closest("[data-sheet]")) return;
+      const live = editRef.current;
+      if (live) {
+        commitCell(live.r, live.c, live.draft);
+        editRef.current = null;
+        setEdit(null);
+      }
+      setSel(null);
+      setPal(null);
+      setPick(null);
+      setPickRect(null);
+    };
+    document.addEventListener("mousedown", onDown, true);
+    return () => document.removeEventListener("mousedown", onDown, true);
+  }, [commitCell]);
+
+  /* ── Toolbar actions. Each is ONE write over the whole selection. ── */
+
+  const setFormat = useCallback(
+    (f: CellFormat) => {
+      if (!sel) return;
+      applyRange(sel, (cur) => {
+        cur.f = f;
+        return cur;
+      });
+    },
+    [sel, applyRange],
+  );
+
+  /** Steps `d`. It NEVER writes a display default — format() owns those, so
+   *  a currency cell with no `d` still renders two decimals. */
+  const bumpDecimals = useCallback(
+    (dir: 1 | -1) => {
+      if (!sel) return;
+      const d = stepDecimals(selCells, dir);
+      applyRange(sel, (cur) => {
+        cur.d = d;
+        return cur;
+      });
+    },
+    [sel, selCells, applyRange],
+  );
+
+  const setAlign = useCallback(
+    (a: CellAlign) => {
+      if (!sel) return;
+      const same = commonAlign(selCells) === a;
+      applyRange(sel, (cur) => {
+        if (same) delete cur.a;
+        else cur.a = a;
+        return cur;
+      });
+    },
+    [sel, selCells, applyRange],
+  );
+
+  const setColourKey = useCallback(
+    (which: "bg" | "fg", key: string | null) => {
+      if (!sel) return;
+      applyRange(sel, (cur) => {
+        if (key === null) delete cur[which];
+        else cur[which] = key;
+        return cur;
+      });
+      setPal(null);
+    },
+    [sel, applyRange],
+  );
+
+  /** Resets f d b i a bg fg rt across the range in ONE action, leaving
+   *  every `v` untouched. */
+  const clearFormatting = useCallback(() => {
+    if (!sel) return;
+    applyRange(sel, (cur) => clearedCell(cur));
+  }, [sel, applyRange]);
+
+  const toggleFreeze = useCallback(() => {
+    if (!editable) return;
+    onChange?.({ freeze: !freeze });
+    onBlur?.();
+  }, [editable, onChange, freeze, onBlur]);
 
 
   /* ───────────────────────── Keyboard ─────────────────────────
