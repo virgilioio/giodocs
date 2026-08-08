@@ -33,7 +33,7 @@
  * of step with the columns is silent corruption.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   colName,
   evaluateCell,
@@ -78,8 +78,25 @@ import {
   type PickSpan,
 } from "@/lib/sheet-formula";
 import { fillToken, inkToken } from "@/lib/sheet-palette";
+import {
+  ALIGNS,
+  clearedCell,
+  commonAlign,
+  commonFormat,
+  commonKey,
+  FILL_SWATCHES,
+  hasFormatting,
+  INK_SWATCHES,
+  markDecision,
+  NUMBER_FORMATS,
+  stepDecimals,
+  type MarkKey,
+  type Swatch,
+} from "@/lib/sheet-toolbar";
+import { IC } from "@/lib/menu-icons";
 import { SHEET_GRID_ATTR } from "@/lib/is-typing";
 import { useToast } from "@/lib/toast";
+
 import {
   cellBox,
   cellsIn,
