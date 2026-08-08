@@ -1858,17 +1858,35 @@ export function SheetBlockView({
                       (i === hi ? "bg-sunken" : "")
                     }
                     style={{ flexGrow: 0, flexShrink: 0, flexBasis: "auto" }}
-                    onMouseDown={(e) => {
-                      // The insertion happens HERE, not on click: cancelling
-                      // pointerdown (which the panel does, to hold focus)
-                      // suppresses the compatibility click in Chromium, so a
-                      // click-driven insert never ran. preventDefault keeps
-                      // the editor focused; the edit stays open exactly as
-                      // Tab and Enter leave it.
+                    onPointerDown={(e) => {
+                      // MEASURED in Chromium: a cancelled `pointerdown`
+                      // suppresses the compatibility `mousedown` AND the
+                      // `click` entirely — neither event ever fires. The panel
+                      // container cancels pointerdown to hold focus, so
+                      // pointerdown is the ONLY event a row can act on here.
                       e.preventDefault();
+                      rowPickedRef.current = true;
+                      const clear = () => {
+                        rowPickedRef.current = false;
+                        window.removeEventListener("pointerup", clear, true);
+                        window.removeEventListener("pointerdown", clear, true);
+                      };
+                      window.addEventListener("pointerup", clear, true);
+                      window.addEventListener("pointerdown", clear, true);
                       setPanelIdx(i);
                       insertSuggestion(i);
                     }}
+                    onMouseDown={(e) => {
+                      // Retained SOLELY for engines that still emit the
+                      // compatibility mousedown after a cancelled pointerdown.
+                      // Chromium never reaches this; pointerdown above is the
+                      // load-bearing path. Guarded so no engine inserts twice.
+                      e.preventDefault();
+                      if (rowPickedRef.current) return;
+                      setPanelIdx(i);
+                      insertSuggestion(i);
+                    }}
+
 
                   >
                     <span className="font-mono text-meta text-body">{f.name}</span>
