@@ -576,13 +576,52 @@ export function SheetBlockView({
             {readout}
           </span>
         )}
+        {/* ── Contextual row / column operations. They live BESIDE the
+              formula bar, right-aligned, so a full-span selection does not
+              make the sheet grow a second bar. Nothing here vanishes at a
+              boundary: it greys, explains itself in the title, and toasts
+              the reason when clicked. ── */}
+        {ctl && (
+          <div className="flex shrink-0 items-center gap-0.5" data-sheet-span>
+            <span className="mr-1 whitespace-nowrap text-caption text-muted" data-sheet-span-label>
+              {ctl.label}
+            </span>
+            {ctl.ops.map((op) => (
+              <button
+                key={op.id}
+                type="button"
+                title={op.title}
+                data-sheet-op={op.id}
+                aria-disabled={!op.enabled}
+                onKeyDown={guardKeys}
+                onClick={() => {
+                  if (!op.enabled) {
+                    toast.push(op.toast ?? op.title);
+                    return;
+                  }
+                  runSpanOp(ctl.kind, ctl.i0, ctl.i1, op.id);
+                }}
+                className={
+                  "h-[26px] rounded-md px-2 text-caption hover:bg-sunken " +
+                  (op.danger ? "text-danger" : "text-secondary") +
+                  (op.enabled ? "" : " opacity-50")
+                }
+              >
+                {op.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div
-        className="overflow-auto rounded-lg border border-line bg-surface"
-        style={{ width, maxWidth: "100%", maxHeight: 520 }}
-      >
-        <div
+      <div className="flex items-stretch gap-1">
+        <div className="flex min-w-0 flex-col gap-1">
+          <div
+            className="overflow-auto rounded-lg border border-line bg-surface"
+            style={{ width, maxWidth: "100%", maxHeight: 520 }}
+          >
+            <div
+
           role="table"
           ref={gridRef}
           tabIndex={0}
