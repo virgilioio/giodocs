@@ -108,6 +108,7 @@ import {
   type FillAxis,
   type SheetClip,
 } from "@/lib/sheet-clip";
+import { clampBh, clampBw, readoutText, resizeStyle } from "@/lib/sheet-resize";
 import { fromClipboard, toClipboard } from "@/lib/clipboard";
 import { IC } from "@/lib/menu-icons";
 import { SHEET_GRID_ATTR } from "@/lib/is-typing";
@@ -1913,7 +1914,7 @@ export function SheetBlockView({
                   ? "text-faint hover:bg-sunken hover:text-muted"
                   : "text-whisper hover:bg-sunken")
               }
-              style={{ width: width ?? "100%", maxWidth: "100%" }}
+              style={{ width: "100%", maxWidth: "100%" }}
             >
               <PlusGlyph />
             </button>
