@@ -165,6 +165,14 @@ export function SheetBlockView({
   const gridRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const barRef = useRef<HTMLInputElement | null>(null);
+  const toast = useToast();
+  /* How the current selection was MADE. In a one-column sheet selecting
+   * the column also selects every row, so the contextual group would
+   * otherwise read as rows and offer the wrong floor message. */
+  const [spanPref, setSpanPref] = useState<SpanKind | undefined>(undefined);
+  /* A width drag in flight. Held in state so the clamp is FELT during the
+   * drag; only pointerup writes, so a drag is ONE undo entry. */
+  const [drag, setDrag] = useState<{ c: number; px: number } | null>(null);
   /* The focus stamp lives OUTSIDE the value that changes. Without it the
    * ref callback re-runs focus() + select() on every render, re-selecting
    * the text so the next keystroke replaces everything typed so far — the
@@ -178,6 +186,14 @@ export function SheetBlockView({
     },
     [onChange],
   );
+
+  /** Widths as the user currently SEES them — the live drag overrides the
+   *  stored value so every overlay stays arithmetically aligned mid-drag. */
+  const cw = useMemo(
+    () => (drag ? sheet.cw.map((w, i) => (i === drag.c ? drag.px : w)) : sheet.cw),
+    [drag, sheet.cw],
+  );
+
 
   /** Commit a raw draft onto (r, c). Coordinates are ALWAYS passed in from
    *  live state by the caller — never read from a closure. */
