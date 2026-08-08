@@ -380,17 +380,34 @@ export function SheetBlockView({
     );
   }, []);
 
-  /** Holds the edit open across a pick. The flag is cleared a turn later,
-   *  once the browser has finished whatever focus shuffle the gesture
-   *  caused. */
+  /** Holds the edit open across a pick. A guard whose job is to survive a
+   *  POINTER GESTURE must expire when that gesture ends, so it is cleared on
+   *  a one-shot window `pointerup` (and `pointercancel`) — never on a timer,
+   *  which fired mid-gesture and let the pointerup blur commit the draft.
+   *  Idempotent: overlapping picks reuse the single registered listener. */
+  const holdCleanup = useRef<(() => void) | null>(null);
   const holdEdit = useCallback(() => {
     holdRef.current = true;
-    setTimeout(() => {
-      holdRef.current = false;
-    }, 0);
+    if (!holdCleanup.current) {
+      const end = () => {
+        window.removeEventListener("pointerup", end, true);
+        window.removeEventListener("pointercancel", end, true);
+        holdCleanup.current = null;
+        // Drop the flag only once THIS pointerup has finished propagating:
+        // other window listeners for the same event (the page marquee's, for
+        // one) may still run and imperatively blur the editor.
+        queueMicrotask(() => {
+          holdRef.current = false;
+        });
+      };
+      holdCleanup.current = end;
+      window.addEventListener("pointerup", end, true);
+      window.addEventListener("pointercancel", end, true);
+    }
     const el = inputRef.current;
     if (el && document.activeElement !== el) el.focus();
   }, []);
+  useEffect(() => () => holdCleanup.current?.(), []);
 
   const insertSuggestion = useCallback(
     (index?: number) => {
@@ -409,11 +426,12 @@ export function SheetBlockView({
   );
 
 
-  /* ── CLICK-TO-REFERENCE. Two things keep the edit alive: mousedown is
-        prevented on the cell (pointerdown alone does NOT stop the focus
-        shift, which is what committed the draft), and holdEdit() refuses
-        any blur the gesture still manages to cause. A second pick REPLACES
-        the first, which is why the inserted span is tracked. ── */
+  /* ── CLICK-TO-REFERENCE. Two things keep the edit alive: the cell's
+        pointerdown is cancelled (Chromium then dispatches no mousedown at
+        all, so no focus shift happens), and holdEdit() refuses any blur the
+        gesture still manages to cause — including the page marquee's
+        imperative blur on pointerup. A second pick REPLACES the first, which
+        is why the inserted span is tracked. ── */
   const insertReference = useCallback(
     (r0: number, c0: number, r1: number, c1: number) => {
       const live = editRef.current;
@@ -1602,12 +1620,14 @@ export function SheetBlockView({
                         pickCell(r, c, e.shiftKey);
                       }}
                       onMouseDown={(e) => {
-                        // ⚠ THE WHOLE TRICK. Cancelling pointerdown does NOT
-                        // stop the focus shift — only cancelling MOUSEDOWN
-                        // does. Without this the editor blurred, the draft
-                        // committed, and "=SUM(B2" landed in the cell as
-                        // #NAME. Same predicate as pointerdown and the
-                        // keyboard: canPick() is the single decision.
+                        // CROSS-BROWSER FALLBACK ONLY. Chromium dispatches no
+                        // mousedown at all after a cancelled pointerdown, so
+                        // this handler is never reached there (measured in the
+                        // browser). Engines that still emit the compatibility
+                        // mousedown need it, so it stays. The load-bearing
+                        // guards are the cancelled pointerdown plus holdRef.
+                        // Same predicate as pointerdown and the keyboard:
+                        // canPick() is the single decision.
                         const live = editRef.current;
                         if (live && canPick(live.draft, caretRef.current, pickRef.current))
                           e.preventDefault();
