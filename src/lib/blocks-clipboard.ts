@@ -19,6 +19,7 @@
 import type { Block } from "./types";
 import { blockToMarkdown, blocksHtmlFragment } from "./export";
 import { numberedOrdinals } from "./blocks";
+import { toClipboardRich } from "./clipboard";
 
 export function blocksToClipboard(
   blocks: readonly Block[],
