@@ -27,7 +27,11 @@ describe("the width clamp", () => {
             // The block is centred on the text column, so its right edge
             // sits half the delta beyond the natural right edge.
             const rightEdge = naturalWidth + bw;
-            expect(rightEdge).toBeLessThanOrEqual(room - GRIP_PAD + 1e-9);
+            // In a container narrower than the block's own natural width
+            // there is nothing to give back, so the ceiling is "no bleed".
+            expect(rightEdge).toBeLessThanOrEqual(
+              Math.max(naturalWidth, room - GRIP_PAD) + 1e-9,
+            );
           }
         }
       }

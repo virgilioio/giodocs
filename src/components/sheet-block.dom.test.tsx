@@ -1259,8 +1259,10 @@ describe("the grid wrapper is the scroll container for BOTH axes", () => {
 
   it("pins a frozen first row below the column letters", () => {
     mount(<SheetBlockView block={{ ...block, freeze: true }} />);
-    const c = cell(0, 1);
-    expect(c.style.position).toBe("sticky");
-    expect(c.style.top).toBe("26px");
+    // The pin lives on the ROW, not the cell — one sticky element per row
+    // rather than one per cell.
+    const row = cell(0, 1).closest('[role="row"]') as HTMLElement;
+    expect(row.style.position).toBe("sticky");
+    expect(row.style.top).toBe("26px");
   });
 });
