@@ -91,6 +91,7 @@ import {
   rangeRef,
   rect,
   refLabel,
+  rowTop,
   ROW_H,
   ROW_NUM_W,
   selAt,
@@ -285,7 +286,7 @@ export function SheetBlockView({
         trick: it is what stops the editor from blurring, and a blur would
         commit the draft and close everything. A second pick REPLACES the
         first, which is why the inserted span is tracked. ── */
-  const pickRef2 = useCallback(
+  const insertReference = useCallback(
     (r0: number, c0: number, r1: number, c1: number) => {
       const live = editRef.current;
       if (!live) return;
@@ -891,7 +892,7 @@ export function SheetBlockView({
                           // gone before the reference lands.
                           e.preventDefault();
                           pickDrag.current = { r, c };
-                          pickRef2(r, c, r, c);
+                          insertReference(r, c, r, c);
                           return;
                         }
                         // Anywhere else a click still means "leave this
@@ -903,7 +904,7 @@ export function SheetBlockView({
                         const anchor = pickDrag.current;
                         if (anchor) {
                           e.preventDefault();
-                          pickRef2(anchor.r, anchor.c, r, c);
+                          insertReference(anchor.r, anchor.c, r, c);
                           return;
                         }
                         if (!dragging.current) return;
@@ -958,6 +959,107 @@ export function SheetBlockView({
                 zIndex: 6,
               }}
             />
+          )}
+
+          {/* ── THE REFERENCE HALO. Without it the pick is blind. A
+                grid-level overlay positioned with rangeBox — never a
+                border on a cell. ── */}
+          {pickRect && edit && (
+            <div
+              aria-hidden
+              data-sheet-halo
+              style={{
+                position: "absolute",
+                ...(() => {
+                  const b = rangeBox(cw, pickRect);
+                  return { left: b.left, top: b.top, width: b.width, height: b.height };
+                })(),
+                border: "1px dashed var(--color-blue)",
+                borderRadius: 2,
+                pointerEvents: "none",
+                zIndex: 7,
+              }}
+            />
+          )}
+
+          {/* ── THE ARGUMENT CHIP. Once the caret is inside a call the
+                question is "what goes here", not "which function". ── */}
+          {chip && edit && (
+            <div
+              data-sheet-chip
+              className="pointer-events-none rounded-md bg-btn px-[7px] py-[3px] font-mono text-caption text-btnFg"
+              style={{
+                position: "absolute",
+                left: cellBox(cw, edit.r, edit.c).left,
+                top: rowTop(edit.r) + ROW_H + 3,
+                zIndex: 9,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {chip.sig}
+            </div>
+          )}
+
+          {/* ── THE SUGGESTION PANEL. A grid-level child: rendered inside
+                the active cell it would remount the editor, and typing
+                would lose focus after one character. It RENDERS FROM THE
+                ENGINE'S TABLE (FUNCTION_META) — there is no second list.
+                Each row carries flex-none because a capped flex column
+                squashes its children instead of scrolling. ── */}
+          {sug && edit && (
+            <div
+              data-sheet-panel
+              className="flex flex-col rounded-[10px] border border-line bg-surface shadow-popover"
+              style={{
+                position: "absolute",
+                left: cellBox(cw, edit.r, edit.c).left,
+                ...(panelPlacement(edit.r, rows) === "above"
+                  ? { top: rowTop(edit.r) - PANEL_MAX_H - 4 }
+                  : { top: rowTop(edit.r) + ROW_H + 2 }),
+                width: PANEL_W,
+                maxHeight: PANEL_MAX_H,
+                zIndex: 10,
+                overflow: "hidden",
+              }}
+              onPointerDown={(e) => e.preventDefault()}
+            >
+              <div data-sheet-panel-list className="min-h-0 flex-1 overflow-y-auto py-1">
+                {sug.items.map((f, i) => (
+                  <div
+                    key={f.name}
+                    data-sheet-suggestion={f.name}
+                    aria-selected={i === hi}
+                    className={
+                      "flex flex-none items-baseline gap-1.5 overflow-hidden whitespace-nowrap px-2.5 py-1 " +
+                      (i === hi ? "bg-sunken" : "")
+                    }
+                    style={{ flex: "none" }}
+                    onMouseDown={(e) => {
+                      // A click that blurs the editor commits the draft and
+                      // closes everything — so it must not steal focus.
+                      e.preventDefault();
+                      setPanelIdx(i);
+                    }}
+                    onClick={() => {
+                      setPanelIdx(i);
+                      insertSuggestion();
+                    }}
+                  >
+                    <span className="font-mono text-meta text-body">{f.name}</span>
+                    <span className="font-mono text-meta text-whisper">{f.args}</span>
+                    <span className="overflow-hidden text-ellipsis text-caption text-faint">
+                      {f.desc}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div
+                data-sheet-panel-footer
+                className="flex-none border-t border-lineSoft px-2.5 py-1 text-caption text-faint"
+              >
+                {footerText(sug.items.length, sug.total)}
+              </div>
+            </div>
           )}
 
           {/* ── THE ONE EDITOR ELEMENT. A grid-level child, absolutely
