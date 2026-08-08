@@ -1,6 +1,15 @@
-import { describe, expect, it } from "vitest";
-import { render } from "@testing-library/react";
+// @vitest-environment happy-dom
+/* Rendering checks for the read-only sheet.
+ *
+ * The one thing containers can break is the grid track, and the one thing
+ * page scope changes is the block width. Everything else is chunk 3+.
+ */
+import { beforeEach, describe, expect, it } from "vitest";
+import { createRoot, type Root } from "react-dom/client";
+import { act } from "react";
 import { SheetBlockView, SHEET_ROW_NUM_W } from "./sheet-block";
+
+(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const block = {
   id: "s1",
@@ -14,53 +23,73 @@ const block = {
   bw: 900,
 };
 
-/** The two containers a sheet may live in share the container renderer, so
- *  the only thing that can break is the grid track. */
-function trackOf(root: HTMLElement): string {
-  const grid = root.querySelector('[role="table"]') as HTMLElement;
-  return grid.style.gridTemplateColumns;
+let host: HTMLDivElement;
+let root: Root;
+
+beforeEach(() => {
+  document.body.innerHTML = "";
+  host = document.createElement("div");
+  document.body.appendChild(host);
+});
+
+function mount(node: React.ReactNode) {
+  root = createRoot(host);
+  act(() => root.render(node));
+  return host;
 }
+
+const grid = () => host.querySelector('[role="table"]') as HTMLElement;
+const box = () => grid().parentElement as HTMLElement;
 
 describe("sheet renders inside containers", () => {
   it("keeps its grid track inside a column", () => {
-    const { container } = render(
+    mount(
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
         <SheetBlockView block={block} pageScope={false} />
       </div>,
     );
-    expect(trackOf(container as HTMLElement)).toBe(`${SHEET_ROW_NUM_W}px 160px 120px`);
+    expect(grid().style.gridTemplateColumns).toBe(`${SHEET_ROW_NUM_W}px 160px 120px`);
   });
 
   it("keeps its grid track inside a callout", () => {
-    const { container } = render(
-      <div className="callout" style={{ padding: 12 }}>
+    mount(
+      <div style={{ padding: "12px" }}>
         <SheetBlockView block={block} pageScope={false} />
       </div>,
     );
-    expect(trackOf(container as HTMLElement)).toBe(`${SHEET_ROW_NUM_W}px 160px 120px`);
+    expect(grid().style.gridTemplateColumns).toBe(`${SHEET_ROW_NUM_W}px 160px 120px`);
   });
 
-  it("ignores the block width outside page scope, honours it at page scope", () => {
-    const nested = render(<SheetBlockView block={block} pageScope={false} />);
-    const nestedBox = nested.container.querySelector('[role="table"]')!.parentElement as HTMLElement;
-    expect(nestedBox.style.width).toBe("");
-
-    const page = render(<SheetBlockView block={block} pageScope />);
-    const pageBox = page.container.querySelector('[role="table"]')!.parentElement as HTMLElement;
-    expect(pageBox.style.width).toBe("900px");
+  it("ignores the block width outside page scope", () => {
+    mount(<SheetBlockView block={block} pageScope={false} />);
+    expect(box().style.width).toBe("");
   });
 
-  it("shows computed values and the 50-row nudge only past 50 rows", () => {
-    const { container, queryByText } = render(<SheetBlockView block={block} />);
-    expect(container.textContent).toContain("100");
-    expect(container.textContent).not.toContain("=SUM");
-    expect(queryByText(/Past 50 rows/)).toBeNull();
+  it("honours the block width at page scope", () => {
+    mount(<SheetBlockView block={block} pageScope />);
+    expect(box().style.width).toBe("900px");
+  });
+});
 
-    const big = {
-      ...block,
-      cells: Array.from({ length: 60 }, () => [{ v: 1 }, { v: 2 }]),
-    };
-    const tall = render(<SheetBlockView block={big} />);
-    expect(tall.queryByText(/Past 50 rows/)).not.toBeNull();
+describe("sheet shows computed values", () => {
+  it("renders results, never formula source", () => {
+    mount(<SheetBlockView block={block} />);
+    expect(host.textContent).toContain("100");
+    expect(host.textContent).not.toContain("=SUM");
+  });
+
+  it("nudges toward pages only past 50 rows", () => {
+    mount(<SheetBlockView block={block} />);
+    expect(host.textContent).not.toContain("Past 50 rows");
+
+    document.body.innerHTML = "";
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    mount(
+      <SheetBlockView
+        block={{ ...block, cells: Array.from({ length: 60 }, () => [{ v: 1 }, { v: 2 }]) }}
+      />,
+    );
+    expect(host.textContent).toContain("Past 50 rows");
   });
 });
