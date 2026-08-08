@@ -913,8 +913,8 @@ describe("toolbar writes act on the whole selection", () => {
       />,
     );
     click(cell(0, 0));
-    tbClick(fmtBtn("f-percent")!);
-    expect((patches.at(-1)!.cells as { f?: string }[][])[0][0].f).toBe("percent");
+    tbClick(fmtBtn("f-pct")!);
+    expect((patches.at(-1)!.cells as { f?: string }[][])[0][0].f).toBe("pct");
     expect(cell(0, 0).textContent).toBe("0.04%");
   });
 
