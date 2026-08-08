@@ -271,6 +271,13 @@ export function SheetBlockView({
   const caretRef = useRef(0);
   const pickRef = useRef<PickSpan | null>(null);
   const blockId = String((block as { id?: unknown }).id ?? "sheet");
+  /* ── Chunk 6. Which palette strip is open, if any. It is a STRIP, not
+   * twelve inline swatches: the bar is looked at constantly and the
+   * palette opened rarely. ── */
+  const [pal, setPal] = useState<"fg" | "bg" | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+
 
   const write = useCallback(
     (next: SheetBlock) => {
