@@ -1282,12 +1282,19 @@ export function SheetBlockView({
       </div>
 
       <div className="flex items-stretch gap-1">
-        <div className="flex min-w-0 flex-col gap-1">
+        <div
+          ref={colRef}
+          className="relative flex min-w-0 flex-col gap-1"
+          style={resizeStyle({ bw: liveBw, bh: undefined, pageScope })}
+        >
           <div
+            ref={wrapRef}
+            data-sheet-scroll
             className="overflow-auto rounded-lg border border-line bg-surface"
-            style={{ width, maxWidth: "100%", maxHeight: 520 }}
+            style={{ maxWidth: "100%", ...resizeStyle({ bh: liveBh, pageScope: false }) }}
           >
             <div
+
 
           role="table"
           ref={gridRef}
