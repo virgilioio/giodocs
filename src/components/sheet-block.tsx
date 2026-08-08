@@ -310,6 +310,27 @@ export function SheetBlockView({
   const fillDrag = useRef<Rect | null>(null);
   const fillRef = useRef<{ rect: Rect; axis: FillAxis } | null>(null);
   fillRef.current = fill;
+  /* ── Chunk 8. The block resize. `colRef` is the bleeding box the clamp
+   * measures against its container; `wrapRef` is the scroll container for
+   * BOTH axes, which is also what chunk 2's sticky headers pin to. The drag
+   * lives in state (so the clamp is felt) AND a ref (so a window
+   * pointermove never reads the previous render). ── */
+  const colRef = useRef<HTMLDivElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  type ResizeDrag = {
+    x: number;
+    y: number;
+    startBw: number;
+    startBh: number;
+    room: number;
+    naturalWidth: number;
+    naturalHeight: number;
+    bw: number;
+    bh: number;
+  };
+  const [resize, setResize] = useState<ResizeDrag | null>(null);
+  const resizeRef = useRef<ResizeDrag | null>(null);
+
 
 
 
