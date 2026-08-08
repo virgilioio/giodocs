@@ -96,9 +96,23 @@ import {
   type MarkKey,
   type Swatch,
 } from "@/lib/sheet-toolbar";
+import {
+  applyFill,
+  clipFrom,
+  fillTarget,
+  parseTSV,
+  pasteInto,
+  pasteValues,
+  toTSV,
+  truncationText,
+  type FillAxis,
+  type SheetClip,
+} from "@/lib/sheet-clip";
+import { fromClipboard, toClipboard } from "@/lib/clipboard";
 import { IC } from "@/lib/menu-icons";
 import { SHEET_GRID_ATTR } from "@/lib/is-typing";
 import { useToast } from "@/lib/toast";
+
 
 import {
   cellBox,
