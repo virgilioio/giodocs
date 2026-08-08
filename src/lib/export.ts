@@ -1,5 +1,3 @@
-import { evaluateCell, format as sheetFormat } from "@/lib/sheet-engine";
-import { normalizeSheet, type Cell as SheetCell, type SheetBlock as SheetBlockData } from "@/lib/sheet-model";
 /**
  * Page export — pure, dependency-free, entirely in-browser.
  *
@@ -24,6 +22,8 @@ import { calloutBg, calloutRing } from "./callout-color";
 // (zero network requests). Vite `?raw` reads the file at build time; vitest
 // resolves the same way, so tests see the same string as the browser.
 import GIO_DOCS_LOGO_SVG from "../../public/gio-docs-logo.svg?raw";
+import { evaluateCell, format as sheetFormat } from "@/lib/sheet-engine";
+import { normalizeSheet, type Cell as SheetCell, type SheetBlock as SheetBlockData } from "@/lib/sheet-model";
 
 /* ─────────────────────────── Context ─────────────────────────── */
 
