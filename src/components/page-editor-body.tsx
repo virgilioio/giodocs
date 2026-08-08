@@ -1650,10 +1650,11 @@ export function EditableBody({
       // handler on containerRef takes it — don't double-start.
       const t = e.target as HTMLElement;
       if (c.contains(t)) return;
-      // Filter interactive targets that live outside the body too.
+      // Filter interactive targets that live outside the body too. Same
+      // shared list, plus the chrome that only exists out here.
       if (
         t.closest(
-          '[contenteditable="true"], textarea, input, select, button, [data-slash-menu], [data-block-handle], [data-popover-root]',
+          `${MARQUEE_SKIP_SEL}, button, [data-slash-menu], [data-block-handle], [data-popover-root]`,
         )
       )
         return;
