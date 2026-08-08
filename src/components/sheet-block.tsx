@@ -1919,7 +1919,66 @@ export function SheetBlockView({
               <PlusGlyph />
             </button>
           )}
+
+          {/* ── THE BLOCK RESIZE GRIP. Bottom-right corner of the BLOCK,
+                both axes at once. It is deliberately distinguishable from
+                the fill handle, which is the bottom-right corner of the
+                SELECTION, lives INSIDE the scroll container, is a solid
+                accent square and shows a crosshair cursor. This one sits
+                OUTSIDE that container, is a hairline chevron on the block's
+                edge, and shows nwse-resize. Neither can receive the other's
+                press: they are in different boxes. ── */}
+          {editable && (
+            <div
+              data-sheet-grip
+              role="separator"
+              aria-label="Resize sheet — drag to widen or shorten, double-click to reset"
+              title="Drag to resize · double-click to reset"
+              onPointerDown={onGripDown}
+              onDoubleClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                resetSize();
+              }}
+              onKeyDown={guardKeys}
+              style={{
+                position: "absolute",
+                right: -3,
+                bottom: -3,
+                width: 14,
+                height: 14,
+                cursor: "nwse-resize",
+                touchAction: "none",
+                zIndex: 9,
+              }}
+              className="opacity-0 transition-opacity group-hover:opacity-100"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden focusable="false">
+                <path
+                  d="M13 5.5L5.5 13M13 10L10 13"
+                  stroke="var(--color-faint)"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  fill="none"
+                />
+              </svg>
+            </div>
+          )}
+
+          {/* ── The live readout. Only while dragging: a permanent badge on
+                every sheet would be noise. ── */}
+          {resize && (
+            <div
+              data-sheet-size-readout
+              aria-live="polite"
+              className="pointer-events-none absolute rounded-md bg-btn px-[7px] py-[3px] font-mono text-caption text-btnFg"
+              style={{ right: 0, bottom: -26, whiteSpace: "nowrap", zIndex: 10 }}
+            >
+              {readoutText(liveBw, liveBh)}
+            </div>
+          )}
         </div>
+
 
         {/* ── Blind append, RIGHT edge: adds a column at the end. ── */}
         {editable && (
