@@ -38,6 +38,7 @@ export type BlockType =
   | "divider"
   | "code"
   | "table"
+  | "sheet"
   | "columns"
   | "image"
   | "imagerow"
@@ -102,6 +103,19 @@ export type Blk = {
    *  Invariant, enforced in reorder.ts: no callout in callout, no
    *  columns in callout. */
   children?: Blk[];
+  /** Only meaningful when type === "sheet". The RAW grid — a leading '='
+   *  means formula and the computed value is never stored. Shape and the
+   *  `cw` lockstep are enforced by the pure ops in src/lib/sheet-model.ts. */
+  cells?: unknown[][];
+  /** Only meaningful when type === "sheet". Column widths in PIXELS, one
+   *  per column, always in lockstep with the column count. */
+  cw?: number[];
+  /** Only meaningful when type === "sheet". Pins the first data row. */
+  freeze?: boolean;
+  /** Only meaningful when type === "sheet". Block width / height in px,
+   *  honoured only at page scope (chunk 7). */
+  bw?: number;
+  bh?: number;
   /** Flat outline level for list-like blocks (bullet, numbered, todo, text).
    *  Absent or 0 means top level. NOT a tree — blocks stay in a flat array;
    *  this is only a rendering / label / export hint. Clamped 0..6 with the
@@ -120,6 +134,13 @@ export function newBlock(type: BlockType = "text", text = ""): Blk {
   if (type === "toggle") base.open = false;
   if (type === "callout") base.icon = "💡";
   if (type === "table") base.rows = [["", "", ""], ["", "", ""]];
+  // A sheet defaults to 6 rows × 4 columns. The first column is almost
+  // always labels, so it gets the extra width.
+  if (type === "sheet")
+    Object.assign(base, {
+      cells: Array.from({ length: 6 }, () => [null, null, null, null]),
+      cw: [160, 120, 120, 120],
+    } as Record<string, unknown>);
   // Image blocks start empty: no path, centred, full column width. The
   // stored value is always a STORAGE PATH, never a signed URL.
   if (type === "image")

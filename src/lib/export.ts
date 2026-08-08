@@ -22,6 +22,8 @@ import { calloutBg, calloutRing } from "./callout-color";
 // (zero network requests). Vite `?raw` reads the file at build time; vitest
 // resolves the same way, so tests see the same string as the browser.
 import GIO_DOCS_LOGO_SVG from "../../public/gio-docs-logo.svg?raw";
+import { evaluateCell, format as sheetFormat } from "@/lib/sheet-engine";
+import { normalizeSheet, type Cell as SheetCell, type SheetBlock as SheetBlockData } from "@/lib/sheet-model";
 
 /* ─────────────────────────── Context ─────────────────────────── */
 
@@ -139,6 +141,41 @@ function warnUnknownBlock(t: string): void {
   console.warn(`[export] unknown block type "${t}" — exported as plain text`);
 }
 
+
+/* ─── Sheet helpers. Export shows COMPUTED values, never formulas: what you
+ * see on screen is what leaves the building. Evaluation goes through the one
+ * engine, and nothing is cached. ─── */
+
+function sheetGrid(
+  b: Block,
+): { values: string[][]; cells: (SheetCell | null)[][] } | null {
+  const raw = b as unknown as Partial<SheetBlockData>;
+  if (!Array.isArray(raw.cells) || raw.cells.length === 0) return null;
+  const sheet = normalizeSheet(raw);
+  const values = sheet.cells.map((row, r) =>
+    row.map((cell, c) => sheetFormat(evaluateCell(sheet.cells, r, c), cell?.f ?? "text", cell?.d)),
+  );
+  // A sheet with nothing in it exports as nothing.
+  if (!values.some((row) => row.some((v) => v !== ""))) return null;
+  return { values, cells: sheet.cells };
+}
+
+function sheetAlign(
+  cells: (SheetCell | null)[][],
+  c: number,
+  values: string[][],
+): "left" | "center" | "right" {
+  for (let r = 0; r < cells.length; r++) {
+    const a = cells[r]?.[c]?.a;
+    if (a) return a;
+  }
+  // No explicit alignment: numbers right, text left — same default as screen.
+  const numeric = values.some((row) => {
+    const v = row[c];
+    return v !== "" && /^-?[$]?[\d,]+(\.\d+)?%?$/.test(v);
+  });
+  return numeric ? "right" : "left";
+}
 
 /* ─────────────────────────── blockToMarkdown ───────────────────────────
  *
@@ -315,6 +352,35 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
       lines.push(`| ${sep.join(" | ")} |`);
       for (let i = headerRow ? 1 : 0; i < padded.length; i++) {
         lines.push(`| ${padded[i].join(" | ")} |`);
+      }
+      return lines.join("\n");
+    }
+    case "sheet": {
+      const g = sheetGrid(b);
+      if (!g) return "";
+      const { values, cells } = g;
+      const width = values[0].length;
+      const cell = (s: string) =>
+        s.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ");
+      const frozen = (b as { freeze?: unknown }).freeze === true;
+      // Alignment survives via the GFM separator row; numbers default right.
+      const sep = values[0].map((_, i) => {
+        const a = sheetAlign(cells, i, values);
+        if (a === "center") return ":---:";
+        if (a === "right") return "---:";
+        return ":---";
+      });
+      const lines: string[] = [];
+      // A GFM table always needs a header line. When the sheet is frozen the
+      // first row IS the header and reads bold; otherwise the header line is
+      // empty so no data row is silently promoted.
+      const head = frozen
+        ? values[0].map((v) => (v ? `**${cell(v)}**` : ""))
+        : new Array(width).fill("");
+      lines.push(`| ${head.join(" | ")} |`);
+      lines.push(`| ${sep.join(" | ")} |`);
+      for (let r = frozen ? 1 : 0; r < values.length; r++) {
+        lines.push(`| ${values[r].map(cell).join(" | ")} |`);
       }
       return lines.join("\n");
     }
@@ -579,6 +645,34 @@ function blockHtml(b: Block, ordinal = 1): string {
         : "";
       const body = (headerRow ? rows.slice(1) : rows).map(bodyRow).join("");
       return `<table${tableAttrs}>${colgroup}${thead}<tbody>${body}</tbody></table>`;
+    }
+    case "sheet": {
+      const g = sheetGrid(b);
+      if (!g) return "";
+      const { values, cells } = g;
+      const frozen = (b as { freeze?: unknown }).freeze === true;
+      const styleFor = (r: number, c: number): string => {
+        const cell = cells[r]?.[c] ?? null;
+        const bits = [`text-align:${sheetAlign(cells, c, values)}`];
+        if (cell?.b) bits.push("font-weight:700");
+        if (cell?.i) bits.push("font-style:italic");
+        // The rule above a total row is structure, so it survives export as
+        // a real border rather than a background trick.
+        if (cell?.rt) bits.push("border-top:2px solid #1B1A17");
+        return ` style="${bits.join(";")}"`;
+      };
+      const rowHtml = (r: number, tag: "th" | "td") =>
+        `<tr>${values[r]
+          .map((v, c) =>
+            tag === "th"
+              ? `<th scope="col"${styleFor(r, c)}>${esc(v)}</th>`
+              : `<td${styleFor(r, c)}>${esc(v)}</td>`,
+          )
+          .join("")}</tr>`;
+      const body: string[] = [];
+      for (let r = frozen ? 1 : 0; r < values.length; r++) body.push(rowHtml(r, "td"));
+      const thead = frozen ? `<thead>${rowHtml(0, "th")}</thead>` : "";
+      return `<table>${thead}<tbody>${body.join("")}</tbody></table>`;
     }
     case "columns": {
       // Real CSS grid. minmax(0,Nfr) prevents long words from blowing the

@@ -118,6 +118,7 @@ import { resolveKey, type Op as KeyOp } from "@/lib/block-key-handler";
 import { toggleWrap } from "@/lib/toggle-wrap";
 import { ImageBlock, ImageRowBlock, PageImageCtx } from "@/components/image-block";
 import { FileBlock } from "@/components/file-block";
+import { SheetBlockView } from "@/components/sheet-block";
 import { collectImagePaths, droppedImagePaths, rejectReason } from "@/lib/image-ops";
 import { gcImagePaths, uploadImage } from "@/lib/images";
 import { FloatingToolbar } from "./floating-toolbar";
@@ -236,6 +237,16 @@ const BLOCK_MENU: MenuItem[] = [
   { type: "divider", name: "Divider", desc: "A visual breath.", icon: "—", ic: "bDivider" },
   { type: "code", name: "Code", desc: "Monospace, verbatim.", icon: "<>", ic: "bCode" },
   { type: "table", name: "Table", desc: "Simple rows and columns.", icon: "▦", ic: "bTable" },
+  {
+    type: "sheet",
+    name: "Sheet",
+    desc: "A calculating spreadsheet. Formulas, formats and totals.",
+    // Σ says "calculating" rather than "grid" — the one-glance difference
+    // between this and Table.
+    icon: "\u03A3",
+    ic: "bSheet",
+    kw: "sheet sheets spreadsheet formula calc sum total number grid",
+  },
   { type: "image", name: "Image", desc: "A screenshot, diagram or photo.", icon: "🖼", ic: "bImage" },
   {
     type: "imagerow",
@@ -2965,6 +2976,7 @@ function BlockRow({
   block,
   ordinal,
   locked,
+  pageScope = true,
   selected,
   dimmed,
   onEditorFocus,
@@ -2986,6 +2998,8 @@ function BlockRow({
   block: Blk;
   ordinal?: number;
   locked: boolean;
+  /** False when this row lives inside a column or a callout. */
+  pageScope?: boolean;
   selected: boolean;
   dimmed: boolean;
   onEditorFocus: () => void;
@@ -3008,6 +3022,7 @@ function BlockRow({
     block.type === "divider" ||
     block.type === "image" ||
     block.type === "imagerow" ||
+    block.type === "sheet" ||
     block.type === "file";
   // Gutter (+ / drag handle) must centre vertically on the block's FIRST
   // line box, not the row centre. We publish the block's own line-height
@@ -3110,6 +3125,7 @@ function BlockRow({
         block={block}
         ordinal={ordinal}
         locked={locked}
+        pageScope={pageScope}
         onEditorFocus={onEditorFocus}
         onEditorBlur={onEditorBlur}
         onBlur={onBlur}
@@ -3130,6 +3146,7 @@ function BlockContent({
   block,
   ordinal,
   locked,
+  pageScope = true,
   onEditorFocus,
   onEditorBlur,
   onBlur,
@@ -3144,6 +3161,8 @@ function BlockContent({
   block: Blk;
   ordinal?: number;
   locked: boolean;
+  /** False inside a column or a callout — see SheetBlockView. */
+  pageScope?: boolean;
   onEditorFocus: () => void;
   onEditorBlur: () => void;
   onBlur?: () => void;
@@ -3267,6 +3286,12 @@ function BlockContent({
     return (
       <TableBlock block={block} locked={locked} onChange={onChange} onBlur={onBlur} />
     );
+  }
+
+  // Sheets live entirely in src/components/sheet-block.tsx. This is a mount
+  // point and nothing more — no sheet logic belongs in this file.
+  if (t === "sheet") {
+    return <SheetBlockView block={block as unknown as Record<string, unknown>} pageScope={pageScope} />;
   }
 
   if (t === "code") {
@@ -4015,6 +4040,7 @@ function ColumnStack({
         <BlockRow
           key={b.id}
           block={b}
+          pageScope={false}
           ordinal={b.type === "numbered" ? (ordinalMap.get(b.id) ?? 1) : undefined}
           locked={locked}
           selected={bridge?.selectedIds.has(b.id) ?? false}
