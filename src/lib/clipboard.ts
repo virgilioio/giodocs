@@ -44,3 +44,19 @@ export function toClipboardRich(markdown: string, html: string): void {
   }
   toClipboard(markdown);
 }
+
+/**
+ * READ the system clipboard. Same promise discipline in reverse: a refused
+ * or unsupported read resolves to "" instead of rejecting, so a paste path
+ * never has to guard twice.
+ */
+export async function fromClipboard(): Promise<string> {
+  try {
+    const nav = typeof navigator !== "undefined" ? navigator : undefined;
+    const read = nav?.clipboard?.readText;
+    if (typeof read !== "function") return "";
+    return (await read.call(nav!.clipboard)) ?? "";
+  } catch {
+    return "";
+  }
+}
