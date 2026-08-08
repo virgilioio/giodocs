@@ -1189,6 +1189,11 @@ describe("the block resize grip", () => {
     expect(bw).toBeGreaterThanOrEqual(0);
   });
 
+  /* THE PAGE MUST NEVER GAIN A HORIZONTAL SCROLLBAR — a bw past the
+     container's room slides every prose block on the page sideways, and the
+     grip itself off-screen. happy-dom does not lay out, so this asserts the
+     invariant that the clamp guarantees (the written delta leaves the pad)
+     alongside the document-level check. */
   it("a maximal drag leaves documentElement.scrollWidth === clientWidth", () => {
     mount(<Harness initial={{ ...block, bw: 0 }} />);
     dragGrip(100000, 0);
