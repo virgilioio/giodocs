@@ -16,16 +16,31 @@ type ClosestLike = {
   isContentEditable?: boolean;
 };
 
+/**
+ * A focused sheet grid COUNTS AS TYPING even though no input has focus.
+ *
+ * ⚠ This is the guard that stops data loss. When a sheet cell is selected
+ * but not being edited, focus sits on the grid container — so without this
+ * branch every page-level handler would fire: Backspace would delete the
+ * SHEET BLOCK instead of clearing the selected cells, arrows would move
+ * between blocks, ⌘D would duplicate the block. The sheet marks its grid
+ * with `data-sheet-grid` and claims those keys itself (it also
+ * stopPropagations each one it handles, so this is belt AND braces).
+ */
+export const SHEET_GRID_ATTR = "data-sheet-grid";
+
 export function isTypingTarget(target: EventTarget | null): boolean {
   if (!target) return false;
   const el = target as ClosestLike;
   if (typeof el.closest !== "function") return false;
   // Walk up so a click on a nested span inside a contenteditable still counts.
   if (el.closest("textarea, input, select")) return true;
+  if (el.closest(`[${SHEET_GRID_ATTR}]`)) return true;
   const editable = el.closest("[contenteditable]") as HTMLElement | null;
   if (editable && editable.isContentEditable) return true;
   return false;
 }
+
 
 /**
  * ⌘A stage decision for a page-body textarea.
