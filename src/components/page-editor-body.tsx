@@ -49,6 +49,17 @@ import {
  *  neighbour, with ~6px clearance each side. Mirrored in src/styles.css
  *  (the stacking breakpoint) and in the HTML exporter. */
 const COLS_GAP = 40;
+
+/** Targets that must NEVER open a marquee session. ONE definition, used by
+ *  both session openers (the React handler on the body and the `<main>`
+ *  listener) — two copies drifted once and a fix landed in only one of them.
+ *  `[data-sheet]` covers the WHOLE sheet root, not just its cells: the sheet
+ *  hoists its single editor input to grid level, so the press target inside a
+ *  sheet is always a div, and the suggestion panel, formula bar and toolbar
+ *  live in the root too. Opening a session there made the marquee's pointerup
+ *  click branch blur the hoisted editor and commit a half-written formula. */
+export const MARQUEE_SKIP_SEL =
+  '[contenteditable="true"], textarea, input, select, [data-table-cell], [data-sheet]';
 import {
   push as undoPush,
   undo as undoDo,
