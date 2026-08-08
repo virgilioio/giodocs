@@ -390,10 +390,15 @@ export function SheetBlockView({
     holdRef.current = true;
     if (!holdCleanup.current) {
       const end = () => {
-        holdRef.current = false;
         window.removeEventListener("pointerup", end, true);
         window.removeEventListener("pointercancel", end, true);
         holdCleanup.current = null;
+        // Drop the flag only once THIS pointerup has finished propagating:
+        // other window listeners for the same event (the page marquee's, for
+        // one) may still run and imperatively blur the editor.
+        queueMicrotask(() => {
+          holdRef.current = false;
+        });
       };
       holdCleanup.current = end;
       window.addEventListener("pointerup", end, true);
