@@ -1009,3 +1009,116 @@ describe("the toolbar never becomes a second input site", () => {
     expect(editor()).toBeTruthy();
   });
 });
+
+/* ═══════════════════ chunk 7 — clipboard, ants, fill ═══════════════════ */
+
+const ants = () => host.querySelectorAll("[data-sheet-ants]");
+const fillHandle = () => host.querySelector("[data-sheet-fill-handle]") as HTMLElement | null;
+
+describe("the sheet claims the clipboard keys", () => {
+  it("⌘C draws exactly ONE ants overlay, not per-cell borders, and Escape clears it", () => {
+    mount(<Harness />);
+    click(cell(1, 0));
+    click(cell(2, 1), { shiftKey: true });
+    press(grid(), "c", { metaKey: true });
+    expect(ants().length).toBe(1);
+    const rectEl = ants()[0] as HTMLElement;
+    // Positioned with rangeBox arithmetic: row 2 of 3, both columns.
+    expect(rectEl.style.left).toBe("34px");
+    expect(rectEl.style.width).toBe("280px");
+    press(grid(), "Escape");
+    expect(ants().length).toBe(0);
+  });
+
+  it("⌘C with a range selected never reaches the page's block copy", () => {
+    const seen: string[] = [];
+    const spy = (e: KeyboardEvent) => seen.push(e.key);
+    window.addEventListener("keydown", spy);
+    mount(<Harness />);
+    click(cell(1, 0));
+    press(grid(), "c", { metaKey: true });
+    window.removeEventListener("keydown", spy);
+    expect(seen).not.toContain("c");
+  });
+
+  it("⌘Z still reaches the page — the page owns the history", () => {
+    const seen: string[] = [];
+    const spy = (e: KeyboardEvent) => seen.push(e.key);
+    window.addEventListener("keydown", spy);
+    mount(<Harness />);
+    click(cell(1, 0));
+    press(grid(), "z", { metaKey: true });
+    window.removeEventListener("keydown", spy);
+    expect(seen).toContain("z");
+  });
+
+  it("while EDITING, ⌘C stays native so copying inside the input works", () => {
+    mount(<Harness />);
+    click(cell(1, 0));
+    press(grid(), "Enter");
+    const ev = new KeyboardEvent("keydown", {
+      key: "c",
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      editor()!.dispatchEvent(ev);
+    });
+    expect(ev.defaultPrevented).toBe(false);
+    expect(ants().length).toBe(0);
+  });
+
+  it("cut then Escape leaves the source intact — no write happens on the cut", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(<Harness onPatch={(p) => patches.push(p)} />);
+    click(cell(1, 1));
+    press(grid(), "x", { metaKey: true });
+    expect(patches.length).toBe(0);
+    press(grid(), "Escape");
+    expect(patches.length).toBe(0);
+  });
+
+  it("cut then paste elsewhere clears the source and lands the value", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(<Harness onPatch={(p) => patches.push(p)} />);
+    click(cell(1, 1));
+    press(grid(), "x", { metaKey: true });
+    click(cell(2, 0));
+    press(grid(), "v", { metaKey: true });
+    const last = patches[patches.length - 1];
+    expect(rawAt(last, 2, 0)).toBe(100);
+    expect(rawAt(last, 1, 1)).toBeUndefined();
+  });
+});
+
+describe("the fill handle", () => {
+  it("appears with a selection, hides while editing, and fills along the drag axis", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(<Harness onPatch={(p) => patches.push(p)} />);
+    click(cell(1, 1));
+    expect(fillHandle()).toBeTruthy();
+
+    act(() => {
+      fillHandle()!.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 }),
+      );
+    });
+    act(() => {
+      cell(2, 1).dispatchEvent(new PointerEvent("pointermove", { bubbles: true }));
+    });
+    expect(host.querySelector("[data-sheet-fill-preview]")).toBeTruthy();
+    act(() => {
+      grid().dispatchEvent(new PointerEvent("pointerup", { bubbles: true, button: 0 }));
+    });
+    const last = patches[patches.length - 1];
+    expect(rawAt(last, 2, 1)).toBe(100);
+  });
+
+  it("is absent while a cell is being edited", () => {
+    mount(<Harness />);
+    click(cell(1, 1));
+    press(grid(), "Enter");
+    expect(fillHandle()).toBeNull();
+  });
+});
