@@ -48,6 +48,21 @@ export const IC = {
   droplet:
     "M12 3.4c0 0 5.6 5.7 5.6 9.5a5.6 5.6 0 0 1-11.2 0c0-3.8 5.6-9.5 5.6-9.5z",
 
+  /* ── Sheet formatting toolbar. Same 24-grid, same single-path
+   * discipline; FILL deliberately reuses `droplet` above so "colour this
+   * thing" is one symbol across the product. ── */
+  alignL: "M4 6h16M4 12h10M4 18h13",
+  alignC: "M4 6h16M7 12h10M6 18h12",
+  alignR: "M4 6h16M10 12h10M7 18h13",
+  /* Text colour: a serif A, the letterform every ink control uses. */
+  letterA: "M5 19 12 5.4 19 19M8.6 14.2h6.8",
+  /* Rule above: a heavy line with figures beneath it — a total row. */
+  ruleTop: "M3.5 8h17M7 13h3.5M14 13h3M7 17.5h3.5M14 17.5h3",
+  /* Freeze header: a grid whose first row is separated off. */
+  freezeRow:
+    "M4.5 5h15A1.5 1.5 0 0 1 21 6.5v11a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11A1.5 1.5 0 0 1 4.5 5zM3 10h18M7 14.4h10",
+
+
   /* ── One icon per BLOCK TYPE. Read by the slash menu, the Turn-into
    * submenu and the parent row through the block definition's `ic` key —
    * never re-listed per menu. ── */
