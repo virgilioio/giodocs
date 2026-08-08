@@ -400,25 +400,49 @@ export function SheetBlockView({
     [editable, sheet, write, onBlur],
   );
 
-  const toggleMark = useCallback(
-    (s: Sel, mark: "b" | "i") => {
+  /* ─────────────── Range-wide formatting (chunk 6) ───────────────
+   * EVERY toolbar control acts on the WHOLE selection and lands as ONE
+   * write, so however many cells it touches it is ONE undo entry. The
+   * mapper returns the cell it WANTS; the cell is cleared first because
+   * setCell merges, and a merge can never remove a key. */
+  const applyRange = useCallback(
+    (s: Sel, map: (cur: Cell) => Cell | null) => {
       if (!editable) return;
-      const cells = cellsIn(rect(s));
-      // Mixed selection turns ON — the behaviour every editor has.
-      const allOn = cells.every(({ r, c }) => sheet.cells[r]?.[c]?.[mark] === true);
       let next = sheet;
-      for (const { r, c } of cells) {
-        const cur = next.cells[r]?.[c] ?? {};
-        const kept: Partial<Cell> = { ...cur };
-        if (allOn) delete kept[mark];
-        else kept[mark] = true;
-        next = setCell(next, r, c, kept);
+      for (const { r, c } of cellsIn(rect(s))) {
+        const want = map({ ...(next.cells[r]?.[c] ?? {}) });
+        next = setCell(next, r, c, null);
+        if (want && Object.keys(want).length) next = setCell(next, r, c, want);
       }
       write(next);
       onBlur?.();
     },
     [editable, sheet, write, onBlur],
   );
+
+  /** The cells under the current selection, for every toolbar READBACK.
+   *  The indicator and the action read the same list, so they agree. */
+  const selCells = useMemo(
+    () => (sel ? cellsIn(rect(sel)).map(({ r, c }) => sheet.cells[r]?.[c] ?? null) : []),
+    [sel, sheet.cells],
+  );
+
+  /** b / i / rt across a possibly-mixed range. The DECISION is pure —
+   *  src/lib/sheet-toolbar.ts — so the toolbar button and ⌘B cannot drift
+   *  into two different behaviours. */
+  const toggleMark = useCallback(
+    (s: Sel, mark: MarkKey) => {
+      const cells = cellsIn(rect(s)).map(({ r, c }) => sheet.cells[r]?.[c] ?? null);
+      const { set } = markDecision(cells, mark);
+      applyRange(s, (cur) => {
+        if (set) cur[mark] = true;
+        else delete cur[mark];
+        return cur;
+      });
+    },
+    [sheet.cells, applyRange],
+  );
+
 
   const beginEdit = useCallback(
     (r: number, c: number, seed: string | null, selectAllText: boolean) => {
