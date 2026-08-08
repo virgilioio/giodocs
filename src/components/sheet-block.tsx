@@ -426,11 +426,12 @@ export function SheetBlockView({
   );
 
 
-  /* ── CLICK-TO-REFERENCE. Two things keep the edit alive: mousedown is
-        prevented on the cell (pointerdown alone does NOT stop the focus
-        shift, which is what committed the draft), and holdEdit() refuses
-        any blur the gesture still manages to cause. A second pick REPLACES
-        the first, which is why the inserted span is tracked. ── */
+  /* ── CLICK-TO-REFERENCE. Two things keep the edit alive: the cell's
+        pointerdown is cancelled (Chromium then dispatches no mousedown at
+        all, so no focus shift happens), and holdEdit() refuses any blur the
+        gesture still manages to cause — including the page marquee's
+        imperative blur on pointerup. A second pick REPLACES the first, which
+        is why the inserted span is tracked. ── */
   const insertReference = useCallback(
     (r0: number, c0: number, r1: number, c1: number) => {
       const live = editRef.current;
