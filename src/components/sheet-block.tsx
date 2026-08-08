@@ -301,6 +301,15 @@ export function SheetBlockView({
    * palette opened rarely. ── */
   const [pal, setPal] = useState<"fg" | "bg" | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  /* ── Chunk 7. `ants` is the copied/cut range: ONE animated dashed overlay
+   * at grid level, positioned with rangeBox. A fill drag keeps its source
+   * and live target in refs as well as state, because a pointermove must
+   * not read the previous render's rectangle. ── */
+  const [ants, setAnts] = useState<Rect | null>(null);
+  const [fill, setFill] = useState<{ rect: Rect; axis: FillAxis } | null>(null);
+  const fillDrag = useRef<Rect | null>(null);
+  const fillRef = useRef<{ rect: Rect; axis: FillAxis } | null>(null);
+  fillRef.current = fill;
 
 
 
@@ -468,6 +477,67 @@ export function SheetBlockView({
     [sheet.cells, applyRange],
   );
 
+
+  /* ─────────────────── Clipboard (chunk 7) ───────────────────
+   * ⌘C stores the range INTERNALLY — raw cells, formulas and formatting —
+   * and writes TSV of COMPUTED values to the system clipboard, so a
+   * selection can leave for Google Sheets. ⌘X does the same and marks the
+   * clip as cut; the SOURCE IS CLEARED ONLY WHEN THE PASTE LANDS, so
+   * escaping or copying something else leaves it untouched. */
+  const copyRange = useCallback(
+    (s: Sel, cut: boolean) => {
+      const rc = rect(s);
+      sheetClip = clipFrom(sheet, rc, cut, blockId);
+      toClipboard(toTSV(sheet, rc));
+      setAnts(rc);
+    },
+    [sheet, blockId],
+  );
+
+  /** The internal clip wins when there is one — it carries formulas and
+   *  formatting. Otherwise the system clipboard's TSV is pasted as values.
+   *  ONE write either way, so ONE undo entry per paste. */
+  const pasteAt = useCallback(
+    async (s: Sel) => {
+      if (!editable) return;
+      const rc = rect(s);
+      let result: ReturnType<typeof pasteInto> | null = null;
+      if (sheetClip) {
+        result = pasteInto(sheet, sheetClip, rc.r0, rc.c0, blockId);
+        if (sheetClip.cut) sheetClip = null;
+      } else {
+        const text = await fromClipboard();
+        if (!text) return;
+        result = pasteValues(sheet, parseTSV(text), rc.r0, rc.c0);
+      }
+      write(result.sheet);
+      onBlur?.();
+      setSel({ ar: result.rect.r0, ac: result.rect.c0, fr: result.rect.r1, fc: result.rect.c1 });
+      setAnts(null);
+      const msg = truncationText(result.truncated);
+      if (msg) toast.push(msg);
+    },
+    [editable, sheet, blockId, write, onBlur, toast],
+  );
+
+  /* ── THE FILL HANDLE. Dragging extends along the DOMINANT AXIS only, and
+   * on release each source cell is copied into its target with shiftFormula
+   * applied — the SAME chunk-1 function paste uses. ONE write, ONE undo. ── */
+  const endFill = useCallback(() => {
+    const src = fillDrag.current;
+    const target = fillRef.current;
+    fillDrag.current = null;
+    setFill(null);
+    if (!src || !target || !editable) return;
+    write(applyFill(sheet, src, target.rect, target.axis));
+    onBlur?.();
+    setSel({
+      ar: src.r0,
+      ac: src.c0,
+      fr: Math.max(src.r1, target.rect.r1),
+      fc: Math.max(src.c1, target.rect.c1),
+    });
+  }, [editable, sheet, write, onBlur]);
 
   const beginEdit = useCallback(
     (r: number, c: number, seed: string | null, selectAllText: boolean) => {
