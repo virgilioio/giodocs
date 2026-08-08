@@ -22,9 +22,15 @@
  * Nothing is cached — a cached result is how a sheet ends up showing a
  * number that no longer follows from its inputs.
  *
- * NOT here (later chunks): autocomplete and click-to-reference (4), the
- * formatting toolbar (5), row/column operations (5), clipboard and fill
- * handle (6), block resize (7).
+ * NOT here (later chunks): autocomplete and click-to-reference (5), the
+ * formatting toolbar (6), clipboard and fill handle (7), block resize (8).
+ *
+ * Chunk 4 added STRUCTURE — growing, shrinking, reordering and column
+ * widths. Every grid mutation goes through src/lib/sheet-model.ts and
+ * every structural DECISION (which control exists, whether it is enabled,
+ * how an index shifts) through src/lib/sheet-structure.ts. There is
+ * deliberately no second set of mutations in this file: a `cw` array out
+ * of step with the columns is silent corruption.
  */
 
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -38,13 +44,28 @@ import {
   type SheetError,
 } from "@/lib/sheet-engine";
 import {
+  addCol,
+  addRow,
   normalizeSheet,
   setCell,
+  setColWidth,
   type Cell,
   type SheetBlock,
 } from "@/lib/sheet-model";
+import {
+  appendControl,
+  applySpanOp,
+  defaultCw,
+  dragWidth,
+  selAfterOp,
+  shiftIndex,
+  spanControls,
+  type OpId,
+  type SpanKind,
+} from "@/lib/sheet-structure";
 import { fillToken, inkToken } from "@/lib/sheet-palette";
 import { SHEET_GRID_ATTR } from "@/lib/is-typing";
+import { useToast } from "@/lib/toast";
 import {
   cellBox,
   cellsIn,
@@ -64,6 +85,7 @@ import {
   selectRows,
   type Sel,
 } from "@/lib/sheet-select";
+
 
 export const SHEET_ROW_NUM_W = ROW_NUM_W;
 export const SHEET_HEAD_H = HEAD_H;
