@@ -701,7 +701,7 @@ describe("the suggestion panel", () => {
     expect(panel()).toBeTruthy();
     expect(panelRows().length).toBe(20);
     // Each row refuses to shrink; the list scrolls inside the 226px cap.
-    expect(panelRows().every((r) => r.style.flex === "none")).toBe(true);
+    expect(panelRows().every((r) => r.style.flexShrink === "0")).toBe(true);
     const list = host.querySelector("[data-sheet-panel-list]") as HTMLElement;
     expect(getComputedStyle(list).overflowY).toBe("auto");
     expect(panel()!.style.maxHeight).toBe("226px");
@@ -794,9 +794,10 @@ describe("click-to-reference", () => {
     expect(ev.defaultPrevented).toBe(true);
     expect(editor()).toBe(first);
     expect(document.activeElement).toBe(first);
+    // The halo marks the live pick; typing ends the pick, so assert it here.
+    expect(halo()).toBeTruthy();
     typeFormula(editor()!, editor()!.value + ")");
     expect(editor()!.value).toBe("=SUM(B2)");
-    expect(halo()).toBeTruthy();
   });
 
   it("clicking a DIFFERENT cell replaces the reference rather than appending", () => {

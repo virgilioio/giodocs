@@ -1033,7 +1033,7 @@ export function SheetBlockView({
                       "flex flex-none items-baseline gap-1.5 overflow-hidden whitespace-nowrap px-2.5 py-1 " +
                       (i === hi ? "bg-sunken" : "")
                     }
-                    style={{ flex: "none" }}
+                    style={{ flexGrow: 0, flexShrink: 0, flexBasis: "auto" }}
                     onMouseDown={(e) => {
                       // A click that blurs the editor commits the draft and
                       // closes everything — so it must not steal focus.
