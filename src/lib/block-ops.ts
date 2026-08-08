@@ -128,19 +128,26 @@ export type OpResult = { next: Blk[]; focus?: FocusReq };
 
 /* ────────── Factories ────────── */
 
+/** THE one sheet grid seed: 10 rows × 5 columns, the first column wider
+ *  because it is almost always labels. Exported because type CONVERSION
+ *  (the slash menu turning a text block into a sheet) must seed the same
+ *  grid — without it the block reached the model with no `cells` and
+ *  normalizeSheet padded it up to its 2×1 floors. */
+export function newSheetGrid(): { cells: null[][]; cw: number[] } {
+  return {
+    cells: Array.from({ length: 10 }, () => [null, null, null, null, null]),
+    cw: [160, 120, 120, 120, 120],
+  };
+}
+
 export function newBlock(type: BlockType = "text", text = ""): Blk {
   const base: Blk = { id: nanoid(10), type, text };
   if (type === "todo") base.checked = false;
   if (type === "toggle") base.open = false;
   if (type === "callout") base.icon = "💡";
   if (type === "table") base.rows = [["", "", ""], ["", "", ""]];
-  // A sheet defaults to 6 rows × 4 columns. The first column is almost
-  // always labels, so it gets the extra width.
-  if (type === "sheet")
-    Object.assign(base, {
-      cells: Array.from({ length: 6 }, () => [null, null, null, null]),
-      cw: [160, 120, 120, 120],
-    } as Record<string, unknown>);
+  if (type === "sheet") Object.assign(base, newSheetGrid() as Record<string, unknown>);
+
   // Image blocks start empty: no path, centred, full column width. The
   // stored value is always a STORAGE PATH, never a signed URL.
   if (type === "image")

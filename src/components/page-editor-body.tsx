@@ -103,6 +103,7 @@ import {
   type OpResult,
   newBlock,
   newColumnsBlock,
+  newSheetGrid,
   tryMarkdownShortcut,
   splitBlock as opsSplit,
   mergeIntoPrev as opsMerge,
@@ -1818,6 +1819,10 @@ export function EditableBody({
       if (type === "toggle" && nb.open == null) nb.open = false;
       if (type === "callout" && !nb.icon) nb.icon = "💡";
       if (type === "table" && !nb.rows) nb.rows = [["", "", ""], ["", "", ""]];
+      // Converting a text block into a sheet must seed the SAME grid the
+      // factory makes; without it the sheet reached the model empty and
+      // normalizeSheet padded it up to its 2×1 floors.
+      if (type === "sheet" && !nb.cells) Object.assign(nb, newSheetGrid());
       if (type === "divider") nb.text = "";
       const next = [...blocks];
       next[idx] = nb;
@@ -1950,6 +1955,10 @@ export function EditableBody({
         if (type === "toggle" && nb.open == null) nb.open = false;
         if (type === "callout" && !nb.icon) nb.icon = "💡";
         if (type === "table" && !nb.rows) nb.rows = [["", "", ""], ["", "", ""]];
+      // Converting a text block into a sheet must seed the SAME grid the
+      // factory makes; without it the sheet reached the model empty and
+      // normalizeSheet padded it up to its 2×1 floors.
+      if (type === "sheet" && !nb.cells) Object.assign(nb, newSheetGrid());
         if (type === "divider") nb.text = "";
         // Clear a stale toggle level unless we're explicitly setting one.
         if (type !== "toggle" || !("level" in (extra ?? {}))) {
@@ -3888,6 +3897,10 @@ function ColumnStack({
     if (type === "toggle" && nb.open == null) nb.open = false;
     if (type === "callout" && !nb.icon) nb.icon = "💡";
     if (type === "table" && !nb.rows) nb.rows = [["", "", ""], ["", "", ""]];
+      // Converting a text block into a sheet must seed the SAME grid the
+      // factory makes; without it the sheet reached the model empty and
+      // normalizeSheet padded it up to its 2×1 floors.
+      if (type === "sheet" && !nb.cells) Object.assign(nb, newSheetGrid());
     if (type === "divider") nb.text = "";
     if (type !== "toggle") delete nb.level;
     else if (!extra?.level && !("level" in (extra ?? {}))) delete nb.level;

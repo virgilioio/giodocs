@@ -296,6 +296,11 @@ export function SheetBlockView({
    * caret or a span from the previous render. */
   const caretRef = useRef(0);
   const pickRef = useRef<PickSpan | null>(null);
+  /** TRUE while a formula pick (a cell reference or a suggestion row) is
+   *  being applied. A pick must never end the edit: any blur that lands
+   *  while this is set is a browser focus side-effect, not "leave this
+   *  cell", so it is refused and the editor takes focus back. */
+  const holdRef = useRef(false);
   const blockId = String((block as { id?: unknown }).id ?? "sheet");
   /* ── Chunk 6. Which palette strip is open, if any. It is a STRIP, not
    * twelve inline swatches: the bar is looked at constantly and the
@@ -375,26 +380,46 @@ export function SheetBlockView({
     );
   }, []);
 
-  const insertSuggestion = useCallback(() => {
-    const live = editRef.current;
-    if (!live || !sug) return;
-    const next = insertFunction(live.draft, caret, sug.items[hi]);
-    applyDraft(next.draft, next.caret);
-    setPanelIdx(0);
-    pickRef.current = null;
-    setPick(null);
-    setPickRect(null);
-  }, [sug, hi, caret, applyDraft]);
+  /** Holds the edit open across a pick. The flag is cleared a turn later,
+   *  once the browser has finished whatever focus shuffle the gesture
+   *  caused. */
+  const holdEdit = useCallback(() => {
+    holdRef.current = true;
+    setTimeout(() => {
+      holdRef.current = false;
+    }, 0);
+    const el = inputRef.current;
+    if (el && document.activeElement !== el) el.focus();
+  }, []);
 
-  /* ── CLICK-TO-REFERENCE. preventDefault() on mousedown is the whole
-        trick: it is what stops the editor from blurring, and a blur would
-        commit the draft and close everything. A second pick REPLACES the
-        first, which is why the inserted span is tracked. ── */
+  const insertSuggestion = useCallback(
+    (index?: number) => {
+      const live = editRef.current;
+      if (!live || !sug) return;
+      const at = Math.max(0, Math.min(index ?? hi, sug.items.length - 1));
+      const next = insertFunction(live.draft, caret, sug.items[at]);
+      holdEdit();
+      applyDraft(next.draft, next.caret);
+      setPanelIdx(0);
+      pickRef.current = null;
+      setPick(null);
+      setPickRect(null);
+    },
+    [sug, hi, caret, applyDraft, holdEdit],
+  );
+
+
+  /* ── CLICK-TO-REFERENCE. Two things keep the edit alive: mousedown is
+        prevented on the cell (pointerdown alone does NOT stop the focus
+        shift, which is what committed the draft), and holdEdit() refuses
+        any blur the gesture still manages to cause. A second pick REPLACES
+        the first, which is why the inserted span is tracked. ── */
   const insertReference = useCallback(
     (r0: number, c0: number, r1: number, c1: number) => {
       const live = editRef.current;
       if (!live) return;
       const next = insertRef(live.draft, caretRef.current, refFor(r0, c0, r1, c1), pickRef.current);
+      holdEdit();
       applyDraft(next.draft, next.caret);
       pickRef.current = next.span;
       setPick(next.span);
@@ -405,8 +430,9 @@ export function SheetBlockView({
         c1: Math.max(c0, c1),
       });
     },
-    [applyDraft],
+    [applyDraft, holdEdit],
   );
+
 
   /** Commit a raw draft onto (r, c). Coordinates are ALWAYS passed in from
    *  live state by the caller — never read from a closure. */
@@ -1565,9 +1591,6 @@ export function SheetBlockView({
                         if (e.button !== 0) return;
                         const live = editRef.current;
                         if (live && canPick(live.draft, caretRef.current, pickRef.current)) {
-                          // ⚠ THE WHOLE TRICK: without this the editor
-                          // blurs, the draft commits, and the formula is
-                          // gone before the reference lands.
                           e.preventDefault();
                           pickDrag.current = { r, c };
                           insertReference(r, c, r, c);
@@ -1578,6 +1601,24 @@ export function SheetBlockView({
                         dragging.current = true;
                         pickCell(r, c, e.shiftKey);
                       }}
+                      onMouseDown={(e) => {
+                        // ⚠ THE WHOLE TRICK. Cancelling pointerdown does NOT
+                        // stop the focus shift — only cancelling MOUSEDOWN
+                        // does. Without this the editor blurred, the draft
+                        // committed, and "=SUM(B2" landed in the cell as
+                        // #NAME. Same predicate as pointerdown and the
+                        // keyboard: canPick() is the single decision.
+                        const live = editRef.current;
+                        if (live && canPick(live.draft, caretRef.current, pickRef.current))
+                          e.preventDefault();
+                      }}
+                      onClick={(e) => {
+                        // A pick already happened on pointerdown; the click
+                        // must not re-enter the "leave this cell" path.
+                        const live = editRef.current;
+                        if (live && (holdRef.current || pickRef.current)) e.stopPropagation();
+                      }}
+
                       onPointerMove={(e) => {
                         // A fill drag outranks everything: it started on the
                         // handle, so no other gesture can be live.
@@ -1794,15 +1835,17 @@ export function SheetBlockView({
                     }
                     style={{ flexGrow: 0, flexShrink: 0, flexBasis: "auto" }}
                     onMouseDown={(e) => {
-                      // A click that blurs the editor commits the draft and
-                      // closes everything — so it must not steal focus.
+                      // The insertion happens HERE, not on click: cancelling
+                      // pointerdown (which the panel does, to hold focus)
+                      // suppresses the compatibility click in Chromium, so a
+                      // click-driven insert never ran. preventDefault keeps
+                      // the editor focused; the edit stays open exactly as
+                      // Tab and Enter leave it.
                       e.preventDefault();
                       setPanelIdx(i);
+                      insertSuggestion(i);
                     }}
-                    onClick={() => {
-                      setPanelIdx(i);
-                      insertSuggestion();
-                    }}
+
                   >
                     <span className="font-mono text-meta text-body">{f.name}</span>
                     <span className="font-mono text-meta text-whisper">{f.args}</span>
@@ -1844,8 +1887,13 @@ export function SheetBlockView({
                 pendingCaret.current = null;
                 if (want !== null) {
                   el.setSelectionRange(want, want);
+                  // The mirror must AGREE with the element: a stale select
+                  // event otherwise leaves caretRef behind the insertion,
+                  // and the next pick lands in the wrong place.
+                  caretRef.current = want;
                   return;
                 }
+
                 const caret = el.value.length;
                 if (resuming || live.sel === false) el.setSelectionRange(caret, caret);
                 else el.select();
@@ -1880,9 +1928,17 @@ export function SheetBlockView({
                 // COORDINATES FROM STATE, NEVER FROM A CLOSURE.
                 const live = editRef.current;
                 if (!live) return;
+                // A pick is not "leave this cell": refuse the blur and take
+                // focus back, leaving the edit open with its caret intact.
+                if (holdRef.current) {
+                  const el = e.currentTarget;
+                  setTimeout(() => el.focus(), 0);
+                  return;
+                }
                 commitCell(live.r, live.c, e.target.value);
                 setEdit(null);
               }}
+
               style={{
                 position: "absolute",
                 left: editBox.left,
