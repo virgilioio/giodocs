@@ -409,15 +409,17 @@ export function SheetBlockView({
   );
 
 
-  /* ── CLICK-TO-REFERENCE. preventDefault() on mousedown is the whole
-        trick: it is what stops the editor from blurring, and a blur would
-        commit the draft and close everything. A second pick REPLACES the
-        first, which is why the inserted span is tracked. ── */
+  /* ── CLICK-TO-REFERENCE. Two things keep the edit alive: mousedown is
+        prevented on the cell (pointerdown alone does NOT stop the focus
+        shift, which is what committed the draft), and holdEdit() refuses
+        any blur the gesture still manages to cause. A second pick REPLACES
+        the first, which is why the inserted span is tracked. ── */
   const insertReference = useCallback(
     (r0: number, c0: number, r1: number, c1: number) => {
       const live = editRef.current;
       if (!live) return;
       const next = insertRef(live.draft, caretRef.current, refFor(r0, c0, r1, c1), pickRef.current);
+      holdEdit();
       applyDraft(next.draft, next.caret);
       pickRef.current = next.span;
       setPick(next.span);
@@ -428,8 +430,9 @@ export function SheetBlockView({
         c1: Math.max(c0, c1),
       });
     },
-    [applyDraft],
+    [applyDraft, holdEdit],
   );
+
 
   /** Commit a raw draft onto (r, c). Coordinates are ALWAYS passed in from
    *  live state by the caller — never read from a closure. */
