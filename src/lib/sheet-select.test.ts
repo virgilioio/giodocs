@@ -143,10 +143,19 @@ describe("keyboard decision — cell selected, not editing", () => {
     expect(k("i", { meta: true })).toEqual({ kind: "italic" });
   });
 
-  it("⌘Z and ⌘C pass through to the page and the browser", () => {
+  it("⌘Z passes through to the page's undo — the page owns the history", () => {
     expect(k("z", { meta: true })).toEqual({ kind: "pass" });
-    expect(k("c", { meta: true })).toEqual({ kind: "pass" });
   });
+
+  // Chunk 7 CHANGED this deliberately: the page binds ⌘C / ⌘X for block
+  // selection, so with focus on the grid a pass-through would copy the whole
+  // sheet block as Markdown instead of the selected cells.
+  it("⌘C / ⌘X / ⌘V are the sheet's while a cell range is selected", () => {
+    expect(k("c", { meta: true })).toEqual({ kind: "copy" });
+    expect(k("x", { meta: true })).toEqual({ kind: "cut" });
+    expect(k("v", { meta: true })).toEqual({ kind: "paste" });
+  });
+
 
   it("Tab moves right with wrap", () =>
     expect(k("Tab")).toEqual({ kind: "move", r: 2, c: 2 }));
