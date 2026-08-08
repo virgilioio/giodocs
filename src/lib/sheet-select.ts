@@ -196,7 +196,18 @@ export type SheetAction =
   | { kind: "panelPrev" }
   | { kind: "panelNext" }
   | { kind: "panelInsert" }
-  | { kind: "panelClose" };
+  | { kind: "panelClose" }
+  /* ── Chunk 7's clipboard keys. The sheet CLAIMS ⌘C / ⌘X / ⌘V while a cell
+   * range is SELECTED — the page binds ⌘C and ⌘X for block selection, and
+   * with focus on the grid container it would otherwise copy the whole
+   * sheet block as Markdown instead of the cells. While EDITING they stay
+   * native, so copy and paste inside the input behave normally. ⌘Z passes
+   * through in BOTH states: a sheet edit is a block commit and the page
+   * owns the history. ── */
+  | { kind: "copy" }
+  | { kind: "cut" }
+  | { kind: "paste" };
+
 
 function isPrintable(k: KeyInfo): boolean {
   return k.key.length === 1 && !k.meta && !k.ctrl && !k.alt;
