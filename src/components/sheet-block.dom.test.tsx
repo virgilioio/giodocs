@@ -460,3 +460,208 @@ describe("the formula bar", () => {
     expect(readout()).toBeUndefined();
   });
 });
+
+/* ═══════════════════════ chunk 4 — structural controls ═══════════════════════
+   These test the WIRING and the edge decisions; the grid mutations
+   themselves are covered by sheet-model / sheet-structure unit tests. */
+
+const rowNums = () => host.querySelectorAll('[role="rowheader"]');
+const colLetters = () => host.querySelectorAll('[role="columnheader"]');
+const op = (id: string) => host.querySelector(`[data-sheet-op="${id}"]`) as HTMLButtonElement | null;
+const spanLabel = () =>
+  (host.querySelector("[data-sheet-span-label]") as HTMLElement | null)?.textContent;
+const addRowBtn = () => host.querySelector('[data-sheet-add="row"]') as HTMLButtonElement;
+const addColBtn = () => host.querySelector('[data-sheet-add="col"]') as HTMLButtonElement;
+const divider = (c: number) => host.querySelector(`[data-sheet-divider="${c}"]`) as HTMLElement;
+
+/** Buttons respond to a real click, not to the pointer pair `click()` sends. */
+function tap(el: Element) {
+  act(() => {
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+  });
+}
+
+function bigBlock(rows: number, cols = 2) {
+  return {
+    id: "s3",
+    type: "sheet",
+    cells: Array.from({ length: rows }, (_, r) =>
+      Array.from({ length: cols }, (_, c) => ({ v: `${r}${c}` })),
+    ),
+    cw: Array.from({ length: cols }, (_, c) => (c === 0 ? 160 : 120)),
+  };
+}
+
+describe("the contextual group appears only for a full span", () => {
+  it("is absent for a single cell and present for a whole row", () => {
+    mount(<Harness />);
+    click(cell(1, 1));
+    expect(spanLabel()).toBeUndefined();
+    click(rowNums()[1]);
+    expect(spanLabel()).toBe("Row 2");
+    expect(op("insertBefore")!.textContent).toBe("Above");
+    expect(op("delete")!.textContent).toBe("Delete");
+  });
+
+  it("reads Rows 2–3 for a multi-row span and inserts that many", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(<Harness initial={bigBlock(5)} onPatch={(p) => patches.push(p)} />);
+    click(rowNums()[1]);
+    click(rowNums()[2], { shiftKey: true });
+    expect(spanLabel()).toBe("Rows 2–3");
+    tap(op("insertBefore")!);
+    const cells = patches.at(-1)!.cells as { v?: unknown }[][];
+    expect(cells.length).toBe(7);
+    // The span moved down by two and kept its internal order.
+    expect([cells[3][0].v, cells[4][0].v]).toEqual(["10", "20"]);
+  });
+
+  it("a column span labels by letter and moves as a block", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(<Harness initial={bigBlock(3, 3)} onPatch={(p) => patches.push(p)} />);
+    click(colLetters()[1]);
+    click(colLetters()[2], { shiftKey: true });
+    expect(spanLabel()).toBe("Columns B–C");
+    tap(op("moveBack")!);
+    const cells = patches.at(-1)!.cells as { v?: unknown }[][];
+    expect(cells[0].map((c) => c.v)).toEqual(["01", "02", "00"]);
+  });
+});
+
+describe("floors, bounds and greyed controls", () => {
+  it("Delete greys at the two-row floor and toasts instead of no-oping", () => {
+    const onPatch = vi.fn();
+    mount(<Harness initial={{ ...bigBlock(2), id: "s4" }} onPatch={onPatch} />);
+    click(rowNums()[0]);
+    const del = op("delete")!;
+    expect(del.getAttribute("aria-disabled")).toBe("true");
+    expect(del.title).toBe("A sheet keeps at least two rows");
+    tap(del);
+    expect(onPatch).not.toHaveBeenCalled();
+  });
+
+  it("Move greys at either end with Already first / Already last", () => {
+    mount(<Harness initial={bigBlock(4)} />);
+    click(rowNums()[0]);
+    expect(op("moveBack")!.title).toBe("Already first");
+    expect(op("moveFwd")!.title).toBe("Move down");
+    click(rowNums()[3]);
+    expect(op("moveFwd")!.title).toBe("Already last");
+  });
+
+  it("the append controls stay visible and inert at the bounds", () => {
+    mount(<Harness initial={bigBlock(100)} />);
+    expect(addRowBtn().title).toBe("100 rows is the limit");
+    expect(addRowBtn().getAttribute("aria-disabled")).toBe("true");
+    expect(addColBtn().title).toBe("Add column");
+  });
+
+  it("the bottom + appends a row at the end", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(<Harness initial={bigBlock(3)} onPatch={(p) => patches.push(p)} />);
+    tap(addRowBtn());
+    const cells = patches.at(-1)!.cells as ({ v?: unknown } | null)[][];
+    expect(cells.length).toBe(4);
+    expect(cells[3][0]).toBeNull();
+  });
+
+  it("the right + appends a column with the default width", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(<Harness initial={bigBlock(3)} onPatch={(p) => patches.push(p)} />);
+    tap(addColBtn());
+    expect(patches.at(-1)!.cw).toEqual([160, 120, 120]);
+  });
+});
+
+describe("selection and the open editor survive a structural change", () => {
+  it("deleting the selected row leaves a valid selection", () => {
+    mount(<Harness initial={bigBlock(4)} />);
+    click(rowNums()[2]);
+    expect(refLabel()).toBe("A3:B3");
+    tap(op("delete")!);
+    // The selection lands on the NEW row 3, not on nothing.
+    expect(refLabel()).toBe("A3:B3");
+    expect(cell(2, 0).textContent).toBe("30");
+  });
+
+  it("selecting a full row COMMITS an open edit rather than orphaning it", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(<Harness initial={bigBlock(4)} onPatch={(p) => patches.push(p)} />);
+    click(cell(2, 0));
+    press(grid(), "x");
+    typeInto(editor()!, "xyz");
+    click(rowNums()[0]);
+    // Focus moved to the grid, so the draft landed — no lost keystrokes,
+    // and no editor left hovering over a row that is about to move.
+    expect(editor()).toBeNull();
+    expect(rawAt(patches.at(-1)!, 2, 0)).toBe("xyz");
+    expect(spanLabel()).toBe("Row 1");
+  });
+
+  it("there is still exactly one input inside the grid", () => {
+    mount(<Harness />);
+    click(cell(1, 0));
+    press(grid(), "k");
+    expect(grid().querySelectorAll("input").length).toBe(1);
+  });
+});
+
+describe("column width dragging", () => {
+  function drag(c: number, dx: number) {
+    const el = divider(c);
+    act(() => {
+      el.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, button: 0, clientX: 100 }),
+      );
+    });
+    act(() => {
+      window.dispatchEvent(new PointerEvent("pointermove", { clientX: 100 + dx }));
+    });
+    return () =>
+      act(() => {
+        window.dispatchEvent(new PointerEvent("pointerup", { clientX: 100 + dx }));
+      });
+  }
+
+  it("clamps at 420 during the drag and writes once on release", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(<Harness onPatch={(p) => patches.push(p)} />);
+    const release = drag(0, 900);
+    // Felt DURING the drag: the grid track is already clamped.
+    expect(grid().style.gridTemplateColumns).toBe(`${SHEET_ROW_NUM_W}px 420px 120px`);
+    expect(patches.length).toBe(0); // no write per pointermove
+    release();
+    expect(patches.length).toBe(1); // ONE undo entry per drag
+    expect(patches[0].cw).toEqual([420, 120]);
+  });
+
+  it("clamps at 56 during the drag", () => {
+    mount(<Harness />);
+    drag(0, -400);
+    expect(grid().style.gridTemplateColumns).toBe(`${SHEET_ROW_NUM_W}px 56px 120px`);
+  });
+
+  it("a drag on the divider does not select the column", () => {
+    mount(<Harness />);
+    drag(1, 20)();
+    expect(refLabel()).toBe("—");
+  });
+
+  it("double-clicking a divider resets THAT column to its default", () => {
+    const patches: Record<string, unknown>[] = [];
+    mount(
+      <Harness
+        initial={{ ...block, id: "s5", cw: [300, 300] }}
+        onPatch={(p) => patches.push(p)}
+      />,
+    );
+    act(() => {
+      divider(1).dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    });
+    expect(patches.at(-1)!.cw).toEqual([300, 120]);
+    act(() => {
+      divider(0).dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    });
+    expect(patches.at(-1)!.cw).toEqual([160, 120]);
+  });
+});

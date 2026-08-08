@@ -22,9 +22,15 @@
  * Nothing is cached — a cached result is how a sheet ends up showing a
  * number that no longer follows from its inputs.
  *
- * NOT here (later chunks): autocomplete and click-to-reference (4), the
- * formatting toolbar (5), row/column operations (5), clipboard and fill
- * handle (6), block resize (7).
+ * NOT here (later chunks): autocomplete and click-to-reference (5), the
+ * formatting toolbar (6), clipboard and fill handle (7), block resize (8).
+ *
+ * Chunk 4 added STRUCTURE — growing, shrinking, reordering and column
+ * widths. Every grid mutation goes through src/lib/sheet-model.ts and
+ * every structural DECISION (which control exists, whether it is enabled,
+ * how an index shifts) through src/lib/sheet-structure.ts. There is
+ * deliberately no second set of mutations in this file: a `cw` array out
+ * of step with the columns is silent corruption.
  */
 
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -38,13 +44,28 @@ import {
   type SheetError,
 } from "@/lib/sheet-engine";
 import {
+  addCol,
+  addRow,
   normalizeSheet,
   setCell,
+  setColWidth,
   type Cell,
   type SheetBlock,
 } from "@/lib/sheet-model";
+import {
+  appendControl,
+  applySpanOp,
+  defaultCw,
+  dragWidth,
+  selAfterOp,
+  shiftIndex,
+  spanControls,
+  type OpId,
+  type SpanKind,
+} from "@/lib/sheet-structure";
 import { fillToken, inkToken } from "@/lib/sheet-palette";
 import { SHEET_GRID_ATTR } from "@/lib/is-typing";
+import { useToast } from "@/lib/toast";
 import {
   cellBox,
   cellsIn,
@@ -64,6 +85,7 @@ import {
   selectRows,
   type Sel,
 } from "@/lib/sheet-select";
+
 
 export const SHEET_ROW_NUM_W = ROW_NUM_W;
 export const SHEET_HEAD_H = HEAD_H;
@@ -101,6 +123,21 @@ type Edit = {
    *  focus — so the focus guard must not yank focus into the overlay. */
   via: "grid" | "bar";
 };
+
+/** A centred 12px plus — an svg, so no raw px font size is involved. */
+function PlusGlyph() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden focusable="false">
+      <path
+        d="M6 2.5v7M2.5 6h7"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        fill="none"
+      />
+    </svg>
+  );
+}
 
 function rawOf(cells: (Cell | null)[][], r: number, c: number): string {
   const v = cells[r]?.[c]?.v;
@@ -143,6 +180,14 @@ export function SheetBlockView({
   const gridRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const barRef = useRef<HTMLInputElement | null>(null);
+  const toast = useToast();
+  /* How the current selection was MADE. In a one-column sheet selecting
+   * the column also selects every row, so the contextual group would
+   * otherwise read as rows and offer the wrong floor message. */
+  const [spanPref, setSpanPref] = useState<SpanKind | undefined>(undefined);
+  /* A width drag in flight. Held in state so the clamp is FELT during the
+   * drag; only pointerup writes, so a drag is ONE undo entry. */
+  const [drag, setDrag] = useState<{ c: number; px: number } | null>(null);
   /* The focus stamp lives OUTSIDE the value that changes. Without it the
    * ref callback re-runs focus() + select() on every render, re-selecting
    * the text so the next keystroke replaces everything typed so far — the
@@ -156,6 +201,14 @@ export function SheetBlockView({
     },
     [onChange],
   );
+
+  /** Widths as the user currently SEES them — the live drag overrides the
+   *  stored value so every overlay stays arithmetically aligned mid-drag. */
+  const cw = useMemo(
+    () => (drag ? sheet.cw.map((w, i) => (i === drag.c ? drag.px : w)) : sheet.cw),
+    [drag, sheet.cw],
+  );
+
 
   /** Commit a raw draft onto (r, c). Coordinates are ALWAYS passed in from
    *  live state by the caller — never read from a closure. */
@@ -239,6 +292,124 @@ export function SheetBlockView({
     },
     [editable, sheet.cells],
   );
+
+  /* ─────────────────── Structure (chunk 4) ───────────────────
+   * Every mutation is a MODEL call. This code decides nothing about the
+   * grid's shape — sheet-structure.ts does, and sheet-model.ts enforces
+   * the floors, the bounds and cw lockstep. */
+
+  /** A contextual span op. ONE write, so ONE undo entry. */
+  const runSpanOp = useCallback(
+    (kind: SpanKind, i0: number, i1: number, op: OpId) => {
+      if (!editable) return;
+      const total = kind === "row" ? rows : cols;
+      if (op === "moveBack" && i0 <= 0) return;
+      if (op === "moveFwd" && i1 >= total - 1) return;
+      const next = applySpanOp(sheet, kind, i0, i1, op);
+      const totalAfter = kind === "row" ? next.cells.length : next.cw.length;
+      // The model REFUSED — a floor or a bound. The greyed control and its
+      // toast are the user-facing half of the same rule.
+      if (op !== "moveBack" && op !== "moveFwd" && totalAfter === total) return;
+      write(next);
+      onBlur?.();
+
+      const rowsAfter = next.cells.length;
+      const colsAfter = next.cw.length;
+      setSel(selAfterOp(kind, i0, i1, op, rowsAfter, colsAfter));
+      setSpanPref(kind);
+
+      /* ⚠ THE EDIT-COORDINATE SHIFT. Inserting a row above the cell being
+       * edited moves that cell down. The edit's coordinates are shifted
+       * explicitly AND the focus stamp is rewritten to match, so the focus
+       * guard sees no change: the caret stays where it was and the draft
+       * is not re-selected or lost. If the edited cell was deleted the
+       * editor closes rather than pointing at a stranger's value. */
+      const live = editRef.current;
+      if (!live) return;
+      const idx = kind === "row" ? live.r : live.c;
+      const moved = shiftIndex(idx, op, i0, i1);
+      if (moved === null) {
+        editRef.current = null;
+        setEdit(null);
+        return;
+      }
+      if (moved === idx) return;
+      const shifted: Edit = kind === "row" ? { ...live, r: moved } : { ...live, c: moved };
+      focusStamp.current = `${blockId}:${shifted.r}:${shifted.c}#${shifted.force}`;
+      editRef.current = shifted;
+      setEdit(shifted);
+    },
+    [editable, sheet, rows, cols, write, onBlur, blockId],
+  );
+
+  /** Blind append at the far edge — always available, inert at the bound. */
+  const append = useCallback(
+    (kind: SpanKind) => {
+      if (!editable) return;
+      const info = appendControl(kind, rows, cols);
+      if (!info.enabled) {
+        toast.push(info.title);
+        return;
+      }
+      write(kind === "row" ? addRow(sheet, rows) : addCol(sheet, cols, defaultCw(cols)));
+      onBlur?.();
+    },
+    [editable, rows, cols, sheet, write, onBlur, toast],
+  );
+
+  /* ── Column width dragging: PIXELS AND INDEPENDENT, like a table column.
+     Widening one column never narrows its neighbour — a sheet is allowed
+     to be wider than the text column and scrolls. Listeners go on the
+     WINDOW because the pointer leaves a shrinking column. ── */
+  const startWidthDrag = useCallback(
+    (c: number, e: React.PointerEvent) => {
+      if (!editable) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const base = sheet.cw[c] ?? defaultCw(c);
+      const startX = e.clientX;
+      const el = e.currentTarget as HTMLElement;
+      el.setPointerCapture?.(e.pointerId);
+      const prevSelect = document.body.style.userSelect;
+      document.body.style.userSelect = "none";
+      setDrag({ c, px: base });
+
+      const onMove = (ev: PointerEvent) => {
+        setDrag({ c, px: dragWidth(base, ev.clientX - startX) });
+      };
+      const onUp = (ev: PointerEvent) => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+        document.body.style.userSelect = prevSelect;
+        const px = dragWidth(base, ev.clientX - startX);
+        setDrag(null);
+        // ONE write at the END of the drag — one undo entry, not one per
+        // pointermove.
+        if (px !== base) {
+          write(setColWidth(sheet, c, px));
+          onBlur?.();
+        }
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+    },
+    [editable, sheet, write, onBlur],
+  );
+
+  const resetWidth = useCallback(
+    (c: number) => {
+      if (!editable) return;
+      const px = defaultCw(c);
+      if (sheet.cw[c] === px) return;
+      write(setColWidth(sheet, c, px));
+      onBlur?.();
+    },
+    [editable, sheet, write, onBlur],
+  );
+
+
 
   /* ───────────────────────── Keyboard ─────────────────────────
    * §E: the page around this sheet already binds arrows, Backspace,
@@ -324,14 +495,15 @@ export function SheetBlockView({
         setEdit(null);
       }
       setSel((prev) => (shift && prev ? { ...prev, fr: r, fc: c } : selAt(r, c)));
+      setSpanPref(undefined);
       gridRef.current?.focus();
     },
     [commitCell],
   );
 
   const rc = sel ? rect(sel) : null;
-  const overlay = rc ? rangeBox(sheet.cw, rc) : null;
-  const editBox = edit ? cellBox(sheet.cw, edit.r, edit.c) : null;
+  const overlay = rc ? rangeBox(cw, rc) : null;
+  const editBox = edit ? cellBox(cw, edit.r, edit.c) : null;
 
   /* ─────────────────── Formula bar readout ───────────────────
    * Computed through the chunk-1 engine (one summing path, no second
@@ -352,10 +524,26 @@ export function SheetBlockView({
   const barValue = edit ? edit.draft : sel ? rawOf(sheet.cells, sel.fr, sel.fc) : "";
 
   const width = pageScope && typeof sheet.bw === "number" ? sheet.bw : undefined;
-  const template = `${ROW_NUM_W}px ${sheet.cw.map((w) => `${w}px`).join(" ")}`;
+  const template = `${ROW_NUM_W}px ${cw.map((w) => `${w}px`).join(" ")}`;
+
+  /* The contextual group exists only for a FULL span — chunk 3's pure
+   * predicate decides, not this component. */
+  const ctl = editable ? spanControls(sel, rows, cols, spanPref) : null;
+  const rowAppend = appendControl("row", rows, cols);
+  const colAppend = appendControl("col", rows, cols);
+
+  /* §5: a new button must not let Backspace escape to the page and delete
+   * the sheet block. The root also carries data-sheet-grid, so the shared
+   * typing predicate covers anything focused inside this block. */
+  const guardKeys = (e: React.KeyboardEvent) => {
+    if (e.key === "Backspace" || e.key === "Delete") {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
 
   return (
-    <div className="py-1" aria-label="Sheet block">
+    <div className="group py-1" aria-label="Sheet block" {...{ [SHEET_GRID_ATTR]: "" }}>
       {/* ── Formula bar ── */}
       <div className="mb-1 flex items-center gap-2">
         <span className="min-w-14 font-mono text-caption text-muted" data-sheet-ref>
@@ -403,13 +591,52 @@ export function SheetBlockView({
             {readout}
           </span>
         )}
+        {/* ── Contextual row / column operations. They live BESIDE the
+              formula bar, right-aligned, so a full-span selection does not
+              make the sheet grow a second bar. Nothing here vanishes at a
+              boundary: it greys, explains itself in the title, and toasts
+              the reason when clicked. ── */}
+        {ctl && (
+          <div className="flex shrink-0 items-center gap-0.5" data-sheet-span>
+            <span className="mr-1 whitespace-nowrap text-caption text-muted" data-sheet-span-label>
+              {ctl.label}
+            </span>
+            {ctl.ops.map((op) => (
+              <button
+                key={op.id}
+                type="button"
+                title={op.title}
+                data-sheet-op={op.id}
+                aria-disabled={!op.enabled}
+                onKeyDown={guardKeys}
+                onClick={() => {
+                  if (!op.enabled) {
+                    toast.push(op.toast ?? op.title);
+                    return;
+                  }
+                  runSpanOp(ctl.kind, ctl.i0, ctl.i1, op.id);
+                }}
+                className={
+                  "h-[26px] rounded-md px-2 text-caption hover:bg-sunken " +
+                  (op.danger ? "text-danger" : "text-secondary") +
+                  (op.enabled ? "" : " opacity-50")
+                }
+              >
+                {op.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div
-        className="overflow-auto rounded-lg border border-line bg-surface"
-        style={{ width, maxWidth: "100%", maxHeight: 520 }}
-      >
-        <div
+      <div className="flex items-stretch gap-1">
+        <div className="flex min-w-0 flex-col gap-1">
+          <div
+            className="overflow-auto rounded-lg border border-line bg-surface"
+            style={{ width, maxWidth: "100%", maxHeight: 520 }}
+          >
+            <div
+
           role="table"
           ref={gridRef}
           tabIndex={0}
@@ -438,7 +665,7 @@ export function SheetBlockView({
             }}
           />
           {/* ── Column letters: select the whole column ── */}
-          {sheet.cw.map((_, c) => (
+          {cw.map((_, c) => (
             <div
               key={`h${c}`}
               role="columnheader"
@@ -449,6 +676,7 @@ export function SheetBlockView({
               onPointerDown={(e) => {
                 if (e.shiftKey && sel) setSel({ ...sel, fr: rows - 1, fc: c });
                 else setSel(selectCols(c, c, rows));
+                setSpanPref("col");
                 gridRef.current?.focus();
               }}
               style={{
@@ -462,6 +690,30 @@ export function SheetBlockView({
               }}
             >
               {colName(c)}
+              {/* ── Width divider: a 6px hit zone on the RIGHT EDGE. The
+                    clamp is applied DURING the drag so the limit is felt
+                    rather than snapping back, and ONE write lands on
+                    pointerup — one undo entry per drag. ── */}
+              {editable && (
+                <div
+                  data-sheet-divider={c}
+                  aria-hidden
+                  onPointerDown={(e) => startWidthDrag(c, e)}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    resetWidth(c);
+                  }}
+                  className="group/div absolute top-0 flex h-full justify-end"
+                  style={{ right: -3, width: 6, cursor: "col-resize", zIndex: 4 }}
+                >
+                  <div
+                    className={
+                      "h-full w-px " +
+                      (drag?.c === c ? "bg-blue" : "bg-transparent group-hover/div:bg-rule")
+                    }
+                  />
+                </div>
+              )}
             </div>
           ))}
 
@@ -481,6 +733,7 @@ export function SheetBlockView({
                   onPointerDown={(e) => {
                     if (e.shiftKey && sel) setSel({ ...sel, fr: r, fc: cols - 1 });
                     else setSel(selectRows(r, r, cols));
+                    setSpanPref("row");
                     gridRef.current?.focus();
                   }}
                   style={{
@@ -618,12 +871,57 @@ export function SheetBlockView({
               }}
             />
           )}
+            </div>
+          </div>
+
+          {/* ── Blind append, BOTTOM edge: adds a row at the end. Outside
+                the grid so it never fights a cell. ── */}
+          {editable && (
+            <button
+              type="button"
+              title={rowAppend.title}
+              data-sheet-add="row"
+              aria-disabled={!rowAppend.enabled}
+              onKeyDown={guardKeys}
+              onClick={() => append("row")}
+              className={
+                "h-[22px] grid place-items-center rounded opacity-0 transition-opacity group-hover:opacity-100 " +
+                (rowAppend.enabled
+                  ? "text-faint hover:bg-sunken hover:text-muted"
+                  : "text-whisper hover:bg-sunken")
+              }
+              style={{ width: width ?? "100%", maxWidth: "100%" }}
+            >
+              <PlusGlyph />
+            </button>
+          )}
         </div>
+
+        {/* ── Blind append, RIGHT edge: adds a column at the end. ── */}
+        {editable && (
+          <button
+            type="button"
+            title={colAppend.title}
+            data-sheet-add="col"
+            aria-disabled={!colAppend.enabled}
+            onKeyDown={guardKeys}
+            onClick={() => append("col")}
+            className={
+              "w-[22px] shrink-0 grid place-items-center rounded opacity-0 transition-opacity group-hover:opacity-100 " +
+              (colAppend.enabled
+                ? "text-faint hover:bg-sunken hover:text-muted"
+                : "text-whisper hover:bg-sunken")
+            }
+          >
+            <PlusGlyph />
+          </button>
+        )}
       </div>
       {rows > SHEET_NUDGE_ROWS && (
         <p className="mt-1.5 text-caption text-amberInk">{SHEET_NUDGE_TEXT}</p>
       )}
       <span className="sr-only">{`${rows} rows, ${cols} columns`}</span>
+
     </div>
   );
 }
