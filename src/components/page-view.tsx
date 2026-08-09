@@ -941,8 +941,11 @@ function PropertyStrip({
 
       <AddPropertyPopover
         propDefs={propDefs}
-        present={present}
-        onAdd={(key, seed) => onSet(key, seed)}
+        present={shown}
+        onAdd={(key, seed) => {
+          setAdded((prev) => new Set(prev).add(key));
+          onSet(key, seed);
+        }}
       />
     </div>
   );
