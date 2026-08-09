@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import {
@@ -7,6 +8,7 @@ import {
   usePageAccess,
 } from "@/hooks/use-workspace-data";
 import { Ico } from "./emoji-icon";
+import { RelatedLinks } from "./related-links";
 import {
   useRenamePage,
   useSetPageIcon,
@@ -311,6 +313,7 @@ function EditableValue({
   onSet: (value: unknown) => void;
   onOpenChange: (open: boolean) => void;
 }) {
+  const navigate = useNavigate();
   const raw = propsOf(page)[propKey];
   const empty = <EmptyValue propKey={propKey} defType={def?.type} />;
   const allTags = useMemo(() => {
@@ -593,6 +596,8 @@ const PROP_ICON_BY_KEY: Record<string, string> = {
   confidential:
     "M5.5 4h13a1.5 1.5 0 0 1 1.5 1.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-13A1.5 1.5 0 0 1 5.5 4zM8.4 12.2l2.6 2.6 4.6-5",
   notes: "M6 5h12M9.6 5v14M7.4 19h4.4",
+  related:
+    "M10.5 13.5a3.4 3.4 0 0 0 4.8 0l3-3a3.4 3.4 0 0 0-4.8-4.8l-1 1M13.5 10.5a3.4 3.4 0 0 0-4.8 0l-3 3a3.4 3.4 0 0 0 4.8 4.8l1-1",
 };
 
 const TYPE_LABEL: Record<string, string> = {
@@ -604,6 +609,7 @@ const TYPE_LABEL: Record<string, string> = {
   person: "Person",
   checkbox: "Checkbox",
   text: "Text",
+  links: "Links",
 };
 
 function AddPropertyPopover({
@@ -623,6 +629,7 @@ function AddPropertyPopover({
   const seedFor = (t: string): unknown => {
     switch (t) {
       case "multi_select":
+      case "links":
         return [];
       case "checkbox":
         return false;
