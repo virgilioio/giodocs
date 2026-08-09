@@ -5,6 +5,8 @@ import {
   dueState,
   formatDue,
   dueAgeLabel,
+  dueDeltaDays,
+  dueRelative,
   dueLabel,
   isPropSet,
   isTerminalStatus,
@@ -50,10 +52,10 @@ describe("dueState normalises to local midnight", () => {
 
 describe("formatDue", () => {
   it("omits the year in the current year", () => {
-    expect(formatDue("2026-08-15", NOW)).toBe("15 Aug");
+    expect(formatDue("2026-08-15", NOW)).toBe("Aug 15");
   });
   it("includes a differing year", () => {
-    expect(formatDue("2027-08-15", NOW)).toBe("15 Aug 2027");
+    expect(formatDue("2027-08-15", NOW)).toBe("Aug 15, 2027");
   });
 });
 
@@ -65,7 +67,7 @@ describe("dueAgeLabel / dueLabel", () => {
   it("overdue label appends the relative age", () => {
     expect(dueLabel("2026-08-05", NOW)).toEqual({
       state: "overdue",
-      text: "5 Aug · 3 days ago",
+      text: "Aug 5 · 3 days ago",
     });
   });
   it("today reads Today", () => {
@@ -74,8 +76,28 @@ describe("dueAgeLabel / dueLabel", () => {
   it("future reads plainly", () => {
     expect(dueLabel("2026-09-01", NOW)).toEqual({
       state: "future",
-      text: "1 Sep",
+      text: "Sep 1",
     });
+  });
+});
+
+describe("dueDeltaDays / dueRelative", () => {
+  it("counts calendar days, unaffected by the local hour", () => {
+    expect(dueDeltaDays("2026-08-08", LATE)).toBe(0);
+    expect(dueDeltaDays("2026-08-09", LATE)).toBe(1);
+    expect(dueDeltaDays("2026-08-05", NOW)).toBe(-3);
+    expect(dueDeltaDays(null, NOW)).toBeNull();
+  });
+  it("words the near days plainly", () => {
+    expect(dueRelative("2026-08-08", LATE)).toBe("today");
+    expect(dueRelative("2026-08-09", NOW)).toBe("tomorrow");
+    expect(dueRelative("2026-08-07", NOW)).toBe("yesterday");
+  });
+  it("days under 14, weeks 14-59, months 60+, then years", () => {
+    expect(dueRelative("2026-08-14", NOW)).toBe("in 6 days");
+    expect(dueRelative("2026-07-18", NOW)).toBe("3 weeks ago");
+    expect(dueRelative("2026-11-08", NOW)).toBe("in 3 months");
+    expect(dueRelative("2028-08-08", NOW)).toBe("in 2 years");
   });
 });
 

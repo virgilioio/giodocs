@@ -884,6 +884,7 @@ export type Database = {
         | "number"
         | "checkbox"
         | "status"
+        | "links"
       view_layout: "table" | "board" | "list"
       view_scope: "personal" | "team"
     }
@@ -1023,6 +1024,7 @@ export const Constants = {
         "number",
         "checkbox",
         "status",
+        "links",
       ],
       view_layout: ["table", "board", "list"],
       view_scope: ["personal", "team"],

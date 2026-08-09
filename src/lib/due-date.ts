@@ -94,31 +94,60 @@ export function dueState(
   return opts.terminal ? "future" : "overdue";
 }
 
-/** "15 Aug", or "15 Aug 2027" when the year differs from now. */
+/** "Mar 14", or "Mar 14, 2027" when the year differs from now. The year
+ * guard stays: a bare month-day in another year is ambiguous. */
 export function formatDue(value: unknown, now: Date = new Date()): string {
   const p = dueParts(value);
   if (!p) return "";
   const [y, m, d] = p;
-  const base = `${d} ${MONTHS[m - 1]}`;
-  return y === now.getFullYear() ? base : `${base} ${y}`;
+  const base = `${MONTHS[m - 1]} ${d}`;
+  return y === now.getFullYear() ? base : `${base}, ${y}`;
+}
+
+/** Whole calendar days from today to the stored date: 0 today, 1 tomorrow,
+ * -1 yesterday. Both sides are local midnight, so 4pm never shifts it. */
+export function dueDeltaDays(
+  value: unknown,
+  now: Date = new Date(),
+): number | null {
+  const due = dueMidnight(value);
+  if (due === null) return null;
+  return Math.round((due - todayMidnight(now)) / 86400000);
+}
+
+/** Unsigned magnitude wording: days under 14, weeks 14–59, months 60+,
+ * years past a year. ONE table, used by both relative labels. */
+function magnitude(days: number): string {
+  const n = Math.abs(days);
+  if (n < 14) return n === 1 ? "1 day" : `${n} days`;
+  if (n < 60) {
+    const w = Math.round(n / 7);
+    return w === 1 ? "1 week" : `${w} weeks`;
+  }
+  if (n < 365) {
+    const mo = Math.round(n / 30);
+    return mo === 1 ? "1 month" : `${mo} months`;
+  }
+  const yr = Math.floor(n / 365);
+  return yr === 1 ? "1 year" : `${yr} years`;
+}
+
+/** "today" / "tomorrow" / "yesterday" / "in 6 days" / "3 weeks ago". */
+export function dueRelative(value: unknown, now: Date = new Date()): string {
+  const d = dueDeltaDays(value, now);
+  if (d === null) return "";
+  if (d === 0) return "today";
+  if (d === 1) return "tomorrow";
+  if (d === -1) return "yesterday";
+  return d > 0 ? `in ${magnitude(d)}` : `${magnitude(d)} ago`;
 }
 
 /** Whole-day relative age, for the overdue suffix. */
 export function dueAgeLabel(value: unknown, now: Date = new Date()): string {
-  const due = dueMidnight(value);
-  if (due === null) return "";
-  const days = Math.round((todayMidnight(now) - due) / 86400000);
-  if (days <= 0) return "today";
-  if (days === 1) return "yesterday";
-  if (days < 7) return `${days} days ago`;
-  if (days < 14) return "1 week ago";
-  if (days < 60) return `${Math.floor(days / 7)} weeks ago`;
-  if (days < 365) {
-    const mo = Math.floor(days / 30);
-    return mo === 1 ? "1 month ago" : `${mo} months ago`;
-  }
-  const yr = Math.floor(days / 365);
-  return yr === 1 ? "1 year ago" : `${yr} years ago`;
+  const d = dueDeltaDays(value, now);
+  if (d === null) return "";
+  if (d >= 0) return "today";
+  return dueRelative(value, now);
 }
 
 /** The full value string a date cell renders: "12 Aug · 3 days ago"
