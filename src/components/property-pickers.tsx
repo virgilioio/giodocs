@@ -520,7 +520,7 @@ export function DatePicker({
   const stored = toDueString(value);
   return (
     <Popover
-      width={214}
+      width={272}
       onOpenChange={onOpenChange}
       trigger={({ onClick, ref }) => (
         <button
@@ -540,35 +540,341 @@ export function DatePicker({
       )}
     >
       {(close) => (
-        <div className="flex flex-col" style={{ gap: 2, padding: 2 }}>
-          <input
-            type="date"
-            defaultValue={stored ?? ""}
-            onChange={(e) => {
-              const next = toDueString(e.target.value);
-              onSet(next);
-              if (next) close();
-            }}
-            className="w-full border border-line bg-track"
-            style={{ fontSize: 13.5, borderRadius: 8, padding: "6px 8px" }}
-          />
-          {stored ? (
-            <button
-              type="button"
-              className="rounded-sm px-2 py-1 text-left text-meta text-muted hover:bg-rail"
-              onClick={() => {
-                onSet(null);
-                close();
-              }}
-            >
-              Clear
-            </button>
-          ) : null}
-        </div>
+        <CalendarBody
+          stored={stored}
+          onCommit={(v) => {
+            onSet(v);
+            close();
+          }}
+        />
       )}
     </Popover>
   );
 }
+
+/* ── The calendar ──
+ * Escape and outside-click are the Popover's job — NO local listener here.
+ * The month cursor is popover state only; it is never persisted. */
+
+const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
+
+function ymOf(key: string): { y: number; m: number } {
+  const p = dueParts(key);
+  return p ? { y: p[0], m: p[1] } : { y: 0, m: 0 };
+}
+
+function monthCursor(stored: string | null, today: Date): string {
+  const p = dueParts(stored);
+  const y = p ? p[0] : today.getFullYear();
+  const m = p ? p[1] : today.getMonth() + 1;
+  return `${y}-${String(m).padStart(2, "0")}`;
+}
+
+function stepMonth(cursor: string, delta: number): string {
+  const [y, m] = cursor.split("-").map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** ALWAYS 42 cells (6×7), Monday first — so paging never changes height. */
+function gridDays(cursor: string): Array<{ key: string; inMonth: boolean; dow: number }> {
+  const [y, m] = cursor.split("-").map(Number);
+  const first = new Date(y, m - 1, 1);
+  const lead = (first.getDay() + 6) % 7; // Monday-first offset
+  const out: Array<{ key: string; inMonth: boolean; dow: number }> = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(y, m - 1, 1 - lead + i);
+    out.push({
+      key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
+      inMonth: d.getMonth() === m - 1 && d.getFullYear() === y,
+      dow: (d.getDay() + 6) % 7,
+    });
+  }
+  return out;
+}
+
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+function Chevron({ dir }: { dir: -1 | 1 }) {
+  return (
+    <svg viewBox="0 0 24 24" width={12} height={12} aria-hidden>
+      <path
+        d={dir === -1 ? "M15 5l-7 7 7 7" : "M9 5l7 7-7 7"}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2.4}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function QuickBtn({
+  label,
+  active,
+  danger,
+  onClick,
+}: {
+  label: string;
+  active?: boolean;
+  danger?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={danger ? "rounded-md hover:bg-dangerTint" : "rounded-md hover:bg-sunken"}
+      style={{
+        padding: "4px 9px",
+        fontSize: 12.5,
+        background: active ? "var(--color-selected)" : "transparent",
+        color: danger
+          ? "var(--color-danger)"
+          : active
+            ? "var(--color-noir)"
+            : "var(--color-secondary)",
+        border: 0,
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+export function CalendarBody({
+  stored,
+  onCommit,
+  now,
+}: {
+  stored: string | null;
+  onCommit: (v: string | null) => void;
+  now?: Date;
+}) {
+  const today = now ?? new Date();
+  const todayKey = toDueString(
+    `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`,
+  );
+  const [cursor, setCursor] = useState(() => monthCursor(stored, today));
+  const [draft, setDraft] = useState("");
+
+  const days = useMemo(() => gridDays(cursor), [cursor]);
+  const { y, m } = ymOf(`${cursor}-01`);
+  const parsed = draft.trim() ? parseDateInput(draft, today) : null;
+  const showEcho = draft.trim().length > 0;
+
+  const quick = {
+    today: todayKey,
+    tomorrow: parseDateInput("+1", today),
+    week: parseDateInput("+7", today),
+  };
+
+  const past = stored ? (dueDeltaDays(stored, today) ?? 0) < 0 : false;
+
+  return (
+    <div className="flex flex-col" style={{ gap: 6, padding: 2 }}>
+      {/* HEADER */}
+      <div
+        className="flex items-center justify-between"
+        style={{ padding: "3px 3px 6px" }}
+      >
+        <span
+          style={{
+            fontFamily: "var(--font-display)",
+            fontSize: 13.5,
+            fontWeight: 600,
+            letterSpacing: "-.01em",
+            color: "var(--color-noir)",
+          }}
+        >
+          {MONTH_NAMES[m - 1]} {y}
+        </span>
+        <span className="flex items-center" style={{ gap: 2 }}>
+          <button
+            type="button"
+            aria-label="Previous month"
+            onClick={() => setCursor((c) => stepMonth(c, -1))}
+            className="grid place-items-center rounded-md text-muted hover:bg-sunken"
+            style={{ width: 24, height: 24, border: 0, background: "transparent" }}
+          >
+            <Chevron dir={-1} />
+          </button>
+          <button
+            type="button"
+            aria-label="Next month"
+            onClick={() => setCursor((c) => stepMonth(c, 1))}
+            className="grid place-items-center rounded-md text-muted hover:bg-sunken"
+            style={{ width: 24, height: 24, border: 0, background: "transparent" }}
+          >
+            <Chevron dir={1} />
+          </button>
+        </span>
+      </div>
+
+      {/* GRID */}
+      <div
+        style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 1 }}
+      >
+        {WEEKDAYS.map((w, i) => (
+          <div
+            key={`w-${i}`}
+            aria-hidden
+            className="grid place-items-center"
+            style={{
+              height: 20,
+              fontFamily: "var(--font-display)",
+              fontSize: 10.5,
+              fontWeight: 700,
+              letterSpacing: ".06em",
+              color: i >= 5 ? "var(--color-whisper)" : "var(--color-faint)",
+            }}
+          >
+            {w}
+          </div>
+        ))}
+        {days.map((d) => {
+          const selected = stored === d.key;
+          const isToday = d.key === todayKey;
+          const weekend = d.dow >= 5;
+          const fg = selected
+            ? "var(--color-btnFg)"
+            : isToday
+              ? "var(--color-accent)"
+              : !d.inMonth
+                ? "var(--color-rule)"
+                : weekend
+                  ? "var(--color-muted)"
+                  : "var(--color-body)";
+          return (
+            <button
+              key={d.key}
+              type="button"
+              data-day={d.key}
+              aria-label={d.key}
+              onClick={() => onCommit(d.key)}
+              className={selected ? "grid place-items-center" : "grid place-items-center hover:bg-sunken"}
+              style={{
+                height: 30,
+                boxSizing: "border-box",
+                borderRadius: 7,
+                fontSize: 13,
+                fontWeight: selected || isToday ? 700 : 400,
+                border:
+                  isToday && !selected
+                    ? "1.5px solid var(--color-accentRing)"
+                    : "1.5px solid transparent",
+                background: selected ? "var(--color-accent)" : "transparent",
+                color: fg,
+                cursor: "pointer",
+              }}
+            >
+              {Number(d.key.slice(8))}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* QUICK ROW */}
+      <div
+        className="flex items-center justify-between"
+        style={{ borderTop: "1px solid var(--color-sunken)", paddingTop: 6 }}
+      >
+        <span className="flex items-center" style={{ gap: 2 }}>
+          <QuickBtn
+            label="Today"
+            active={stored === quick.today}
+            onClick={() => onCommit(quick.today)}
+          />
+          <QuickBtn
+            label="Tomorrow"
+            active={!!quick.tomorrow && stored === quick.tomorrow}
+            onClick={() => onCommit(quick.tomorrow)}
+          />
+          <QuickBtn
+            label="Next week"
+            active={!!quick.week && stored === quick.week}
+            onClick={() => onCommit(quick.week)}
+          />
+        </span>
+        {stored ? (
+          <QuickBtn label="Clear" danger onClick={() => onCommit(null)} />
+        ) : null}
+      </div>
+
+      {/* TYPED ENTRY */}
+      <div className="flex flex-col" style={{ gap: 3 }}>
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (parsed) onCommit(parsed);
+              return;
+            }
+            if (!draft && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+              e.preventDefault();
+              setCursor((c) => stepMonth(c, e.key === "ArrowLeft" ? -1 : 1));
+            }
+          }}
+          placeholder={'Type a date — "tomorrow", "Mar 14", "+10"'}
+          className="w-full border border-line bg-track"
+          style={{ borderRadius: 7, padding: "5px 7px", fontSize: 13 }}
+        />
+        {showEcho ? (
+          <span
+            style={{
+              fontSize: 12,
+              padding: "0 2px",
+              color: parsed ? "var(--color-accent)" : "var(--color-amberInk)",
+            }}
+          >
+            {parsed ? `${echoLabel(parsed)} · Enter` : "Not a date"}
+          </span>
+        ) : null}
+      </div>
+
+      {/* RELATIVE LINE */}
+      {stored ? (
+        <span
+          style={{
+            fontSize: 12,
+            padding: "0 2px",
+            color: past ? "var(--color-amberInk)" : "var(--color-secondary)",
+          }}
+        >
+          Due {dueRelative(stored, today)}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+const ECHO_DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/** "Mon, Aug 10" — built from components, never from a parsed Date. */
+function echoLabel(key: string): string {
+  const p = dueParts(key);
+  if (!p) return "";
+  const dow = (new Date(p[0], p[1] - 1, p[2]).getDay() + 6) % 7;
+  return `${ECHO_DOW[dow]}, ${formatDue(key, new Date(p[0], 0, 1))}`;
+}
+
 
 /* ── Number ── inline in place; stores a JSON number, never a string. */
 
