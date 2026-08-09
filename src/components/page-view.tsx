@@ -751,7 +751,7 @@ function PropertyStrip({
       {rows.map((r) => {
         const def = propDefs.find((d) => d.key === r.key);
         const removable =
-          def && def.is_system === false && present.has(r.key);
+          def && def.is_system === false && shown.has(r.key);
         const active = hoverKey === r.key || openKey === r.key;
         const showX = removable && active;
         const label = labelFor(r.key, propDefs);
