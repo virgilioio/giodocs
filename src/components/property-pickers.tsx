@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Popover } from "./popover";
-import { dueLabel, toDueString } from "@/lib/due-date";
+import {
+  dueDeltaDays,
+  dueLabel,
+  dueParts,
+  dueRelative,
+  formatDue,
+  toDueString,
+} from "@/lib/due-date";
+import { parseDateInput } from "@/lib/date-parse";
+
 
 /* Shared editing popovers, used by BOTH the table cells (main-view.tsx)
  * and the page properties strip (page-view.tsx). Callers supply the
