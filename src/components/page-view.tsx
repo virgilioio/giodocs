@@ -708,9 +708,18 @@ function PropertyStrip({
     (a, b) => (a.position ?? 0) - (b.position ?? 0),
   );
 
+  /* A freshly added property has no value yet, and `isPropSet` reads every
+   * seed (null / "" / []) as absent — so the new row never appeared and
+   * adding looked like it did nothing for every type except checkbox.
+   * Session-local on purpose: added-but-never-filled is gone on reload,
+   * which keeps null-is-absent the only persistence rule. */
+  const [added, setAdded] = useState<Set<string>>(() => new Set());
+  const shown = new Set(present);
+  added.forEach((k) => shown.add(k));
+
   const rest = byPos
     .filter((d) => !PROPS_ORDER_TOP.includes(d.key))
-    .filter((d) => present.has(d.key));
+    .filter((d) => shown.has(d.key));
 
   const rows = [
     ...PROPS_ORDER_TOP.map((k) => ({ key: k })),
