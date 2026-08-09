@@ -507,8 +507,23 @@ function EditableValue({
     );
   }
 
+  /* ── Related links ── entries that do not resolve against the reader's
+   * own visible page list render NOTHING here (see related-links.ts). */
+  if (def?.type === "links") {
+    return (
+      <RelatedLinks
+        value={raw}
+        pages={pages}
+        currentPageId={page.id}
+        onSet={onSet}
+        onOpenPage={(id) => navigate({ to: "/p/$pageId", params: { pageId: id } })}
+        onOpenChange={onOpenChange}
+      />
+    );
+  }
+
   /* ── Text / default ── */
-  return (
+
     <TextEditor
       value={raw}
       onSet={onSet}
