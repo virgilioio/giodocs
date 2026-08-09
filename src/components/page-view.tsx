@@ -523,8 +523,9 @@ function EditableValue({
   }
 
   /* ── Text / default ── */
-
+  return (
     <TextEditor
+
       value={raw}
       onSet={onSet}
       onOpenChange={onOpenChange}
