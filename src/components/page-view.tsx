@@ -708,9 +708,18 @@ function PropertyStrip({
     (a, b) => (a.position ?? 0) - (b.position ?? 0),
   );
 
+  /* A freshly added property has no value yet, and `isPropSet` reads every
+   * seed (null / "" / []) as absent — so the new row never appeared and
+   * adding looked like it did nothing for every type except checkbox.
+   * Session-local on purpose: added-but-never-filled is gone on reload,
+   * which keeps null-is-absent the only persistence rule. */
+  const [added, setAdded] = useState<Set<string>>(() => new Set());
+  const shown = new Set(present);
+  added.forEach((k) => shown.add(k));
+
   const rest = byPos
     .filter((d) => !PROPS_ORDER_TOP.includes(d.key))
-    .filter((d) => present.has(d.key));
+    .filter((d) => shown.has(d.key));
 
   const rows = [
     ...PROPS_ORDER_TOP.map((k) => ({ key: k })),
@@ -742,7 +751,7 @@ function PropertyStrip({
       {rows.map((r) => {
         const def = propDefs.find((d) => d.key === r.key);
         const removable =
-          def && def.is_system === false && present.has(r.key);
+          def && def.is_system === false && shown.has(r.key);
         const active = hoverKey === r.key || openKey === r.key;
         const showX = removable && active;
         const label = labelFor(r.key, propDefs);
@@ -777,6 +786,12 @@ function PropertyStrip({
                   aria-label={`Remove ${label}`}
                   onClick={(e) => {
                     e.stopPropagation();
+                    setAdded((prev) => {
+                      if (!prev.has(r.key)) return prev;
+                      const next = new Set(prev);
+                      next.delete(r.key);
+                      return next;
+                    });
                     onSet(r.key, null);
                   }}
                   className="gio-prop-remove"
@@ -926,8 +941,11 @@ function PropertyStrip({
 
       <AddPropertyPopover
         propDefs={propDefs}
-        present={present}
-        onAdd={(key, seed) => onSet(key, seed)}
+        present={shown}
+        onAdd={(key, seed) => {
+          setAdded((prev) => new Set(prev).add(key));
+          onSet(key, seed);
+        }}
       />
     </div>
   );
