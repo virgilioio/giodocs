@@ -786,6 +786,12 @@ function PropertyStrip({
                   aria-label={`Remove ${label}`}
                   onClick={(e) => {
                     e.stopPropagation();
+                    setAdded((prev) => {
+                      if (!prev.has(r.key)) return prev;
+                      const next = new Set(prev);
+                      next.delete(r.key);
+                      return next;
+                    });
                     onSet(r.key, null);
                   }}
                   className="gio-prop-remove"
