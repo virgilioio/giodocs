@@ -70,7 +70,7 @@ function blur(el: Element) {
 describe("DateValue", () => {
   it("renders an overdue date in danger, with the triangle and the age", () => {
     mount(<DateValue value="2026-08-05" now={NOW} />);
-    expect(host.textContent).toBe("5 Aug · 3 days ago");
+    expect(host.textContent).toBe("Aug 5 · 3 days ago");
     expect(host.querySelector("svg")).not.toBeNull();
     expect(q("span").getAttribute("style")).toContain("--color-danger");
   });
@@ -83,7 +83,7 @@ describe("DateValue", () => {
 
   it("renders a future date plainly, no triangle", () => {
     mount(<DateValue value="2026-09-01" now={NOW} />);
-    expect(host.textContent).toBe("1 Sep");
+    expect(host.textContent).toBe("Sep 1");
     expect(host.querySelector("svg")).toBeNull();
   });
 
@@ -99,7 +99,7 @@ describe("DateValue", () => {
 
   it("shows the year when it differs from now", () => {
     mount(<DateValue value="2027-08-15" now={NOW} />);
-    expect(host.textContent).toBe("15 Aug 2027");
+    expect(host.textContent).toBe("Aug 15, 2027");
   });
 });
 
