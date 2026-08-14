@@ -173,14 +173,9 @@ export function placementRows<P extends TreePage>(
     !!q &&
     candidates.some((p) => String(p.title ?? "").trim().toLowerCase() === q);
 
-  if (!q) {
-    return matches.map((p) => ({
-      kind: "page" as const,
-      page: p,
-      hint: hintFor(p, map),
-    }));
-  }
-
+  // ONE assembly for both the empty and the typed query: with no query the
+  // picker still offers "Create a new page here", and it still SINKS below
+  // the matches. Enter picks the first row.
   if (!matches.length) rows.push(createRow);
   for (const p of matches)
     rows.push({ kind: "page", page: p, hint: hintFor(p, map) });
