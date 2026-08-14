@@ -471,6 +471,10 @@ export function useCreatePage() {
     mutationFn: async (v: {
       seedProps: Record<string, unknown>;
       blocks?: unknown[];
+      /** Placement, when the page is created INSIDE another page. Structural
+       *  — the column, never a prop. */
+      parentId?: string | null;
+      title?: string;
       _tempId?: string;
     }) => {
       const { data, error } = await supabase
@@ -481,12 +485,13 @@ export function useCreatePage() {
           edited_by: user!.id,
           verified_by: user!.id,
           icon: "📄",
-          title: "",
+          title: v.title ?? "",
+          parent_id: v.parentId ?? null,
           props: v.seedProps as never,
           blocks: (v.blocks ?? []) as never,
         })
         .select(
-          "id, workspace_id, title, icon, props, blocks, access_type, verified_at, verified_by, edited_at, edited_by, created_by, created_at, deleted_at, archived_at",
+          "id, workspace_id, title, icon, props, blocks, access_type, verified_at, verified_by, edited_at, edited_by, created_by, created_at, deleted_at, archived_at, parent_id",
         )
         .single();
       if (error) throw error;
@@ -501,8 +506,9 @@ export function useCreatePage() {
       const nowIso = new Date().toISOString();
       const optimistic: PageListItem = {
         id: tempId,
-        title: "",
+        title: v.title ?? "",
         icon: "📄",
+        parent_id: v.parentId ?? null,
         props: v.seedProps as PageListItem["props"],
         verified_at: nowIso,
         verified_by: user?.id ?? null,
@@ -529,6 +535,7 @@ export function useCreatePage() {
         edited_by: row.edited_by,
         access_type: row.access_type,
         archived_at: row.archived_at ?? null,
+        parent_id: row.parent_id ?? null,
       };
       qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) => {
         if (!prev) return [listRow];
