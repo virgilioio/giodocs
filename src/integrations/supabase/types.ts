@@ -224,6 +224,7 @@ export type Database = {
           edited_by: string | null
           icon: string
           id: string
+          parent_id: string | null
           props: Json
           search_tsv: unknown
           title: string
@@ -243,6 +244,7 @@ export type Database = {
           edited_by?: string | null
           icon?: string
           id?: string
+          parent_id?: string | null
           props?: Json
           search_tsv?: unknown
           title?: string
@@ -262,6 +264,7 @@ export type Database = {
           edited_by?: string | null
           icon?: string
           id?: string
+          parent_id?: string | null
           props?: Json
           search_tsv?: unknown
           title?: string
@@ -283,6 +286,13 @@ export type Database = {
             columns: ["edited_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pages_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "pages"
             referencedColumns: ["id"]
           },
           {
@@ -829,6 +839,7 @@ export type Database = {
           edited_by: string | null
           icon: string
           id: string
+          parent_id: string | null
           props: Json
           search_tsv: unknown
           title: string
@@ -857,6 +868,7 @@ export type Database = {
           edited_by: string | null
           icon: string
           id: string
+          parent_id: string | null
           props: Json
           search_tsv: unknown
           title: string
