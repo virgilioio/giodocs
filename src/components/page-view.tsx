@@ -852,6 +852,27 @@ function PropertyStrip({
         );
       })}
 
+      {/* Placed in — presentation over the STRUCTURAL column `parent_id`.
+       * Deliberately not a property_defs row, so it never appears in
+       * Add a property, TYPE_LABEL or seedFor. */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "132px 1fr",
+          alignItems: "center",
+          minHeight: 32,
+          padding: "2px 6px",
+        }}
+      >
+        <div
+          className="flex items-center"
+          style={{ gap: 6, fontSize: 14, color: "var(--color-muted)" }}
+        >
+          Placed in
+        </div>
+        <PlacedInRow pageId={page.id} parentId={page.parent_id} />
+      </div>
+
       {/* Verified — the freshness banner's job, folded into a strip row.
        * The label carries the verb ("Verified"); the value cell carries
        * the state (fresh / stale / just-verified). Value cell wraps on
