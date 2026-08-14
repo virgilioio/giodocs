@@ -178,7 +178,29 @@ export function PageBreadcrumbView<P extends TreePage>({
       {collapsed ? (
         <>
           {crumb(shown[0]!)}
-          <Chev label="Full chain">
+          <Popover
+            width={272}
+            trigger={({ onClick, ref }) => (
+              <button
+                ref={ref}
+                type="button"
+                onClick={onClick}
+                aria-label="Show the full chain"
+                title="Show the full chain"
+                className="shrink-0 text-faint hover:text-secondary"
+                style={{
+                  border: 0,
+                  background: "transparent",
+                  padding: "0 2px",
+                  fontSize: 13.5,
+                  lineHeight: 1,
+                  cursor: "pointer",
+                }}
+              >
+                …
+              </button>
+            )}
+          >
             {(close) => (
               <div>
                 {chain.map((c) => (
@@ -195,10 +217,7 @@ export function PageBreadcrumbView<P extends TreePage>({
                 <MenuFooter />
               </div>
             )}
-          </Chev>
-          <span className="shrink-0 text-faint" style={{ fontSize: 13.5 }}>
-            …
-          </span>
+          </Popover>
           {crumb(shown[1]!)}
         </>
       ) : (
