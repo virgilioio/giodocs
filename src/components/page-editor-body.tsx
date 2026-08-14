@@ -131,6 +131,7 @@ import { resolveKey, type Op as KeyOp } from "@/lib/block-key-handler";
 import { toggleWrap } from "@/lib/toggle-wrap";
 import { ImageBlock, ImageRowBlock, PageImageCtx } from "@/components/image-block";
 import { FileBlock } from "@/components/file-block";
+import { PageBlock } from "@/components/page-block";
 import { SheetBlockView } from "@/components/sheet-block";
 import { collectImagePaths, droppedImagePaths, rejectReason } from "@/lib/image-ops";
 import { gcImagePaths, uploadImage } from "@/lib/images";
@@ -278,6 +279,14 @@ const BLOCK_MENU: MenuItem[] = [
     icon: "\u2398",
     ic: "bFile",
     kw: "file attachment pdf doc docx upload attach download",
+  },
+  {
+    type: "page",
+    name: "Page",
+    desc: "A page that lives inside this one.",
+    icon: "\u2398",
+    ic: "bPage",
+    kw: "page subpage child inside nest place placement",
   },
 ];
 
@@ -3038,7 +3047,8 @@ function BlockRow({
     block.type === "image" ||
     block.type === "imagerow" ||
     block.type === "sheet" ||
-    block.type === "file";
+    block.type === "file" ||
+    block.type === "page";
   // Gutter (+ / drag handle) must centre vertically on the block's FIRST
   // line box, not the row centre. We publish the block's own line-height
   // as a pixel value on the row via `--gio-block-lh`; the gutter consumes
@@ -3270,6 +3280,17 @@ function BlockContent({
   if (t === "file") {
     return (
       <FileBlock
+        block={block}
+        locked={locked}
+        onChange={onChange}
+        onDelete={onDelete}
+      />
+    );
+  }
+
+  if (t === "page") {
+    return (
+      <PageBlock
         block={block}
         locked={locked}
         onChange={onChange}

@@ -471,6 +471,10 @@ export function useCreatePage() {
     mutationFn: async (v: {
       seedProps: Record<string, unknown>;
       blocks?: unknown[];
+      /** Placement, when the page is created INSIDE another page. Structural
+       *  — the column, never a prop. */
+      parentId?: string | null;
+      title?: string;
       _tempId?: string;
     }) => {
       const { data, error } = await supabase
@@ -481,12 +485,13 @@ export function useCreatePage() {
           edited_by: user!.id,
           verified_by: user!.id,
           icon: "📄",
-          title: "",
+          title: v.title ?? "",
+          parent_id: v.parentId ?? null,
           props: v.seedProps as never,
           blocks: (v.blocks ?? []) as never,
         })
         .select(
-          "id, workspace_id, title, icon, props, blocks, access_type, verified_at, verified_by, edited_at, edited_by, created_by, created_at, deleted_at, archived_at",
+          "id, workspace_id, title, icon, props, blocks, access_type, verified_at, verified_by, edited_at, edited_by, created_by, created_at, deleted_at, archived_at, parent_id",
         )
         .single();
       if (error) throw error;
@@ -501,8 +506,9 @@ export function useCreatePage() {
       const nowIso = new Date().toISOString();
       const optimistic: PageListItem = {
         id: tempId,
-        title: "",
+        title: v.title ?? "",
         icon: "📄",
+        parent_id: v.parentId ?? null,
         props: v.seedProps as PageListItem["props"],
         verified_at: nowIso,
         verified_by: user?.id ?? null,
@@ -529,6 +535,7 @@ export function useCreatePage() {
         edited_by: row.edited_by,
         access_type: row.access_type,
         archived_at: row.archived_at ?? null,
+        parent_id: row.parent_id ?? null,
       };
       qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) => {
         if (!prev) return [listRow];
@@ -1293,3 +1300,63 @@ export function useClearArea() {
 
 
 
+
+/* ────────── Placement: pages inside pages ──────────
+ *
+ * Parenthood is the COLUMN `pages.parent_id`, never a prop. The DB trigger
+ * trg_guard_page_parent is the real guard: `blockedParents` runs over the
+ * reader's VISIBLE pages, so a restricted descendant is absent from that
+ * array and the picker will sometimes legitimately offer a placement that is
+ * secretly a cycle. The trigger raises a readable sentence — surface it. */
+export function useSetPageParent() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const toast = useToast();
+
+  return useMutation({
+    mutationFn: async (v: {
+      pageId: string;
+      parentId: string | null;
+      /** Presentation only — used for the toast at both ends of a move. */
+      title?: string;
+      oldParentTitle?: string | null;
+      quiet?: boolean;
+    }) => {
+      const { error } = await supabase
+        .from("pages")
+        .update({ parent_id: v.parentId })
+        .eq("id", v.pageId);
+      if (error) throw error;
+    },
+    onSuccess: (_r, v) => {
+      qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) =>
+        prev
+          ? prev.map((p) =>
+              p.id === v.pageId ? { ...p, parent_id: v.parentId } : p,
+            )
+          : prev,
+      );
+      qc.setQueryData<PageFull | null>(qk.page(v.pageId), (prev) =>
+        prev ? { ...prev, parent_id: v.parentId } : prev,
+      );
+      if (v.quiet) return;
+      const title = v.title?.trim() || "Untitled";
+      if (v.parentId === null) {
+        toast.push(`"${title}" is no longer placed here`);
+        return;
+      }
+      const from = v.oldParentTitle?.trim();
+      toast.push(
+        from
+          ? `"${title}" moved here from "${from}"`
+          : `"${title}" placed here`,
+      );
+    },
+    onError: (err) => {
+      // The trigger's own sentence: "That page already sits inside this one",
+      // "A page cannot be placed inside itself", "Pages can only be nested
+      // three levels deep".
+      toast.push((err as Error).message);
+    },
+  });
+}
