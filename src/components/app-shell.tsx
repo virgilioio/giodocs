@@ -16,6 +16,8 @@ import { useRealtimeWorkspace } from "@/hooks/use-realtime";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
 import { getPageOrigin } from "@/lib/page-origin";
 import { Ico } from "./emoji-icon";
+import { PageBreadcrumb } from "./page-breadcrumb";
+import { SidebarTree, TREE_ASIDE } from "./sidebar-tree";
 import { useEmojiSet } from "@/hooks/use-custom-emoji";
 import { setInlineEmojiSet } from "@/lib/emoji-registry";
 import { resolvePageIdParam } from "@/lib/slug";
