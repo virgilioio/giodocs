@@ -9,6 +9,7 @@ import {
 } from "@/hooks/use-workspace-data";
 import { Ico } from "./emoji-icon";
 import { RelatedLinks } from "./related-links";
+import { PlacedInRow } from "./placed-in-row";
 import {
   useRenamePage,
   useSetPageIcon,
