@@ -5,10 +5,10 @@ import { applyAvatarRender } from "@/lib/avatar";
 import type { PageListItem, PageFull, PageAccessRow } from "@/lib/types";
 
 const PAGE_LIST_COLUMNS =
-  "id, title, icon, props, verified_at, verified_by, edited_at, edited_by, access_type, archived_at";
+  "id, title, icon, props, verified_at, verified_by, edited_at, edited_by, access_type, archived_at, parent_id";
 
 const PAGE_FULL_COLUMNS =
-  "id, workspace_id, title, icon, props, blocks, access_type, verified_at, verified_by, edited_at, edited_by, created_by, created_at, deleted_at, archived_at";
+  "id, workspace_id, title, icon, props, blocks, access_type, verified_at, verified_by, edited_at, edited_by, created_by, created_at, deleted_at, archived_at, parent_id";
 
 async function fetchPages(ws: string): Promise<PageListItem[]> {
   // Archived pages leave every view, area list, and sidebar count. They stay
