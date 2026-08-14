@@ -360,7 +360,10 @@ export function PageBlockView<P extends PageBlockItem>({
               trigger={({ onClick, ref }) => (
                 <button
                   ref={(el) => {
-                    ref.current = el;
+                    if (typeof ref === "function") ref(el);
+                    else if (ref)
+                      (ref as React.MutableRefObject<HTMLButtonElement | null>).current =
+                        el;
                     chooseRef.current = el;
                   }}
                   type="button"
