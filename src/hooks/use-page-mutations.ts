@@ -1293,3 +1293,63 @@ export function useClearArea() {
 
 
 
+
+/* ────────── Placement: pages inside pages ──────────
+ *
+ * Parenthood is the COLUMN `pages.parent_id`, never a prop. The DB trigger
+ * trg_guard_page_parent is the real guard: `blockedParents` runs over the
+ * reader's VISIBLE pages, so a restricted descendant is absent from that
+ * array and the picker will sometimes legitimately offer a placement that is
+ * secretly a cycle. The trigger raises a readable sentence — surface it. */
+export function useSetPageParent() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const toast = useToast();
+
+  return useMutation({
+    mutationFn: async (v: {
+      pageId: string;
+      parentId: string | null;
+      /** Presentation only — used for the toast at both ends of a move. */
+      title?: string;
+      oldParentTitle?: string | null;
+      quiet?: boolean;
+    }) => {
+      const { error } = await supabase
+        .from("pages")
+        .update({ parent_id: v.parentId })
+        .eq("id", v.pageId);
+      if (error) throw error;
+    },
+    onSuccess: (_r, v) => {
+      qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) =>
+        prev
+          ? prev.map((p) =>
+              p.id === v.pageId ? { ...p, parent_id: v.parentId } : p,
+            )
+          : prev,
+      );
+      qc.setQueryData<PageFull | null>(qk.page(v.pageId), (prev) =>
+        prev ? { ...prev, parent_id: v.parentId } : prev,
+      );
+      if (v.quiet) return;
+      const title = v.title?.trim() || "Untitled";
+      if (v.parentId === null) {
+        toast.push(`"${title}" is no longer placed here`);
+        return;
+      }
+      const from = v.oldParentTitle?.trim();
+      toast.push(
+        from
+          ? `"${title}" moved here from "${from}"`
+          : `"${title}" placed here`,
+      );
+    },
+    onError: (err) => {
+      // The trigger's own sentence: "That page already sits inside this one",
+      // "A page cannot be placed inside itself", "Pages can only be nested
+      // three levels deep".
+      toast.push((err as Error).message);
+    },
+  });
+}
