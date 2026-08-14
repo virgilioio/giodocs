@@ -146,6 +146,10 @@ export function newSheetGrid(): { cells: null[][]; cw: number[] } {
   };
 }
 
+/** Ids of page blocks inserted in THIS session — the picker auto-opens once
+ *  for these and never for a block that was already on the page. */
+export const FRESH_PAGE_BLOCKS = new Set<string>();
+
 export function newBlock(type: BlockType = "text", text = ""): Blk {
   const base: Blk = { id: nanoid(10), type, text };
   if (type === "todo") base.checked = false;
@@ -158,6 +162,13 @@ export function newBlock(type: BlockType = "text", text = ""): Blk {
   // stored value is always a STORAGE PATH, never a signed URL.
   if (type === "image")
     Object.assign(base, { align: "center", w: 100 } as Record<string, unknown>);
+  // A page block starts as a REFERENCE to nothing. `/page` must open the
+  // picker, not create a page, so we remember that this block was just
+  // inserted; an empty block found on reload stays quiet.
+  if (type === "page") {
+    base.pid = "";
+    FRESH_PAGE_BLOCKS.add(base.id);
+  }
   if (type === "imagerow")
     Object.assign(base, { cols: 2, paths: [null, null] } as Record<string, unknown>);
   return base;
