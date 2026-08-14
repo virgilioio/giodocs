@@ -16,6 +16,8 @@ import { useRealtimeWorkspace } from "@/hooks/use-realtime";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
 import { getPageOrigin } from "@/lib/page-origin";
 import { Ico } from "./emoji-icon";
+import { PageBreadcrumb } from "./page-breadcrumb";
+import { SidebarTree, TREE_ASIDE } from "./sidebar-tree";
 import { useEmojiSet } from "@/hooks/use-custom-emoji";
 import { setInlineEmojiSet } from "@/lib/emoji-registry";
 import { resolvePageIdParam } from "@/lib/slug";
@@ -95,7 +97,7 @@ type Selection =
 // the user's chosen width across a collapse is the point — see R1 in
 // the task brief.
 const SIDEBAR_OPEN_KEY = "gio.sidebarOpen";
-const SECTION_KEY = "gio.sidebar.sections"; // JSON { my:boolean, team:boolean, areas:boolean }
+const SECTION_KEY = "gio.sidebar.sections"; // JSON { my, team, areas, pages }
 const SIDEBAR_W_KEY = "gio.sidebarWidth";
 const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 460;
@@ -534,6 +536,9 @@ export function AppShell() {
               </span>
             </div>
           ) : null}
+          {selection && selection.kind === "page" ? (
+            <PageBreadcrumb pageId={selection.id} pages={pages} />
+          ) : null}
 
           {selection && selection.kind === "page" ? (
             <div className="ml-auto flex items-center gap-2.5">
@@ -601,12 +606,13 @@ type ViewRow = {
   owner_id: string;
 };
 
-type SectionKey = "my" | "team" | "areas";
+type SectionKey = "my" | "team" | "areas" | "pages";
 type SectionState = Record<SectionKey, boolean>;
 
 function useSectionState(): [SectionState, (k: SectionKey) => void] {
   const [state, setState] = useState<SectionState>(() => {
-    if (typeof window === "undefined") return { my: true, team: true, areas: true };
+    if (typeof window === "undefined")
+      return { my: true, team: true, areas: true, pages: true };
     try {
       const raw = window.localStorage.getItem(SECTION_KEY);
       if (raw) {
@@ -615,12 +621,13 @@ function useSectionState(): [SectionState, (k: SectionKey) => void] {
           my: parsed.my !== false,
           team: parsed.team !== false,
           areas: parsed.areas !== false,
+          pages: parsed.pages !== false,
         };
       }
     } catch {
       /* ignore */
     }
-    return { my: true, team: true, areas: true };
+    return { my: true, team: true, areas: true, pages: true };
   });
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -986,13 +993,26 @@ function SidebarBody({
                 })}
               </ul>
             )}
+
+            {/* Pages — ONE flat list carrying its own depth, no recursion. */}
+            <SectionHeader
+              label="Pages"
+              open={sections.pages}
+              onToggle={() => toggleSection("pages")}
+            />
+            {sections.pages && (
+              <SidebarTree
+                pages={pages.filter((p) => !p.archived_at)}
+                activeId={selection?.kind === "page" ? selection.id : undefined}
+              />
+            )}
           </>
         )}
       </div>
 
       {/* Divider + aside + footer, in that order */}
-      <p className="border-t border-line px-3 py-2 text-caption italic text-secondary">
-        No folders. A page lives wherever its properties say it does.
+      <p className="border-t border-line px-3 py-2 text-caption italic text-faint">
+        {TREE_ASIDE}
       </p>
 
       <FooterAccount

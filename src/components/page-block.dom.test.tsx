@@ -38,7 +38,7 @@ function render(block: Blk, pages: PageBlockItem[], handlers: Partial<Record<str
         thisPageId={PARENT}
         pages={pages}
         onSetPid={() => {}}
-        onPick={() => {}}
+        onPick={() => true}
         onCreate={async () => null}
         onRemove={() => {}}
         onOpen={() => {}}

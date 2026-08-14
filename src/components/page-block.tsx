@@ -154,7 +154,7 @@ function Dashed({
 
 /* ────────────── The picker ────────────── */
 
-function PlacePicker<P extends PageBlockItem>({
+export function PlacePicker<P extends PageBlockItem>({
   pages,
   thisPageId,
   onPick,
@@ -314,8 +314,9 @@ export function PageBlockView<P extends PageBlockItem>({
   pages: readonly P[];
   members?: MemberLike[];
   onSetPid: (pid: string) => void;
-  /** Place an existing page here — a MOVE, never a copy. */
-  onPick: (page: P) => void;
+  /** Place an existing page here — a MOVE, never a copy. Resolves false when
+   *  the DB trigger rejects the placement, and the block must not change. */
+  onPick: (page: P) => boolean | Promise<boolean>;
   /** Create a page here. Resolves with the new page id, or null on failure. */
   onCreate: (title: string) => Promise<string | null>;
   onRemove: () => void;
@@ -388,9 +389,11 @@ export function PageBlockView<P extends PageBlockItem>({
                   pages={pages}
                   thisPageId={thisPageId}
                   onPick={(p) => {
-                    onPick(p);
-                    onSetPid(p.id);
                     close();
+                    void (async () => {
+                      const ok = await onPick(p);
+                      if (ok) onSetPid(p.id);
+                    })();
                   }}
                   onCreate={(title) => {
                     close();
@@ -580,16 +583,27 @@ export function PageBlock({
       pages={pages}
       members={members}
       onSetPid={(pid) => onChange({ pid })}
-      onPick={(page) => {
+      onPick={async (page) => {
+        // Await the DB. `blockedParents` only sees the reader's VISIBLE pages,
+        // so the picker can legitimately offer a placement that is secretly a
+        // cycle; the trigger rejects it. Storing the pid before that verdict
+        // left the block showing a card that claimed the OLD parent while the
+        // toast said the move had failed.
         const old = page.parent_id
           ? pages.find((p) => p.id === page.parent_id)
           : undefined;
-        setParent.mutate({
-          pageId: page.id,
-          parentId: thisPageId,
-          title: page.title ?? "",
-          oldParentTitle: old?.title ?? null,
-        });
+        try {
+          await setParent.mutateAsync({
+            pageId: page.id,
+            parentId: thisPageId,
+            title: page.title ?? "",
+            oldParentTitle: old?.title ?? null,
+          });
+          return true;
+        } catch {
+          // Rejected — leave the block exactly as it was. The toast explains.
+          return false;
+        }
       }}
       onCreate={async (title) => {
         // A page filed inside a Hiring page IS a Hiring page — inherit the
