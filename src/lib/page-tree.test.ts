@@ -120,6 +120,12 @@ describe("placementRows", () => {
     expect(rows).toEqual([{ kind: "create", title: "zzz" }]);
   });
 
+  it("offers a create row LAST when the query is empty", () => {
+    const rows = placementRows("", pages, "me");
+    expect(rows[rows.length - 1]).toEqual({ kind: "create", title: "" });
+    expect(rows.filter((r) => r.kind === "create")).toHaveLength(1);
+  });
+
   it("create row is absent on an exact title match", () => {
     const rows = placementRows("roadmap", pages, "me");
     expect(rows.some((r) => r.kind === "create")).toBe(false);
