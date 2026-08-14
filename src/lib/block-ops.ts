@@ -42,7 +42,8 @@ export type BlockType =
   | "columns"
   | "image"
   | "imagerow"
-  | "file";
+  | "file"
+  | "page";
 
 /** Optional heading level for `toggle` blocks. Absent = plain toggle (today's
  *  rendering). Present = the summary renders at the given heading level, and
@@ -121,6 +122,11 @@ export type Blk = {
    *  this is only a rendering / label / export hint. Clamped 0..6 with the
    *  parent+1 rule. */
   indent?: number;
+  /** Only meaningful when type === "page". The REFERENCE to the child page —
+   *  '' until one is chosen. Never the child's title, emoji or status:
+   *  placement lives on the child (pages.parent_id), so the child can move or
+   *  be deleted without this block knowing, and a stored copy would lie. */
+  pid?: string;
 };
 
 export type FocusReq = { id: string; caret?: number | "start" | "end" };
