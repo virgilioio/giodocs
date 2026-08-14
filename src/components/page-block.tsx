@@ -22,9 +22,9 @@
  * its referent.
  */
 
-import { useContext, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import type { Blk } from "@/lib/block-ops";
+import { FRESH_PAGE_BLOCKS, type Blk } from "@/lib/block-ops";
 import { Ico } from "./emoji-icon";
 import { Popover } from "./popover";
 import { MiniAvatar, StatusChip, hashTag, type MemberLike } from "./property-pickers";
@@ -323,9 +323,19 @@ export function PageBlockView<P extends PageBlockItem>({
   onRename: (pageId: string, title: string) => void;
 }) {
   const fmt = useFormatDate();
+  const chooseRef = useRef<HTMLButtonElement | null>(null);
   const [naming, setNaming] = useState(false);
   const [draft, setDraft] = useState("");
   const state = pageBlockState(block.pid, thisPageId, pages);
+
+  // `/page` OPENS THE PICKER — it must not create a page. Only for a block
+  // inserted in this session; an empty block found on reload stays quiet.
+  useEffect(() => {
+    if (locked) return;
+    if (!FRESH_PAGE_BLOCKS.has(block.id)) return;
+    FRESH_PAGE_BLOCKS.delete(block.id);
+    chooseRef.current?.click();
+  }, [block.id, locked]);
 
   const create = async (title: string) => {
     const id = await onCreate(title);
@@ -349,7 +359,10 @@ export function PageBlockView<P extends PageBlockItem>({
               width={300}
               trigger={({ onClick, ref }) => (
                 <button
-                  ref={ref}
+                  ref={(el) => {
+                    ref.current = el;
+                    chooseRef.current = el;
+                  }}
                   type="button"
                   onClick={onClick}
                   className="text-noir hover:bg-sunken"

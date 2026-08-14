@@ -285,7 +285,7 @@ const BLOCK_MENU: MenuItem[] = [
     name: "Page",
     desc: "A page that lives inside this one.",
     icon: "\u2398",
-    ic: "bFile",
+    ic: "bPage",
     kw: "page subpage child inside nest place placement",
   },
 ];

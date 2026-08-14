@@ -98,6 +98,9 @@ export const IC = {
   /* A page with a folded corner — the file block. */
   bFile:
     "M13.4 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9.1zM13.4 3.5v5.6H19",
+  /* A page with an arrow pointing into it — a page placed inside this one. */
+  bPage:
+    "M5 5.5h9.6a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1zM7.4 9.4h4.8M7.4 13h3.2M17.4 12h3.6M19.2 10.2l1.8 1.8-1.8 1.8",
   bSheet:
     "M4.5 5h15a1.5 1.5 0 0 1 1.5 1.5v11a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11A1.5 1.5 0 0 1 4.5 5zM3 9.6h18M9 9.6V20M15 9.6V20",
   bTable:
