@@ -104,31 +104,23 @@ describe("page block", () => {
   it("removing unplaces the child; the page itself survives", () => {
     const pages: PageBlockItem[] = [
       { id: PARENT, title: "Hiring", parent_id: null },
-      { id: "kid", title: "Interview loop", parent_id: PARENT },
+      { id: "other", title: "Onboarding", parent_id: null },
+      // `moved` state so the Remove control is directly on the row.
+      { id: "kid", title: "Interview loop", parent_id: "other" },
     ];
     render({ id: "b1", type: "page", pid: "kid" }, pages, {
       onRemove: () => {
-        const kid = pages.find((p) => p.id === "kid")!;
-        kid.parent_id = null;
+        pages.find((p) => p.id === "kid")!.parent_id = null;
       },
     });
     const btn = Array.from(host.querySelectorAll("button")).find(
       (b) => b.textContent === "Remove",
-    );
-    // The card's remove lives in the ⋯ menu; drive the state that has a
-    // direct Remove by re-rendering as `moved`, which is the same handler.
-    if (btn) act(() => btn.click());
-    else {
-      render({ id: "b1", type: "page", pid: "kid" }, pages, {
-        onRemove: () => {
-          const kid = pages.find((p) => p.id === "kid")!;
-          kid.parent_id = null;
-        },
-      });
-    }
+    )!;
+    expect(btn).toBeTruthy();
+    act(() => btn.click());
     const kid = pages.find((p) => p.id === "kid");
     expect(kid).toBeTruthy();
-    expect(kid!.parent_id === null || kid!.parent_id === PARENT).toBe(true);
+    expect(kid!.parent_id).toBe(null);
   });
 
   it("shows the depth sub-line only when the child has children", () => {
