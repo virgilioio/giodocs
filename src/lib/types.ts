@@ -13,6 +13,7 @@ export type PageListItem = Pick<
   | "edited_at"
   | "edited_by"
   | "access_type"
+  | "parent_id"
 > & { archived_at?: string | null };
 
 export type PageFull = Omit<PageRow, "search_tsv"> & {
