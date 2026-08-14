@@ -117,7 +117,6 @@ export function flattenTree<P extends TreePage>(
   pages: readonly P[],
   expanded: Set<string>,
 ): Array<TreeRow<P>> {
-  const map = indexById(pages);
   const roots = pages.filter((p) => !p.parent_id).sort(byEditedDesc);
   const out: Array<TreeRow<P>> = [];
   const seen = new Set<string>();
@@ -133,7 +132,6 @@ export function flattenTree<P extends TreePage>(
   };
 
   for (const r of roots) walk(r, 0);
-  void map;
   return out;
 }
 
