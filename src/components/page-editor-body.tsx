@@ -5479,6 +5479,15 @@ export function TableBlock({
                     const selected =
                       (sel?.kind === "row" && sel.index === ri) ||
                       (sel?.kind === "col" && sel.index === ci);
+                    // In-flight tint: the SOURCE row/column stays
+                    // identifiable while the insertion line is far from it.
+                    // Same tint as selection — a drag is a selection that
+                    // is on the move, not a new colour to learn.
+                    const inFlight = reorder
+                      ? reorder.axis === "row"
+                        ? reorder.from === ri
+                        : reorder.from === ci
+                      : false;
                     return (
                       <Tag
                         key={ci}
@@ -5490,7 +5499,9 @@ export function TableBlock({
                             : "text-body")
                         }
                         style={
-                          selected ? { background: "var(--color-blueTint)" } : undefined
+                          selected || inFlight
+                            ? { background: "var(--color-blueTint)" }
+                            : undefined
                         }
                       >
                         {/* Cells are contenteditable so inline markdown
