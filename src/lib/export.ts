@@ -952,6 +952,11 @@ const HTML_CSS = `
   h1, h2, h3 { break-after: avoid-page; page-break-after: avoid; break-inside: avoid; page-break-inside: avoid; }
   blockquote, aside, pre, table, figure, li, .callout { break-inside: avoid; page-break-inside: avoid; }
   tr { break-inside: avoid; page-break-inside: avoid; }
+  /* Long-form rows (tagged at generation time) may split, like Word and
+     Google Docs allow by default; keeping short rows whole is the
+     deliberate exception above. This rule must stay AFTER it to win. */
+  tr.tall { break-inside: auto; page-break-inside: auto; }
+
   thead { display: table-header-group; }
   hr { break-after: avoid; }
   figure { break-inside: avoid; }
