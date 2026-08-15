@@ -5309,6 +5309,79 @@ export function TableBlock({
     return Math.max(0, Math.min(nCols - 1, Math.round(x / FALLBACK_COL_W)));
   };
 
+  type DragPayload = { axis: "row" | "col"; from: number };
+  type DropTarget = { axis: "row" | "col"; from: number; to: number };
+
+  /** Ghost: a CLONE, never the live node — moving the real row/column would
+   *  reflow the table under the pointer mid-drag. */
+  const makeGhost = (p: DragPayload): HTMLElement | null => {
+    const tbl = tableRef.current;
+    if (!tbl) return null;
+    const trs = Array.from(tbl.querySelectorAll("tr"));
+    if (p.axis === "row") {
+      const tr = trs[p.from];
+      if (!tr) return null;
+      const r = tr.getBoundingClientRect();
+      const host = document.createElement("table");
+      host.className = tbl.className;
+      host.style.width = `${r.width}px`;
+      host.style.background = "var(--color-canvas)";
+      host.style.tableLayout = "fixed";
+      const body = document.createElement("tbody");
+      body.appendChild(tr.cloneNode(true));
+      host.appendChild(body);
+      return host;
+    }
+    const host = document.createElement("div");
+    host.style.background = "var(--color-canvas)";
+    const w = metrics?.cols[p.from]?.width;
+    if (w) host.style.width = `${w}px`;
+    for (const tr of trs) {
+      const cell = tr.children[p.from] as HTMLElement | undefined;
+      if (!cell) continue;
+      const line = document.createElement("div");
+      line.className = "border border-line px-2 py-1 text-meta";
+      line.textContent = cell.textContent ?? "";
+      host.appendChild(line);
+    }
+    return host;
+  };
+
+  const drag = useDragSession<DropTarget, DragPayload>({
+    hitTest: (pt, p) => ({
+      axis: p.axis,
+      from: p.from,
+      to:
+        p.axis === "row"
+          ? Math.max(minRowIndex, indexAtY(pt.y))
+          : indexAtX(pt.x),
+    }),
+    commit: (drop) => {
+      if (drop.to === drop.from) return;
+      if (drop.axis === "row") {
+        commit(moveRow(rows, drop.from, drop.to));
+        setSel({ kind: "row", index: drop.to });
+      } else {
+        commit(
+          moveColumn(rows, drop.from, drop.to),
+          moveAlign(align, drop.from, drop.to),
+          moveWidth(widths, drop.from, drop.to),
+        );
+        setSel({ kind: "col", index: drop.to });
+      }
+    },
+    makeGhost,
+    // A row drag scrolls the PAGE vertically; a column drag scrolls the
+    // TABLE horizontally. Both containers are offered every time and
+    // edgeVelocity decides which one has work to do.
+    scrollTargets: () => [
+      scrollRef.current,
+      rootRef.current?.closest("main") as HTMLElement | null,
+    ],
+  });
+
+  const reorder = drag.active ? drag.target : null;
+
   const beginHandleDrag = (
     e: React.PointerEvent<HTMLElement>,
     axis: "row" | "col",
@@ -5317,106 +5390,9 @@ export function TableBlock({
     if (locked) return;
     // Pinned header: no gesture at all, so the click still reaches the menu.
     if (axis === "row" && headerRow && index === 0) return;
-    const el = e.currentTarget as HTMLElement;
-    try {
-      el.setPointerCapture(e.pointerId);
-    } catch {
-      /* ignore — non-mouse pointers work without capture */
-    }
-    reorderRef.current = {
-      axis,
-      from: index,
-      startX: e.clientX,
-      startY: e.clientY,
-      pointerId: e.pointerId,
-      handle: el,
-      moved: false,
-    };
-    // Stops a text selection starting mid-drag.
-    e.preventDefault();
-    e.stopPropagation();
+    drag.begin(e, { axis, from: index });
   };
 
-  const onHandleDragMove = (e: React.PointerEvent<HTMLElement>) => {
-    const d = reorderRef.current;
-    if (!d) return;
-    if (!d.moved) {
-      const dx = e.clientX - d.startX;
-      const dy = e.clientY - d.startY;
-      if (Math.sqrt(dx * dx + dy * dy) < REORDER_THRESHOLD) return;
-      d.moved = true;
-    }
-    const to =
-      d.axis === "row"
-        ? Math.max(minRowIndex, indexAtY(e.clientY))
-        : indexAtX(e.clientX);
-    setReorder({ axis: d.axis, from: d.from, to });
-  };
-
-  const abortHandleDrag = () => {
-    const d = reorderRef.current;
-    if (d) {
-      try {
-        d.handle.releasePointerCapture?.(d.pointerId);
-      } catch {
-        /* ignore */
-      }
-    }
-    reorderRef.current = null;
-    setReorder(null);
-  };
-
-  const onHandleDragEnd = (e: React.PointerEvent<HTMLElement>) => {
-    const d = reorderRef.current;
-    if (!d) return;
-    const drop = reorder;
-    abortHandleDrag();
-    if (!d.moved) return;
-    clickAfterDragRef.current = true;
-    if (!drop || drop.to === drop.from) return;
-    if (drop.axis === "row") {
-      commit(moveRow(rows, drop.from, drop.to));
-      setSel({ kind: "row", index: drop.to });
-    } else {
-      commit(
-        moveColumn(rows, drop.from, drop.to),
-        moveAlign(align, drop.from, drop.to),
-        moveWidth(widths, drop.from, drop.to),
-      );
-      setSel({ kind: "col", index: drop.to });
-    }
-    e.stopPropagation();
-  };
-
-  const onHandleDragCancel = () => {
-    const d = reorderRef.current;
-    if (d?.moved) clickAfterDragRef.current = true;
-    abortHandleDrag();
-  };
-
-  // Escape aborts mid-drag with no change. Capture phase so it lands before
-  // the menu/selection Escape layers.
-  useEffect(() => {
-    if (!reorder) return;
-    const onKey = (ev: KeyboardEvent) => {
-      if (ev.key !== "Escape") return;
-      ev.preventDefault();
-      ev.stopPropagation();
-      const d = reorderRef.current;
-      if (d?.moved) clickAfterDragRef.current = true;
-      if (d) {
-        try {
-          d.handle.releasePointerCapture?.(d.pointerId);
-        } catch {
-          /* ignore */
-        }
-      }
-      reorderRef.current = null;
-      setReorder(null);
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [reorder]);
 
 
   return (
