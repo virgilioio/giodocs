@@ -158,6 +158,8 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
     return () => document.removeEventListener("keydown", onKey, true);
   }, [sel, hide]);
 
+  /* Hide-on-scroll is right for a TEXT range (the caret goes away) but wrong
+   * for a block selection, which survives scrolling — that one repositions. */
   useEffect(() => {
     if (!sel) return;
     const onScroll = () => hide();
@@ -166,16 +168,31 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
       window.removeEventListener("scroll", onScroll, { capture: true } as EventListenerOptions);
   }, [sel, hide]);
 
-  /* ── Position via live Range geometry ──────────────────────────── */
+  useEffect(() => {
+    if (!blockMode) return;
+    const onScroll = () => setTick((t) => t + 1);
+    window.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll, {
+        capture: true,
+      } as EventListenerOptions);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [blockMode]);
+
+  /* ── Position via live Range geometry (or the block union rect) ──── */
 
   useLayoutEffect(() => {
-    if (!sel) {
-      setPos(null);
-      return;
+    let rect: DOMRect | null = null;
+    if (sel) {
+      const selection = window.getSelection();
+      const range =
+        selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+      rect = range ? range.getBoundingClientRect() : null;
+    } else if (blockMode && blockSel) {
+      rect = blockSel.anchor();
     }
-    const selection = window.getSelection();
-    const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
-    const rect = range ? range.getBoundingClientRect() : null;
     if (!rect || (rect.width === 0 && rect.height === 0)) {
       setPos(null);
       return;
@@ -196,17 +213,39 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
       flipped = true;
     }
     setPos({ top, left, flipped });
-  }, [sel, linkMode]);
+  }, [sel, linkMode, blockMode, blockSel, tick]);
 
-  if (!sel || !pos) return null;
+  if ((!sel && !blockMode) || !pos) return null;
 
-  const activeBold = isWrapped(sel.value, sel.start, sel.end, "**", "**");
-  const activeItalic =
-    isWrapped(sel.value, sel.start, sel.end, "*", "*") && !activeBold;
-  const activeUnderline = isWrapped(sel.value, sel.start, sel.end, "<u>", "</u>");
-  const activeStrike = isWrapped(sel.value, sel.start, sel.end, "~~", "~~");
-  const activeCode = isWrapped(sel.value, sel.start, sel.end, "`", "`");
-  const activeHighlight = isWrapped(sel.value, sel.start, sel.end, "==", "==");
+  const activeBold = sel
+    ? isWrapped(sel.value, sel.start, sel.end, "**", "**")
+    : !!blockSel?.active.bold;
+  const activeItalic = sel
+    ? isWrapped(sel.value, sel.start, sel.end, "*", "*") &&
+      !isWrapped(sel.value, sel.start, sel.end, "**", "**")
+    : !!blockSel?.active.italic;
+  const activeUnderline = sel
+    ? isWrapped(sel.value, sel.start, sel.end, "<u>", "</u>")
+    : !!blockSel?.active.underline;
+  const activeStrike = sel
+    ? isWrapped(sel.value, sel.start, sel.end, "~~", "~~")
+    : !!blockSel?.active.strike;
+  const activeCode = sel
+    ? isWrapped(sel.value, sel.start, sel.end, "`", "`")
+    : !!blockSel?.active.code;
+  const activeHighlight = sel
+    ? isWrapped(sel.value, sel.start, sel.end, "==", "==")
+    : !!blockSel?.active.highlight;
+
+  const apply = (open: string, close: string) => {
+    if (sel) {
+      applyWrap(sel, open, close);
+      return;
+    }
+    blockSel?.onToggle([open, close] as MarkPair);
+  };
+
+
 
   const btnBase: React.CSSProperties = {
     height: 26,
