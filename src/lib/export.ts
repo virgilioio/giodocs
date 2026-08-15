@@ -442,7 +442,22 @@ export function toMarkdown(ctx: ExportContext): string {
 
 /* ─────────────────────────── toHtml ─────────────────────────── */
 
+/** A row whose cells hold this much plain text is treated as long-form and
+ *  allowed to split across pages. 600 chars approximates a third of a
+ *  printable page — a heuristic, not a measurement: CSS cannot express
+ *  "keep short rows together but let paragraph rows break", so the decision
+ *  is made here at generation time. */
+const TALL_ROW_CHARS = 600;
+
+/** `<tr>` open tag, tagged `class="tall"` when the row is long-form. */
+function trOpen(cells: readonly (string | number | null | undefined)[]): string {
+  let n = 0;
+  for (const c of cells) n += String(c ?? "").length;
+  return n > TALL_ROW_CHARS ? `<tr class="tall">` : "<tr>";
+}
+
 function blockHtml(b: Block, ordinal = 1): string {
+
   const t = (b.type ?? "text") as string;
   const text = blockText(b);
   // Inline markdown (bold, italic, code, links, …) inside text-carrying
@@ -600,12 +615,12 @@ function blockHtml(b: Block, ordinal = 1): string {
         return a === "center" || a === "right" ? String(a) : "left";
       };
       const styleFor = (i: number) => ` style="text-align:${alignAt(i)}"`;
-      // Per-column widths survive to HTML/PDF via <colgroup>. When widths
-      // are present, table-layout: fixed with a table width equal to their
-      // sum preserves proportions; the existing `img, table { max-width:
-      // 100% }` rule in HTML_CSS scales an over-wide table down for the
-      // page rather than clipping it. Absent widths keeps today's auto
-      // layout, so unrelated exports don't regress.
+      // Per-column widths survive to HTML/PDF via <colgroup>, but as
+      // PERCENTAGES of their own sum: the stored pixels are a screen
+      // measurement (780px body) and meaningless against a printable
+      // Letter column (~672px). The user chose PROPORTIONS, so that is
+      // what paper gets. Absent widths keeps today's auto layout, so
+      // unrelated exports don't regress.
       const widthsRaw = Array.isArray((b as { widths?: unknown }).widths)
         ? ((b as { widths: unknown[] }).widths as unknown[])
         : null;
@@ -618,11 +633,18 @@ function blockHtml(b: Block, ordinal = 1): string {
           const n = typeof v === "number" && Number.isFinite(v) ? Math.round(v) : 160;
           w.push(Math.max(56, Math.min(1200, n)));
         }
-        colgroup =
-          `<colgroup>${w.map((n) => `<col style="width:${n}px"/>`).join("")}</colgroup>`;
         const sum = w.reduce((a, n) => a + n, 0);
-        tableAttrs = ` style="table-layout:fixed;width:${sum}px"`;
+        const pcts = w.map((n) => Math.round((n / sum) * 100000) / 1000);
+        // The last column absorbs the rounding remainder so the set totals
+        // exactly 100 and no sliver of table width goes unassigned.
+        const head = pcts.slice(0, -1);
+        const last = Math.round((100 - head.reduce((a, n) => a + n, 0)) * 1000) / 1000;
+        const finals = [...head, last];
+        colgroup =
+          `<colgroup>${finals.map((p) => `<col style="width:${p}%"/>`).join("")}</colgroup>`;
+        tableAttrs = ` style="table-layout:fixed;width:100%"`;
       }
+
       // Header flags are BLOCK attributes, not row data: `headerRow`
       // defaults on (today's behaviour), `headerCol` defaults off. They
       // decide which cells become <th> — semantics, not styling, so a
@@ -635,14 +657,15 @@ function blockHtml(b: Block, ordinal = 1): string {
         `<th scope="${scope}"${styleFor(i)}>${inline(c)}</th>`;
       const td = (c: string, i: number) => `<td${styleFor(i)}>${inline(c)}</td>`;
       const bodyRow = (r: string[]) =>
-        `<tr>${pad(r)
+        `${trOpen(pad(r))}${pad(r)
           .map((c, i) => (headerCol && i === 0 ? th(c, i, "row") : td(c, i)))
           .join("")}</tr>`;
       const thead = headerRow
-        ? `<thead><tr>${pad(rows[0])
+        ? `<thead>${trOpen(pad(rows[0]))}${pad(rows[0])
             .map((c, i) => th(c, i, "col"))
             .join("")}</tr></thead>`
         : "";
+
       const body = (headerRow ? rows.slice(1) : rows).map(bodyRow).join("");
       return `<table${tableAttrs}>${colgroup}${thead}<tbody>${body}</tbody></table>`;
     }
@@ -662,13 +685,14 @@ function blockHtml(b: Block, ordinal = 1): string {
         return ` style="${bits.join(";")}"`;
       };
       const rowHtml = (r: number, tag: "th" | "td") =>
-        `<tr>${values[r]
+        `${trOpen(values[r])}${values[r]
           .map((v, c) =>
             tag === "th"
               ? `<th scope="col"${styleFor(r, c)}>${esc(v)}</th>`
               : `<td${styleFor(r, c)}>${esc(v)}</td>`,
           )
           .join("")}</tr>`;
+
       const body: string[] = [];
       for (let r = frozen ? 1 : 0; r < values.length; r++) body.push(rowHtml(r, "td"));
       const thead = frozen ? `<thead>${rowHtml(0, "th")}</thead>` : "";
@@ -894,7 +918,13 @@ const HTML_CSS = `
   code { font-family: "Spline Sans Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
   img, table { max-width: 100%; }
   table { border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 15px; }
-  th, td { border: 1px solid ${line}; padding: 6px 10px; text-align: left; vertical-align: top; }
+  /* overflow-wrap: anywhere (not just break-word) also lowers the cell's
+     min-content contribution, so an auto-layout table sizes its columns
+     sensibly instead of one URL dictating the whole layout — and under
+     table-layout: fixed a long token wraps inside the cell instead of
+     painting over its neighbour. */
+  th, td { border: 1px solid ${line}; padding: 6px 10px; text-align: left; vertical-align: top; overflow-wrap: anywhere; word-break: break-word; }
+
   thead th { background: ${sunken}; }
   mark { background: #FFF4B8; color: ${noir}; padding: 0 2px; border-radius: 2px; }
   .todo .done { color: ${muted}; text-decoration: line-through; }
@@ -922,6 +952,11 @@ const HTML_CSS = `
   h1, h2, h3 { break-after: avoid-page; page-break-after: avoid; break-inside: avoid; page-break-inside: avoid; }
   blockquote, aside, pre, table, figure, li, .callout { break-inside: avoid; page-break-inside: avoid; }
   tr { break-inside: avoid; page-break-inside: avoid; }
+  /* Long-form rows (tagged at generation time) may split, like Word and
+     Google Docs allow by default; keeping short rows whole is the
+     deliberate exception above. This rule must stay AFTER it to win. */
+  tr.tall { break-inside: auto; page-break-inside: auto; }
+
   thead { display: table-header-group; }
   hr { break-after: avoid; }
   figure { break-inside: avoid; }

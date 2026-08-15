@@ -657,3 +657,63 @@ describe("file block export stays clickable", () => {
     expect(blockToMarkdown(B("file", { fname: "a.pdf" }))).toBe("");
   });
 });
+
+/* ─────────── table wrapping, percentage colgroup, tall rows ─────────── */
+
+const tblock = (extra: Record<string, unknown> = {}): Block =>
+  ({
+    id: "t1",
+    type: "table",
+    rows: [
+      ["Head A", "Head B"],
+      ["short", "https://example.com/a/very/long/unbreakable/token/path"],
+    ],
+    ...extra,
+  }) as unknown as Block;
+
+describe("table export wrapping and widths", () => {
+  it("styles th, td with overflow-wrap: anywhere", () => {
+    const html = toHtml({ title: "T", blocks: [tblock()] });
+    const rule = html.slice(html.indexOf("th, td {"));
+    expect(rule.slice(0, rule.indexOf("}"))).toContain("overflow-wrap: anywhere");
+  });
+
+  it("emits a percentage colgroup summing to exactly 100 and width:100% on the table", () => {
+    const html = toHtml({ title: "T", blocks: [tblock({ widths: [300, 100] })] });
+    const cg = html.slice(html.indexOf("<colgroup>"), html.indexOf("</colgroup>"));
+    expect(cg).toContain('<col style="width:');
+    expect(cg).not.toContain("px");
+    expect(html).toContain('<table style="table-layout:fixed;width:100%">');
+    const pcts = [...cg.matchAll(/width:([\d.]+)%/g)].map((m) => Number(m[1]));
+    expect(pcts.length).toBe(2);
+    expect(pcts.reduce((a, n) => a + n, 0)).toBe(100);
+  });
+
+  it("without widths emits no colgroup and no inline table-layout", () => {
+    const html = toHtml({ title: "T", blocks: [tblock()] });
+    expect(html).not.toContain("<colgroup>");
+    expect(html).not.toContain("table-layout:fixed");
+    expect(html).toContain("<table>");
+  });
+
+  it("tags only long-form rows with class=\"tall\"", () => {
+    const long = "word ".repeat(200); // 1000 chars
+    const html = toHtml({
+      title: "T",
+      blocks: [
+        tblock({ rows: [["H", "H2"], ["short", "also short"], ["a", long]] }),
+      ],
+    });
+    expect(html).toContain('<tr class="tall">');
+    expect(html).toContain("<tr><td");
+  });
+
+  it("allows tall rows to break, with the rule after the blanket tr rule", () => {
+    const html = toHtml({ title: "T", blocks: [tblock()] });
+    const blanket = html.indexOf("tr { break-inside: avoid");
+    const tall = html.indexOf("tr.tall { break-inside: auto");
+    expect(blanket).toBeGreaterThan(-1);
+    expect(tall).toBeGreaterThan(blanket);
+    expect(html).toContain("tr.tall { break-inside: auto; page-break-inside: auto; }");
+  });
+});

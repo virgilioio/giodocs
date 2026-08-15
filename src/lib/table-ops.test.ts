@@ -474,10 +474,13 @@ describe("colgroup in HTML export", () => {
         } as never,
       ],
     });
+    // Widths export as PROPORTIONS: stored pixels are a screen measurement
+    // and mean nothing on paper (see the colgroup comment in export.ts).
     expect(html).toContain("<colgroup>");
-    expect(html).toContain('<col style="width:200px"/>');
-    expect(html).toContain('<col style="width:300px"/>');
-    expect(html).toContain('table-layout:fixed;width:500px');
+    expect(html).toContain('<col style="width:40%"/>');
+    expect(html).toContain('<col style="width:60%"/>');
+    expect(html).toContain("table-layout:fixed;width:100%");
+
   });
   it("omits <colgroup> when block.widths is absent (auto layout unchanged)", () => {
     const html = toHtml({
