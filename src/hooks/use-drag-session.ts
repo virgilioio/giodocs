@@ -60,6 +60,11 @@ export type DragSession<T, P> = {
  *  occluded by the surface it is being dragged over. */
 const GHOST_Z = 9999;
 
+/** The single armed click-swallow, if any. Module-level: one document, one
+ *  drag at a time (see armClickSwallow). */
+let armedDisarm: (() => void) | null = null;
+
+
 export function useDragSession<T, P>(
   opts: DragSessionOptions<T, P>,
 ): DragSession<T, P> {
