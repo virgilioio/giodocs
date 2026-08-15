@@ -600,12 +600,12 @@ function blockHtml(b: Block, ordinal = 1): string {
         return a === "center" || a === "right" ? String(a) : "left";
       };
       const styleFor = (i: number) => ` style="text-align:${alignAt(i)}"`;
-      // Per-column widths survive to HTML/PDF via <colgroup>. When widths
-      // are present, table-layout: fixed with a table width equal to their
-      // sum preserves proportions; the existing `img, table { max-width:
-      // 100% }` rule in HTML_CSS scales an over-wide table down for the
-      // page rather than clipping it. Absent widths keeps today's auto
-      // layout, so unrelated exports don't regress.
+      // Per-column widths survive to HTML/PDF via <colgroup>, but as
+      // PERCENTAGES of their own sum: the stored pixels are a screen
+      // measurement (780px body) and meaningless against a printable
+      // Letter column (~672px). The user chose PROPORTIONS, so that is
+      // what paper gets. Absent widths keeps today's auto layout, so
+      // unrelated exports don't regress.
       const widthsRaw = Array.isArray((b as { widths?: unknown }).widths)
         ? ((b as { widths: unknown[] }).widths as unknown[])
         : null;
@@ -618,11 +618,18 @@ function blockHtml(b: Block, ordinal = 1): string {
           const n = typeof v === "number" && Number.isFinite(v) ? Math.round(v) : 160;
           w.push(Math.max(56, Math.min(1200, n)));
         }
-        colgroup =
-          `<colgroup>${w.map((n) => `<col style="width:${n}px"/>`).join("")}</colgroup>`;
         const sum = w.reduce((a, n) => a + n, 0);
-        tableAttrs = ` style="table-layout:fixed;width:${sum}px"`;
+        const pcts = w.map((n) => Math.round((n / sum) * 100000) / 1000);
+        // The last column absorbs the rounding remainder so the set totals
+        // exactly 100 and no sliver of table width goes unassigned.
+        const head = pcts.slice(0, -1);
+        const last = Math.round((100 - head.reduce((a, n) => a + n, 0)) * 1000) / 1000;
+        const finals = [...head, last];
+        colgroup =
+          `<colgroup>${finals.map((p) => `<col style="width:${p}%"/>`).join("")}</colgroup>`;
+        tableAttrs = ` style="table-layout:fixed;width:100%"`;
       }
+
       // Header flags are BLOCK attributes, not row data: `headerRow`
       // defaults on (today's behaviour), `headerCol` defaults off. They
       // decide which cells become <th> — semantics, not styling, so a
