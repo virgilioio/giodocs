@@ -442,7 +442,22 @@ export function toMarkdown(ctx: ExportContext): string {
 
 /* ─────────────────────────── toHtml ─────────────────────────── */
 
+/** A row whose cells hold this much plain text is treated as long-form and
+ *  allowed to split across pages. 600 chars approximates a third of a
+ *  printable page — a heuristic, not a measurement: CSS cannot express
+ *  "keep short rows together but let paragraph rows break", so the decision
+ *  is made here at generation time. */
+const TALL_ROW_CHARS = 600;
+
+/** `<tr>` open tag, tagged `class="tall"` when the row is long-form. */
+function trOpen(cells: readonly (string | number | null | undefined)[]): string {
+  let n = 0;
+  for (const c of cells) n += String(c ?? "").length;
+  return n > TALL_ROW_CHARS ? `<tr class="tall">` : "<tr>";
+}
+
 function blockHtml(b: Block, ordinal = 1): string {
+
   const t = (b.type ?? "text") as string;
   const text = blockText(b);
   // Inline markdown (bold, italic, code, links, …) inside text-carrying
