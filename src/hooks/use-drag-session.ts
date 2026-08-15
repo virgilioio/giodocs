@@ -223,7 +223,8 @@ export function useDragSession<T, P>(
       ev.preventDefault();
       ev.stopPropagation();
     },
-    [],
+    [disarmClickSwallow],
+
   );
 
   useEffect(() => {
