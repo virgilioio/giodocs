@@ -141,6 +141,18 @@ import { SheetBlockView } from "@/components/sheet-block";
 import { collectImagePaths, droppedImagePaths, rejectReason } from "@/lib/image-ops";
 import { gcImagePaths, uploadImage } from "@/lib/images";
 import { FloatingToolbar } from "./floating-toolbar";
+import type { BlockSel, MarkName } from "./floating-toolbar";
+import {
+  MARK_BOLD,
+  MARK_CODE,
+  MARK_HIGHLIGHT,
+  MARK_ITALIC,
+  MARK_STRIKE,
+  MARK_UNDERLINE,
+  applyMarkToBlocks,
+  blockMarkDecision,
+  type MarkPair,
+} from "@/lib/block-format";
 import { Editable } from "./editable";
 import { EmojiPicker } from "./emoji-picker";
 import { Popover } from "./popover";
@@ -2048,6 +2060,91 @@ export function EditableBody({
     return () => window.removeEventListener("keydown", onKey);
   }, [locked, selectedIds, runDuplicateSelected]);
 
+  /* ────────── Block-level inline formatting ──────────
+   * A marquee selection blurs the editable and clears the DOM Range, so the
+   * in-block ⌘B path never fires. These format WHOLE selected blocks through
+   * commit(), and the selection deliberately SURVIVES so ⌘B then ⌘I works. */
+  const applyBlockMark = useCallback(
+    (pair: MarkPair) => {
+      const s = selectedInScope(blocks);
+      if (!s) return;
+      const nextList = applyMarkToBlocks(s.list, selectedIds, pair);
+      if (nextList === s.list) return; // identity → no undo entry
+      const next =
+        s.scope === null
+          ? nextList
+          : setContainerList(blocks, s.scope, nextList);
+      commit(next as Blk[]);
+    },
+    [selectedInScope, blocks, selectedIds, commit],
+  );
+
+  useEffect(() => {
+    if (locked) return;
+    if (selectedIds.size === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (isTypingTarget(e.target)) return;
+      const k = e.key.toLowerCase();
+      let pair: MarkPair | null = null;
+      if (e.shiftKey && k === "h") pair = MARK_HIGHLIGHT;
+      else if (e.shiftKey && k === "x") pair = MARK_STRIKE;
+      else if (e.shiftKey) pair = null;
+      else if (k === "b") pair = MARK_BOLD;
+      else if (k === "i") pair = MARK_ITALIC;
+      else if (k === "u") pair = MARK_UNDERLINE;
+      else if (k === "e") pair = MARK_CODE;
+      if (!pair) return;
+      e.preventDefault();
+      applyBlockMark(pair);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [locked, selectedIds, applyBlockMark]);
+
+  const blockSelForToolbar: BlockSel | null = useMemo(() => {
+    if (locked || selectedIds.size === 0) return null;
+    const s = selectedInScope(blocks);
+    if (!s) return null;
+    const decide = (pair: MarkPair) =>
+      blockMarkDecision(s.list, selectedIds, pair) === "unwrap";
+    const active: Record<MarkName, boolean> = {
+      bold: decide(MARK_BOLD),
+      italic: decide(MARK_ITALIC),
+      underline: decide(MARK_UNDERLINE),
+      strike: decide(MARK_STRIKE),
+      code: decide(MARK_CODE),
+      highlight: decide(MARK_HIGHLIGHT),
+    };
+    return {
+      count: selectedIds.size,
+      active,
+      onToggle: applyBlockMark,
+      anchor: () => {
+        let top = Infinity;
+        let left = Infinity;
+        let right = -Infinity;
+        let bottom = -Infinity;
+        let found = false;
+        selectedIds.forEach((id) => {
+          const el = document.querySelector(
+            `[data-block-id="${id}"]`,
+          ) as HTMLElement | null;
+          if (!el) return;
+          const r = el.getBoundingClientRect();
+          if (r.width === 0 && r.height === 0) return;
+          found = true;
+          top = Math.min(top, r.top);
+          left = Math.min(left, r.left);
+          right = Math.max(right, r.right);
+          bottom = Math.max(bottom, r.bottom);
+        });
+        if (!found) return null;
+        return new DOMRect(left, top, right - left, bottom - top);
+      },
+    };
+  }, [locked, selectedIds, selectedInScope, blocks, applyBlockMark]);
+
   const buildBlockHandleSpec = useCallback(
     (
       blockId: string,
@@ -2994,7 +3091,7 @@ export function EditableBody({
           onClose={closeSelMenu}
         />
       ) : null}
-      <FloatingToolbar />
+      <FloatingToolbar blockSel={blockSelForToolbar} />
     </div>
     </PageImageCtx.Provider>
     </ColumnBridgeCtx.Provider>
