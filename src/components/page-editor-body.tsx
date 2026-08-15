@@ -5545,6 +5545,61 @@ export function TableBlock({
             </tbody>
           </table>
 
+          {/* Drop indicator — a 2px accent insertion line at the boundary
+              where the dragged row/column will land, spanning the table.
+              Geometry comes from the measured metrics, and the line sits on
+              the FAR edge of the target when dragging forwards so it reads
+              as "lands after this one". */}
+          {reorder &&
+            metrics &&
+            (() => {
+              const pad = 23;
+              const forward = reorder.to > reorder.from;
+              if (reorder.axis === "col") {
+                const m = metrics.cols[reorder.to];
+                if (!m) return null;
+                const h = metrics.rows.reduce((a, r) => a + r.height, 0);
+                const x = pad + (forward ? m.left + m.width : m.left);
+                return (
+                  <div
+                    aria-hidden
+                    data-drop-indicator="col"
+                    style={{
+                      position: "absolute",
+                      left: x - 1,
+                      top: pad,
+                      width: 2,
+                      height: h,
+                      background: "var(--color-accent)",
+                      pointerEvents: "none",
+                      zIndex: 4,
+                    }}
+                  />
+                );
+              }
+              const m = metrics.rows[reorder.to];
+              if (!m) return null;
+              const w = metrics.cols.reduce((a, c) => a + c.width, 0);
+              const y = pad + (forward ? m.top + m.height : m.top);
+              return (
+                <div
+                  aria-hidden
+                  data-drop-indicator="row"
+                  style={{
+                    position: "absolute",
+                    left: pad,
+                    top: y - 1,
+                    width: w,
+                    height: 2,
+                    background: "var(--color-accent)",
+                    pointerEvents: "none",
+                    zIndex: 4,
+                  }}
+                />
+              );
+            })()}
+
+
           {!locked && (
             <>
               {/* Column handles — 16px hit strip whose visible pill sits
