@@ -197,6 +197,8 @@ export function useDragSession<T, P>(
   const begin = useCallback(
     (ev: React.PointerEvent, payload: P) => {
       if (s.current) return;
+      disarmClickSwallow();
+
       const node = ev.currentTarget as HTMLElement;
       try {
         node.setPointerCapture?.(ev.pointerId);
