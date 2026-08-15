@@ -685,13 +685,14 @@ function blockHtml(b: Block, ordinal = 1): string {
         return ` style="${bits.join(";")}"`;
       };
       const rowHtml = (r: number, tag: "th" | "td") =>
-        `<tr>${values[r]
+        `${trOpen(values[r])}${values[r]
           .map((v, c) =>
             tag === "th"
               ? `<th scope="col"${styleFor(r, c)}>${esc(v)}</th>`
               : `<td${styleFor(r, c)}>${esc(v)}</td>`,
           )
           .join("")}</tr>`;
+
       const body: string[] = [];
       for (let r = frozen ? 1 : 0; r < values.length; r++) body.push(rowHtml(r, "td"));
       const thead = frozen ? `<thead>${rowHtml(0, "th")}</thead>` : "";
