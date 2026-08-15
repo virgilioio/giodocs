@@ -5116,15 +5116,11 @@ export function TableBlock({
 
   // One click on a handle now selects AND opens the menu in the same
   // gesture. Two clicks to reach a menu is a hunt; one is a control.
-  // A click that ENDS a reorder drag is swallowed once (see
-  // `clickAfterDragRef`) so a drop never also opens the menu.
+  // A click that ENDS a reorder drag never reaches here: `useDragSession`
+  // swallows exactly one click after a real drag.
   function onColumnHandleClick(e: React.MouseEvent<HTMLButtonElement>, index: number) {
     e.stopPropagation();
     if (locked) return;
-    if (clickAfterDragRef.current) {
-      clickAfterDragRef.current = false;
-      return;
-    }
     setSel({ kind: "col", index });
     openColumnMenu(e.currentTarget, index);
   }
@@ -5132,12 +5128,9 @@ export function TableBlock({
   function onRowHandleClick(e: React.MouseEvent<HTMLButtonElement>, index: number) {
     e.stopPropagation();
     if (locked) return;
-    if (clickAfterDragRef.current) {
-      clickAfterDragRef.current = false;
-      return;
-    }
     setSel({ kind: "row", index });
     openRowMenu(e.currentTarget, index);
+
   }
 
   // Right-click inside a cell — read the cell's row/col off the input's
