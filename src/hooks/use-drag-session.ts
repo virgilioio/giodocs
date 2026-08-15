@@ -280,7 +280,14 @@ export function useDragSession<T, P>(
   }, [moveGhost, runHit, startGhost, teardown, threshold, tick]);
 
   // Unmount mid-drag must not leave a ghost or a rAF on the page.
-  useEffect(() => () => teardown(false), [teardown]);
+  useEffect(
+    () => () => {
+      teardown(false);
+      disarmClickSwallow();
+    },
+    [disarmClickSwallow, teardown],
+  );
+
 
   return { begin, active, target };
 }
