@@ -5535,10 +5535,15 @@ export function TableBlock({
                     data-drop-indicator="col"
                     style={{
                       position: "absolute",
-                      left: x - 1,
-                      top: pad,
+                      left: 0,
+                      top: 0,
                       width: 2,
                       height: h,
+                      // Transform, not left/top, so the slide is composited
+                      // and the line eases between boundaries instead of
+                      // teleporting.
+                      transform: `translate3d(${x - 1}px, ${pad}px, 0)`,
+                      transition: "transform 120ms ease-out",
                       background: "var(--color-accent)",
                       pointerEvents: "none",
                       zIndex: 4,
@@ -5556,16 +5561,19 @@ export function TableBlock({
                   data-drop-indicator="row"
                   style={{
                     position: "absolute",
-                    left: pad,
-                    top: y - 1,
+                    left: 0,
+                    top: 0,
                     width: w,
                     height: 2,
+                    transform: `translate3d(${pad}px, ${y - 1}px, 0)`,
+                    transition: "transform 120ms ease-out",
                     background: "var(--color-accent)",
                     pointerEvents: "none",
                     zIndex: 4,
                   }}
                 />
               );
+
             })()}
 
 
