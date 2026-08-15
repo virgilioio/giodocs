@@ -79,7 +79,25 @@ function applyLink(sel: Sel, rawUrl: string) {
 
 const NOOP_MOUSE = (e: React.MouseEvent) => e.preventDefault();
 
-export function FloatingToolbar() {
+export type MarkName =
+  | "bold"
+  | "italic"
+  | "underline"
+  | "strike"
+  | "code"
+  | "highlight";
+
+/* Block mode: a marquee block-selection has no focused editable and no DOM
+ * Range, so the bar anchors to the union rect of the selected block nodes and
+ * toggles WHOLE blocks. Text-range mode keeps absolute priority. */
+export type BlockSel = {
+  count: number;
+  anchor: () => DOMRect | null;
+  active: Record<MarkName, boolean>;
+  onToggle: (pair: MarkPair) => void;
+};
+
+export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
   const [sel, setSel] = useState<Sel | null>(null);
   const [pos, setPos] = useState<{ top: number; left: number; flipped: boolean } | null>(
     null,
@@ -87,7 +105,10 @@ export function FloatingToolbar() {
   const [linkMode, setLinkMode] = useState(false);
   const [linkValue, setLinkValue] = useState("");
   const [linkError, setLinkError] = useState(false);
+  const [tick, setTick] = useState(0);
   const barRef = useRef<HTMLDivElement | null>(null);
+
+  const blockMode = !sel && !!blockSel && blockSel.count > 0;
 
   const hide = useCallback(() => {
     setSel(null);
@@ -96,6 +117,7 @@ export function FloatingToolbar() {
     setLinkValue("");
     setLinkError(false);
   }, []);
+
 
   /* ── Selection tracking ─────────────────────────────────────────── */
 
