@@ -145,6 +145,8 @@ import { Editable } from "./editable";
 import { EmojiPicker } from "./emoji-picker";
 import { Popover } from "./popover";
 import { readCaret, writeCaret } from "@/lib/caret-shim";
+import { useDragSession } from "@/hooks/use-drag-session";
+
 import { ordinalLabel } from "@/lib/blocks";
 import {
   CALLOUT_COLORS,
@@ -5116,15 +5118,11 @@ export function TableBlock({
 
   // One click on a handle now selects AND opens the menu in the same
   // gesture. Two clicks to reach a menu is a hunt; one is a control.
-  // A click that ENDS a reorder drag is swallowed once (see
-  // `clickAfterDragRef`) so a drop never also opens the menu.
+  // A click that ENDS a reorder drag never reaches here: `useDragSession`
+  // swallows exactly one click after a real drag.
   function onColumnHandleClick(e: React.MouseEvent<HTMLButtonElement>, index: number) {
     e.stopPropagation();
     if (locked) return;
-    if (clickAfterDragRef.current) {
-      clickAfterDragRef.current = false;
-      return;
-    }
     setSel({ kind: "col", index });
     openColumnMenu(e.currentTarget, index);
   }
@@ -5132,12 +5130,9 @@ export function TableBlock({
   function onRowHandleClick(e: React.MouseEvent<HTMLButtonElement>, index: number) {
     e.stopPropagation();
     if (locked) return;
-    if (clickAfterDragRef.current) {
-      clickAfterDragRef.current = false;
-      return;
-    }
     setSel({ kind: "row", index });
     openRowMenu(e.currentTarget, index);
+
   }
 
   // Right-click inside a cell — read the cell's row/col off the input's
@@ -5256,10 +5251,14 @@ export function TableBlock({
 
   /* ────────────── Reorder by dragging a handle ──────────────
    *
-   * A press on a row/column handle starts a POSSIBLE drag. It only becomes
-   * a real one past a 4px threshold — under that the press stays a plain
-   * click and still opens the handle's menu, which is the handle's original
-   * job. Every drop commits through the SAME pure ops the menu's
+   * The MECHANICS of the gesture — pointer capture, the 4px threshold, the
+   * ghost, edge autoscroll, Escape/cancel, click suppression and cleanup —
+   * belong to `useDragSession` (src/hooks/use-drag-session.ts). This file
+   * only supplies the three things that are genuinely table-specific: where
+   * the pointer points (`hitTest`), what a drop means (`commit`) and what
+   * the in-flight thing looks like (`makeGhost`).
+   *
+   * Every drop commits through the SAME pure ops the menu's
    * Move up/down/left/right use, threading align and widths in lockstep for
    * a column move: forgetting either silently offsets every column.
    *
@@ -5269,30 +5268,13 @@ export function TableBlock({
    * are unavailable (unmeasured layout), we fall back to a nominal step so
    * the gesture degrades to something predictable rather than dead.
    */
-  const REORDER_THRESHOLD = 4;
   const FALLBACK_ROW_H = 24;
   const FALLBACK_COL_W = 100;
-  const [reorder, setReorder] = useState<{
-    axis: "row" | "col";
-    from: number;
-    to: number;
-  } | null>(null);
-  const reorderRef = useRef<{
-    axis: "row" | "col";
-    from: number;
-    startX: number;
-    startY: number;
-    pointerId: number;
-    handle: HTMLElement;
-    moved: boolean;
-  } | null>(null);
-  // Set on the pointerup that ENDS a drag, consumed by the handle's click
-  // handler so a drop never also opens the menu.
-  const clickAfterDragRef = useRef(false);
 
   // Row 0 is untouchable while `headerRow` is on: it cannot be dragged and
   // nothing may be dropped above it.
   const minRowIndex = headerRow ? 1 : 0;
+
 
   const indexAtY = (clientY: number) => {
     const base = tableRef.current?.getBoundingClientRect();
@@ -5322,6 +5304,79 @@ export function TableBlock({
     return Math.max(0, Math.min(nCols - 1, Math.round(x / FALLBACK_COL_W)));
   };
 
+  type DragPayload = { axis: "row" | "col"; from: number };
+  type DropTarget = { axis: "row" | "col"; from: number; to: number };
+
+  /** Ghost: a CLONE, never the live node — moving the real row/column would
+   *  reflow the table under the pointer mid-drag. */
+  const makeGhost = (p: DragPayload): HTMLElement | null => {
+    const tbl = tableRef.current;
+    if (!tbl) return null;
+    const trs = Array.from(tbl.querySelectorAll("tr"));
+    if (p.axis === "row") {
+      const tr = trs[p.from];
+      if (!tr) return null;
+      const r = tr.getBoundingClientRect();
+      const host = document.createElement("table");
+      host.className = tbl.className;
+      host.style.width = `${r.width}px`;
+      host.style.background = "var(--color-canvas)";
+      host.style.tableLayout = "fixed";
+      const body = document.createElement("tbody");
+      body.appendChild(tr.cloneNode(true));
+      host.appendChild(body);
+      return host;
+    }
+    const host = document.createElement("div");
+    host.style.background = "var(--color-canvas)";
+    const w = metrics?.cols[p.from]?.width;
+    if (w) host.style.width = `${w}px`;
+    for (const tr of trs) {
+      const cell = tr.children[p.from] as HTMLElement | undefined;
+      if (!cell) continue;
+      const line = document.createElement("div");
+      line.className = "border border-line px-2 py-1 text-meta";
+      line.textContent = cell.textContent ?? "";
+      host.appendChild(line);
+    }
+    return host;
+  };
+
+  const drag = useDragSession<DropTarget, DragPayload>({
+    hitTest: (pt, p) => ({
+      axis: p.axis,
+      from: p.from,
+      to:
+        p.axis === "row"
+          ? Math.max(minRowIndex, indexAtY(pt.y))
+          : indexAtX(pt.x),
+    }),
+    commit: (drop) => {
+      if (drop.to === drop.from) return;
+      if (drop.axis === "row") {
+        commit(moveRow(rows, drop.from, drop.to));
+        setSel({ kind: "row", index: drop.to });
+      } else {
+        commit(
+          moveColumn(rows, drop.from, drop.to),
+          moveAlign(align, drop.from, drop.to),
+          moveWidth(widths, drop.from, drop.to),
+        );
+        setSel({ kind: "col", index: drop.to });
+      }
+    },
+    makeGhost,
+    // A row drag scrolls the PAGE vertically; a column drag scrolls the
+    // TABLE horizontally. Both containers are offered every time and
+    // edgeVelocity decides which one has work to do.
+    scrollTargets: () => [
+      scrollRef.current,
+      rootRef.current?.closest("main") as HTMLElement | null,
+    ],
+  });
+
+  const reorder = drag.active ? drag.target : null;
+
   const beginHandleDrag = (
     e: React.PointerEvent<HTMLElement>,
     axis: "row" | "col",
@@ -5330,106 +5385,9 @@ export function TableBlock({
     if (locked) return;
     // Pinned header: no gesture at all, so the click still reaches the menu.
     if (axis === "row" && headerRow && index === 0) return;
-    const el = e.currentTarget as HTMLElement;
-    try {
-      el.setPointerCapture(e.pointerId);
-    } catch {
-      /* ignore — non-mouse pointers work without capture */
-    }
-    reorderRef.current = {
-      axis,
-      from: index,
-      startX: e.clientX,
-      startY: e.clientY,
-      pointerId: e.pointerId,
-      handle: el,
-      moved: false,
-    };
-    // Stops a text selection starting mid-drag.
-    e.preventDefault();
-    e.stopPropagation();
+    drag.begin(e, { axis, from: index });
   };
 
-  const onHandleDragMove = (e: React.PointerEvent<HTMLElement>) => {
-    const d = reorderRef.current;
-    if (!d) return;
-    if (!d.moved) {
-      const dx = e.clientX - d.startX;
-      const dy = e.clientY - d.startY;
-      if (Math.sqrt(dx * dx + dy * dy) < REORDER_THRESHOLD) return;
-      d.moved = true;
-    }
-    const to =
-      d.axis === "row"
-        ? Math.max(minRowIndex, indexAtY(e.clientY))
-        : indexAtX(e.clientX);
-    setReorder({ axis: d.axis, from: d.from, to });
-  };
-
-  const abortHandleDrag = () => {
-    const d = reorderRef.current;
-    if (d) {
-      try {
-        d.handle.releasePointerCapture?.(d.pointerId);
-      } catch {
-        /* ignore */
-      }
-    }
-    reorderRef.current = null;
-    setReorder(null);
-  };
-
-  const onHandleDragEnd = (e: React.PointerEvent<HTMLElement>) => {
-    const d = reorderRef.current;
-    if (!d) return;
-    const drop = reorder;
-    abortHandleDrag();
-    if (!d.moved) return;
-    clickAfterDragRef.current = true;
-    if (!drop || drop.to === drop.from) return;
-    if (drop.axis === "row") {
-      commit(moveRow(rows, drop.from, drop.to));
-      setSel({ kind: "row", index: drop.to });
-    } else {
-      commit(
-        moveColumn(rows, drop.from, drop.to),
-        moveAlign(align, drop.from, drop.to),
-        moveWidth(widths, drop.from, drop.to),
-      );
-      setSel({ kind: "col", index: drop.to });
-    }
-    e.stopPropagation();
-  };
-
-  const onHandleDragCancel = () => {
-    const d = reorderRef.current;
-    if (d?.moved) clickAfterDragRef.current = true;
-    abortHandleDrag();
-  };
-
-  // Escape aborts mid-drag with no change. Capture phase so it lands before
-  // the menu/selection Escape layers.
-  useEffect(() => {
-    if (!reorder) return;
-    const onKey = (ev: KeyboardEvent) => {
-      if (ev.key !== "Escape") return;
-      ev.preventDefault();
-      ev.stopPropagation();
-      const d = reorderRef.current;
-      if (d?.moved) clickAfterDragRef.current = true;
-      if (d) {
-        try {
-          d.handle.releasePointerCapture?.(d.pointerId);
-        } catch {
-          /* ignore */
-        }
-      }
-      reorderRef.current = null;
-      setReorder(null);
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [reorder]);
 
 
   return (
@@ -5577,10 +5535,15 @@ export function TableBlock({
                     data-drop-indicator="col"
                     style={{
                       position: "absolute",
-                      left: x - 1,
-                      top: pad,
+                      left: 0,
+                      top: 0,
                       width: 2,
                       height: h,
+                      // Transform, not left/top, so the slide is composited
+                      // and the line eases between boundaries instead of
+                      // teleporting.
+                      transform: `translate3d(${x - 1}px, ${pad}px, 0)`,
+                      transition: "transform 120ms ease-out",
                       background: "var(--color-accent)",
                       pointerEvents: "none",
                       zIndex: 4,
@@ -5598,16 +5561,19 @@ export function TableBlock({
                   data-drop-indicator="row"
                   style={{
                     position: "absolute",
-                    left: pad,
-                    top: y - 1,
+                    left: 0,
+                    top: 0,
                     width: w,
                     height: 2,
+                    transform: `translate3d(${pad}px, ${y - 1}px, 0)`,
+                    transition: "transform 120ms ease-out",
                     background: "var(--color-accent)",
                     pointerEvents: "none",
                     zIndex: 4,
                   }}
                 />
               );
+
             })()}
 
 
@@ -5650,9 +5616,7 @@ export function TableBlock({
                           active={active}
                           onClick={onColumnHandleClick}
                           onPointerDown={(e) => beginHandleDrag(e, "col", ci)}
-                          onPointerMove={onHandleDragMove}
-                          onPointerUp={onHandleDragEnd}
-                          onPointerCancel={onHandleDragCancel}
+
                         />
                       </div>
                     );
@@ -5692,9 +5656,7 @@ export function TableBlock({
                           active={active}
                           onClick={onRowHandleClick}
                           onPointerDown={(e) => beginHandleDrag(e, "row", ri)}
-                          onPointerMove={onHandleDragMove}
-                          onPointerUp={onHandleDragEnd}
-                          onPointerCancel={onHandleDragCancel}
+
                         />
                       </div>
                     );
