@@ -5256,10 +5256,14 @@ export function TableBlock({
 
   /* ────────────── Reorder by dragging a handle ──────────────
    *
-   * A press on a row/column handle starts a POSSIBLE drag. It only becomes
-   * a real one past a 4px threshold — under that the press stays a plain
-   * click and still opens the handle's menu, which is the handle's original
-   * job. Every drop commits through the SAME pure ops the menu's
+   * The MECHANICS of the gesture — pointer capture, the 4px threshold, the
+   * ghost, edge autoscroll, Escape/cancel, click suppression and cleanup —
+   * belong to `useDragSession` (src/hooks/use-drag-session.ts). This file
+   * only supplies the three things that are genuinely table-specific: where
+   * the pointer points (`hitTest`), what a drop means (`commit`) and what
+   * the in-flight thing looks like (`makeGhost`).
+   *
+   * Every drop commits through the SAME pure ops the menu's
    * Move up/down/left/right use, threading align and widths in lockstep for
    * a column move: forgetting either silently offsets every column.
    *
@@ -5269,30 +5273,13 @@ export function TableBlock({
    * are unavailable (unmeasured layout), we fall back to a nominal step so
    * the gesture degrades to something predictable rather than dead.
    */
-  const REORDER_THRESHOLD = 4;
   const FALLBACK_ROW_H = 24;
   const FALLBACK_COL_W = 100;
-  const [reorder, setReorder] = useState<{
-    axis: "row" | "col";
-    from: number;
-    to: number;
-  } | null>(null);
-  const reorderRef = useRef<{
-    axis: "row" | "col";
-    from: number;
-    startX: number;
-    startY: number;
-    pointerId: number;
-    handle: HTMLElement;
-    moved: boolean;
-  } | null>(null);
-  // Set on the pointerup that ENDS a drag, consumed by the handle's click
-  // handler so a drop never also opens the menu.
-  const clickAfterDragRef = useRef(false);
 
   // Row 0 is untouchable while `headerRow` is on: it cannot be dragged and
   // nothing may be dropped above it.
   const minRowIndex = headerRow ? 1 : 0;
+
 
   const indexAtY = (clientY: number) => {
     const base = tableRef.current?.getBoundingClientRect();
