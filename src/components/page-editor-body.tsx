@@ -5722,10 +5722,18 @@ function ColumnHandle({
   ci,
   active,
   onClick,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
 }: {
   ci: number;
   active: boolean;
   onClick: (e: React.MouseEvent<HTMLButtonElement>, index: number) => void;
+  onPointerDown?: (e: React.PointerEvent<HTMLElement>) => void;
+  onPointerMove?: (e: React.PointerEvent<HTMLElement>) => void;
+  onPointerUp?: (e: React.PointerEvent<HTMLElement>) => void;
+  onPointerCancel?: (e: React.PointerEvent<HTMLElement>) => void;
 }) {
   const [hover, setHover] = useState(false);
   const bg = active
@@ -5737,13 +5745,24 @@ function ColumnHandle({
   return (
     <button
       type="button"
+      data-table-handle=""
       aria-label={`Column ${ci + 1} actions`}
       title="Column actions"
       onClick={(e) => onClick(e, ci)}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       className="relative"
-      style={{ flex: 1, height: 16, background: "transparent", cursor: "pointer" }}
+      style={{
+        flex: 1,
+        height: 16,
+        background: "transparent",
+        cursor: "pointer",
+        touchAction: "none",
+      }}
     >
       <span
         aria-hidden
