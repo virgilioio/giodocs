@@ -89,13 +89,15 @@ export function useDragSession<T, P>(
   } | null>(null);
 
   /** Consumes exactly one click after a real drag, then removes itself.
-   *  It is also disarmed by the NEXT press and by unmount — a swallow that
-   *  outlives its own gesture would eat an unrelated click, which reads as
-   *  "the menu randomly doesn't open". */
-  const disarmRef = useRef<(() => void) | null>(null);
+   *  It is also disarmed by the NEXT press anywhere and by unmount. The
+   *  armed state is MODULE-level on purpose: only one drag can be in flight
+   *  in a document, and a per-instance swallow left armed by one component
+   *  would eat an unrelated click in another — which reads as "the menu
+   *  randomly doesn't open". */
   const disarmClickSwallow = useCallback(() => {
-    disarmRef.current?.();
-    disarmRef.current = null;
+    const d = armedDisarm;
+    armedDisarm = null;
+    d?.();
   }, []);
   const armClickSwallow = useCallback(() => {
     disarmClickSwallow();
@@ -108,11 +110,12 @@ export function useDragSession<T, P>(
     // Safety valve: if no click ever arrives (touch, cancelled gesture) the
     // listener must not linger into the next interaction.
     const t = window.setTimeout(() => disarmClickSwallow(), 400);
-    disarmRef.current = () => {
+    armedDisarm = () => {
       window.clearTimeout(t);
       document.removeEventListener("click", onClick, true);
     };
   }, [disarmClickSwallow]);
+
 
 
   const teardown = useCallback((swallowClick: boolean) => {
