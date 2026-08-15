@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toggleWrap, isWrapped } from "@/lib/toggle-wrap";
+import type { MarkPair } from "@/lib/block-format";
 import { safeUrl } from "@/lib/inline-markdown";
 import { htmlToInlineMarkdown } from "@/lib/inline-tokens";
 import { readCaret, writeCaret } from "@/lib/caret-shim";
@@ -79,7 +80,25 @@ function applyLink(sel: Sel, rawUrl: string) {
 
 const NOOP_MOUSE = (e: React.MouseEvent) => e.preventDefault();
 
-export function FloatingToolbar() {
+export type MarkName =
+  | "bold"
+  | "italic"
+  | "underline"
+  | "strike"
+  | "code"
+  | "highlight";
+
+/* Block mode: a marquee block-selection has no focused editable and no DOM
+ * Range, so the bar anchors to the union rect of the selected block nodes and
+ * toggles WHOLE blocks. Text-range mode keeps absolute priority. */
+export type BlockSel = {
+  count: number;
+  anchor: () => DOMRect | null;
+  active: Record<MarkName, boolean>;
+  onToggle: (pair: MarkPair) => void;
+};
+
+export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
   const [sel, setSel] = useState<Sel | null>(null);
   const [pos, setPos] = useState<{ top: number; left: number; flipped: boolean } | null>(
     null,
@@ -87,7 +106,10 @@ export function FloatingToolbar() {
   const [linkMode, setLinkMode] = useState(false);
   const [linkValue, setLinkValue] = useState("");
   const [linkError, setLinkError] = useState(false);
+  const [tick, setTick] = useState(0);
   const barRef = useRef<HTMLDivElement | null>(null);
+
+  const blockMode = !sel && !!blockSel && blockSel.count > 0;
 
   const hide = useCallback(() => {
     setSel(null);
@@ -96,6 +118,7 @@ export function FloatingToolbar() {
     setLinkValue("");
     setLinkError(false);
   }, []);
+
 
   /* ── Selection tracking ─────────────────────────────────────────── */
 
@@ -136,6 +159,8 @@ export function FloatingToolbar() {
     return () => document.removeEventListener("keydown", onKey, true);
   }, [sel, hide]);
 
+  /* Hide-on-scroll is right for a TEXT range (the caret goes away) but wrong
+   * for a block selection, which survives scrolling — that one repositions. */
   useEffect(() => {
     if (!sel) return;
     const onScroll = () => hide();
@@ -144,16 +169,31 @@ export function FloatingToolbar() {
       window.removeEventListener("scroll", onScroll, { capture: true } as EventListenerOptions);
   }, [sel, hide]);
 
-  /* ── Position via live Range geometry ──────────────────────────── */
+  useEffect(() => {
+    if (!blockMode) return;
+    const onScroll = () => setTick((t) => t + 1);
+    window.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll, {
+        capture: true,
+      } as EventListenerOptions);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [blockMode]);
+
+  /* ── Position via live Range geometry (or the block union rect) ──── */
 
   useLayoutEffect(() => {
-    if (!sel) {
-      setPos(null);
-      return;
+    let rect: DOMRect | null = null;
+    if (sel) {
+      const selection = window.getSelection();
+      const range =
+        selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+      rect = range ? range.getBoundingClientRect() : null;
+    } else if (blockMode && blockSel) {
+      rect = blockSel.anchor();
     }
-    const selection = window.getSelection();
-    const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
-    const rect = range ? range.getBoundingClientRect() : null;
     if (!rect || (rect.width === 0 && rect.height === 0)) {
       setPos(null);
       return;
@@ -174,17 +214,39 @@ export function FloatingToolbar() {
       flipped = true;
     }
     setPos({ top, left, flipped });
-  }, [sel, linkMode]);
+  }, [sel, linkMode, blockMode, blockSel, tick]);
 
-  if (!sel || !pos) return null;
+  if ((!sel && !blockMode) || !pos) return null;
 
-  const activeBold = isWrapped(sel.value, sel.start, sel.end, "**", "**");
-  const activeItalic =
-    isWrapped(sel.value, sel.start, sel.end, "*", "*") && !activeBold;
-  const activeUnderline = isWrapped(sel.value, sel.start, sel.end, "<u>", "</u>");
-  const activeStrike = isWrapped(sel.value, sel.start, sel.end, "~~", "~~");
-  const activeCode = isWrapped(sel.value, sel.start, sel.end, "`", "`");
-  const activeHighlight = isWrapped(sel.value, sel.start, sel.end, "==", "==");
+  const activeBold = sel
+    ? isWrapped(sel.value, sel.start, sel.end, "**", "**")
+    : !!blockSel?.active.bold;
+  const activeItalic = sel
+    ? isWrapped(sel.value, sel.start, sel.end, "*", "*") &&
+      !isWrapped(sel.value, sel.start, sel.end, "**", "**")
+    : !!blockSel?.active.italic;
+  const activeUnderline = sel
+    ? isWrapped(sel.value, sel.start, sel.end, "<u>", "</u>")
+    : !!blockSel?.active.underline;
+  const activeStrike = sel
+    ? isWrapped(sel.value, sel.start, sel.end, "~~", "~~")
+    : !!blockSel?.active.strike;
+  const activeCode = sel
+    ? isWrapped(sel.value, sel.start, sel.end, "`", "`")
+    : !!blockSel?.active.code;
+  const activeHighlight = sel
+    ? isWrapped(sel.value, sel.start, sel.end, "==", "==")
+    : !!blockSel?.active.highlight;
+
+  const apply = (open: string, close: string) => {
+    if (sel) {
+      applyWrap(sel, open, close);
+      return;
+    }
+    blockSel?.onToggle([open, close] as MarkPair);
+  };
+
+
 
   const btnBase: React.CSSProperties = {
     height: 26,
@@ -275,7 +337,7 @@ export function FloatingToolbar() {
       style={shell}
       onMouseDown={NOOP_MOUSE}
     >
-      {linkMode ? (
+      {linkMode && sel ? (
         <div
           style={{
             display: "flex",
@@ -297,7 +359,7 @@ export function FloatingToolbar() {
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                if (!applyLink(sel, linkValue)) {
+                if (!applyLink(sel!, linkValue)) {
                   setLinkError(true);
                   return;
                 }
@@ -330,7 +392,7 @@ export function FloatingToolbar() {
             onMouseDown={NOOP_MOUSE}
             onClick={(e) => {
               e.preventDefault();
-              if (!applyLink(sel, linkValue)) {
+              if (!applyLink(sel!, linkValue)) {
                 setLinkError(true);
                 return;
               }
@@ -346,35 +408,35 @@ export function FloatingToolbar() {
             label="B"
             title="Bold  ⌘B"
             active={activeBold}
-            onPick={() => applyWrap(sel, "**", "**")}
+            onPick={() => apply("**", "**")}
             render={<span style={{ fontWeight: 700 }}>B</span>}
           />
           <Btn
             label="I"
             title="Italic  ⌘I"
             active={activeItalic}
-            onPick={() => applyWrap(sel, "*", "*")}
+            onPick={() => apply("*", "*")}
             render={<span style={{ fontStyle: "italic", fontFamily: "serif" }}>I</span>}
           />
           <Btn
             label="U"
             title="Underline  ⌘U"
             active={activeUnderline}
-            onPick={() => applyWrap(sel, "<u>", "</u>")}
+            onPick={() => apply("<u>", "</u>")}
             render={<span style={{ textDecoration: "underline" }}>U</span>}
           />
           <Btn
             label="S"
             title="Strikethrough  ⌘⇧X"
             active={activeStrike}
-            onPick={() => applyWrap(sel, "~~", "~~")}
+            onPick={() => apply("~~", "~~")}
             render={<span style={{ textDecoration: "line-through" }}>S</span>}
           />
           <Btn
             label="<>"
             title="Code  ⌘E"
             active={activeCode}
-            onPick={() => applyWrap(sel, "`", "`")}
+            onPick={() => apply("`", "`")}
             render={
               <span
                 style={{
@@ -390,7 +452,7 @@ export function FloatingToolbar() {
             label="H"
             title="Highlight  ⌘⇧H"
             active={activeHighlight}
-            onPick={() => applyWrap(sel, "==", "==")}
+            onPick={() => apply("==", "==")}
             render={
               <span
                 style={{
@@ -406,7 +468,8 @@ export function FloatingToolbar() {
               </span>
             }
           />
-          {divider}
+          {sel ? divider : null}
+          {sel ? (
           <Btn
             label="↗"
             title="Link"
@@ -429,6 +492,7 @@ export function FloatingToolbar() {
               </svg>
             }
           />
+          ) : null}
         </>
       )}
     </div>,
