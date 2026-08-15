@@ -5625,6 +5625,10 @@ export function TableBlock({
                           ri={ri}
                           active={active}
                           onClick={onRowHandleClick}
+                          onPointerDown={(e) => beginHandleDrag(e, "row", ri)}
+                          onPointerMove={onHandleDragMove}
+                          onPointerUp={onHandleDragEnd}
+                          onPointerCancel={onHandleDragCancel}
                         />
                       </div>
                     );
