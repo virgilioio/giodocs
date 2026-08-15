@@ -145,6 +145,8 @@ import { Editable } from "./editable";
 import { EmojiPicker } from "./emoji-picker";
 import { Popover } from "./popover";
 import { readCaret, writeCaret } from "@/lib/caret-shim";
+import { useDragSession } from "@/hooks/use-drag-session";
+
 import { ordinalLabel } from "@/lib/blocks";
 import {
   CALLOUT_COLORS,
