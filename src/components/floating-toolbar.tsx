@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toggleWrap, isWrapped } from "@/lib/toggle-wrap";
+import type { MarkPair } from "@/lib/block-format";
 import { safeUrl } from "@/lib/inline-markdown";
 import { htmlToInlineMarkdown } from "@/lib/inline-tokens";
 import { readCaret, writeCaret } from "@/lib/caret-shim";
@@ -336,7 +337,7 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
       style={shell}
       onMouseDown={NOOP_MOUSE}
     >
-      {linkMode ? (
+      {linkMode && sel ? (
         <div
           style={{
             display: "flex",
@@ -358,7 +359,7 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                if (!applyLink(sel, linkValue)) {
+                if (!applyLink(sel!, linkValue)) {
                   setLinkError(true);
                   return;
                 }
@@ -391,7 +392,7 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
             onMouseDown={NOOP_MOUSE}
             onClick={(e) => {
               e.preventDefault();
-              if (!applyLink(sel, linkValue)) {
+              if (!applyLink(sel!, linkValue)) {
                 setLinkError(true);
                 return;
               }
@@ -407,35 +408,35 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
             label="B"
             title="Bold  ⌘B"
             active={activeBold}
-            onPick={() => applyWrap(sel, "**", "**")}
+            onPick={() => apply("**", "**")}
             render={<span style={{ fontWeight: 700 }}>B</span>}
           />
           <Btn
             label="I"
             title="Italic  ⌘I"
             active={activeItalic}
-            onPick={() => applyWrap(sel, "*", "*")}
+            onPick={() => apply("*", "*")}
             render={<span style={{ fontStyle: "italic", fontFamily: "serif" }}>I</span>}
           />
           <Btn
             label="U"
             title="Underline  ⌘U"
             active={activeUnderline}
-            onPick={() => applyWrap(sel, "<u>", "</u>")}
+            onPick={() => apply("<u>", "</u>")}
             render={<span style={{ textDecoration: "underline" }}>U</span>}
           />
           <Btn
             label="S"
             title="Strikethrough  ⌘⇧X"
             active={activeStrike}
-            onPick={() => applyWrap(sel, "~~", "~~")}
+            onPick={() => apply("~~", "~~")}
             render={<span style={{ textDecoration: "line-through" }}>S</span>}
           />
           <Btn
             label="<>"
             title="Code  ⌘E"
             active={activeCode}
-            onPick={() => applyWrap(sel, "`", "`")}
+            onPick={() => apply("`", "`")}
             render={
               <span
                 style={{
@@ -451,7 +452,7 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
             label="H"
             title="Highlight  ⌘⇧H"
             active={activeHighlight}
-            onPick={() => applyWrap(sel, "==", "==")}
+            onPick={() => apply("==", "==")}
             render={
               <span
                 style={{
@@ -467,7 +468,8 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
               </span>
             }
           />
-          {divider}
+          {sel ? divider : null}
+          {sel ? (
           <Btn
             label="↗"
             title="Link"
@@ -490,6 +492,7 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
               </svg>
             }
           />
+          ) : null}
         </>
       )}
     </div>,
