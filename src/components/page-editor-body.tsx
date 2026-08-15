@@ -5802,10 +5802,18 @@ function RowHandle({
   ri,
   active,
   onClick,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
 }: {
   ri: number;
   active: boolean;
   onClick: (e: React.MouseEvent<HTMLButtonElement>, index: number) => void;
+  onPointerDown?: (e: React.PointerEvent<HTMLElement>) => void;
+  onPointerMove?: (e: React.PointerEvent<HTMLElement>) => void;
+  onPointerUp?: (e: React.PointerEvent<HTMLElement>) => void;
+  onPointerCancel?: (e: React.PointerEvent<HTMLElement>) => void;
 }) {
   const [hover, setHover] = useState(false);
   const bg = active
@@ -5817,13 +5825,24 @@ function RowHandle({
   return (
     <button
       type="button"
+      data-table-handle=""
       aria-label={`Row ${ri + 1} actions`}
       title="Row actions"
       onClick={(e) => onClick(e, ri)}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       className="relative"
-      style={{ flex: 1, width: 16, background: "transparent", cursor: "pointer" }}
+      style={{
+        flex: 1,
+        width: 16,
+        background: "transparent",
+        cursor: "pointer",
+        touchAction: "none",
+      }}
     >
       <span
         aria-hidden
