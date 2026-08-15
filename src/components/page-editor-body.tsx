@@ -58,8 +58,13 @@ const COLS_GAP = 40;
  *  sheet is always a div, and the suggestion panel, formula bar and toolbar
  *  live in the root too. Opening a session there made the marquee's pointerup
  *  click branch blur the hoisted editor and commit a half-written formula. */
+/*  `[data-table-handle]` covers the table's row/column handle rails, which
+ *  live in an absolutely-positioned overlay and are plain divs/buttons — not
+ *  cells — so an input-shaped guard is blind to them. Pressing one used to
+ *  open a page marquee session whose pointerup click branch blurred the
+ *  editor and cleared the DOM selection mid-gesture. */
 export const MARQUEE_SKIP_SEL =
-  '[contenteditable="true"], textarea, input, select, [data-table-cell], [data-sheet]';
+  '[contenteditable="true"], textarea, input, select, [data-table-cell], [data-table-handle], [data-sheet]';
 import {
   push as undoPush,
   undo as undoDo,
@@ -4967,30 +4972,43 @@ export function TableBlock({
           },
         },
         { kind: "sep" },
-        {
-          kind: "row",
-          label: "Move up",
-          icon: "chevUp",
-          hint: isFirst ? { text: "at top" } : undefined,
-          onPick: () => {
-            if (isFirst) return;
-            commit(moveRow(rows, index, index - 1));
-            setSel({ kind: "row", index: index - 1 });
-            closeMenu();
-          },
-        },
-        {
-          kind: "row",
-          label: "Move down",
-          icon: "chevDown",
-          hint: isLast ? { text: "at end" } : undefined,
-          onPick: () => {
-            if (isLast) return;
-            commit(moveRow(rows, index, index + 1));
-            setSel({ kind: "row", index: index + 1 });
-            closeMenu();
-          },
-        },
+        // HEADER IS PINNED. When `headerRow` is on, row 0 cannot leave the
+        // header slot and no other row can enter it — so the two menu
+        // entries that would perform exactly that are HIDDEN, matching the
+        // drag gesture's rule. The pure op in table-ops stays unrestricted;
+        // the constraint is presentational and lives here once.
+        ...((headerRow && index === 1
+          ? []
+          : [
+              {
+                kind: "row" as const,
+                label: "Move up",
+                icon: "chevUp" as const,
+                hint: isFirst ? { text: "at top" } : undefined,
+                onPick: () => {
+                  if (isFirst) return;
+                  commit(moveRow(rows, index, index - 1));
+                  setSel({ kind: "row", index: index - 1 });
+                  closeMenu();
+                },
+              },
+            ]) as MenuRow[]),
+        ...((headerRow && index === 0
+          ? []
+          : [
+              {
+                kind: "row" as const,
+                label: "Move down",
+                icon: "chevDown" as const,
+                hint: isLast ? { text: "at end" } : undefined,
+                onPick: () => {
+                  if (isLast) return;
+                  commit(moveRow(rows, index, index + 1));
+                  setSel({ kind: "row", index: index + 1 });
+                  closeMenu();
+                },
+              },
+            ]) as MenuRow[]),
         { kind: "sep" },
         ...(index === 0
           ? ([
@@ -5098,9 +5116,15 @@ export function TableBlock({
 
   // One click on a handle now selects AND opens the menu in the same
   // gesture. Two clicks to reach a menu is a hunt; one is a control.
+  // A click that ENDS a reorder drag is swallowed once (see
+  // `clickAfterDragRef`) so a drop never also opens the menu.
   function onColumnHandleClick(e: React.MouseEvent<HTMLButtonElement>, index: number) {
     e.stopPropagation();
     if (locked) return;
+    if (clickAfterDragRef.current) {
+      clickAfterDragRef.current = false;
+      return;
+    }
     setSel({ kind: "col", index });
     openColumnMenu(e.currentTarget, index);
   }
@@ -5108,6 +5132,10 @@ export function TableBlock({
   function onRowHandleClick(e: React.MouseEvent<HTMLButtonElement>, index: number) {
     e.stopPropagation();
     if (locked) return;
+    if (clickAfterDragRef.current) {
+      clickAfterDragRef.current = false;
+      return;
+    }
     setSel({ kind: "row", index });
     openRowMenu(e.currentTarget, index);
   }
@@ -5226,6 +5254,184 @@ export function TableBlock({
     onChange({ widths: equal });
   };
 
+  /* ────────────── Reorder by dragging a handle ──────────────
+   *
+   * A press on a row/column handle starts a POSSIBLE drag. It only becomes
+   * a real one past a 4px threshold — under that the press stays a plain
+   * click and still opens the handle's menu, which is the handle's original
+   * job. Every drop commits through the SAME pure ops the menu's
+   * Move up/down/left/right use, threading align and widths in lockstep for
+   * a column move: forgetting either silently offsets every column.
+   *
+   * Target index comes from the ALREADY-MEASURED `metrics`, never from an
+   * equal share of the column count — columns carry different widths, and a
+   * wrong index reorders a column the user did not point at. When metrics
+   * are unavailable (unmeasured layout), we fall back to a nominal step so
+   * the gesture degrades to something predictable rather than dead.
+   */
+  const REORDER_THRESHOLD = 4;
+  const FALLBACK_ROW_H = 24;
+  const FALLBACK_COL_W = 100;
+  const [reorder, setReorder] = useState<{
+    axis: "row" | "col";
+    from: number;
+    to: number;
+  } | null>(null);
+  const reorderRef = useRef<{
+    axis: "row" | "col";
+    from: number;
+    startX: number;
+    startY: number;
+    pointerId: number;
+    handle: HTMLElement;
+    moved: boolean;
+  } | null>(null);
+  // Set on the pointerup that ENDS a drag, consumed by the handle's click
+  // handler so a drop never also opens the menu.
+  const clickAfterDragRef = useRef(false);
+
+  // Row 0 is untouchable while `headerRow` is on: it cannot be dragged and
+  // nothing may be dropped above it.
+  const minRowIndex = headerRow ? 1 : 0;
+
+  const indexAtY = (clientY: number) => {
+    const base = tableRef.current?.getBoundingClientRect();
+    const y = clientY - (base?.top ?? 0);
+    const rs = metrics?.rows ?? [];
+    const total = rs.reduce((a, r) => a + r.height, 0);
+    if (rs.length === nRows && total > 0) {
+      for (let i = 0; i < rs.length; i++) {
+        if (y < rs[i].top + rs[i].height) return i;
+      }
+      return nRows - 1;
+    }
+    return Math.max(0, Math.min(nRows - 1, Math.round(y / FALLBACK_ROW_H)));
+  };
+
+  const indexAtX = (clientX: number) => {
+    const base = tableRef.current?.getBoundingClientRect();
+    const x = clientX - (base?.left ?? 0);
+    const cs = metrics?.cols ?? [];
+    const total = cs.reduce((a, c) => a + c.width, 0);
+    if (cs.length === nCols && total > 0) {
+      for (let i = 0; i < cs.length; i++) {
+        if (x < cs[i].left + cs[i].width) return i;
+      }
+      return nCols - 1;
+    }
+    return Math.max(0, Math.min(nCols - 1, Math.round(x / FALLBACK_COL_W)));
+  };
+
+  const beginHandleDrag = (
+    e: React.PointerEvent<HTMLElement>,
+    axis: "row" | "col",
+    index: number,
+  ) => {
+    if (locked) return;
+    // Pinned header: no gesture at all, so the click still reaches the menu.
+    if (axis === "row" && headerRow && index === 0) return;
+    const el = e.currentTarget as HTMLElement;
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore — non-mouse pointers work without capture */
+    }
+    reorderRef.current = {
+      axis,
+      from: index,
+      startX: e.clientX,
+      startY: e.clientY,
+      pointerId: e.pointerId,
+      handle: el,
+      moved: false,
+    };
+    // Stops a text selection starting mid-drag.
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const onHandleDragMove = (e: React.PointerEvent<HTMLElement>) => {
+    const d = reorderRef.current;
+    if (!d) return;
+    if (!d.moved) {
+      const dx = e.clientX - d.startX;
+      const dy = e.clientY - d.startY;
+      if (Math.sqrt(dx * dx + dy * dy) < REORDER_THRESHOLD) return;
+      d.moved = true;
+    }
+    const to =
+      d.axis === "row"
+        ? Math.max(minRowIndex, indexAtY(e.clientY))
+        : indexAtX(e.clientX);
+    setReorder({ axis: d.axis, from: d.from, to });
+  };
+
+  const abortHandleDrag = () => {
+    const d = reorderRef.current;
+    if (d) {
+      try {
+        d.handle.releasePointerCapture?.(d.pointerId);
+      } catch {
+        /* ignore */
+      }
+    }
+    reorderRef.current = null;
+    setReorder(null);
+  };
+
+  const onHandleDragEnd = (e: React.PointerEvent<HTMLElement>) => {
+    const d = reorderRef.current;
+    if (!d) return;
+    const drop = reorder;
+    abortHandleDrag();
+    if (!d.moved) return;
+    clickAfterDragRef.current = true;
+    if (!drop || drop.to === drop.from) return;
+    if (drop.axis === "row") {
+      commit(moveRow(rows, drop.from, drop.to));
+      setSel({ kind: "row", index: drop.to });
+    } else {
+      commit(
+        moveColumn(rows, drop.from, drop.to),
+        moveAlign(align, drop.from, drop.to),
+        moveWidth(widths, drop.from, drop.to),
+      );
+      setSel({ kind: "col", index: drop.to });
+    }
+    e.stopPropagation();
+  };
+
+  const onHandleDragCancel = () => {
+    const d = reorderRef.current;
+    if (d?.moved) clickAfterDragRef.current = true;
+    abortHandleDrag();
+  };
+
+  // Escape aborts mid-drag with no change. Capture phase so it lands before
+  // the menu/selection Escape layers.
+  useEffect(() => {
+    if (!reorder) return;
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key !== "Escape") return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const d = reorderRef.current;
+      if (d?.moved) clickAfterDragRef.current = true;
+      if (d) {
+        try {
+          d.handle.releasePointerCapture?.(d.pointerId);
+        } catch {
+          /* ignore */
+        }
+      }
+      reorderRef.current = null;
+      setReorder(null);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [reorder]);
+
+
   return (
     <div ref={rootRef} className="group/table relative" onContextMenu={onTableContextMenu}>
       <div
@@ -5273,6 +5479,15 @@ export function TableBlock({
                     const selected =
                       (sel?.kind === "row" && sel.index === ri) ||
                       (sel?.kind === "col" && sel.index === ci);
+                    // In-flight tint: the SOURCE row/column stays
+                    // identifiable while the insertion line is far from it.
+                    // Same tint as selection — a drag is a selection that
+                    // is on the move, not a new colour to learn.
+                    const inFlight = reorder
+                      ? reorder.axis === "row"
+                        ? reorder.from === ri
+                        : reorder.from === ci
+                      : false;
                     return (
                       <Tag
                         key={ci}
@@ -5284,7 +5499,9 @@ export function TableBlock({
                             : "text-body")
                         }
                         style={
-                          selected ? { background: "var(--color-blueTint)" } : undefined
+                          selected || inFlight
+                            ? { background: "var(--color-blueTint)" }
+                            : undefined
                         }
                       >
                         {/* Cells are contenteditable so inline markdown
@@ -5339,6 +5556,61 @@ export function TableBlock({
             </tbody>
           </table>
 
+          {/* Drop indicator — a 2px accent insertion line at the boundary
+              where the dragged row/column will land, spanning the table.
+              Geometry comes from the measured metrics, and the line sits on
+              the FAR edge of the target when dragging forwards so it reads
+              as "lands after this one". */}
+          {reorder &&
+            metrics &&
+            (() => {
+              const pad = 23;
+              const forward = reorder.to > reorder.from;
+              if (reorder.axis === "col") {
+                const m = metrics.cols[reorder.to];
+                if (!m) return null;
+                const h = metrics.rows.reduce((a, r) => a + r.height, 0);
+                const x = pad + (forward ? m.left + m.width : m.left);
+                return (
+                  <div
+                    aria-hidden
+                    data-drop-indicator="col"
+                    style={{
+                      position: "absolute",
+                      left: x - 1,
+                      top: pad,
+                      width: 2,
+                      height: h,
+                      background: "var(--color-accent)",
+                      pointerEvents: "none",
+                      zIndex: 4,
+                    }}
+                  />
+                );
+              }
+              const m = metrics.rows[reorder.to];
+              if (!m) return null;
+              const w = metrics.cols.reduce((a, c) => a + c.width, 0);
+              const y = pad + (forward ? m.top + m.height : m.top);
+              return (
+                <div
+                  aria-hidden
+                  data-drop-indicator="row"
+                  style={{
+                    position: "absolute",
+                    left: pad,
+                    top: y - 1,
+                    width: w,
+                    height: 2,
+                    background: "var(--color-accent)",
+                    pointerEvents: "none",
+                    zIndex: 4,
+                  }}
+                />
+              );
+            })()}
+
+
           {!locked && (
             <>
               {/* Column handles — 16px hit strip whose visible pill sits
@@ -5377,6 +5649,10 @@ export function TableBlock({
                           ci={ci}
                           active={active}
                           onClick={onColumnHandleClick}
+                          onPointerDown={(e) => beginHandleDrag(e, "col", ci)}
+                          onPointerMove={onHandleDragMove}
+                          onPointerUp={onHandleDragEnd}
+                          onPointerCancel={onHandleDragCancel}
                         />
                       </div>
                     );
@@ -5415,6 +5691,10 @@ export function TableBlock({
                           ri={ri}
                           active={active}
                           onClick={onRowHandleClick}
+                          onPointerDown={(e) => beginHandleDrag(e, "row", ri)}
+                          onPointerMove={onHandleDragMove}
+                          onPointerUp={onHandleDragEnd}
+                          onPointerCancel={onHandleDragCancel}
                         />
                       </div>
                     );
@@ -5512,10 +5792,18 @@ function ColumnHandle({
   ci,
   active,
   onClick,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
 }: {
   ci: number;
   active: boolean;
   onClick: (e: React.MouseEvent<HTMLButtonElement>, index: number) => void;
+  onPointerDown?: (e: React.PointerEvent<HTMLElement>) => void;
+  onPointerMove?: (e: React.PointerEvent<HTMLElement>) => void;
+  onPointerUp?: (e: React.PointerEvent<HTMLElement>) => void;
+  onPointerCancel?: (e: React.PointerEvent<HTMLElement>) => void;
 }) {
   const [hover, setHover] = useState(false);
   const bg = active
@@ -5527,13 +5815,24 @@ function ColumnHandle({
   return (
     <button
       type="button"
+      data-table-handle=""
       aria-label={`Column ${ci + 1} actions`}
       title="Column actions"
       onClick={(e) => onClick(e, ci)}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       className="relative"
-      style={{ flex: 1, height: 16, background: "transparent", cursor: "pointer" }}
+      style={{
+        flex: 1,
+        height: 16,
+        background: "transparent",
+        cursor: "pointer",
+        touchAction: "none",
+      }}
     >
       <span
         aria-hidden
@@ -5573,10 +5872,18 @@ function RowHandle({
   ri,
   active,
   onClick,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
 }: {
   ri: number;
   active: boolean;
   onClick: (e: React.MouseEvent<HTMLButtonElement>, index: number) => void;
+  onPointerDown?: (e: React.PointerEvent<HTMLElement>) => void;
+  onPointerMove?: (e: React.PointerEvent<HTMLElement>) => void;
+  onPointerUp?: (e: React.PointerEvent<HTMLElement>) => void;
+  onPointerCancel?: (e: React.PointerEvent<HTMLElement>) => void;
 }) {
   const [hover, setHover] = useState(false);
   const bg = active
@@ -5588,13 +5895,24 @@ function RowHandle({
   return (
     <button
       type="button"
+      data-table-handle=""
       aria-label={`Row ${ri + 1} actions`}
       title="Row actions"
       onClick={(e) => onClick(e, ri)}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       className="relative"
-      style={{ flex: 1, width: 16, background: "transparent", cursor: "pointer" }}
+      style={{
+        flex: 1,
+        width: 16,
+        background: "transparent",
+        cursor: "pointer",
+        touchAction: "none",
+      }}
     >
       <span
         aria-hidden
