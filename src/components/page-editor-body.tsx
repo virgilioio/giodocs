@@ -58,8 +58,13 @@ const COLS_GAP = 40;
  *  sheet is always a div, and the suggestion panel, formula bar and toolbar
  *  live in the root too. Opening a session there made the marquee's pointerup
  *  click branch blur the hoisted editor and commit a half-written formula. */
+/*  `[data-table-handle]` covers the table's row/column handle rails, which
+ *  live in an absolutely-positioned overlay and are plain divs/buttons — not
+ *  cells — so an input-shaped guard is blind to them. Pressing one used to
+ *  open a page marquee session whose pointerup click branch blurred the
+ *  editor and cleared the DOM selection mid-gesture. */
 export const MARQUEE_SKIP_SEL =
-  '[contenteditable="true"], textarea, input, select, [data-table-cell], [data-sheet]';
+  '[contenteditable="true"], textarea, input, select, [data-table-cell], [data-table-handle], [data-sheet]';
 import {
   push as undoPush,
   undo as undoDo,
