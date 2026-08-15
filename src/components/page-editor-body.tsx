@@ -4972,30 +4972,43 @@ export function TableBlock({
           },
         },
         { kind: "sep" },
-        {
-          kind: "row",
-          label: "Move up",
-          icon: "chevUp",
-          hint: isFirst ? { text: "at top" } : undefined,
-          onPick: () => {
-            if (isFirst) return;
-            commit(moveRow(rows, index, index - 1));
-            setSel({ kind: "row", index: index - 1 });
-            closeMenu();
-          },
-        },
-        {
-          kind: "row",
-          label: "Move down",
-          icon: "chevDown",
-          hint: isLast ? { text: "at end" } : undefined,
-          onPick: () => {
-            if (isLast) return;
-            commit(moveRow(rows, index, index + 1));
-            setSel({ kind: "row", index: index + 1 });
-            closeMenu();
-          },
-        },
+        // HEADER IS PINNED. When `headerRow` is on, row 0 cannot leave the
+        // header slot and no other row can enter it — so the two menu
+        // entries that would perform exactly that are HIDDEN, matching the
+        // drag gesture's rule. The pure op in table-ops stays unrestricted;
+        // the constraint is presentational and lives here once.
+        ...((headerRow && index === 1
+          ? []
+          : [
+              {
+                kind: "row" as const,
+                label: "Move up",
+                icon: "chevUp" as const,
+                hint: isFirst ? { text: "at top" } : undefined,
+                onPick: () => {
+                  if (isFirst) return;
+                  commit(moveRow(rows, index, index - 1));
+                  setSel({ kind: "row", index: index - 1 });
+                  closeMenu();
+                },
+              },
+            ]) as MenuRow[]),
+        ...((headerRow && index === 0
+          ? []
+          : [
+              {
+                kind: "row" as const,
+                label: "Move down",
+                icon: "chevDown" as const,
+                hint: isLast ? { text: "at end" } : undefined,
+                onPick: () => {
+                  if (isLast) return;
+                  commit(moveRow(rows, index, index + 1));
+                  setSel({ kind: "row", index: index + 1 });
+                  closeMenu();
+                },
+              },
+            ]) as MenuRow[]),
         { kind: "sep" },
         ...(index === 0
           ? ([
