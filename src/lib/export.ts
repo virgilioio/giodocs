@@ -657,14 +657,15 @@ function blockHtml(b: Block, ordinal = 1): string {
         `<th scope="${scope}"${styleFor(i)}>${inline(c)}</th>`;
       const td = (c: string, i: number) => `<td${styleFor(i)}>${inline(c)}</td>`;
       const bodyRow = (r: string[]) =>
-        `<tr>${pad(r)
+        `${trOpen(pad(r))}${pad(r)
           .map((c, i) => (headerCol && i === 0 ? th(c, i, "row") : td(c, i)))
           .join("")}</tr>`;
       const thead = headerRow
-        ? `<thead><tr>${pad(rows[0])
+        ? `<thead>${trOpen(pad(rows[0]))}${pad(rows[0])
             .map((c, i) => th(c, i, "col"))
             .join("")}</tr></thead>`
         : "";
+
       const body = (headerRow ? rows.slice(1) : rows).map(bodyRow).join("");
       return `<table${tableAttrs}>${colgroup}${thead}<tbody>${body}</tbody></table>`;
     }
