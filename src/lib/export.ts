@@ -918,7 +918,13 @@ const HTML_CSS = `
   code { font-family: "Spline Sans Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
   img, table { max-width: 100%; }
   table { border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 15px; }
-  th, td { border: 1px solid ${line}; padding: 6px 10px; text-align: left; vertical-align: top; }
+  /* overflow-wrap: anywhere (not just break-word) also lowers the cell's
+     min-content contribution, so an auto-layout table sizes its columns
+     sensibly instead of one URL dictating the whole layout — and under
+     table-layout: fixed a long token wraps inside the cell instead of
+     painting over its neighbour. */
+  th, td { border: 1px solid ${line}; padding: 6px 10px; text-align: left; vertical-align: top; overflow-wrap: anywhere; word-break: break-word; }
+
   thead th { background: ${sunken}; }
   mark { background: #FFF4B8; color: ${noir}; padding: 0 2px; border-radius: 2px; }
   .todo .done { color: ${muted}; text-decoration: line-through; }
