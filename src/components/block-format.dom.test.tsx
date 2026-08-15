@@ -55,16 +55,31 @@ const key = (k: string, opts: KeyboardEventInit = {}, target?: Element) => {
   });
 };
 
-const selectedCount = () =>
-  host.querySelectorAll('[data-selected="true"]').length;
+/** Seed a block selection the way the UI does: shift-click two handles. */
+const shiftClickHandle = (i: number) => {
+  const handles = host.querySelectorAll('button[aria-label="Drag to reorder"]');
+  const el = handles[i] as HTMLElement;
+  if (!el) throw new Error(`no handle ${i}`);
+  act(() => {
+    el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, shiftKey: true }));
+  });
+};
+
+/** The selection status bar reports the count — the only DOM-visible signal. */
+const selectedCount = () => {
+  const status = document.querySelector('[role="status"]');
+  const m = status?.textContent?.match(/(\d+)\s+blocks?\s+selected/);
+  return m ? Number(m[1]) : 0;
+};
 
 describe("block selection formatting", () => {
   it("⌘B on a block selection formats the blocks and keeps the selection", () => {
     const onChange = vi.fn();
     mount(doc(), onChange);
-    key("a"); // select all blocks
+    shiftClickHandle(0);
+    shiftClickHandle(1);
     const before = selectedCount();
-    expect(before).toBeGreaterThan(0);
+    expect(before).toBe(2);
     key("b");
     const last = onChange.mock.calls.at(-1)?.[0] as Blk[] | undefined;
     expect(last?.map((b) => (b as { text?: string }).text)).toEqual([
@@ -77,7 +92,8 @@ describe("block selection formatting", () => {
   it("does not run the block path when a text field is focused", () => {
     const onChange = vi.fn();
     mount(doc(), onChange);
-    key("a");
+    shiftClickHandle(0);
+    shiftClickHandle(1);
     onChange.mockClear();
     const input = document.createElement("input");
     document.body.appendChild(input);
