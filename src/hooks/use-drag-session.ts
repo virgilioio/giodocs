@@ -88,20 +88,32 @@ export function useDragSession<T, P>(
     userSelect: string;
   } | null>(null);
 
-  /** Consumes exactly one click after a real drag, then removes itself. */
+  /** Consumes exactly one click after a real drag, then removes itself.
+   *  It is also disarmed by the NEXT press and by unmount — a swallow that
+   *  outlives its own gesture would eat an unrelated click, which reads as
+   *  "the menu randomly doesn't open". */
+  const disarmRef = useRef<(() => void) | null>(null);
+  const disarmClickSwallow = useCallback(() => {
+    disarmRef.current?.();
+    disarmRef.current = null;
+  }, []);
   const armClickSwallow = useCallback(() => {
+    disarmClickSwallow();
     const onClick = (ev: MouseEvent) => {
       ev.stopPropagation();
       ev.preventDefault();
-      document.removeEventListener("click", onClick, true);
+      disarmClickSwallow();
     };
     document.addEventListener("click", onClick, true);
-    // Safety valve: if no click arrives (touch, cancelled gesture) the
+    // Safety valve: if no click ever arrives (touch, cancelled gesture) the
     // listener must not linger into the next interaction.
-    window.setTimeout(() => {
+    const t = window.setTimeout(() => disarmClickSwallow(), 400);
+    disarmRef.current = () => {
+      window.clearTimeout(t);
       document.removeEventListener("click", onClick, true);
-    }, 400);
-  }, []);
+    };
+  }, [disarmClickSwallow]);
+
 
   const teardown = useCallback((swallowClick: boolean) => {
     const d = s.current;
