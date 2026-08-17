@@ -129,7 +129,7 @@ describe("paste a URL over a selection", () => {
     selectIn(el, 3, 15); // "Tai Rattigan" at the DOM's offsets, not state's
     const ev = paste(el, { plain: "https://www.linkedin.com/in/tairattigan/" });
     expect(ev.defaultPrevented).toBe(true);
-    expect(el.textContent ?? "").toContain(
+    expect(textOf(onChange.mock.calls.at(-1)![0] as Blk[], "b1")).toContain(
       "[Tai Rattigan](https://www.linkedin.com/in/tairattigan/)",
     );
   });
