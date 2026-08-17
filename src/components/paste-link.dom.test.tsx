@@ -15,6 +15,7 @@ import { act } from "react";
 import { EditableBody } from "./page-editor-body";
 import { FloatingToolbar } from "./floating-toolbar";
 import type { Blk } from "@/lib/block-ops";
+import { commitSourceToEditable } from "@/lib/link-commit";
 
 vi.mock("@/lib/workspace-context", () => ({ useWorkspaceId: () => "ws1" }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
