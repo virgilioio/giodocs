@@ -85,7 +85,10 @@ import { fillToken, inkToken } from "@/lib/sheet-palette";
 import {
   ALIGNS,
   clearedCell,
+  SIZES,
   commonAlign,
+  commonSize,
+  sizeClass,
   commonFormat,
   commonKey,
   FILL_SWATCHES,
@@ -821,6 +824,22 @@ export function SheetBlockView({
     [sel, selCells, applyRange],
   );
 
+  /** Font size across the range. Same shape as setAlign, including its
+   *  toggle-off: picking the size already common to the range clears `fs`
+   *  back to the default. ONE applyRange call, so ONE undo entry. */
+  const setSize = useCallback(
+    (id: "s" | "m" | "l") => {
+      if (!sel) return;
+      const same = commonSize(selCells) === id;
+      applyRange(sel, (cur) => {
+        if (same || id === "m") delete cur.fs;
+        else cur.fs = id;
+        return cur;
+      });
+    },
+    [sel, selCells, applyRange],
+  );
+
   const setColourKey = useCallback(
     (which: "bg" | "fg", key: string | null) => {
       if (!sel) return;
@@ -1150,6 +1169,7 @@ export function SheetBlockView({
    * indicator can never disagree with what its click does. ── */
   const fmtNow = commonFormat(selCells);
   const alignNow = commonAlign(selCells);
+  const sizeNow = commonSize(selCells);
   const boldNow = markDecision(selCells, "b");
   const italicNow = markDecision(selCells, "i");
   const ruleNow = markDecision(selCells, "rt");
@@ -1316,6 +1336,25 @@ export function SheetBlockView({
                 onPick={() => setAlign(a.id)}
               >
                 <Glyph d={a.id === "left" ? IC.alignL : a.id === "center" ? IC.alignC : IC.alignR} />
+              </Tb>
+            ))}
+            {/* Font size: three steps, the middle one being the default
+                (stored as an absent key). */}
+            {SIZES.map((z) => (
+              <Tb
+                key={z.id}
+                id={`size-${z.id}`}
+                title={z.title}
+                active={sizeNow === z.id}
+                onPick={() => setSize(z.id)}
+              >
+                <span
+                  className={
+                    z.id === "s" ? "text-caption" : z.id === "l" ? "text-ui" : "text-meta"
+                  }
+                >
+                  {z.label}
+                </span>
               </Tb>
             ))}
             <span aria-hidden className="mx-1 h-4 w-px bg-lineSoft" />
@@ -1621,7 +1660,11 @@ export function SheetBlockView({
                       role="cell"
                       data-sheet-cell={`${r},${c}`}
                       className={
-                        (run ? "" : "overflow-hidden ") + "whitespace-nowrap px-1.5"
+                        (run ? "" : "overflow-hidden ") +
+                        "whitespace-nowrap px-1.5 " +
+                        // On the CELL, so the phase-1 overflow span (which
+                        // sets no font-size) inherits it on both paths.
+                        sizeClass(cell?.fs)
                       }
 
                       onPointerDown={(e) => {
