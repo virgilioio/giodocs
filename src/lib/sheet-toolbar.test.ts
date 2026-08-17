@@ -8,12 +8,15 @@ import {
   commonDecimals,
   commonFormat,
   commonKey,
+  commonSize,
   defaultDecimals,
   FILL_SWATCHES,
   hasFormatting,
   INK_SWATCHES,
   markDecision,
   NUMBER_FORMATS,
+  SIZES,
+  sizeClass,
   stepDecimals,
   STYLE_KEYS,
 } from "./sheet-toolbar";
@@ -79,6 +82,11 @@ describe("clear formatting", () => {
   it("hasFormatting sees any style key across the range", () => {
     expect(hasFormatting([{ v: 1 }, null])).toBe(false);
     expect(hasFormatting([{ v: 1 }, { rt: true }])).toBe(true);
+  });
+
+  it("clears a size too, and counts a size-only cell as formatted", () => {
+    expect(clearedCell({ v: "hi", fs: "l" })).toEqual({ v: "hi" });
+    expect(hasFormatting([{ v: 1, fs: "s" }])).toBe(true);
   });
 });
 
@@ -148,5 +156,27 @@ describe("control tables", () => {
   it("both palettes include a None that clears the key", () => {
     expect(FILL_SWATCHES[0]).toEqual({ key: null, label: "None", token: undefined });
     expect(INK_SWATCHES[0]).toEqual({ key: null, label: "None", token: undefined });
+  });
+});
+
+
+describe("commonSize — the shared font size across a range", () => {
+  it("reports the shared step, treating an absent fs as m", () => {
+    expect(commonSize([{ fs: "s" }, { v: 1, fs: "s" }])).toBe("s");
+    expect(commonSize([{ v: 1 }, null])).toBe("m");
+    expect(commonSize([{ fs: "l" }, { fs: "l" }])).toBe("l");
+  });
+
+  it("reports undefined for a mixed range and for an empty one", () => {
+    expect(commonSize([{ fs: "s" }, { fs: "l" }])).toBeUndefined();
+    expect(commonSize([{ fs: "l" }, null])).toBeUndefined();
+    expect(commonSize([])).toBeUndefined();
+  });
+
+  it("SIZES is the three steps, and every class is a type token", () => {
+    expect(SIZES.map((z) => z.id)).toEqual(["s", "m", "l"]);
+    expect(sizeClass("s")).toBe("text-caption");
+    expect(sizeClass(undefined)).toBe("text-meta");
+    expect(sizeClass("l")).toBe("text-ui");
   });
 });
