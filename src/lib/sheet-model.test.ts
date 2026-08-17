@@ -168,7 +168,9 @@ describe("setCell", () => {
 
 describe("sanitizeCell — the font size field", () => {
   it("keeps the two literals and drops anything else", () => {
-    const grid = (fs: unknown) => normalizeSheet({ cells: [[{ v: "x", fs }]] }).cells[0][0];
+    const grid = (fs: unknown) =>
+      normalizeSheet({ cells: [[{ v: "x", fs }]] } as unknown as Partial<SheetBlock>)
+        .cells[0][0];
     expect(grid("s")?.fs).toBe("s");
     expect(grid("l")?.fs).toBe("l");
     expect(grid("xl")?.fs).toBeUndefined();
