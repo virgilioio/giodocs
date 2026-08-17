@@ -45,11 +45,11 @@ function currentSource(el: HTMLElement): string {
 }
 
 function commitSource(el: HTMLElement, next: string, start: number, end: number) {
-  // The Editable component owns the DOM. Rewrite the DOM to the new source so onInput serialises to it.
-  // We temporarily set innerText — Editable's onInput normalises via
-  // htmlToInlineMarkdown → inlineToHtml, restoring inline HTML.
+  // The Editable component owns the DOM. Write the new SOURCE into the DOM
+  // first, then let Editable's onInput canonicalise it (htmlToInlineMarkdown
+  // → inlineToHtml) and restore the caret in the rAF below. Writing the caret
+  // before innerText applied new-source offsets to the OLD DOM.
   el.innerText = next;
-  writeCaret(el, next, start, end);
   el.dispatchEvent(new InputEvent("input", { bubbles: true }));
   requestAnimationFrame(() => {
     try {
