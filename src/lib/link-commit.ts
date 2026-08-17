@@ -52,7 +52,7 @@ export function commitSourceToEditable(
   if (isTextInput(el)) {
     el.value = text;
   } else {
-    el.innerText = text;
+    el.innerHTML = inlineToHtml(text);
     try {
       writeCaret(el, text, start, end);
     } catch {
