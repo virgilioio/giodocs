@@ -20,6 +20,7 @@ import type { MarkPair } from "@/lib/block-format";
 import { safeUrl } from "@/lib/inline-markdown";
 import { htmlToInlineMarkdown } from "@/lib/inline-tokens";
 import { readCaret, writeCaret } from "@/lib/caret-shim";
+import { commitSourceToEditable } from "@/lib/link-commit";
 
 type Sel = {
   el: HTMLElement;
