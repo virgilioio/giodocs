@@ -342,9 +342,14 @@ function tokensToHtml(
       continue;
     }
     if (t.kind === "link") {
-      out += `<a href="${escHtml(t.url)}" target="_blank" rel="noopener noreferrer">${tokensToHtml(t.children, opts)}</a>`;
+      /* Same class string the React renderer puts on its anchors, so the
+       * two emitters cannot disagree about what a link looks like. In
+       * exported HTML there is no Tailwind, so this attribute is inert and
+       * exported anchors keep browser-default styling — unchanged. */
+      out += `<a href="${escHtml(t.url)}" target="_blank" rel="noopener noreferrer" class="text-accent hover:underline">${tokensToHtml(t.children, opts)}</a>`;
       continue;
     }
+
   }
   flush();
   return out;

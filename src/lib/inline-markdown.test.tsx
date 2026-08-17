@@ -83,10 +83,16 @@ describe("renderInline — dangerous links", () => {
 });
 
 describe("inlineToHtml", () => {
+  it("emits the same anchor classes the React renderer uses", () => {
+    expect(inlineToHtml("[a](https://x.com)")).toContain(
+      'class="text-accent hover:underline"',
+    );
+  });
   it("escapes user text before wrapping", () => {
     // "<script>" inside a bold marker must be escaped in output.
     expect(inlineToHtml("**<script>**")).toBe("<strong>&lt;script&gt;</strong>");
   });
+
   it("escapes href", () => {
     const s = inlineToHtml('[a](https://x.com/?a="b")');
     expect(s).toContain("&quot;");

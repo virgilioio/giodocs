@@ -2681,6 +2681,29 @@ export function EditableBody({
         if (id) insertImageFiles(id, files);
       }}
       onPointerDown={handleContainerPointerDown}
+      onClick={(e) => {
+        /* Links inside a contenteditable are inert to the browser — a click
+         * places the caret. One delegated handler makes a PLAIN left click
+         * open the link in a new tab, like Notion. The trade: to put the
+         * caret inside a link's label you arrow in from either side.
+         * Modifier clicks fall through to native behaviour, a click that
+         * ends a text-selection drag is ignored, and anchors outside the
+         * prose body (sidebar, breadcrumb, related links) are untouched —
+         * they manage their own navigation. No sanitising here: the href
+         * was already vetted by safeUrl at tokenize time. */
+        if (marqueeRef.current) return;
+        if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+        if (e.button !== 0) return;
+        const t = e.target as HTMLElement | null;
+        const a = t?.closest?.("a[href]") as HTMLAnchorElement | null;
+        if (!a) return;
+        const host = a.closest("[data-gio-page-body]");
+        if (!host) return;
+        if (!a.closest("[contenteditable]")) return;
+        if (window.getSelection()?.isCollapsed === false) return;
+        e.preventDefault();
+        window.open(a.getAttribute("href") ?? "", "_blank", "noopener,noreferrer");
+      }}
       onFocusCapture={(e) => {
         // Caret entering ANY text surface drops the block selection. After
         // the WYSIWYG swap a block is a contenteditable, not a textarea —
