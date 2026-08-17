@@ -1,5 +1,55 @@
 import { describe, expect, it } from "vitest";
 import { linkPaste, isBareUrl } from "./paste-link";
+import { tokenizeInline, type InlineToken } from "./inline-tokens";
+
+const find = (ts: InlineToken[], kind: string): InlineToken | null => {
+  for (const t of ts) {
+    if (t.kind === kind) return t;
+    if ("children" in t) {
+      const r = find(t.children, kind);
+      if (r) return r;
+    }
+  }
+  return null;
+};
+
+describe("linkPaste — snapping to token inner text", () => {
+  const url = "https://www.linkedin.com/in/tairattigan/";
+
+  it("end past the closing ** snaps inward (the measured bug)", () => {
+    const r = linkPaste("**Tai Rattigan** - COO", 2, 16, url)!;
+    expect(r.text).toBe(`**[Tai Rattigan](${url})** - COO`);
+    const bold = find(tokenizeInline(r.text), "bold")!;
+    expect(bold.kind).toBe("bold");
+    const link = find([bold], "link")! as Extract<
+      InlineToken,
+      { kind: "link" }
+    >;
+    expect(link.url).toBe(url);
+  });
+
+  it("start inside the opening ** also snaps inward", () => {
+    const r = linkPaste("**Tai Rattigan** - COO", 0, 16, url)!;
+    expect(r.text).toBe(`**[Tai Rattigan](${url})** - COO`);
+    const bold = find(tokenizeInline(r.text), "bold")!;
+    expect(find([bold], "link")).not.toBeNull();
+  });
+
+  it("plain unformatted selection is unchanged", () => {
+    const r = linkPaste("see the docs here", 8, 12, "https://gogio.io")!;
+    expect(r.text).toBe("see the [docs](https://gogio.io) here");
+  });
+
+  it("a selection straddling a formatting boundary is declined", () => {
+    expect(linkPaste("**bold** tail", 2, 13, "https://gogio.io")).toBeNull();
+  });
+
+  it("snaps through nested runs", () => {
+    const r = linkPaste("==**x**==", 4, 9, "https://u.io")!;
+    expect(r.text).toBe("==**[x](https://u.io)**==");
+  });
+});
+
 
 describe("linkPaste", () => {
   it("links a selection", () => {
