@@ -35,6 +35,8 @@ export type Cell = {
   b?: boolean;
   i?: boolean;
   a?: CellAlign;
+  /** Font size step; absent means default (medium). */
+  fs?: CellSize;
   /** Palette KEYS, never hexes. */
   bg?: string;
   fg?: string;
@@ -98,6 +100,7 @@ function sanitizeCell(cell: unknown): Cell | null {
   if (c.b === true) out.b = true;
   if (c.i === true) out.i = true;
   if (c.a === "left" || c.a === "center" || c.a === "right") out.a = c.a;
+  if (c.fs === "s" || c.fs === "l") out.fs = c.fs;
   if (typeof c.bg === "string" && c.bg) out.bg = c.bg;
   if (typeof c.fg === "string" && c.fg) out.fg = c.fg;
   if (c.rt === true) out.rt = true;
