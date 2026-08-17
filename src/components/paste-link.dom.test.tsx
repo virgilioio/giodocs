@@ -93,7 +93,14 @@ describe("paste a URL over a selection", () => {
     expect(textOf(onChange.mock.calls.at(-1)![0] as Blk[], "b1")).toBe(
       "click [here](https://gogio.io) now",
     );
+    // …and it actually RENDERS as an anchor, not as literal markdown.
+    const a = el.querySelector("a");
+    expect(a).toBeTruthy();
+    expect(a!.getAttribute("href")).toBe("https://gogio.io");
+    expect(a!.textContent).toBe("here");
+    expect(el.textContent).not.toContain("](");
   });
+
 
   it("does NOT link with a collapsed caret", () => {
     const onChange = vi.fn();
