@@ -134,6 +134,7 @@ import {
 } from "@/lib/block-ops";
 import { resolveKey, type Op as KeyOp } from "@/lib/block-key-handler";
 import { toggleWrap } from "@/lib/toggle-wrap";
+import { linkPaste } from "@/lib/paste-link";
 import { ImageBlock, ImageRowBlock, PageImageCtx } from "@/components/image-block";
 import { FileBlock } from "@/components/file-block";
 import { PageBlock } from "@/components/page-block";
