@@ -9,7 +9,7 @@
  * Deliberately NOT asserted: focus, activeElement, blur ordering, or pixel
  * geometry — happy-dom cannot verify them.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react";
 import { EditableBody } from "./page-editor-body";
@@ -24,7 +24,13 @@ vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
   true;
 
 let host: HTMLDivElement;
-let root: Root;
+
+/* THE LEAK this tracking fixes: FloatingToolbar keeps a document-level
+ * selectionchange listener, so an un-unmounted root kept setting state after
+ * the test finished. React then logged an act() warning DURING teardown, and
+ * a console log in teardown is what produced
+ * "Closing rpc while onUserConsoleLog was pending". Unmount every root. */
+const roots: Root[] = [];
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -32,11 +38,23 @@ beforeEach(() => {
   document.body.appendChild(host);
 });
 
+afterEach(() => {
+  act(() => {
+    for (const r of roots.splice(0)) r.unmount();
+  });
+  window.getSelection()?.removeAllRanges();
+  document.body.innerHTML = "";
+});
+
+function renderRoot(container: HTMLElement, node: React.ReactNode): Root {
+  const r = createRoot(container);
+  roots.push(r);
+  act(() => r.render(node));
+  return r;
+}
+
 function mount(blocks: Blk[], onChange: (b: Blk[]) => void) {
-  root = createRoot(host);
-  act(() =>
-    root.render(<EditableBody pageId="p1" initialBlocks={blocks} onChange={onChange} />),
-  );
+  renderRoot(host, <EditableBody pageId="p1" initialBlocks={blocks} onChange={onChange} />);
 }
 
 function editableFor(id: string): HTMLElement {
@@ -174,10 +192,9 @@ describe("the floating toolbar's link field", () => {
     mount([{ id: "b1", type: "text", text: "click here now" }] as unknown as Blk[], onChange);
     const bar = document.createElement("div");
     document.body.appendChild(bar);
-    const r2 = createRoot(bar);
     const el = editableFor("b1");
     selectIn(el, 6, 10);
-    act(() => r2.render(<FloatingToolbar />));
+    renderRoot(bar, <FloatingToolbar />);
     act(() => {
       document.dispatchEvent(new Event("selectionchange"));
     });
@@ -195,10 +212,9 @@ describe("the floating toolbar's link field", () => {
     mount([{ id: "b1", type: "text", text: "click here now" }] as unknown as Blk[], onChange);
     const bar = document.createElement("div");
     document.body.appendChild(bar);
-    const r2 = createRoot(bar);
     const el = editableFor("b1");
     selectIn(el, 6, 10);
-    act(() => r2.render(<FloatingToolbar />));
+    renderRoot(bar, <FloatingToolbar />);
     act(() => {
       document.dispatchEvent(new Event("selectionchange"));
     });
