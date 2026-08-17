@@ -45,20 +45,8 @@ function currentSource(el: HTMLElement): string {
 }
 
 function commitSource(el: HTMLElement, next: string, start: number, end: number) {
-  // The Editable component owns the DOM. Write the new SOURCE into the DOM
-  // first, then let Editable's onInput canonicalise it (htmlToInlineMarkdown
-  // → inlineToHtml) and restore the caret in the rAF below. Writing the caret
-  // before innerText applied new-source offsets to the OLD DOM.
-  el.innerText = next;
-  el.dispatchEvent(new InputEvent("input", { bubbles: true }));
-  requestAnimationFrame(() => {
-    try {
-      el.focus({ preventScroll: true });
-      writeCaret(el, next, start, end);
-    } catch {
-      /* noop */
-    }
-  });
+  // One shared DOM commit path — see src/lib/link-commit.ts.
+  commitSourceToEditable(el, next, start, end);
 }
 
 function applyWrap(sel: Sel, open: string, close: string) {
