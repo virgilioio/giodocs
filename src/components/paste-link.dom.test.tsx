@@ -115,6 +115,25 @@ describe("paste a URL over a selection", () => {
     expect(next.length).toBeGreaterThan(1);
   });
 
+  /* The regression that shipped: the branch read the block source from React
+   * state while Editable is uncontrolled, so once the DOM ran ahead of state
+   * the caret mapping failed and the native paste replaced the words. The DOM
+   * is mutated here WITHOUT flushing state to reproduce exactly that. */
+  it("links even when the DOM has diverged from React state", () => {
+    const onChange = vi.fn();
+    mount([{ id: "b1", type: "text", text: "Tai Rattigan" }] as unknown as Blk[], onChange);
+    const el = editableFor("b1");
+    act(() => {
+      el.textContent = "Hi Tai Rattigan";
+    });
+    selectIn(el, 3, 15); // "Tai Rattigan" at the DOM's offsets, not state's
+    const ev = paste(el, { plain: "https://www.linkedin.com/in/tairattigan/" });
+    expect(ev.defaultPrevented).toBe(true);
+    expect(el.textContent ?? "").toContain(
+      "[Tai Rattigan](https://www.linkedin.com/in/tairattigan/)",
+    );
+  });
+
   it("links a selection inside a TABLE CELL", () => {
     const onChange = vi.fn();
     mount(
