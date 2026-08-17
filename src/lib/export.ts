@@ -684,6 +684,12 @@ function blockHtml(b: Block, ordinal = 1): string {
         const bits = [`text-align:${sheetAlign(cells, c, values)}`];
         if (cell?.b) bits.push("font-weight:700");
         if (cell?.i) bits.push("font-style:italic");
+        // A size set on screen must survive to paper. These px values are the
+        // ones the screen's type tokens resolve to (text-caption / text-ui);
+        // export serialises literal values by design and is exempt from
+        // check-tokens, which only scans src outside this serialiser's data.
+        if (cell?.fs === "s") bits.push("font-size:12.5px");
+        if (cell?.fs === "l") bits.push("font-size:15px");
         // The rule above a total row is structure, so it survives export as
         // a real border rather than a background trick.
         if (cell?.rt) bits.push("border-top:2px solid #1B1A17");

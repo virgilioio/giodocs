@@ -19,6 +19,12 @@
 
 export type CellFormat = "text" | "num" | "cur" | "pct" | "date";
 export type CellAlign = "left" | "center" | "right";
+/** Font size STEP. Absent means the default (medium) — the same way every
+ *  other optional format key in this model expresses "default". Two
+ *  literals, never a px number: a number would need clamping, would not
+ *  theme, and could exceed the fixed row height. */
+export type CellSize = "s" | "l";
+
 
 export type Cell = {
   /** RAW value exactly as typed. A leading '=' means formula. */
@@ -29,6 +35,8 @@ export type Cell = {
   b?: boolean;
   i?: boolean;
   a?: CellAlign;
+  /** Font size step; absent means default (medium). */
+  fs?: CellSize;
   /** Palette KEYS, never hexes. */
   bg?: string;
   fg?: string;
@@ -92,6 +100,7 @@ function sanitizeCell(cell: unknown): Cell | null {
   if (c.b === true) out.b = true;
   if (c.i === true) out.i = true;
   if (c.a === "left" || c.a === "center" || c.a === "right") out.a = c.a;
+  if (c.fs === "s" || c.fs === "l") out.fs = c.fs;
   if (typeof c.bg === "string" && c.bg) out.bg = c.bg;
   if (typeof c.fg === "string" && c.fg) out.fg = c.fg;
   if (c.rt === true) out.rt = true;

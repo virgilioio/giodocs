@@ -14,7 +14,7 @@
  * written on the way to rendering.
  */
 
-import type { Cell, CellAlign, CellFormat } from "./sheet-model";
+import type { Cell, CellAlign, CellFormat, CellSize } from "./sheet-model";
 import { SHEET_FILLS, SHEET_INKS, fillToken, inkToken } from "./sheet-palette";
 
 /* ───────────────────── Toggleable marks ───────────────────── */
@@ -41,7 +41,7 @@ export function markDecision(
 /* ───────────────────── Clear formatting ───────────────────── */
 
 /** Every key CLEAR FORMATTING removes. `v` is deliberately absent. */
-export const STYLE_KEYS = ["f", "d", "b", "i", "a", "bg", "fg", "rt"] as const;
+export const STYLE_KEYS = ["f", "d", "b", "i", "a", "fs", "bg", "fg", "rt"] as const;
 
 /** A cell stripped of every style key, keeping its raw value untouched. */
 export function clearedCell(cell: Cell | null): Cell | null {
@@ -116,6 +116,33 @@ export function commonAlign(cells: readonly (Cell | null)[]): CellAlign | undefi
   const first = cells[0]?.a;
   if (!first) return undefined;
   return cells.every((c) => c?.a === first) ? first : undefined;
+}
+
+/* ───────────────────── Font size ───────────────────── */
+
+/** The three steps. `m` is the DEFAULT and is stored as an absent `fs`, so
+ *  picking it clears the key rather than writing a value. */
+export const SIZES: { id: "s" | "m" | "l"; title: string; label: string }[] = [
+  { id: "s", title: "Small text", label: "A" },
+  { id: "m", title: "Default text size", label: "A" },
+  { id: "l", title: "Large text", label: "A" },
+];
+
+/** The size shared by every cell in the range, or undefined when mixed.
+ *  An absent `fs` counts as "m" — that is what renders. */
+export function commonSize(
+  cells: readonly (Cell | null)[],
+): "s" | "m" | "l" | undefined {
+  if (!cells.length) return undefined;
+  const first: "s" | "m" | "l" = cells[0]?.fs ?? "m";
+  return cells.every((c) => (c?.fs ?? "m") === first) ? first : undefined;
+}
+
+/** The class for a step. Tokens only — never a px literal. */
+export function sizeClass(fs: CellSize | undefined): string {
+  if (fs === "s") return "text-caption";
+  if (fs === "l") return "text-ui";
+  return "text-meta";
 }
 
 /* ───────────────────── The palette strip ───────────────────── */

@@ -164,3 +164,18 @@ describe("setCell", () => {
     expect(s.cells[0][0]?.v).toBe(1);
   });
 });
+
+
+describe("sanitizeCell — the font size field", () => {
+  it("keeps the two literals and drops anything else", () => {
+    const grid = (fs: unknown) =>
+      normalizeSheet({ cells: [[{ v: "x", fs }]] } as unknown as Partial<SheetBlock>)
+        .cells[0][0];
+    expect(grid("s")?.fs).toBe("s");
+    expect(grid("l")?.fs).toBe("l");
+    expect(grid("xl")?.fs).toBeUndefined();
+    expect(grid(12)?.fs).toBeUndefined();
+    expect(grid(null)?.fs).toBeUndefined();
+    expect(grid("")?.fs).toBeUndefined();
+  });
+});

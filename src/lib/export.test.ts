@@ -717,3 +717,26 @@ describe("table export wrapping and widths", () => {
     expect(html).toContain("tr.tall { break-inside: auto; page-break-inside: auto; }");
   });
 });
+
+describe("sheet font size survives export", () => {
+  const sheetBlock = (fs?: string) =>
+    ({
+      id: "s1",
+      type: "sheet",
+      cells: [[{ v: "big", ...(fs ? { fs } : {}) }, { v: "plain" }]],
+      cw: [120, 120],
+    }) as unknown as Block;
+
+  it("serialises a font-size for a sized cell only", () => {
+    const html = toHtml({ title: "T", blocks: [sheetBlock("l")] });
+    expect(html).toContain("font-size:15px");
+    const small = toHtml({ title: "T", blocks: [sheetBlock("s")] });
+    expect(small).toContain("font-size:12.5px");
+  });
+
+  it("emits no font-size when no size is set", () => {
+    const html = toHtml({ title: "T", blocks: [sheetBlock()] });
+    expect(html).not.toContain("font-size:15px");
+    expect(html).not.toContain("font-size:12.5px");
+  });
+});
