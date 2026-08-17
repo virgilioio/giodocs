@@ -4830,20 +4830,14 @@ export function TableBlock({
     if (locked) return;
     const plain = e.clipboardData?.getData("text/plain") ?? "";
     const el = e.currentTarget as HTMLElement;
-    const src = rows[r]?.[c] ?? "";
+    // Cells render through Editable (contenteditable), but the helper also
+    // handles a text input, so the right source is read either way.
+    const src = readEditableSource(el);
     const car = readCaret(el, src);
     const lp = car ? linkPaste(src, car.start, car.end, plain) : null;
     if (!lp) return;
     e.preventDefault();
-    setCell(r, c, lp.text);
-    requestAnimationFrame(() => {
-      try {
-        el.focus({ preventScroll: true });
-        writeCaret(el, lp.text, lp.caret);
-      } catch {
-        /* noop */
-      }
-    });
+    commitSourceToEditable(el, lp.text, lp.caret);
   }
 
   // Cell keys: Tab / Shift-Tab walk the grid (and grow it from the last
