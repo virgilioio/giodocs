@@ -4079,7 +4079,30 @@ function ColumnStack({
       if (locked) return;
       const htmlSrc = e.clipboardData?.getData("text/html") ?? "";
       const plainSrc = e.clipboardData?.getData("text/plain") ?? "";
+
+      // Same rule as the top level: a bare URL over a selection links it.
+      {
+        const el = e.currentTarget;
+        const src = blocks.find((b) => b.id === blockId)?.text ?? "";
+        const car = el ? readCaret(el, src) : null;
+        const lp = car ? linkPaste(src, car.start, car.end, plainSrc) : null;
+        if (lp) {
+          e.preventDefault();
+          setBlocks(blocks.map((b) => (b.id === blockId ? { ...b, text: lp.text } : b)));
+          requestAnimationFrame(() => {
+            try {
+              el.focus({ preventScroll: true });
+              writeCaret(el, lp.text, lp.caret);
+            } catch {
+              /* noop */
+            }
+          });
+          return;
+        }
+      }
+
       const parsedOut = parsePasteToBlocks(htmlSrc, plainSrc);
+
       if (!parsedOut) return;
       const parsed = parsedOut.blocks.filter((p) => p.type !== "columns");
       if (parsed.length === 0) return;
