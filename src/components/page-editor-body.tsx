@@ -4078,20 +4078,12 @@ function ColumnStack({
       // Same rule as the top level: a bare URL over a selection links it.
       {
         const el = e.currentTarget;
-        const src = blocks.find((b) => b.id === blockId)?.text ?? "";
+        const src = el ? readEditableSource(el) : "";
         const car = el ? readCaret(el, src) : null;
         const lp = car ? linkPaste(src, car.start, car.end, plainSrc) : null;
         if (lp) {
           e.preventDefault();
-          setBlocks(blocks.map((b) => (b.id === blockId ? { ...b, text: lp.text } : b)));
-          requestAnimationFrame(() => {
-            try {
-              el.focus({ preventScroll: true });
-              writeCaret(el, lp.text, lp.caret);
-            } catch {
-              /* noop */
-            }
-          });
+          commitSourceToEditable(el, lp.text, lp.caret);
           return;
         }
       }
