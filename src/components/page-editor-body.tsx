@@ -1470,21 +1470,15 @@ export function EditableBody({
       // for a single-line paste and would let the browser overwrite the words.
       {
         const el = e.currentTarget;
-        const cur = blocksRef.current.find((b) => b.id === blockId);
-        const src = cur?.text ?? "";
+        // Source comes from the LIVE DOM: Editable is uncontrolled, so state
+        // is only eventually consistent and readCaret would map through a
+        // stale string and return null.
+        const src = el ? readEditableSource(el) : "";
         const car = el ? readCaret(el, src) : null;
         const lp = car ? linkPaste(src, car.start, car.end, plainSrc) : null;
         if (lp) {
           e.preventDefault();
-          updateBlock(blockId, { text: lp.text });
-          requestAnimationFrame(() => {
-            try {
-              el.focus({ preventScroll: true });
-              writeCaret(el, lp.text, lp.caret);
-            } catch {
-              /* noop */
-            }
-          });
+          commitSourceToEditable(el, lp.text, lp.caret);
           return;
         }
       }
