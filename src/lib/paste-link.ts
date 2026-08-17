@@ -127,8 +127,8 @@ export function linkPaste(
   if (src.slice(a, b).includes("](")) return null;
 
   const tokens = tokenizeInline(src);
-  // NON-VACUITY: snapping disabled
-  void tokens;
+  a = snapStart(tokens, a);
+  b = snapEnd(tokens, b);
   if (a >= b) return null;
 
   const label = src.slice(a, b);
