@@ -19,6 +19,7 @@
  */
 
 import { htmlToInlineMarkdown } from "./inline-tokens";
+import { inlineToHtml } from "./inline-markdown";
 import { writeCaret } from "./caret-shim";
 
 type TextInputEl = HTMLTextAreaElement | HTMLInputElement;
@@ -33,7 +34,15 @@ export function readEditableSource(el: HTMLElement): string {
   return htmlToInlineMarkdown(el);
 }
 
-/** Write `text` as the element's source and restore the caret/selection. */
+/** Write `text` as the element's source, render it, and restore the caret.
+ *
+ * The contenteditable branch writes CANONICAL HTML (`inlineToHtml(text)`)
+ * directly, so the anchor/strong renders deterministically without waiting on
+ * React's synthetic input round-trip. This is safe against `Editable`'s sync
+ * layout effect: that effect round-trips the DOM through
+ * `htmlToInlineMarkdown` and, since our HTML came from `inlineToHtml(text)`,
+ * the round-trip equals `text` and the effect is a no-op. The input event is
+ * still dispatched afterwards so React state commits via `onSourceChange`. */
 export function commitSourceToEditable(
   el: HTMLElement,
   text: string,
@@ -43,7 +52,12 @@ export function commitSourceToEditable(
   if (isTextInput(el)) {
     el.value = text;
   } else {
-    el.innerText = text;
+    el.innerHTML = inlineToHtml(text);
+    try {
+      writeCaret(el, text, start, end);
+    } catch {
+      /* noop */
+    }
   }
   el.dispatchEvent(new InputEvent("input", { bubbles: true }));
   requestAnimationFrame(() => {
@@ -55,3 +69,4 @@ export function commitSourceToEditable(
     }
   });
 }
+
