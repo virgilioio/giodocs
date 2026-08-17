@@ -135,6 +135,7 @@ import {
 import { resolveKey, type Op as KeyOp } from "@/lib/block-key-handler";
 import { toggleWrap } from "@/lib/toggle-wrap";
 import { linkPaste } from "@/lib/paste-link";
+import { commitSourceToEditable, readEditableSource } from "@/lib/link-commit";
 import { ImageBlock, ImageRowBlock, PageImageCtx } from "@/components/image-block";
 import { FileBlock } from "@/components/file-block";
 import { PageBlock } from "@/components/page-block";
@@ -1470,21 +1471,15 @@ export function EditableBody({
       // for a single-line paste and would let the browser overwrite the words.
       {
         const el = e.currentTarget;
-        const cur = blocksRef.current.find((b) => b.id === blockId);
-        const src = cur?.text ?? "";
+        // Source comes from the LIVE DOM: Editable is uncontrolled, so state
+        // is only eventually consistent and readCaret would map through a
+        // stale string and return null.
+        const src = el ? readEditableSource(el) : "";
         const car = el ? readCaret(el, src) : null;
         const lp = car ? linkPaste(src, car.start, car.end, plainSrc) : null;
         if (lp) {
           e.preventDefault();
-          updateBlock(blockId, { text: lp.text });
-          requestAnimationFrame(() => {
-            try {
-              el.focus({ preventScroll: true });
-              writeCaret(el, lp.text, lp.caret);
-            } catch {
-              /* noop */
-            }
-          });
+          commitSourceToEditable(el, lp.text, lp.caret);
           return;
         }
       }
@@ -4084,20 +4079,12 @@ function ColumnStack({
       // Same rule as the top level: a bare URL over a selection links it.
       {
         const el = e.currentTarget;
-        const src = blocks.find((b) => b.id === blockId)?.text ?? "";
+        const src = el ? readEditableSource(el) : "";
         const car = el ? readCaret(el, src) : null;
         const lp = car ? linkPaste(src, car.start, car.end, plainSrc) : null;
         if (lp) {
           e.preventDefault();
-          setBlocks(blocks.map((b) => (b.id === blockId ? { ...b, text: lp.text } : b)));
-          requestAnimationFrame(() => {
-            try {
-              el.focus({ preventScroll: true });
-              writeCaret(el, lp.text, lp.caret);
-            } catch {
-              /* noop */
-            }
-          });
+          commitSourceToEditable(el, lp.text, lp.caret);
           return;
         }
       }
@@ -4844,20 +4831,14 @@ export function TableBlock({
     if (locked) return;
     const plain = e.clipboardData?.getData("text/plain") ?? "";
     const el = e.currentTarget as HTMLElement;
-    const src = rows[r]?.[c] ?? "";
+    // Cells render through Editable (contenteditable), but the helper also
+    // handles a text input, so the right source is read either way.
+    const src = readEditableSource(el);
     const car = readCaret(el, src);
     const lp = car ? linkPaste(src, car.start, car.end, plain) : null;
     if (!lp) return;
     e.preventDefault();
-    setCell(r, c, lp.text);
-    requestAnimationFrame(() => {
-      try {
-        el.focus({ preventScroll: true });
-        writeCaret(el, lp.text, lp.caret);
-      } catch {
-        /* noop */
-      }
-    });
+    commitSourceToEditable(el, lp.text, lp.caret);
   }
 
   // Cell keys: Tab / Shift-Tab walk the grid (and grow it from the last
