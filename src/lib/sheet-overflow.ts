@@ -66,5 +66,6 @@ export function overflowRun(
   }
 
   if (before === 0 && after === 0) return null;
-  return { left: -before, width: before + own + after };
+  // `before === 0` explicitly, so the value is 0 and never -0.
+  return { left: before === 0 ? 0 : -before, width: before + own + after };
 }
