@@ -95,10 +95,13 @@ describe("linkPaste", () => {
     expect(r.text).toBe("[docs](https://gogio.io)");
   });
 
-  it("passes a URL with parens through verbatim (documented behaviour)", () => {
-    const r = linkPaste("wiki", 0, 4, "https://en.wikipedia.org/wiki/A_(b)")!;
-    expect(r.text).toBe("[wiki](https://en.wikipedia.org/wiki/A_(b))");
+  it("declines a URL containing ')' — the post-verify rejects it", () => {
+    // Previously spliced verbatim, which tokenized to a link ending at the
+    // inner paren plus literal text. The post-verify now declines instead,
+    // so the caller falls through to the native paste.
+    expect(linkPaste("wiki", 0, 4, "https://en.wikipedia.org/wiki/A_(b)")).toBeNull();
   });
+
 
   it("keeps a trailing period inside the href (documented behaviour)", () => {
     const r = linkPaste("x", 0, 1, "https://gogio.io/a.")!;
