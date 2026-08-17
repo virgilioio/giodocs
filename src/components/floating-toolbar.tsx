@@ -27,6 +27,11 @@ type Sel = {
   end: number;
   /** Snapshot of the block's source at selection time. */
   value: string;
+  /** Anchor geometry captured when the selection was seen. Used while the
+   *  link field is open: focus has moved into that input, so the live
+   *  document range is gone and reading it would yield a zero rect and
+   *  unmount the whole toolbar. */
+  rect: DOMRect | null;
 };
 
 function isEditableProse(node: EventTarget | null): node is HTMLElement {
@@ -40,15 +45,11 @@ function currentSource(el: HTMLElement): string {
 }
 
 function commitSource(el: HTMLElement, next: string, start: number, end: number) {
-  // The Editable component owns the DOM. Fire an input event after we
-  // stage state; its onInput handler will canonicalise the HTML and
-  // restore the caret via writeCaret in source coords.
-  writeCaret(el, next, start, end);
-  // Rewrite the DOM to the new source so onInput serialises to it.
-  // We temporarily set innerText — Editable's onInput normalises via
-  // htmlToInlineMarkdown → inlineToHtml, restoring inline HTML.
+  // The Editable component owns the DOM. Write the new SOURCE into the DOM
+  // first, then let Editable's onInput canonicalise it (htmlToInlineMarkdown
+  // → inlineToHtml) and restore the caret in the rAF below. Writing the caret
+  // before innerText applied new-source offsets to the OLD DOM.
   el.innerText = next;
-  writeCaret(el, next, start, end);
   el.dispatchEvent(new InputEvent("input", { bubbles: true }));
   requestAnimationFrame(() => {
     try {
@@ -65,6 +66,10 @@ function applyWrap(sel: Sel, open: string, close: string) {
   commitSource(sel.el, r.text, r.start, r.end);
 }
 
+/* The caret lands COLLAPSED just past the closing paren — the same rule the
+ * paste-link path uses. Re-selecting the label put a selection inside the
+ * brackets, whose source offsets stop matching what the user sees the moment
+ * the tokenizer re-renders `[label](url)` as an anchor. */
 function applyLink(sel: Sel, rawUrl: string) {
   const url = safeUrl(rawUrl);
   if (!url) return false;
@@ -72,9 +77,8 @@ function applyLink(sel: Sel, rawUrl: string) {
   const insert = `[${label}](${url})`;
   const next =
     sel.value.slice(0, sel.start) + insert + sel.value.slice(sel.end);
-  const newStart = sel.start + 1;
-  const newEnd = newStart + label.length;
-  commitSource(sel.el, next, newStart, newEnd);
+  const caret = sel.start + insert.length;
+  commitSource(sel.el, next, caret, caret);
   return true;
 }
 
@@ -138,7 +142,10 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
         setSel(null);
         return;
       }
-      setSel({ el, start: car.start, end: car.end, value });
+      const s0 = window.getSelection();
+      const rng = s0 && s0.rangeCount > 0 ? s0.getRangeAt(0) : null;
+      const rect = rng ? rng.getBoundingClientRect() : null;
+      setSel({ el, start: car.start, end: car.end, value, rect });
     }
     document.addEventListener("selectionchange", poll);
     document.addEventListener("focusin", poll);
@@ -186,11 +193,15 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
 
   useLayoutEffect(() => {
     let rect: DOMRect | null = null;
-    if (sel) {
+    if (sel && linkMode) {
+      // Link field is focused: position from the CACHED anchor only.
+      rect = sel.rect;
+    } else if (sel) {
       const selection = window.getSelection();
       const range =
         selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
       rect = range ? range.getBoundingClientRect() : null;
+      if (!rect || (rect.width === 0 && rect.height === 0)) rect = sel.rect;
     } else if (blockMode && blockSel) {
       rect = blockSel.anchor();
     }

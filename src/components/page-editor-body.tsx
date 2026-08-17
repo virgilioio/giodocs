@@ -134,6 +134,7 @@ import {
 } from "@/lib/block-ops";
 import { resolveKey, type Op as KeyOp } from "@/lib/block-key-handler";
 import { toggleWrap } from "@/lib/toggle-wrap";
+import { linkPaste } from "@/lib/paste-link";
 import { ImageBlock, ImageRowBlock, PageImageCtx } from "@/components/image-block";
 import { FileBlock } from "@/components/file-block";
 import { PageBlock } from "@/components/page-block";
@@ -1462,7 +1463,34 @@ export function EditableBody({
 
       const htmlSrc = e.clipboardData?.getData("text/html") ?? "";
       const plainSrc = e.clipboardData?.getData("text/plain") ?? "";
+
+      // Pasting a bare URL over a text SELECTION hyperlinks the selection
+      // instead of replacing it. Checked after the file branch (a pasted
+      // screenshot still wins) and before block parsing, which returns null
+      // for a single-line paste and would let the browser overwrite the words.
+      {
+        const el = e.currentTarget;
+        const cur = blocksRef.current.find((b) => b.id === blockId);
+        const src = cur?.text ?? "";
+        const car = el ? readCaret(el, src) : null;
+        const lp = car ? linkPaste(src, car.start, car.end, plainSrc) : null;
+        if (lp) {
+          e.preventDefault();
+          updateBlock(blockId, { text: lp.text });
+          requestAnimationFrame(() => {
+            try {
+              el.focus({ preventScroll: true });
+              writeCaret(el, lp.text, lp.caret);
+            } catch {
+              /* noop */
+            }
+          });
+          return;
+        }
+      }
+
       const parsedOut = parsePasteToBlocks(htmlSrc, plainSrc);
+
       if (!parsedOut) return; // Let the browser handle a plain single-line paste.
       e.preventDefault();
       const parsed = parsedOut.blocks;
@@ -4052,7 +4080,30 @@ function ColumnStack({
       if (locked) return;
       const htmlSrc = e.clipboardData?.getData("text/html") ?? "";
       const plainSrc = e.clipboardData?.getData("text/plain") ?? "";
+
+      // Same rule as the top level: a bare URL over a selection links it.
+      {
+        const el = e.currentTarget;
+        const src = blocks.find((b) => b.id === blockId)?.text ?? "";
+        const car = el ? readCaret(el, src) : null;
+        const lp = car ? linkPaste(src, car.start, car.end, plainSrc) : null;
+        if (lp) {
+          e.preventDefault();
+          setBlocks(blocks.map((b) => (b.id === blockId ? { ...b, text: lp.text } : b)));
+          requestAnimationFrame(() => {
+            try {
+              el.focus({ preventScroll: true });
+              writeCaret(el, lp.text, lp.caret);
+            } catch {
+              /* noop */
+            }
+          });
+          return;
+        }
+      }
+
       const parsedOut = parsePasteToBlocks(htmlSrc, plainSrc);
+
       if (!parsedOut) return;
       const parsed = parsedOut.blocks.filter((p) => p.type !== "columns");
       if (parsed.length === 0) return;
@@ -4782,7 +4833,35 @@ export function TableBlock({
     [],
   );
 
+  // Pasting a bare URL over a selection inside a cell links the selection,
+  // through the same pure rule the prose blocks use. Anything else falls
+  // through to the browser's own paste.
+  function onCellPaste(
+    e: React.ClipboardEvent<HTMLElement>,
+    r: number,
+    c: number,
+  ) {
+    if (locked) return;
+    const plain = e.clipboardData?.getData("text/plain") ?? "";
+    const el = e.currentTarget as HTMLElement;
+    const src = rows[r]?.[c] ?? "";
+    const car = readCaret(el, src);
+    const lp = car ? linkPaste(src, car.start, car.end, plain) : null;
+    if (!lp) return;
+    e.preventDefault();
+    setCell(r, c, lp.text);
+    requestAnimationFrame(() => {
+      try {
+        el.focus({ preventScroll: true });
+        writeCaret(el, lp.text, lp.caret);
+      } catch {
+        /* noop */
+      }
+    });
+  }
+
   // Cell keys: Tab / Shift-Tab walk the grid (and grow it from the last
+
   // cell), Enter moves down (cells stay one line), Escape blurs, and the
   // inline-format shortcuts apply through the SAME toggleWrap the prose
   // blocks and the floating toolbar use.
@@ -5567,6 +5646,7 @@ export function TableBlock({
                           source={cell ?? ""}
                           locked={locked}
                           onSourceChange={(v) => setCell(ri, ci, v)}
+                          onPaste={(e) => onCellPaste(e, ri, ci)}
                           onKeyDown={(e) => onCellKeyDown(e, ri, ci)}
                           onFocus={() => setSel(null)}
                           onBlur={onBlur}
