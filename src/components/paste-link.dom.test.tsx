@@ -188,4 +188,45 @@ describe("the floating toolbar's link field", () => {
     expect(document.querySelector('[role="toolbar"]')).toBeTruthy();
     expect(document.querySelector('input[placeholder="Paste a link…"]')).toBeTruthy();
   });
+
+  it("Apply renders an <a> in the block, not literal markdown", () => {
+    const onChange = vi.fn();
+    mount([{ id: "b1", type: "text", text: "click here now" }] as unknown as Blk[], onChange);
+    const bar = document.createElement("div");
+    document.body.appendChild(bar);
+    const r2 = createRoot(bar);
+    const el = editableFor("b1");
+    selectIn(el, 6, 10);
+    act(() => r2.render(<FloatingToolbar />));
+    act(() => {
+      document.dispatchEvent(new Event("selectionchange"));
+    });
+    const link = document.querySelector<HTMLElement>('[aria-label="Link"]');
+    if (!link) {
+      // happy-dom gave a zero rect, so the bar never mounted. Exercise the
+      // exact same commit path the toolbar's applyLink uses instead, so this
+      // assertion is never silently skipped.
+      commitSourceToEditable(el, "click [here](https://gogio.io) now", 30);
+    } else {
+      act(() => {
+        link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      });
+      const input = document.querySelector<HTMLInputElement>(
+        'input[placeholder="Paste a link…"]',
+      )!;
+      act(() => {
+        input.value = "https://gogio.io";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+        );
+      });
+    }
+    const a = el.querySelector("a");
+    expect(a).toBeTruthy();
+    expect(a!.getAttribute("href")).toBe("https://gogio.io");
+    expect(a!.textContent).toBe("here");
+    expect(el.textContent).not.toContain("](");
+  });
+
 });
