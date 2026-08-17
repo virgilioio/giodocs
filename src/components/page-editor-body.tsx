@@ -5646,6 +5646,7 @@ export function TableBlock({
                           source={cell ?? ""}
                           locked={locked}
                           onSourceChange={(v) => setCell(ri, ci, v)}
+                          onPaste={(e) => onCellPaste(e, ri, ci)}
                           onKeyDown={(e) => onCellKeyDown(e, ri, ci)}
                           onFocus={() => setSel(null)}
                           onBlur={onBlur}
