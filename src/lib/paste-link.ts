@@ -60,15 +60,14 @@ function hasInner(
 
 function snapStart(tokens: InlineToken[], pos: number): number {
   for (const t of tokens) {
-    if (pos <= t.sourceStart || pos >= t.sourceEnd) continue;
+    if (pos < t.sourceStart || pos >= t.sourceEnd) continue;
     if (t.kind === "code") {
       const innerStart = t.sourceStart + 1;
-      return pos < innerStart ? innerStart : pos;
+      return Math.max(pos, innerStart);
     }
     if (!hasInner(t)) continue;
     const innerStart = t.sourceStart + t.openLen;
-    if (pos < innerStart) return innerStart;
-    return snapStart(t.children, pos);
+    return snapStart(t.children, Math.max(pos, innerStart));
   }
   return pos;
 }
@@ -78,15 +77,15 @@ function snapEnd(tokens: InlineToken[], pos: number): number {
     if (pos <= t.sourceStart || pos > t.sourceEnd) continue;
     if (t.kind === "code") {
       const innerEnd = t.sourceEnd - 1;
-      return pos > innerEnd ? innerEnd : pos;
+      return Math.min(pos, innerEnd);
     }
     if (!hasInner(t)) continue;
     const innerEnd = t.sourceEnd - t.closeLen;
-    if (pos > innerEnd) return innerEnd;
-    return snapEnd(t.children, pos);
+    return snapEnd(t.children, Math.min(pos, innerEnd));
   }
   return pos;
 }
+
 
 /* Walks the token tree looking for a link with this url whose source range
  * covers [from, to). */
