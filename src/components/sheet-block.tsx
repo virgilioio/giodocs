@@ -80,6 +80,7 @@ import {
   suggestFor,
   type PickSpan,
 } from "@/lib/sheet-formula";
+import { overflowRun } from "@/lib/sheet-overflow";
 import { fillToken, inkToken } from "@/lib/sheet-palette";
 import {
   ALIGNS,
@@ -1688,13 +1689,35 @@ export function SheetBlockView({
                         color: fg,
                         fontWeight: cell?.b ? 700 : undefined,
                         fontStyle: cell?.i ? "italic" : undefined,
-                        textAlign: cellAlign(cell, value),
+                        textAlign: align,
                         textOverflow: "ellipsis",
+                        // The run needs to escape THIS cell only; every other
+                        // cell keeps its clip.
+                        overflow: run ? "visible" : undefined,
                         cursor: "cell",
                       }}
                       title={shown || undefined}
                     >
-                      {hidden ? "" : shown}
+                      {hidden ? "" : run ? (
+                        // z 1 keeps the run UNDER the selection overlay (6),
+                        // the ants (7) and the editor (8). Nothing at grid
+                        // level sits between 1 and 6.
+                        <span
+                          data-sheet-run
+                          style={{
+                            display: "block",
+                            position: "relative",
+                            left: `${run.left}px`,
+                            width: `${run.width}px`,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            textAlign: align,
+                            zIndex: 1,
+                          }}
+                        >
+                          {shown}
+                        </span>
+                      ) : shown}
                     </div>
                   );
                 })}

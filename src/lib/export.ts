@@ -356,6 +356,11 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
       return lines.join("\n");
     }
     case "sheet": {
+      // DELIBERATE DIVERGENCE from the screen: on screen a text value
+      // overflows its empty neighbours (Excel's rule, sheet-overflow.ts);
+      // on paper the exported <table> WRAPS instead. Paper has no scroll
+      // and no tooltip, so a run that clipped would lose content for good.
+      // Do not "fix" this to match the screen.
       const g = sheetGrid(b);
       if (!g) return "";
       const { values, cells } = g;
