@@ -19,6 +19,12 @@
 
 export type CellFormat = "text" | "num" | "cur" | "pct" | "date";
 export type CellAlign = "left" | "center" | "right";
+/** Font size STEP. Absent means the default (medium) — the same way every
+ *  other optional format key in this model expresses "default". Two
+ *  literals, never a px number: a number would need clamping, would not
+ *  theme, and could exceed the fixed row height. */
+export type CellSize = "s" | "l";
+
 
 export type Cell = {
   /** RAW value exactly as typed. A leading '=' means formula. */
