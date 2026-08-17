@@ -1462,7 +1462,34 @@ export function EditableBody({
 
       const htmlSrc = e.clipboardData?.getData("text/html") ?? "";
       const plainSrc = e.clipboardData?.getData("text/plain") ?? "";
+
+      // Pasting a bare URL over a text SELECTION hyperlinks the selection
+      // instead of replacing it. Checked after the file branch (a pasted
+      // screenshot still wins) and before block parsing, which returns null
+      // for a single-line paste and would let the browser overwrite the words.
+      {
+        const el = e.currentTarget;
+        const cur = blocksRef.current.find((b) => b.id === blockId);
+        const src = cur?.text ?? "";
+        const car = el ? readCaret(el, src) : null;
+        const lp = car ? linkPaste(src, car.start, car.end, plainSrc) : null;
+        if (lp) {
+          e.preventDefault();
+          updateBlock(blockId, { text: lp.text });
+          requestAnimationFrame(() => {
+            try {
+              el.focus({ preventScroll: true });
+              writeCaret(el, lp.text, lp.caret);
+            } catch {
+              /* noop */
+            }
+          });
+          return;
+        }
+      }
+
       const parsedOut = parsePasteToBlocks(htmlSrc, plainSrc);
+
       if (!parsedOut) return; // Let the browser handle a plain single-line paste.
       e.preventDefault();
       const parsed = parsedOut.blocks;
