@@ -21,9 +21,10 @@ describe("overflowRun", () => {
   });
 
   it("clamps each side independently when centred", () => {
-    // one empty to the left, two to the right → symmetric, min side wins
+    // 80px free to the left (c0 blocks), 160px free to the right → the
+    // run is symmetric in PIXELS, so each side gets 80.
     const cells = row(v("x"), null, v("centred"), null, null);
-    expect(overflowRun(cells, cw, 0, 2, "center")).toEqual({ left: -80, width: 80 + 60 + 40 });
+    expect(overflowRun(cells, cw, 0, 2, "center")).toEqual({ left: -80, width: 80 + 60 + 80 });
   });
 
   it("treats a formatting-only neighbour as empty", () => {
