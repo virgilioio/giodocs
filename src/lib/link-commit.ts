@@ -19,6 +19,7 @@
  */
 
 import { htmlToInlineMarkdown } from "./inline-tokens";
+import { inlineToHtml } from "./inline-markdown";
 import { writeCaret } from "./caret-shim";
 
 type TextInputEl = HTMLTextAreaElement | HTMLInputElement;
