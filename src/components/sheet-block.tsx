@@ -1603,12 +1603,26 @@ export function SheetBlockView({
                   // The cell under the editor renders EMPTY text, so the
                   // hoisted overlay never doubles up on the value.
                   const hidden = edit && edit.r === r && edit.c === c;
+                  const align = cellAlign(cell, value);
+                  // Excel-style overflow, TEXT ONLY: a truncated figure
+                  // misreads as a different figure, so numbers, currency,
+                  // percent, dates and errors keep the ellipsis.
+                  const isText =
+                    !hidden &&
+                    !err &&
+                    typeof value !== "number" &&
+                    (cell?.f ?? "text") === "text" &&
+                    shown !== "";
+                  const run = isText ? overflowRun(sheet.cells, sheet.cw, r, c, align) : null;
                   return (
                     <div
                       key={`c${c}`}
                       role="cell"
                       data-sheet-cell={`${r},${c}`}
-                      className="overflow-hidden whitespace-nowrap px-1.5"
+                      className={
+                        (run ? "" : "overflow-hidden ") + "whitespace-nowrap px-1.5"
+                      }
+
                       onPointerDown={(e) => {
                         if (e.button !== 0) return;
                         const live = editRef.current;
