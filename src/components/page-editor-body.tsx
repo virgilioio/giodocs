@@ -4833,7 +4833,35 @@ export function TableBlock({
     [],
   );
 
+  // Pasting a bare URL over a selection inside a cell links the selection,
+  // through the same pure rule the prose blocks use. Anything else falls
+  // through to the browser's own paste.
+  function onCellPaste(
+    e: React.ClipboardEvent<HTMLElement>,
+    r: number,
+    c: number,
+  ) {
+    if (locked) return;
+    const plain = e.clipboardData?.getData("text/plain") ?? "";
+    const el = e.currentTarget as HTMLElement;
+    const src = rows[r]?.[c] ?? "";
+    const car = readCaret(el, src);
+    const lp = car ? linkPaste(src, car.start, car.end, plain) : null;
+    if (!lp) return;
+    e.preventDefault();
+    setCell(r, c, lp.text);
+    requestAnimationFrame(() => {
+      try {
+        el.focus({ preventScroll: true });
+        writeCaret(el, lp.text, lp.caret);
+      } catch {
+        /* noop */
+      }
+    });
+  }
+
   // Cell keys: Tab / Shift-Tab walk the grid (and grow it from the last
+
   // cell), Enter moves down (cells stay one line), Escape blurs, and the
   // inline-format shortcuts apply through the SAME toggleWrap the prose
   // blocks and the floating toolbar use.
