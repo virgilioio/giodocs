@@ -122,6 +122,9 @@ export function linkPaste(
   if (!isBareUrl(pasted)) return null;
   const url = safeUrl(pasted);
   if (!url) return null;
+  // Already a link anywhere in the RAW selection — never nest. Checked
+  // before snapping, since snapping could hide the "](" inside a link.
+  if (src.slice(a, b).includes("](")) return null;
 
   const tokens = tokenizeInline(src);
   a = snapStart(tokens, a);
@@ -129,7 +132,7 @@ export function linkPaste(
   if (a >= b) return null;
 
   const label = src.slice(a, b);
-  if (label.includes("](")) return null; // already a link — never nest
+
   const insert = `[${label}](${url})`;
   const text = src.slice(0, a) + insert + src.slice(b);
 
