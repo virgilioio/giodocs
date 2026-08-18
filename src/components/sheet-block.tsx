@@ -1010,7 +1010,22 @@ export function SheetBlockView({
   const antsBox = ants ? rangeBox(cw, ants) : null;
   const fillBox = fill ? rangeBox(cw, fill.rect) : null;
 
-  const editBox = edit ? cellBox(cw, edit.r, edit.c) : null;
+  /* The editor widens over the SAME run the render uses, so a long value is
+   * readable while editing (Excel does this). The suggestion panel, the
+   * argument chip and the formula bar stay anchored to the CELL — they read
+   * cellBox(edit.r, edit.c) directly and are deliberately not derived from
+   * editBox. */
+  const editBox = useMemo(() => {
+    if (!edit) return null;
+    const box = cellBox(cw, edit.r, edit.c);
+    const cell = sheet.cells[edit.r]?.[edit.c] ?? null;
+    const value = evaluateCell(sheet.cells, edit.r, edit.c);
+    const isText =
+      !isSheetError(value) && typeof value !== "number" && (cell?.f ?? "text") === "text";
+    const run = isText ? overflowRun(sheet.cells, sheet.cw, edit.r, edit.c, cellAlign(cell, value)) : null;
+    if (!run) return box;
+    return { ...box, left: box.left + run.left, width: run.width };
+  }, [edit, cw, sheet]);
 
   /* ─────────────────── Formula bar readout ───────────────────
    * Computed through the chunk-1 engine (one summing path, no second
