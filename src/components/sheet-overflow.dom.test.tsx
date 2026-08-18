@@ -66,3 +66,11 @@ describe("sheet cell overflow rendering", () => {
     expect(run(2, 0)).toBeNull();
   });
 });
+
+describe("overflow span is paint-only", () => {
+  it("carries pointer-events: none", () => {
+    mount();
+    const style = run(0, 0)!.getAttribute("style") ?? "";
+    expect(style).toContain("pointer-events: none");
+  });
+});
