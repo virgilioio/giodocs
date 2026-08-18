@@ -40,30 +40,29 @@ export function overflowRun(
   if (c < 0 || c >= cols) return null;
   const own = cw[c] ?? 0;
 
-  let before = 0;
-  let after = 0;
+  // leftFree / rightFree are measured INDEPENDENTLY for every alignment,
+  // centre included. Excel does not force symmetry: capping a centred run at
+  // the smaller side would give column A (no free space to its left) a
+  // zero-width run and a hard clip. An uneven run is correct — the text is
+  // then centred inside the whole span by text-align alone.
+  let leftFree = 0;
+  let rightFree = 0;
 
   if (align === "left" || align === "center") {
     for (let i = c + 1; i < cols; i++) {
       if (!isEmpty(row[i])) break;
-      after += cw[i] ?? 0;
+      rightFree += cw[i] ?? 0;
     }
   }
   if (align === "right" || align === "center") {
     for (let i = c - 1; i >= 0; i--) {
       if (!isEmpty(row[i])) break;
-      before += cw[i] ?? 0;
+      leftFree += cw[i] ?? 0;
     }
   }
 
-  // Centre splits symmetrically, but each side is clamped independently by
-  // its own first occupied cell: a run with one blocked side simply grows
-  // less, it does not shift off-centre.
-  if (align === "center") {
-    const half = Math.min(before, after);
-    before = half;
-    after = half;
-  }
+  const before = leftFree;
+  const after = rightFree;
 
   if (before === 0 && after === 0) return null;
   // `before === 0` explicitly, so the value is 0 and never -0.
