@@ -1756,6 +1756,11 @@ export function SheetBlockView({
                             textOverflow: "ellipsis",
                             textAlign: align,
                             zIndex: 1,
+                            // PAINT ONLY. The run sits over its neighbours,
+                            // so it must never intercept their clicks — the
+                            // selection model assumes each cell keeps its own
+                            // hit target at its own width.
+                            pointerEvents: "none",
                           }}
                         >
                           {shown}
