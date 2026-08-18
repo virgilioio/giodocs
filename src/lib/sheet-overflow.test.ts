@@ -20,11 +20,24 @@ describe("overflowRun", () => {
     expect(overflowRun(cells, cw, 0, 3, "right")).toEqual({ left: -(80 + 60), width: 80 + 60 + 40 });
   });
 
-  it("clamps each side independently when centred", () => {
-    // 80px free to the left (c0 blocks), 160px free to the right → the
-    // run is symmetric in PIXELS, so each side gets 80.
+  it("measures each side independently when centred", () => {
+    // 80px free to the left (c0 blocks), 40 + 120 free to the right. NO
+    // symmetry clamp: the run is uneven and that is correct.
     const cells = row(v("x"), null, v("centred"), null, null);
-    expect(overflowRun(cells, cw, 0, 2, "center")).toEqual({ left: -80, width: 80 + 60 + 80 });
+    expect(overflowRun(cells, cw, 0, 2, "center")).toEqual({
+      left: -80,
+      width: 80 + 60 + 40 + 120,
+    });
+  });
+
+  it("centred at column 0 still runs right", () => {
+    const cells = row(v("centred"), null, null, v("x"), null);
+    expect(overflowRun(cells, cw, 0, 0, "center")).toEqual({ left: 0, width: 100 + 80 + 60 });
+  });
+
+  it("centred with both sides occupied returns null", () => {
+    const cells = row(v("x"), v("centred"), v("y"), null, null);
+    expect(overflowRun(cells, cw, 0, 1, "center")).toBeNull();
   });
 
   it("treats a formatting-only neighbour as empty", () => {
