@@ -74,3 +74,35 @@ describe("overflow span is paint-only", () => {
     expect(style).toContain("pointer-events: none");
   });
 });
+
+/* The editor widens over the run so a long value is readable while editing. */
+describe("editor geometry over an overflow run", () => {
+  const mountLive = () => {
+    root = createRoot(host);
+    act(() => root.render(<SheetBlockView block={block} onChange={() => {}} />));
+  };
+  const editor = () => host.querySelector("[data-sheet-editor]") as HTMLInputElement;
+  const open = (r: number, c: number) => {
+    act(() => {
+      cell(r, c).dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 }));
+    });
+    act(() => {
+      (host.querySelector('[role="table"]') as HTMLElement).dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+    });
+  };
+
+  it("uses the run width for an overflowing cell", () => {
+    mountLive();
+    open(0, 0);
+    expect(editor().style.width).toBe("240px");
+    expect(editor().style.left).toBe("34px");
+  });
+
+  it("uses the cell width for a blocked cell", () => {
+    mountLive();
+    open(1, 0);
+    expect(editor().style.width).toBe("100px");
+  });
+});
