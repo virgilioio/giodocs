@@ -41,6 +41,17 @@ export type ExportContext = {
   /** Optional workspace name shown beside the Gio Docs mark in the HTML/PDF
    * masthead. Omitted lines just render the mark. */
   workspaceName?: string | null;
+  /** The page's own icon — a unicode grapheme or a ":shortcode:". Rendered
+   * before the title in HTML/PDF. Omitted entirely when absent. */
+  icon?: string | null;
+  /** name → base64 data URI for every custom emoji this page uses,
+   * PRE-RESOLVED by the caller (see resolveEmojiDataUris in
+   * emoji-export.ts).
+   *
+   * ⚠ toHtml MUST STAY SYNCHRONOUS: it is reached from the block-selection
+   * clipboard path via blocksHtmlFragment, so all fetching happens before
+   * the call, never inside it. */
+  emoji?: ReadonlyMap<string, string>;
 };
 
 /* ─────────────────────────── Logo (inlined) ─────────────────────────── */
