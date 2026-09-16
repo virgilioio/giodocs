@@ -1017,6 +1017,24 @@ const HTML_CSS = `
   figure { break-inside: avoid; }
 `;
 
+/* One CSS rule per DISTINCT emoji — never one data URI per occurrence. A
+ * page using ":brand:" twenty times embeds the image ONCE.
+ *
+ * ⚠ THE `.emoji` BOX IS LOAD-BEARING: a text-only span has no intrinsic
+ * box, so a background image on it renders INVISIBLY. Same trap as <Ico>. */
+function emojiCss(map: ReadonlyMap<string, string> | undefined): string {
+  if (!map || map.size === 0) return "";
+  const rules: string[] = [];
+  for (const [name, uri] of map) {
+    if (!EMOJI_NAME_OK.test(name)) continue; // skip, never escape
+    rules.push(`.e-${name}{background-image:url("${uri}")}`);
+  }
+  if (rules.length === 0) return "";
+  return `\n  .emoji{display:inline-block;width:1.15em;height:1.15em;vertical-align:-0.2em;background-size:contain;background-repeat:no-repeat;background-position:center}\n  ${rules.join(
+    "\n  ",
+  )}\n`;
+}
+
 export function toHtml(ctx: ExportContext): string {
   const includeDetails = ctx.includeDetails !== false;
 
@@ -1036,20 +1054,34 @@ export function toHtml(ctx: ExportContext): string {
         .join("")}</dl>`
     : "";
 
+  // The emoji mode is in force for the whole synchronous serialisation
+  // below, including the title icon and every nested block.
+  const resolved = new Set<string>();
+  if (ctx.emoji) for (const name of ctx.emoji.keys()) resolved.add(name);
+  const prevEmoji = curEmoji;
+  curEmoji = resolved.size > 0 ? resolved : null;
+
   const titleEsc = esc(ctx.title || "Untitled");
+
+  // The page's own icon, before the title. A shortcode paints its embedded
+  // image; a unicode grapheme prints as itself; no icon prints nothing.
+  const rawIcon = typeof ctx.icon === "string" ? ctx.icon.trim() : "";
+  const titleIcon = rawIcon ? (iconSpan(rawIcon) ?? esc(rawIcon)) : "";
+  const titleInner = titleIcon ? `${titleIcon} ${titleEsc}` : titleEsc;
 
   // With details: wrap title + <dl> in <header class="meta"> (the rule sits
   // under the header). Without details: bare <h1> — no wrapper, no orphaned
   // divider. Title always renders.
   const headerHtml = includeDetails
     ? `<header class="meta">
-<h1 class="title">${titleEsc}</h1>
+<h1 class="title">${titleInner}</h1>
 ${propsHtml}
 </header>`
-    : `<h1 class="title">${titleEsc}</h1>`;
+    : `<h1 class="title">${titleInner}</h1>`;
 
   const ords = numberedOrdinals(ctx.blocks);
   const body = renderBlocksHtml(ctx.blocks, ords);
+  curEmoji = prevEmoji;
 
   // Masthead: renders ONCE at the top of the document (letterhead style).
   // The old fixed-position footer fought pagination and repeatedly caused
