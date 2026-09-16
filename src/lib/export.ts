@@ -1102,6 +1102,7 @@ ${propsHtml}
   const ords = numberedOrdinals(ctx.blocks);
   const body = renderBlocksHtml(ctx.blocks, ords);
   curEmoji = prevEmoji;
+  curEmojiList = prevEmojiList;
 
   // Masthead: renders ONCE at the top of the document (letterhead style).
   // The old fixed-position footer fought pagination and repeatedly caused
