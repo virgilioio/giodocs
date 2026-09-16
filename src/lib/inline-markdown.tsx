@@ -76,6 +76,11 @@ export type InlineRenderOpts = InlineOpts & {
   emojiClassNames?: ReadonlySet<string>;
 };
 
+/* Names already match the database's own check constraint. Asserting is
+ * therefore correct and escaping would be theatre: a name that fails is
+ * SKIPPED (falls back to alt text) rather than sanitised into a class. */
+export const EMOJI_NAME_OK = /^[a-z0-9][a-z0-9-]{0,23}$/;
+
 function emojiUrl(name: string, opts?: InlineOpts): string {
   const list = opts?.emoji ?? getInlineEmojiSet();
   return list.find((e) => e.name === name)?.url ?? "";
