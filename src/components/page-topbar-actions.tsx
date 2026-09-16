@@ -378,6 +378,9 @@ export function PageTopbarActions({
       tags: tagsV,
       verifiedAt: page.verified_at,
       blocks,
+      // The page's own icon travels with the export; the dialog resolves a
+      // custom-emoji shortcode to an embedded image before serialising.
+      icon: typeof page.icon === "string" ? page.icon : null,
     };
   }, [page, members]);
 

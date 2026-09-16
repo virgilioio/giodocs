@@ -53,11 +53,33 @@ import { getInlineEmojiSet } from "./emoji-registry";
 /* Rendering options. `emoji` is the SAME set the offset map is handed —
  * both default to the module registry, never to an empty set. `emojiAs`
  * lets the export path swap the background-image span for something a
- * standalone file can carry (see export.ts). */
+ * standalone file can carry (see export.ts).
+ *
+ * ⚠ NAMING NOTE. The on-screen mode (an inline style carrying the signed
+ * URL) is "url" and remains the DEFAULT — <Editable> calls inlineToHtml
+ * with no opts and must keep producing exactly that markup, byte for byte,
+ * or htmlToInlineMarkdown stops round-tripping. "span" is the EXPORT mode:
+ * a class-only span whose background image comes from one CSS rule per
+ * DISTINCT emoji emitted by toHtml, so a page using ":brand:" twenty times
+ * embeds the image once. "alt" (shortcode text) stays the fallback for a
+ * name that did not resolve. */
 export type InlineRenderOpts = InlineOpts & {
-  /** "span" (default, on-screen) | "alt" (export: shortcode text only). */
-  emojiAs?: "span" | "alt";
+  /**
+   * "url"  (default, on-screen: inline background-image with a signed URL)
+   * "span" (export: `<span class="emoji e-{name}">`, image via CSS rule)
+   * "alt"  (shortcode text only)
+   */
+  emojiAs?: "url" | "span" | "alt";
+  /** Export mode only: the names that actually resolved to a data URI.
+   * A name absent from this set degrades to "alt". Only NAMES cross this
+   * boundary — never data URIs, and never into the tokenizer. */
+  emojiClassNames?: ReadonlySet<string>;
 };
+
+/* Names already match the database's own check constraint. Asserting is
+ * therefore correct and escaping would be theatre: a name that fails is
+ * SKIPPED (falls back to alt text) rather than sanitised into a class. */
+export const EMOJI_NAME_OK = /^[a-z0-9][a-z0-9-]{0,23}$/;
 
 function emojiUrl(name: string, opts?: InlineOpts): string {
   const list = opts?.emoji ?? getInlineEmojiSet();
@@ -301,10 +323,23 @@ function tokensToHtml(
     if (t.kind === "emoji") {
       const sc = `:${t.name}:`;
       if (opts?.emojiAs === "alt") {
-        // Export path: no external request may survive the file, and a
-        // signed URL 404s within the hour. The shortcode text is the
-        // documented loss (see EXPORT_LOSS in export.ts).
+        // The shortcode text. Still the fallback, not the export default:
+        // an unresolved emoji degrades to this rather than breaking.
         out += escHtml(sc);
+        continue;
+      }
+      if (opts?.emojiAs === "span") {
+        // Export path: class only. The image is embedded ONCE as a base64
+        // data URI in a `.e-{name}` rule emitted by toHtml, so the file is
+        // self-contained AND repeated uses cost nothing. The `.emoji` rule
+        // supplies the explicit box — a text-only span has no intrinsic
+        // box, so a background image would render invisibly (the same trap
+        // documented for <Ico> in custom-emoji.ts).
+        if (opts.emojiClassNames?.has(t.name) && EMOJI_NAME_OK.test(t.name)) {
+          out += `<span class="emoji e-${t.name}" role="img" aria-label="${escHtml(sc)}"></span>`;
+        } else {
+          out += escHtml(sc);
+        }
         continue;
       }
       const url = emojiUrl(t.name, opts);

@@ -16,7 +16,7 @@ import { numberedOrdinals } from "./blocks";
 import { columnsGridTemplatePlain, normalizeColumnWidths } from "./column-widths";
 import { peekSignedUrl } from "./image-url-cache";
 import { readAlign, readCols, readPaths, readW } from "./image-ops";
-import { inlineToHtml } from "./inline-markdown";
+import { EMOJI_NAME_OK, inlineToHtml } from "./inline-markdown";
 import { calloutBg, calloutRing } from "./callout-color";
 // Logo is inlined as a data URI so the exported HTML file is self-contained
 // (zero network requests). Vite `?raw` reads the file at build time; vitest
@@ -41,6 +41,17 @@ export type ExportContext = {
   /** Optional workspace name shown beside the Gio Docs mark in the HTML/PDF
    * masthead. Omitted lines just render the mark. */
   workspaceName?: string | null;
+  /** The page's own icon — a unicode grapheme or a ":shortcode:". Rendered
+   * before the title in HTML/PDF. Omitted entirely when absent. */
+  icon?: string | null;
+  /** name → base64 data URI for every custom emoji this page uses,
+   * PRE-RESOLVED by the caller (see resolveEmojiDataUris in
+   * emoji-export.ts).
+   *
+   * ⚠ toHtml MUST STAY SYNCHRONOUS: it is reached from the block-selection
+   * clipboard path via blocksHtmlFragment, so all fetching happens before
+   * the call, never inside it. */
+  emoji?: ReadonlyMap<string, string>;
 };
 
 /* ─────────────────────────── Logo (inlined) ─────────────────────────── */
@@ -415,6 +426,13 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
 
 /* ─────────────────────────── toMarkdown ─────────────────────────── */
 
+/* MARKDOWN IS DELIBERATELY UNCHANGED: a custom emoji stays its ":shortcode:"
+ * text. HTML/PDF now embed the image as a base64 data URI, but doing that in
+ * Markdown would bury a multi-kilobyte blob in the middle of a line and make
+ * the file unreadable in every editor — which is the whole point of the
+ * format. This stays on the documented-loss list alongside caption and
+ * columns. Do not "fix" it. */
+
 export function toMarkdown(ctx: ExportContext): string {
   const includeDetails = ctx.includeDetails !== false;
   const ords = numberedOrdinals(ctx.blocks);
@@ -461,6 +479,46 @@ function trOpen(cells: readonly (string | number | null | undefined)[]): string 
   return n > TALL_ROW_CHARS ? `<tr class="tall">` : "<tr>";
 }
 
+/* ── the emoji mode, for the duration of ONE synchronous serialisation ──
+ *
+ * blockHtml / listItemInner are reached through renderBlocksHtml and
+ * renderListRun; threading a fifth argument through every one of those
+ * (and through the recursive callout/columns calls) is how one site
+ * silently keeps the old mode. toHtml sets this immediately before it
+ * renders the body and clears it after — the serialiser is synchronous, so
+ * there is no interleaving. blocksHtmlFragment never sets it, so the
+ * clipboard path and any caller without ctx.emoji produce byte-identical
+ * output to before. */
+let curEmoji: ReadonlySet<string> | null = null;
+/* ":x:" is only an emoji TOKEN when x is in the known set handed to the
+ * tokenizer, and an export runs outside the app (tests, a worker) where the
+ * module registry may be empty. So the resolved names are also the set the
+ * tokenizer is given — names only, never URLs. A name that failed to embed
+ * is therefore not a token and stays literal ":shortcode:" text, which is
+ * exactly the intended fallback. */
+let curEmojiList: readonly { name: string; url: string }[] = [];
+
+/** The single inline-render option object both HTML emitters use. */
+function inlineOpts(): {
+  emojiAs: "span" | "alt";
+  emojiClassNames?: ReadonlySet<string>;
+  emoji?: readonly { name: string; url: string }[];
+} {
+  return curEmoji && curEmoji.size > 0
+    ? { emojiAs: "span", emojiClassNames: curEmoji, emoji: curEmojiList }
+    : // No resolved emoji → a shortcode stays literal text, exactly as
+      // before. Still the documented loss, now only when embedding failed.
+      { emojiAs: "alt" };
+}
+
+/** True when `icon` is a shortcode whose image resolved to a data URI. */
+function iconSpan(icon: string): string | null {
+  if (!(icon.length > 2 && icon[0] === ":" && icon.endsWith(":"))) return null;
+  const name = icon.slice(1, -1);
+  if (!curEmoji || !curEmoji.has(name) || !EMOJI_NAME_OK.test(name)) return null;
+  return `<span class="emoji e-${name}" role="img" aria-label="${esc(icon)}"></span>`;
+}
+
 function blockHtml(b: Block, ordinal = 1): string {
 
   const t = (b.type ?? "text") as string;
@@ -468,11 +526,11 @@ function blockHtml(b: Block, ordinal = 1): string {
   // Inline markdown (bold, italic, code, links, …) inside text-carrying
   // positions is converted to HTML via inlineToHtml, which escapes user
   // text FIRST and then inserts tags. Escaping is never bypassed.
-  // Custom emoji become their shortcode text in exported HTML. An
-  // exported file must open with ZERO external requests, and a signed
-  // storage URL 404s within the hour — so ":brand:" is emitted verbatim
-  // and listed as a documented loss alongside caption and columns.
-  const inline = (s: string) => inlineToHtml(s, { emojiAs: "alt" });
+  // Custom emoji become a class-only span whose image toHtml embeds ONCE
+  // as a base64 data URI, so the exported file still opens with ZERO
+  // external requests (a signed storage URL 404s within the hour). One
+  // that failed to embed falls back to its ":shortcode:" text.
+  const inline = (s: string) => inlineToHtml(s, inlineOpts());
   switch (t) {
     case "text":
       return `<p>${inline(text)}</p>`;
@@ -530,17 +588,21 @@ function blockHtml(b: Block, ordinal = 1): string {
       const bg = calloutBg((b as { color?: unknown }).color);
       const ring = calloutRing((b as { color?: unknown }).color);
       const style = `background:${bg};border:1px solid ${ring}`;
+      // A custom-emoji callout icon paints its embedded image; a unicode
+      // one (or one that failed to embed) keeps esc(icon) exactly as before.
+      const ico = iconSpan(icon) ?? esc(icon);
       const kids = Array.isArray((b as { children?: unknown }).children)
         ? ((b as { children: Block[] }).children as Block[])
         : null;
       if (!kids || kids.length === 0) {
-        return `<aside style="${style}"><span class="ico">${esc(icon)}</span><span>${inline(
+        return `<aside style="${style}"><span class="ico">${ico}</span><span>${inline(
           text,
         )}</span></aside>`;
       }
       const kidOrds = numberedOrdinals(kids);
       const kidHtml = kids.map((k) => blockHtml(k, (k.id && kidOrds.get(k.id)) || 1)).join("\n");
-      return `<aside style="${style}"><span class="ico">${esc(icon)}</span><div class="callout-body">${kidHtml}</div></aside>`;
+      return `<aside style="${style}"><span class="ico">${ico}</span><div class="callout-body">${kidHtml}</div></aside>`;
+
 
     }
 
@@ -756,9 +818,9 @@ function readIndent(b: Block): number {
 
 function listItemInner(b: Block, ordinal: number): string {
   const text = blockText(b);
-  // Same documented loss as blockHtml: a custom emoji exports as its
-  // shortcode text, never as a signed URL that expires.
-  const inline = (s: string) => inlineToHtml(s, { emojiAs: "alt" });
+  // Same mode as blockHtml — shared through inlineOpts() rather than a
+  // second copy that can drift.
+  const inline = (s: string) => inlineToHtml(s, inlineOpts());
   if (b.type === "todo") {
     return `<input type="checkbox" disabled${
       b.checked ? " checked" : ""
@@ -973,6 +1035,24 @@ const HTML_CSS = `
   figure { break-inside: avoid; }
 `;
 
+/* One CSS rule per DISTINCT emoji — never one data URI per occurrence. A
+ * page using ":brand:" twenty times embeds the image ONCE.
+ *
+ * ⚠ THE `.emoji` BOX IS LOAD-BEARING: a text-only span has no intrinsic
+ * box, so a background image on it renders INVISIBLY. Same trap as <Ico>. */
+function emojiCss(map: ReadonlyMap<string, string> | undefined): string {
+  if (!map || map.size === 0) return "";
+  const rules: string[] = [];
+  for (const [name, uri] of map) {
+    if (!EMOJI_NAME_OK.test(name)) continue; // skip, never escape
+    rules.push(`.e-${name}{background-image:url("${uri}")}`);
+  }
+  if (rules.length === 0) return "";
+  return `\n  .emoji{display:inline-block;width:1.15em;height:1.15em;vertical-align:-0.2em;background-size:contain;background-repeat:no-repeat;background-position:center}\n  ${rules.join(
+    "\n  ",
+  )}\n`;
+}
+
 export function toHtml(ctx: ExportContext): string {
   const includeDetails = ctx.includeDetails !== false;
 
@@ -992,20 +1072,37 @@ export function toHtml(ctx: ExportContext): string {
         .join("")}</dl>`
     : "";
 
+  // The emoji mode is in force for the whole synchronous serialisation
+  // below, including the title icon and every nested block.
+  const resolved = new Set<string>();
+  if (ctx.emoji) for (const name of ctx.emoji.keys()) resolved.add(name);
+  const prevEmoji = curEmoji;
+  const prevEmojiList = curEmojiList;
+  curEmoji = resolved.size > 0 ? resolved : null;
+  curEmojiList = [...resolved].map((name) => ({ name, url: "" }));
+
   const titleEsc = esc(ctx.title || "Untitled");
+
+  // The page's own icon, before the title. A shortcode paints its embedded
+  // image; a unicode grapheme prints as itself; no icon prints nothing.
+  const rawIcon = typeof ctx.icon === "string" ? ctx.icon.trim() : "";
+  const titleIcon = rawIcon ? (iconSpan(rawIcon) ?? esc(rawIcon)) : "";
+  const titleInner = titleIcon ? `${titleIcon} ${titleEsc}` : titleEsc;
 
   // With details: wrap title + <dl> in <header class="meta"> (the rule sits
   // under the header). Without details: bare <h1> — no wrapper, no orphaned
   // divider. Title always renders.
   const headerHtml = includeDetails
     ? `<header class="meta">
-<h1 class="title">${titleEsc}</h1>
+<h1 class="title">${titleInner}</h1>
 ${propsHtml}
 </header>`
-    : `<h1 class="title">${titleEsc}</h1>`;
+    : `<h1 class="title">${titleInner}</h1>`;
 
   const ords = numberedOrdinals(ctx.blocks);
   const body = renderBlocksHtml(ctx.blocks, ords);
+  curEmoji = prevEmoji;
+  curEmojiList = prevEmojiList;
 
   // Masthead: renders ONCE at the top of the document (letterhead style).
   // The old fixed-position footer fought pagination and repeatedly caused
@@ -1029,7 +1126,7 @@ ${wsName ? `<span class="ws">${esc(wsName)}</span>` : ""}
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>${titleEsc}</title>
-<style>${HTML_CSS}</style>
+<style>${HTML_CSS}${emojiCss(ctx.emoji)}</style>
 </head>
 <body>
 ${mastheadHtml}

@@ -20,6 +20,8 @@ import {
 import { prefetchSignedUrls } from "@/lib/images";
 import { collectImagePaths } from "@/lib/image-ops";
 import { hasFileBlock } from "@/lib/file-ops";
+import { collectEmojiNames, resolveEmojiDataUris } from "@/lib/emoji-export";
+import { useInlineEmojiSet } from "@/lib/emoji-registry";
 
 export type ExportFormat = "PDF" | "HTML" | "Markdown";
 type Paper = "Letter" | "A4" | "Legal" | "Tabloid" | "A3";
@@ -76,6 +78,18 @@ export function ExportDialog({
   const [err, setErr] = useState<null | "popup-blocked" | "generic">(null);
   const menu = useRowMenu();
   const toast = useToast();
+  const emojiSet = useInlineEmojiSet();
+
+  /* toHtml is synchronous, so every custom emoji the page uses must already
+   * be a base64 data URI before the first block is written — the same
+   * contract prefetchSignedUrls satisfies for images. Embedding keeps the
+   * exported file free of external requests; a failure just degrades that
+   * one emoji to its ":shortcode:" text. */
+  async function resolvedEmoji(): Promise<ReadonlyMap<string, string>> {
+    const names = collectEmojiNames(ctx.blocks, ctx.icon, emojiSet);
+    if (names.length === 0) return new Map();
+    return await resolveEmojiDataUris(names, emojiSet);
+  }
 
   // Persist the last chosen format; never persist paper.
   useEffect(() => {
@@ -159,17 +173,19 @@ export function ExportDialog({
     setBusy(true);
     // One flag threads through all three formats — do not branch by format
     // to compute it. printPdf uses toHtml internally, so it inherits.
-    const exportCtx: ExportContext = { ...ctx, includeDetails };
+    let exportCtx: ExportContext = { ...ctx, includeDetails };
     try {
       // Serialisers are synchronous, so every image URL must already be
       // signed and cached before the first block is written.
       await prefetchSignedUrls(collectImagePaths(ctx.blocks as never));
       if (fmt === "Markdown") {
+        // Markdown keeps shortcode text by design — no embedding needed.
         const text = toMarkdown(exportCtx);
         download(filename, new Blob([text], { type: "text/markdown;charset=utf-8" }));
         toast.push(`Exported ${filename}`);
         onClose();
       } else if (fmt === "HTML") {
+        exportCtx = { ...exportCtx, emoji: await resolvedEmoji() };
         const html = toHtml(exportCtx);
         download(filename, new Blob([html], { type: "text/html;charset=utf-8" }));
         toast.push(`Exported ${filename}`);
@@ -177,7 +193,7 @@ export function ExportDialog({
       } else {
         // PDF — clamp scale into 50..200 on the way in.
         const clamped = Math.max(50, Math.min(200, Number(scale) || 100));
-        await printPdf(exportCtx, paper, clamped);
+        await printPdf({ ...exportCtx, emoji: await resolvedEmoji() }, paper, clamped);
         toast.push("Opening your print dialog");
         onClose();
       }
