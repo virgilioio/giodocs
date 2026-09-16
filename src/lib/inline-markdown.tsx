@@ -53,10 +53,27 @@ import { getInlineEmojiSet } from "./emoji-registry";
 /* Rendering options. `emoji` is the SAME set the offset map is handed —
  * both default to the module registry, never to an empty set. `emojiAs`
  * lets the export path swap the background-image span for something a
- * standalone file can carry (see export.ts). */
+ * standalone file can carry (see export.ts).
+ *
+ * ⚠ NAMING NOTE. The on-screen mode (an inline style carrying the signed
+ * URL) is "url" and remains the DEFAULT — <Editable> calls inlineToHtml
+ * with no opts and must keep producing exactly that markup, byte for byte,
+ * or htmlToInlineMarkdown stops round-tripping. "span" is the EXPORT mode:
+ * a class-only span whose background image comes from one CSS rule per
+ * DISTINCT emoji emitted by toHtml, so a page using ":brand:" twenty times
+ * embeds the image once. "alt" (shortcode text) stays the fallback for a
+ * name that did not resolve. */
 export type InlineRenderOpts = InlineOpts & {
-  /** "span" (default, on-screen) | "alt" (export: shortcode text only). */
-  emojiAs?: "span" | "alt";
+  /**
+   * "url"  (default, on-screen: inline background-image with a signed URL)
+   * "span" (export: `<span class="emoji e-{name}">`, image via CSS rule)
+   * "alt"  (shortcode text only)
+   */
+  emojiAs?: "url" | "span" | "alt";
+  /** Export mode only: the names that actually resolved to a data URI.
+   * A name absent from this set degrades to "alt". Only NAMES cross this
+   * boundary — never data URIs, and never into the tokenizer. */
+  emojiClassNames?: ReadonlySet<string>;
 };
 
 function emojiUrl(name: string, opts?: InlineOpts): string {
