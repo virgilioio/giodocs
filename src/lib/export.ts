@@ -570,17 +570,21 @@ function blockHtml(b: Block, ordinal = 1): string {
       const bg = calloutBg((b as { color?: unknown }).color);
       const ring = calloutRing((b as { color?: unknown }).color);
       const style = `background:${bg};border:1px solid ${ring}`;
+      // A custom-emoji callout icon paints its embedded image; a unicode
+      // one (or one that failed to embed) keeps esc(icon) exactly as before.
+      const ico = iconSpan(icon) ?? esc(icon);
       const kids = Array.isArray((b as { children?: unknown }).children)
         ? ((b as { children: Block[] }).children as Block[])
         : null;
       if (!kids || kids.length === 0) {
-        return `<aside style="${style}"><span class="ico">${esc(icon)}</span><span>${inline(
+        return `<aside style="${style}"><span class="ico">${ico}</span><span>${inline(
           text,
         )}</span></aside>`;
       }
       const kidOrds = numberedOrdinals(kids);
       const kidHtml = kids.map((k) => blockHtml(k, (k.id && kidOrds.get(k.id)) || 1)).join("\n");
-      return `<aside style="${style}"><span class="ico">${esc(icon)}</span><div class="callout-body">${kidHtml}</div></aside>`;
+      return `<aside style="${style}"><span class="ico">${ico}</span><div class="callout-body">${kidHtml}</div></aside>`;
+
 
     }
 
