@@ -318,10 +318,23 @@ function tokensToHtml(
     if (t.kind === "emoji") {
       const sc = `:${t.name}:`;
       if (opts?.emojiAs === "alt") {
-        // Export path: no external request may survive the file, and a
-        // signed URL 404s within the hour. The shortcode text is the
-        // documented loss (see EXPORT_LOSS in export.ts).
+        // The shortcode text. Still the fallback, not the export default:
+        // an unresolved emoji degrades to this rather than breaking.
         out += escHtml(sc);
+        continue;
+      }
+      if (opts?.emojiAs === "span") {
+        // Export path: class only. The image is embedded ONCE as a base64
+        // data URI in a `.e-{name}` rule emitted by toHtml, so the file is
+        // self-contained AND repeated uses cost nothing. The `.emoji` rule
+        // supplies the explicit box — a text-only span has no intrinsic
+        // box, so a background image would render invisibly (the same trap
+        // documented for <Ico> in custom-emoji.ts).
+        if (opts.emojiClassNames?.has(t.name) && EMOJI_NAME_OK.test(t.name)) {
+          out += `<span class="emoji e-${t.name}" role="img" aria-label="${escHtml(sc)}"></span>`;
+        } else {
+          out += escHtml(sc);
+        }
         continue;
       }
       const url = emojiUrl(t.name, opts);
