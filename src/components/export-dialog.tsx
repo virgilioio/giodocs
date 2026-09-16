@@ -181,7 +181,7 @@ export function ExportDialog({
       } else {
         // PDF — clamp scale into 50..200 on the way in.
         const clamped = Math.max(50, Math.min(200, Number(scale) || 100));
-        await printPdf(exportCtx, paper, clamped);
+        await printPdf({ ...exportCtx, emoji: await resolvedEmoji() }, paper, clamped);
         toast.push("Opening your print dialog");
         onClose();
       }
