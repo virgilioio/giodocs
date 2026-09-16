@@ -490,11 +490,22 @@ function trOpen(cells: readonly (string | number | null | undefined)[]): string 
  * clipboard path and any caller without ctx.emoji produce byte-identical
  * output to before. */
 let curEmoji: ReadonlySet<string> | null = null;
+/* ":x:" is only an emoji TOKEN when x is in the known set handed to the
+ * tokenizer, and an export runs outside the app (tests, a worker) where the
+ * module registry may be empty. So the resolved names are also the set the
+ * tokenizer is given — names only, never URLs. A name that failed to embed
+ * is therefore not a token and stays literal ":shortcode:" text, which is
+ * exactly the intended fallback. */
+let curEmojiList: readonly { name: string; url: string }[] = [];
 
 /** The single inline-render option object both HTML emitters use. */
-function inlineOpts(): { emojiAs: "span" | "alt"; emojiClassNames?: ReadonlySet<string> } {
+function inlineOpts(): {
+  emojiAs: "span" | "alt";
+  emojiClassNames?: ReadonlySet<string>;
+  emoji?: readonly { name: string; url: string }[];
+} {
   return curEmoji && curEmoji.size > 0
-    ? { emojiAs: "span", emojiClassNames: curEmoji }
+    ? { emojiAs: "span", emojiClassNames: curEmoji, emoji: curEmojiList }
     : // No resolved emoji → a shortcode stays literal text, exactly as
       // before. Still the documented loss, now only when embedding failed.
       { emojiAs: "alt" };
