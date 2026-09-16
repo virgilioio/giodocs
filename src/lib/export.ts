@@ -472,6 +472,35 @@ function trOpen(cells: readonly (string | number | null | undefined)[]): string 
   return n > TALL_ROW_CHARS ? `<tr class="tall">` : "<tr>";
 }
 
+/* ── the emoji mode, for the duration of ONE synchronous serialisation ──
+ *
+ * blockHtml / listItemInner are reached through renderBlocksHtml and
+ * renderListRun; threading a fifth argument through every one of those
+ * (and through the recursive callout/columns calls) is how one site
+ * silently keeps the old mode. toHtml sets this immediately before it
+ * renders the body and clears it after — the serialiser is synchronous, so
+ * there is no interleaving. blocksHtmlFragment never sets it, so the
+ * clipboard path and any caller without ctx.emoji produce byte-identical
+ * output to before. */
+let curEmoji: ReadonlySet<string> | null = null;
+
+/** The single inline-render option object both HTML emitters use. */
+function inlineOpts(): { emojiAs: "span" | "alt"; emojiClassNames?: ReadonlySet<string> } {
+  return curEmoji && curEmoji.size > 0
+    ? { emojiAs: "span", emojiClassNames: curEmoji }
+    : // No resolved emoji → a shortcode stays literal text, exactly as
+      // before. Still the documented loss, now only when embedding failed.
+      { emojiAs: "alt" };
+}
+
+/** True when `icon` is a shortcode whose image resolved to a data URI. */
+function iconSpan(icon: string): string | null {
+  if (!(icon.length > 2 && icon[0] === ":" && icon.endsWith(":"))) return null;
+  const name = icon.slice(1, -1);
+  if (!curEmoji || !curEmoji.has(name) || !EMOJI_NAME_OK.test(name)) return null;
+  return `<span class="emoji e-${name}" role="img" aria-label="${esc(icon)}"></span>`;
+}
+
 function blockHtml(b: Block, ordinal = 1): string {
 
   const t = (b.type ?? "text") as string;
@@ -479,11 +508,11 @@ function blockHtml(b: Block, ordinal = 1): string {
   // Inline markdown (bold, italic, code, links, …) inside text-carrying
   // positions is converted to HTML via inlineToHtml, which escapes user
   // text FIRST and then inserts tags. Escaping is never bypassed.
-  // Custom emoji become their shortcode text in exported HTML. An
-  // exported file must open with ZERO external requests, and a signed
-  // storage URL 404s within the hour — so ":brand:" is emitted verbatim
-  // and listed as a documented loss alongside caption and columns.
-  const inline = (s: string) => inlineToHtml(s, { emojiAs: "alt" });
+  // Custom emoji become a class-only span whose image toHtml embeds ONCE
+  // as a base64 data URI, so the exported file still opens with ZERO
+  // external requests (a signed storage URL 404s within the hour). One
+  // that failed to embed falls back to its ":shortcode:" text.
+  const inline = (s: string) => inlineToHtml(s, inlineOpts());
   switch (t) {
     case "text":
       return `<p>${inline(text)}</p>`;
