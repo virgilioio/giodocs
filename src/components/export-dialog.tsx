@@ -20,6 +20,8 @@ import {
 import { prefetchSignedUrls } from "@/lib/images";
 import { collectImagePaths } from "@/lib/image-ops";
 import { hasFileBlock } from "@/lib/file-ops";
+import { collectEmojiNames, resolveEmojiDataUris } from "@/lib/emoji-export";
+import { useInlineEmojiSet } from "@/lib/emoji-registry";
 
 export type ExportFormat = "PDF" | "HTML" | "Markdown";
 type Paper = "Letter" | "A4" | "Legal" | "Tabloid" | "A3";
