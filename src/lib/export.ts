@@ -1077,7 +1077,9 @@ export function toHtml(ctx: ExportContext): string {
   const resolved = new Set<string>();
   if (ctx.emoji) for (const name of ctx.emoji.keys()) resolved.add(name);
   const prevEmoji = curEmoji;
+  const prevEmojiList = curEmojiList;
   curEmoji = resolved.size > 0 ? resolved : null;
+  curEmojiList = [...resolved].map((name) => ({ name, url: "" }));
 
   const titleEsc = esc(ctx.title || "Untitled");
 
