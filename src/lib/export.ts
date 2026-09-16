@@ -16,7 +16,7 @@ import { numberedOrdinals } from "./blocks";
 import { columnsGridTemplatePlain, normalizeColumnWidths } from "./column-widths";
 import { peekSignedUrl } from "./image-url-cache";
 import { readAlign, readCols, readPaths, readW } from "./image-ops";
-import { inlineToHtml } from "./inline-markdown";
+import { EMOJI_NAME_OK, inlineToHtml } from "./inline-markdown";
 import { calloutBg, calloutRing } from "./callout-color";
 // Logo is inlined as a data URI so the exported HTML file is self-contained
 // (zero network requests). Vite `?raw` reads the file at build time; vitest
