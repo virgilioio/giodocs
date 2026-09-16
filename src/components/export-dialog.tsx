@@ -78,6 +78,18 @@ export function ExportDialog({
   const [err, setErr] = useState<null | "popup-blocked" | "generic">(null);
   const menu = useRowMenu();
   const toast = useToast();
+  const emojiSet = useInlineEmojiSet();
+
+  /* toHtml is synchronous, so every custom emoji the page uses must already
+   * be a base64 data URI before the first block is written — the same
+   * contract prefetchSignedUrls satisfies for images. Embedding keeps the
+   * exported file free of external requests; a failure just degrades that
+   * one emoji to its ":shortcode:" text. */
+  async function resolvedEmoji(): Promise<ReadonlyMap<string, string>> {
+    const names = collectEmojiNames(ctx.blocks, ctx.icon, emojiSet);
+    if (names.length === 0) return new Map();
+    return await resolveEmojiDataUris(names, emojiSet);
+  }
 
   // Persist the last chosen format; never persist paper.
   useEffect(() => {
