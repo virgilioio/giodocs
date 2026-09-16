@@ -1105,7 +1105,7 @@ ${wsName ? `<span class="ws">${esc(wsName)}</span>` : ""}
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>${titleEsc}</title>
-<style>${HTML_CSS}</style>
+<style>${HTML_CSS}${emojiCss(ctx.emoji)}</style>
 </head>
 <body>
 ${mastheadHtml}
