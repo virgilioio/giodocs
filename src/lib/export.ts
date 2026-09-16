@@ -426,6 +426,13 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
 
 /* ─────────────────────────── toMarkdown ─────────────────────────── */
 
+/* MARKDOWN IS DELIBERATELY UNCHANGED: a custom emoji stays its ":shortcode:"
+ * text. HTML/PDF now embed the image as a base64 data URI, but doing that in
+ * Markdown would bury a multi-kilobyte blob in the middle of a line and make
+ * the file unreadable in every editor — which is the whole point of the
+ * format. This stays on the documented-loss list alongside caption and
+ * columns. Do not "fix" it. */
+
 export function toMarkdown(ctx: ExportContext): string {
   const includeDetails = ctx.includeDetails !== false;
   const ords = numberedOrdinals(ctx.blocks);
