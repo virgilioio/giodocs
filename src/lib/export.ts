@@ -800,9 +800,9 @@ function readIndent(b: Block): number {
 
 function listItemInner(b: Block, ordinal: number): string {
   const text = blockText(b);
-  // Same documented loss as blockHtml: a custom emoji exports as its
-  // shortcode text, never as a signed URL that expires.
-  const inline = (s: string) => inlineToHtml(s, { emojiAs: "alt" });
+  // Same mode as blockHtml — shared through inlineOpts() rather than a
+  // second copy that can drift.
+  const inline = (s: string) => inlineToHtml(s, inlineOpts());
   if (b.type === "todo") {
     return `<input type="checkbox" disabled${
       b.checked ? " checked" : ""
