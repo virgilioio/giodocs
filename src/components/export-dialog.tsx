@@ -161,17 +161,19 @@ export function ExportDialog({
     setBusy(true);
     // One flag threads through all three formats — do not branch by format
     // to compute it. printPdf uses toHtml internally, so it inherits.
-    const exportCtx: ExportContext = { ...ctx, includeDetails };
+    let exportCtx: ExportContext = { ...ctx, includeDetails };
     try {
       // Serialisers are synchronous, so every image URL must already be
       // signed and cached before the first block is written.
       await prefetchSignedUrls(collectImagePaths(ctx.blocks as never));
       if (fmt === "Markdown") {
+        // Markdown keeps shortcode text by design — no embedding needed.
         const text = toMarkdown(exportCtx);
         download(filename, new Blob([text], { type: "text/markdown;charset=utf-8" }));
         toast.push(`Exported ${filename}`);
         onClose();
       } else if (fmt === "HTML") {
+        exportCtx = { ...exportCtx, emoji: await resolvedEmoji() };
         const html = toHtml(exportCtx);
         download(filename, new Blob([html], { type: "text/html;charset=utf-8" }));
         toast.push(`Exported ${filename}`);
