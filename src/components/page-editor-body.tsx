@@ -9,6 +9,8 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { primaryMod } from "@/lib/platform";
 import { nanoid } from "nanoid";
 import { toClipboard } from "@/lib/clipboard";
 import { createPortal } from "react-dom";
@@ -129,19 +131,24 @@ import {
   duplicateBlock as opsDuplicate,
   parsePasteToBlocks,
   splicePasteAtCaret,
+  inlinePaste,
+  mergeNextInto as opsMergeNext,
+  cloneWithFreshIds,
   indentBlock as opsIndent,
   reclampIndents,
 } from "@/lib/block-ops";
 import { resolveKey, type Op as KeyOp } from "@/lib/block-key-handler";
+import { slashTrigger, stripSlash } from "@/lib/slash";
+import { applyCalloutDefaults, rememberCallout } from "@/lib/callout-prefs";
 import { toggleWrap } from "@/lib/toggle-wrap";
-import { linkPaste } from "@/lib/paste-link";
+import { linkPaste, snapSelection } from "@/lib/paste-link";
 import { commitSourceToEditable, readEditableSource } from "@/lib/link-commit";
 import { ImageBlock, ImageRowBlock, PageImageCtx } from "@/components/image-block";
 import { FileBlock } from "@/components/file-block";
 import { PageBlock } from "@/components/page-block";
 import { SheetBlockView } from "@/components/sheet-block";
-import { collectImagePaths, droppedImagePaths, rejectReason } from "@/lib/image-ops";
-import { gcImagePaths, uploadImage } from "@/lib/images";
+import { droppedImagePaths, rejectReason } from "@/lib/image-ops";
+import { uploadImage } from "@/lib/images";
 import { FloatingToolbar } from "./floating-toolbar";
 import type { BlockSel, MarkName } from "./floating-toolbar";
 import {
@@ -440,6 +447,7 @@ export function EditableTitle({
       onChange={(e) => onChange(e.target.value.replace(/\n/g, ""))}
       onKeyDown={(e) => {
         if (readOnly) return;
+        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
         if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
           e.preventDefault();
           onEnter();
@@ -480,6 +488,7 @@ export function EditableBody({
   });
   // If the incoming server data changes for a different page, resync.
   const workspaceId = useWorkspaceId();
+  const navigate = useNavigate();
   const lastPage = useRef(pageId);
   useEffect(() => {
     if (lastPage.current !== pageId) {
@@ -632,29 +641,34 @@ export function EditableBody({
       const sc = (containerRef.current?.closest("main") ??
         null) as HTMLElement | null;
       const keep = sc ? sc.scrollTop : null;
+      const before = new Set(blocksRef.current.map((b) => b.id));
       blocksRef.current = entry.blocks;
       setBlocks(entry.blocks);
       onChange(entry.blocks);
-      // Restore focus. If the caret block still exists, focus it with the
-      // stored offset; otherwise focus the nearest surviving block so we
-      // never leave focus nowhere.
+      // Restore focus where the caret was. When no block had the caret
+      // (undoing a deleted selection, a drag, a checkbox click, a menu
+      // action), stay where you are: blocks that came back are selected so
+      // you can see them, and nothing jumps to the top of the page.
       const c = entry.caret;
       const survivors = entry.blocks;
-      let targetId: string | null = null;
-      let targetOff: number | "start" | "end" = "start";
       if (c && survivors.some((b) => b.id === c.blockId)) {
-        targetId = c.blockId;
-        targetOff = c.offset;
-      } else if (survivors.length > 0) {
-        targetId = survivors[0].id;
-        targetOff = "start";
-      }
-      if (targetId)
         setFocusRequest({
-          id: targetId,
-          caret: targetOff,
+          id: c.blockId,
+          caret: c.offset,
           preserveScrollTop: keep,
         });
+      } else {
+        const back = survivors.filter((b) => !before.has(b.id)).map((b) => b.id);
+        if (back.length) {
+          setSelScope(null);
+          setSelectedIds(new Set(back));
+        }
+        if (sc && keep !== null) {
+          requestAnimationFrame(() => {
+            sc.scrollTop = keep;
+          });
+        }
+      }
       // Release the guard on the next tick so re-render's effects don't push.
       queueMicrotask(() => {
         isRestoringRef.current = false;
@@ -691,7 +705,11 @@ export function EditableBody({
   useEffect(() => {
     if (locked) return;
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey)) return;
+      if (!primaryMod(e)) return;
+      // The title, property fields and dialogs keep their own native undo;
+      // ⌘Z there must not undo the page body.
+      const t = e.target as HTMLElement | null;
+      if (t && isTypingTarget(t) && !t.closest?.("[data-gio-page-body]")) return;
       const k = e.key.toLowerCase();
       if (k === "z") {
         e.preventDefault();
@@ -1369,7 +1387,7 @@ export function EditableBody({
       >[0]);
       const after = () => {
         toast.push(
-          `Copied ${selected.length} ${selected.length === 1 ? "block" : "blocks"}`,
+          `${opts.cut ? "Cut" : "Copied"} ${selected.length} ${selected.length === 1 ? "block" : "blocks"}`,
         );
         if (opts.cut && !locked) deleteSelection();
       };
@@ -1382,7 +1400,7 @@ export function EditableBody({
   useEffect(() => {
     if (selectedIds.size === 0) return;
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey)) return;
+      if (!primaryMod(e)) return;
       const key = e.key.toLowerCase();
       if (key !== "c" && key !== "x") return;
       // Selection beats focus: with a block selection active, always
@@ -1404,7 +1422,7 @@ export function EditableBody({
   useEffect(() => {
     if (selectedIds.size === 0) return;
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey)) return;
+      if (!primaryMod(e)) return;
       if (e.key.toLowerCase() !== "a") return;
       if (isTypingTarget(e.target)) return;
       e.preventDefault();
@@ -1465,6 +1483,9 @@ export function EditableBody({
       const htmlSrc = e.clipboardData?.getData("text/html") ?? "";
       const plainSrc = e.clipboardData?.getData("text/plain") ?? "";
 
+      // A code block is plain text: let the browser paste the plain text.
+      if (blocksRef.current.find((x) => x.id === blockId)?.type === "code") return;
+
       // Pasting a bare URL over a text SELECTION hyperlinks the selection
       // instead of replacing it. Checked after the file branch (a pasted
       // screenshot still wins) and before block parsing, which returns null
@@ -1487,8 +1508,22 @@ export function EditableBody({
       const parsedOut = parsePasteToBlocks(htmlSrc, plainSrc);
 
       if (!parsedOut) return; // Let the browser handle a plain single-line paste.
-      e.preventDefault();
       const parsed = parsedOut.blocks;
+
+      // One line copied from a browser, Slack or Docs (it arrives as HTML)
+      // goes inside this block at the caret — not three blocks.
+      if (selectedIds.size === 0) {
+        const el = e.currentTarget;
+        const src = el ? readEditableSource(el) : "";
+        const car = el ? readCaret(el, src) : null;
+        const ip = car ? inlinePaste(src, car.start, car.end, parsed) : null;
+        if (ip) {
+          e.preventDefault();
+          commitSourceToEditable(el, ip.text, ip.caret);
+          return;
+        }
+      }
+      e.preventDefault();
 
       const idx = blocks.findIndex((b) => b.id === blockId);
       if (idx === -1) return;
@@ -1518,9 +1553,9 @@ export function EditableBody({
       } else {
         // Splice at caret within the target block, via the shared op.
         const ta = e.currentTarget;
-        const src = blocks[idx].text ?? "";
-        const caret = readCaret(ta, src)?.start ?? src.length;
-        const r = splicePasteAtCaret(blocks, blockId, caret, parsed);
+        const src = readEditableSource(ta);
+        const car = readCaret(ta, src);
+        const r = splicePasteAtCaret(blocks, blockId, car?.start ?? src.length, parsed, car?.end ?? src.length);
         if (!r) return;
         next = r.next;
       }
@@ -1658,6 +1693,54 @@ export function EditableBody({
         setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
         setSelScope(null);
         anchorId.current = null;
+        // A text selection can't cross blocks (each is its own editable),
+        // so a drag that leaves its block becomes a block selection, from
+        // the block it started in to the one under the pointer — as in
+        // Notion. Inside the starting block it stays a text selection.
+        const originId = t.closest<HTMLElement>("[data-block-id]")?.getAttribute("data-block-id");
+        if (originId && !e.shiftKey) {
+          const scope: ScopeRef = rowColRefById.current.get(originId) ?? null;
+          let raf = 0;
+          let last: { x: number; y: number } | null = null;
+          let switched = false;
+          const apply = () => {
+            raf = 0;
+            if (!last) return;
+            const under = document
+              .elementFromPoint(last.x, last.y)
+              ?.closest<HTMLElement>("[data-block-id]")
+              ?.getAttribute("data-block-id");
+            const list = scopedList(scope);
+            if (!under || !list) return;
+            const ids = list.map((b) => b.id);
+            const a = ids.indexOf(originId);
+            const b = ids.indexOf(under);
+            if (a < 0 || b < 0) return;
+            if (!switched && a === b) return;
+            if (!switched) {
+              switched = true;
+              window.getSelection()?.removeAllRanges();
+              (document.activeElement as HTMLElement | null)?.blur?.();
+              anchorId.current = originId;
+            }
+            setSelScope(scope);
+            setSelectedIds(new Set(ids.slice(Math.min(a, b), Math.max(a, b) + 1)));
+          };
+          const onMove = (ev: PointerEvent) => {
+            if (!(ev.buttons & 1)) return;
+            last = { x: ev.clientX, y: ev.clientY };
+            if (!raf) raf = requestAnimationFrame(apply);
+          };
+          const onUp = () => {
+            if (raf) cancelAnimationFrame(raf);
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+            window.removeEventListener("pointercancel", onUp);
+          };
+          window.addEventListener("pointermove", onMove);
+          window.addEventListener("pointerup", onUp);
+          window.addEventListener("pointercancel", onUp);
+        }
         return;
       }
       // Interactive chrome: bail WITHOUT clearing — shift-clicking block
@@ -1680,7 +1763,7 @@ export function EditableBody({
       };
       marqueeLastClient.current = { x: e.clientX, y: e.clientY };
     },
-    [containerPoint, containerAtPoint],
+    [containerPoint, containerAtPoint, scopedList],
   );
 
   // The narrow `.gio-page-body` column is centred inside `<main>`, so a
@@ -1826,6 +1909,8 @@ export function EditableBody({
   const [slash, setSlash] = useState<{
     blockId: string;
     query: string;
+    /** Where the "/" is in the block's source. */
+    at: number;
     x: number;
     y: number;
   } | null>(null);
@@ -1856,8 +1941,9 @@ export function EditableBody({
       if (idx === -1) return;
       const prev = blocks[idx];
       const t = (prev.text ?? "");
-      const slashPos = t.lastIndexOf("/");
-      const stripped = slashPos >= 0 ? t.slice(0, slashPos) : t;
+      const at = slash && slash.blockId === blockId ? slash.at : t.lastIndexOf("/");
+      const stripped = at >= 0 ? stripSlash(t, at, slash?.query ?? "") : t;
+      const caretAfter = at >= 0 ? at : stripped.length;
 
       // Columns: replace the current block wholesale with a fresh columns
       // block seeded with N empty text-column columns; focus cols[0][0].
@@ -1876,7 +1962,7 @@ export function EditableBody({
       const nb: Blk = { ...prev, type, text: stripped };
       if (type === "todo" && nb.checked == null) nb.checked = false;
       if (type === "toggle" && nb.open == null) nb.open = false;
-      if (type === "callout" && !nb.icon) nb.icon = "💡";
+      if (type === "callout") applyCalloutDefaults(nb);
       if (type === "table" && !nb.rows) nb.rows = [["", "", ""], ["", "", ""]];
       // Converting a text block into a sheet must seed the SAME grid the
       // factory makes; without it the sheet reached the model empty and
@@ -1895,9 +1981,9 @@ export function EditableBody({
       }
       commit(next);
       setSlash(null);
-      setFocusRequest({ id: blockId, caret: stripped.length });
+      setFocusRequest({ id: blockId, caret: caretAfter });
     },
-    [blocks, commit],
+    [blocks, commit, slash],
   );
 
 
@@ -1978,12 +2064,120 @@ export function EditableBody({
     [runTargetFor, commitScoped],
   );
 
+  /* ────────── Keyboard on a block selection ──────────
+   * ↑/↓ move the selection, ⇧↑/⇧↓ extend it, ⌘⇧↑/⌘⇧↓ move the blocks,
+   * Tab/⇧Tab indent them, Enter edits the last one. ⌘V replaces them with
+   * what's on the clipboard. Focus moving into any field outside the page
+   * body drops the selection, so ⌘X in the title cuts the title's text,
+   * not the selected blocks. */
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
+      // Only when nothing else has focus (or focus is in the page body): a
+      // focused menu item, dialog button or emoji grid keeps its own
+      // Enter, Tab and arrows.
+      const tgt = e.target as HTMLElement | null;
+      if (tgt && tgt !== document.body && !tgt.closest?.("[data-gio-page-body]")) return;
+      const s = selectedInScope(blocksRef.current);
+      if (!s) return;
+      const ids = s.list.map((b) => b.id);
+      const idxs = ids.map((id, i) => (selectedIds.has(id) ? i : -1)).filter((i) => i >= 0);
+      if (idxs.length === 0) return;
+      const first = idxs[0];
+      const last = idxs[idxs.length - 1];
+      const vertical = e.key === "ArrowUp" || e.key === "ArrowDown";
+      const dir = e.key === "ArrowUp" ? -1 : 1;
+      if (vertical && primaryMod(e) && e.shiftKey && !locked) {
+        e.preventDefault();
+        if (dir < 0) runMoveUp(ids[first]);
+        else runMoveDown(ids[first]);
+        return;
+      }
+      if (vertical && !primaryMod(e) && !e.altKey) {
+        e.preventDefault();
+        let next: string[];
+        if (e.shiftKey) {
+          const aIdx = anchorId.current ? ids.indexOf(anchorId.current) : -1;
+          const anchor = aIdx >= 0 ? aIdx : dir > 0 ? first : last;
+          const edge = anchor === first ? last : first;
+          const moved = Math.max(0, Math.min(ids.length - 1, edge + dir));
+          const lo = Math.min(anchor, moved);
+          const hi = Math.max(anchor, moved);
+          next = ids.slice(lo, hi + 1);
+          anchorId.current = ids[anchor];
+        } else {
+          const target = dir < 0 ? Math.max(0, first - 1) : Math.min(ids.length - 1, last + 1);
+          next = [ids[target]];
+          anchorId.current = ids[target];
+        }
+        setSelectedIds(new Set(next));
+        const edgeId = dir < 0 ? next[0] : next[next.length - 1];
+        rowEls.current.get(edgeId)?.scrollIntoView({ block: "nearest" });
+        return;
+      }
+      if (e.key === "Enter" && !primaryMod(e) && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        const id = ids[last];
+        clearSelection();
+        setFocusRequest({ id, caret: "end" });
+        return;
+      }
+      if (e.key === "Tab" && !locked) {
+        e.preventDefault();
+        let list = s.list;
+        const order = e.shiftKey ? idxs : [...idxs];
+        for (const i of order) {
+          const r = opsIndent(list, ids[i], e.shiftKey ? -1 : 1);
+          if (r) list = r.next;
+        }
+        commitScoped(s.scope, list);
+      }
+    };
+    const onFocusIn = (e: FocusEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t || t.closest?.("[data-gio-page-body]")) return;
+      if (isTypingTarget(t)) clearSelection();
+    };
+    const onPaste = (e: ClipboardEvent) => {
+      if (locked || isTypingTarget(e.target)) return;
+      const s = selectedInScope(blocksRef.current);
+      if (!s) return;
+      const html = e.clipboardData?.getData("text/html") ?? "";
+      const plain = e.clipboardData?.getData("text/plain") ?? "";
+      const parsed =
+        parsePasteToBlocks(html, plain)?.blocks.filter((p) => s.scope === null || p.type !== "columns") ??
+        (plain ? [newBlock("text", plain)] : []);
+      if (parsed.length === 0) return;
+      e.preventDefault();
+      const out: Blk[] = [];
+      let inserted = false;
+      for (const b of s.list) {
+        if (selectedIds.has(b.id)) {
+          if (!inserted) out.push(...parsed);
+          inserted = true;
+        } else out.push(b);
+      }
+      clearSelection();
+      commitScoped(s.scope, reclampIndents(out));
+      setFocusRequest({ id: parsed[parsed.length - 1].id, caret: "end" });
+    };
+    window.addEventListener("keydown", onKey);
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("paste", onPaste);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("paste", onPaste);
+    };
+  }, [selectedIds, selectedInScope, clearSelection, runMoveUp, runMoveDown, commitScoped, locked]);
+
   const runDuplicate = useCallback(
     (blockId: string) => {
       const t = runTargetFor(blockId);
       if (!t || !t.run.length) return;
       const runEnd = t.run[t.run.length - 1];
-      const copies: Blk[] = t.run.map((i) => ({ ...t.list[i], id: nanoid(10) }));
+      const copies: Blk[] = t.run.map((i) => cloneWithFreshIds(t.list[i]));
       const nextList = [...t.list];
       nextList.splice(runEnd + 1, 0, ...copies);
       commitScoped(t.scope, nextList);
@@ -2012,7 +2206,7 @@ export function EditableBody({
         const nb: Blk = { ...prev, type, ...(extra ?? {}) };
         if (type === "todo" && nb.checked == null) nb.checked = false;
         if (type === "toggle" && nb.open == null) nb.open = false;
-        if (type === "callout" && !nb.icon) nb.icon = "💡";
+        if (type === "callout") applyCalloutDefaults(nb);
         if (type === "table" && !nb.rows) nb.rows = [["", "", ""], ["", "", ""]];
       // Converting a text block into a sheet must seed the SAME grid the
       // factory makes; without it the sheet reached the model empty and
@@ -2035,12 +2229,37 @@ export function EditableBody({
     (blockId: string) => {
       const t = runTargetFor(blockId);
       const firstId = t && t.run.length ? t.list[t.run[0]].id : blockId;
-      const url = `${window.location.origin}/p/${pageId}#${firstId}`;
+      const url = `${window.location.origin}/p/${pageId}#block-${firstId}`;
       toClipboard(url);
       toast.push("Link copied");
     },
     [runTargetFor, pageId, toast],
   );
+
+  /* A link to a block (#block-<id>, or the older #<id>) scrolls to it and
+   * highlights it briefly — on load and when the hash changes. */
+  useEffect(() => {
+    const go = () => {
+      const raw = decodeURIComponent(window.location.hash.replace(/^#/, ""));
+      if (!raw) return;
+      const id = raw.startsWith("block-") ? raw.slice(6) : raw;
+      let tries = 0;
+      const tick = () => {
+        const el = document.querySelector<HTMLElement>(`[data-block-id="${CSS.escape(id)}"]`);
+        if (!el) {
+          if (++tries < 20) window.setTimeout(tick, 100);
+          return;
+        }
+        el.scrollIntoView({ block: "center" });
+        setSelectedIds(new Set([id]));
+        window.setTimeout(() => setSelectedIds((cur) => (cur.size === 1 && cur.has(id) ? new Set() : cur)), 1600);
+      };
+      tick();
+    };
+    go();
+    window.addEventListener("hashchange", go);
+    return () => window.removeEventListener("hashchange", go);
+  }, [pageId]);
 
   /* Duplicate and delete acting on the whole active block-selection —
    * used by both the ⌘D shortcut and the right-click "n blocks selected"
@@ -2055,7 +2274,7 @@ export function EditableBody({
       if (selectedIds.has(b.id)) idxs.push(i);
     });
     if (!idxs.length) return;
-    const copies: Blk[] = idxs.map((i) => ({ ...s.list[i], id: nanoid(10) }));
+    const copies: Blk[] = idxs.map((i) => cloneWithFreshIds(s.list[i]));
     const nextList = [...s.list];
     nextList.splice(idxs[idxs.length - 1] + 1, 0, ...copies);
     const next =
@@ -2072,7 +2291,7 @@ export function EditableBody({
   useEffect(() => {
     if (locked) return;
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey)) return;
+      if (!primaryMod(e)) return;
       if (e.key.toLowerCase() !== "d") return;
       if (isTypingTarget(e.target)) return;
       if (selectedIds.size === 0) return;
@@ -2106,7 +2325,7 @@ export function EditableBody({
     if (locked) return;
     if (selectedIds.size === 0) return;
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey)) return;
+      if (!primaryMod(e)) return;
       if (isTypingTarget(e.target)) return;
       const k = e.key.toLowerCase();
       let pair: MarkPair | null = null;
@@ -2253,6 +2472,7 @@ export function EditableBody({
             else nb.color = c;
             next[i] = nb;
           }
+          rememberCallout({ color: c });
           commitScoped(t?.scope ?? null, next);
           // Return to the block menu rather than closing: people try two
           // or three against the surrounding text.
@@ -2702,7 +2922,24 @@ export function EditableBody({
         if (!a.closest("[contenteditable]")) return;
         if (window.getSelection()?.isCollapsed === false) return;
         e.preventDefault();
-        window.open(a.getAttribute("href") ?? "", "_blank", "noopener,noreferrer");
+        const href = a.getAttribute("href") ?? "";
+        // A link to another Gio page opens here, in this tab; anything else
+        // opens in a new tab.
+        try {
+          const u = new URL(href, window.location.href);
+          // A block on this same page: change the hash, which scrolls to it.
+          if (u.origin === window.location.origin && u.pathname === window.location.pathname && u.hash) {
+            window.location.hash = u.hash;
+            return;
+          }
+          if (u.origin === window.location.origin) {
+            void navigate({ href: u.pathname + u.search + u.hash });
+            return;
+          }
+        } catch {
+          /* not a URL: fall through */
+        }
+        window.open(href, "_blank", "noopener,noreferrer");
       }}
       onFocusCapture={(e) => {
         // Caret entering ANY text surface drops the block selection. After
@@ -2817,15 +3054,13 @@ export function EditableBody({
 
             const el = refs.current[b.id];
             const caret = el ? (readCaret(el, val)?.start ?? val.length) : val.length;
-            const before = val.slice(0, caret);
-            const slashPos = before.lastIndexOf("/");
-            const openable =
-              slashPos >= 0 && !/\s/.test(before.slice(slashPos + 1));
-            if (openable) {
+            const trig = slashTrigger(val, caret, b.type);
+            if (trig) {
               const rect = el?.getBoundingClientRect();
               setSlash({
                 blockId: b.id,
-                query: before.slice(slashPos + 1),
+                query: trig.query,
+                at: trig.at,
                 x: rect ? rect.left : 200,
                 y: rect ? rect.bottom + 4 : 200,
               });
@@ -2835,13 +3070,23 @@ export function EditableBody({
           }}
           onKeyDown={(e) => {
             if (locked) return;
+            // An accent or IME composition owns the keyboard until it ends.
+            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
             const el = e.currentTarget as HTMLElement;
             const v = b.text ?? "";
             const caret = readCaret(el, v) ?? { start: 0, end: 0 };
             const ss = caret.start;
             const se = caret.end;
 
-            if (slash?.blockId === b.id) {
+            // With nothing matching, the menu steps aside: Enter, arrows and
+            // Escape act on the text as usual.
+            if (slash?.blockId === b.id && filteredMenu.length === 0) {
+              setSlash(null);
+              if (e.key === "Escape") {
+                e.preventDefault();
+                return;
+              }
+            } else if (slash?.blockId === b.id) {
               if (e.key === "ArrowDown") {
                 e.preventDefault();
                 setMenuIdx((i) => Math.min(filteredMenu.length - 1, i + 1));
@@ -2865,6 +3110,13 @@ export function EditableBody({
               }
             }
 
+            // ⌘⌥L copies a link to this block (e.code: ⌥L types "¬" on a Mac).
+            if (primaryMod(e) && e.altKey && e.code === "KeyL") {
+              e.preventDefault();
+              copyBlockLink(b.id);
+              return;
+            }
+
             // Delegate to the shared resolver — the same decision layer
             // used by ColumnStack. Everything below dispatches an `Op`
             // back into local state / undo. The four legitimate scope-
@@ -2873,7 +3125,7 @@ export function EditableBody({
             const idxInList = blocks.findIndex((x) => x.id === b.id);
             const op: KeyOp = resolveKey("page", blocks, idxInList, {
               key: e.key,
-              meta: e.metaKey || e.ctrlKey,
+              meta: primaryMod(e),
               shift: e.shiftKey,
               selStart: ss,
               selEnd: se,
@@ -2906,8 +3158,16 @@ export function EditableBody({
               case "none":
                 return;
               case "blur":
+                // Escape leaves the text and selects the block, so the
+                // arrows, ⌘⇧↑/↓, Delete and ⌘C act on it next.
                 e.preventDefault();
+                // The selection's own window Escape handler mounts during this
+                // very event and would clear it again.
+                e.stopPropagation();
                 el.blur();
+                setSelScope(null);
+                anchorId.current = b.id;
+                setSelectedIds(new Set([b.id]));
                 return;
               case "select-all-blocks":
                 e.preventDefault();
@@ -2934,6 +3194,48 @@ export function EditableBody({
                 e.preventDefault();
                 mergeIntoPrev(b.id);
                 return;
+              case "remove-prev": {
+                e.preventDefault();
+                const i = blocks.findIndex((x) => x.id === b.id);
+                if (i > 0) {
+                  applyOp({
+                    next: blocks.filter((_, j) => j !== i - 1),
+                    focus: { id: b.id, caret: "start" },
+                  });
+                }
+                return;
+              }
+              case "select-prev": {
+                e.preventDefault();
+                e.stopPropagation();
+                const i = blocks.findIndex((x) => x.id === b.id);
+                if (i > 0) {
+                  el.blur();
+                  setSelectedIds(new Set([blocks[i - 1].id]));
+                }
+                return;
+              }
+              case "merge-next": {
+                const r = opsMergeNext(blocks, b.id);
+                if (r) {
+                  e.preventDefault();
+                  applyOp(r);
+                }
+                return;
+              }
+              case "extend-to-blocks": {
+                e.preventDefault();
+                e.stopPropagation();
+                const i = blocks.findIndex((x) => x.id === b.id);
+                const j = i + op.dir;
+                if (i < 0 || j < 0 || j >= blocks.length) return;
+                window.getSelection()?.removeAllRanges();
+                el.blur();
+                setSelScope(null);
+                anchorId.current = b.id;
+                setSelectedIds(new Set([b.id, blocks[j].id]));
+                return;
+              }
               case "exit-to-title":
                 e.preventDefault();
                 if (!jumpTo(-1, "end")) focusTitle();
@@ -2991,7 +3293,8 @@ export function EditableBody({
                 return;
               case "wrap": {
                 e.preventDefault();
-                const r = toggleWrap(v, ss, se, op.open, op.close);
+                const [ws, we] = snapSelection(v, ss, se);
+                const r = toggleWrap(v, ws, we, op.open, op.close);
                 updateBlock(b.id, { text: r.text });
                 requestAnimationFrame(() => {
                   const cur = refs.current[b.id];
@@ -3012,10 +3315,9 @@ export function EditableBody({
           onPaste={(e) => handlePaste(b.id, e)}
           onDelete={() => {
             if (locked) return;
-            // Explicit delete is the ONE place storage is collected: the
-            // objects are unreachable the moment the block is gone.
-            const paths = collectImagePaths([b]);
-            if (paths.length) void gcImagePaths(pageId, paths).catch(() => {});
+            // The image file is NOT deleted here. ⌘Z brings the block back,
+            // a duplicated block or a duplicated page can point at the same
+            // file, and deleting it broke every one of those copies.
             applyOp(opsRemove(blocks, b.id, { ensureOne: true }));
           }}
         />
@@ -3222,6 +3524,7 @@ function BlockRow({
       data-block-id={block.id}
       data-block-type={block.type}
       data-block-no-editor={noEditor ? "true" : undefined}
+      data-selected={selected ? "true" : undefined}
       // `gio-row` (not Tailwind's `group`) owns the gutter reveal. A bare
       // `group` matches ANY ancestor, so a columns/callout row wrapping
       // inner rows revealed every inner gutter at once — the reveal now
@@ -3388,8 +3691,9 @@ function BlockContent({
   const textareaProps = {
     ref: (el: HTMLTextAreaElement | null) => registerRef(el),
     value: rawText,
+    // onInput commits the text (one commit, one undo step per keystroke
+    // burst); calling onChange too committed every keystroke twice.
     onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      onChange({ text: e.target.value });
       onInput(e.target.value);
     },
     onFocus: () => onEditorFocus(),
@@ -3584,7 +3888,7 @@ function BlockContent({
         </div>
         {block.open ? (
           <div className="ml-5 mt-1 text-meta text-muted">
-            Nested blocks arrive next phase.
+            Toggles can’t hold blocks yet, so there’s nothing inside.
           </div>
         ) : null}
       </div>
@@ -3785,6 +4089,7 @@ function CalloutIconPicker({
               // a callout without an icon has a ragged left edge and
               // the layout assumes one is present.
               onPick(e ?? "💡");
+              rememberCallout({ icon: e ?? "💡" });
               close();
             }}
           />
@@ -3996,6 +4301,8 @@ function ColumnStack({
   const [slash, setSlash] = useState<{
     blockId: string;
     query: string;
+    /** Where the "/" is in the block's source. */
+    at: number;
     x: number;
     y: number;
   } | null>(null);
@@ -4069,12 +4376,12 @@ function ColumnStack({
     if (idx === -1) return;
     const prev = blocks[idx];
     const t = prev.text ?? "";
-    const slashPos = t.lastIndexOf("/");
-    const stripped = slashPos >= 0 ? t.slice(0, slashPos) : t;
+    const at = slash && slash.blockId === blockId ? slash.at : t.lastIndexOf("/");
+    const stripped = at >= 0 ? stripSlash(t, at, slash?.query ?? "") : t;
     const nb: Blk = { ...prev, type, text: stripped, ...(extra ?? {}) };
     if (type === "todo" && nb.checked == null) nb.checked = false;
     if (type === "toggle" && nb.open == null) nb.open = false;
-    if (type === "callout" && !nb.icon) nb.icon = "💡";
+    if (type === "callout") applyCalloutDefaults(nb);
     if (type === "table" && !nb.rows) nb.rows = [["", "", ""], ["", "", ""]];
       // Converting a text block into a sheet must seed the SAME grid the
       // factory makes; without it the sheet reached the model empty and
@@ -4087,7 +4394,7 @@ function ColumnStack({
     next[idx] = nb;
     setBlocks(next);
     setSlash(null);
-    setFocusRequest({ id: blockId, caret: stripped.length });
+    setFocusRequest({ id: blockId, caret: at >= 0 ? at : stripped.length });
   }
 
   /* Structured paste inside a column — the priority for this task.
@@ -4098,6 +4405,8 @@ function ColumnStack({
       if (locked) return;
       const htmlSrc = e.clipboardData?.getData("text/html") ?? "";
       const plainSrc = e.clipboardData?.getData("text/plain") ?? "";
+      // A code block is plain text: let the browser paste the plain text.
+      if (blocks.find((x) => x.id === blockId)?.type === "code") return;
 
       // Same rule as the top level: a bare URL over a selection links it.
       {
@@ -4117,11 +4426,16 @@ function ColumnStack({
       if (!parsedOut) return;
       const parsed = parsedOut.blocks.filter((p) => p.type !== "columns");
       if (parsed.length === 0) return;
-      e.preventDefault();
       const ta = e.currentTarget;
-      const src = blocks.find((b) => b.id === blockId)?.text ?? "";
-      const caret = readCaret(ta, src)?.start ?? src.length;
-      applyOp(splicePasteAtCaret(blocks, blockId, caret, parsed));
+      const src = readEditableSource(ta);
+      const car = readCaret(ta, src);
+      const ip = car ? inlinePaste(src, car.start, car.end, parsed) : null;
+      e.preventDefault();
+      if (ip) {
+        commitSourceToEditable(ta, ip.text, ip.caret);
+        return;
+      }
+      applyOp(splicePasteAtCaret(blocks, blockId, car?.start ?? src.length, parsed, car?.end ?? src.length));
     },
     [blocks, locked, applyOp],
   );
@@ -4294,15 +4608,13 @@ function ColumnStack({
             updateBlock(b.id, { text: val });
             const el = refs.current[b.id];
             const caret = el ? (readCaret(el, val)?.start ?? val.length) : val.length;
-            const before = val.slice(0, caret);
-            const slashPos = before.lastIndexOf("/");
-            const openable =
-              slashPos >= 0 && !/\s/.test(before.slice(slashPos + 1));
-            if (openable) {
+            const trig = slashTrigger(val, caret, b.type);
+            if (trig) {
               const rect = el?.getBoundingClientRect();
               setSlash({
                 blockId: b.id,
-                query: before.slice(slashPos + 1),
+                query: trig.query,
+                at: trig.at,
                 x: rect ? rect.left : 200,
                 y: rect ? rect.bottom + 4 : 200,
               });
@@ -4312,13 +4624,23 @@ function ColumnStack({
           }}
           onKeyDown={(e) => {
             if (locked) return;
+            // An accent or IME composition owns the keyboard until it ends.
+            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
             const el = e.currentTarget as HTMLElement;
             const v = b.text ?? "";
             const car = readCaret(el, v) ?? { start: 0, end: 0 };
             const ss = car.start;
             const se = car.end;
 
-            if (slash?.blockId === b.id) {
+            // With nothing matching, the menu steps aside: Enter, arrows and
+            // Escape act on the text as usual.
+            if (slash?.blockId === b.id && filteredMenu.length === 0) {
+              setSlash(null);
+              if (e.key === "Escape") {
+                e.preventDefault();
+                return;
+              }
+            } else if (slash?.blockId === b.id) {
               if (e.key === "ArrowDown") {
                 e.preventDefault();
                 setMenuIdx((i) => Math.min(filteredMenu.length - 1, i + 1));
@@ -4345,7 +4667,7 @@ function ColumnStack({
             const idxInList = blocks.findIndex((x) => x.id === b.id);
             const op: KeyOp = resolveKey("column", blocks, idxInList, {
               key: e.key,
-              meta: e.metaKey || e.ctrlKey,
+              meta: primaryMod(e),
               shift: e.shiftKey,
               selStart: ss,
               selEnd: se,
@@ -4395,6 +4717,34 @@ function ColumnStack({
               case "merge-prev":
                 e.preventDefault();
                 applyOp(opsMerge(blocks, b.id));
+                return;
+              case "remove-prev": {
+                e.preventDefault();
+                const i = blocks.findIndex((x) => x.id === b.id);
+                if (i > 0) {
+                  applyOp({
+                    next: blocks.filter((_, j) => j !== i - 1),
+                    focus: { id: b.id, caret: "start" },
+                  });
+                }
+                return;
+              }
+              case "select-prev":
+                // Block selection is top-level only; inside a column the
+                // Backspace simply does nothing rather than hide the text.
+                e.preventDefault();
+                return;
+              case "merge-next": {
+                const r = opsMergeNext(blocks, b.id);
+                if (r) {
+                  e.preventDefault();
+                  applyOp(r);
+                }
+                return;
+              }
+              case "extend-to-blocks":
+                // Block selection inside a column is reached by dragging;
+                // the keyboard leaves the text selection as it is.
                 return;
               case "dissolve-columns":
                 // Sole empty block of its column. The parent refuses unless
@@ -4461,7 +4811,8 @@ function ColumnStack({
                 return;
               case "wrap": {
                 e.preventDefault();
-                const r = toggleWrap(v, ss, se, op.open, op.close);
+                const [ws, we] = snapSelection(v, ss, se);
+                const r = toggleWrap(v, ws, we, op.open, op.close);
                 updateBlock(b.id, { text: r.text });
                 requestAnimationFrame(() => {
                   const cur = refs.current[b.id];
@@ -4484,10 +4835,7 @@ function ColumnStack({
           onPaste={(e) => handlePaste(b.id, e)}
           onDelete={() => {
             if (locked) return;
-            const paths = collectImagePaths([b]);
-            if (paths.length && imgCtx) {
-              void gcImagePaths(imgCtx.pageId, paths).catch(() => {});
-            }
+            // Image files are kept: see the top-level delete.
             applyOp(opsRemove(blocks, b.id, { ensureOne: true }));
           }}
         />
@@ -4793,7 +5141,7 @@ export function TableBlock({
         rootRef.current?.contains(t) &&
         t.closest("[data-table-cell]")
       );
-      if ((e.metaKey || e.ctrlKey) && (e.key === "c" || e.key === "C")) {
+      if (primaryMod(e) && (e.key === "c" || e.key === "C")) {
         if (inCell) return;
         e.preventDefault();
         copySelection();
@@ -4875,7 +5223,7 @@ export function TableBlock({
     c: number,
   ) {
     if (locked) return;
-    const meta = e.metaKey || e.ctrlKey;
+    const meta = primaryMod(e);
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();

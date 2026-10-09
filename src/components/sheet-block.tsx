@@ -33,6 +33,7 @@
  * of step with the columns is silent corruption.
  */
 
+import { primaryMod } from "@/lib/platform";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   colName,
@@ -880,7 +881,7 @@ export function SheetBlockView({
       const k = {
         key: e.key,
         shift: e.shiftKey,
-        meta: e.metaKey,
+        meta: primaryMod(e),
         ctrl: e.ctrlKey,
         alt: e.altKey,
       };

@@ -11,6 +11,8 @@
  * live here too, so both call sites cannot drift on defaults.
  */
 
+import { splitInlineSource } from "./split-inline";
+import { applyCalloutDefaults } from "./callout-prefs";
 import { nanoid } from "nanoid";
 import { parseMarkdown } from "@/lib/markdown-import";
 import { htmlToMarkdown, htmlToBlocks } from "@/lib/html-to-markdown";
@@ -154,7 +156,7 @@ export function newBlock(type: BlockType = "text", text = ""): Blk {
   const base: Blk = { id: nanoid(10), type, text };
   if (type === "todo") base.checked = false;
   if (type === "toggle") base.open = false;
-  if (type === "callout") base.icon = "💡";
+  if (type === "callout") applyCalloutDefaults(base);
   if (type === "table") base.rows = [["", "", ""], ["", "", ""]];
   if (type === "sheet") Object.assign(base, newSheetGrid() as Record<string, unknown>);
 
@@ -248,7 +250,7 @@ export function tryMarkdownShortcut(
     // the user typed a prefix then continued into the payload.
     const nb: Blk = { ...cur, type: m.type, text: remainder };
     if (m.type === "todo") nb.checked = false;
-    if (m.type === "callout" && !nb.icon) nb.icon = "💡";
+    if (m.type === "callout") applyCalloutDefaults(nb);
     const next = list.map((b, i) => (i === idx ? nb : b));
     return { next, focus: { id, caret: "start" } };
   }
@@ -256,6 +258,29 @@ export function tryMarkdownShortcut(
 }
 
 /* ────────── Structural ops ────────── */
+
+/** Block types whose `text` is what the user sees and edits. Merging text
+ *  into anything else would hide it. A callout that has become a container
+ *  (`children`) no longer shows its `text`. */
+const TEXT_BEARING = new Set<string>([
+  "text", "h1", "h2", "h3", "bullet", "numbered", "todo", "quote", "code", "toggle", "callout",
+]);
+export function isTextBearing(b: Blk | undefined): boolean {
+  if (!b || !TEXT_BEARING.has(b.type)) return false;
+  if (b.type === "callout" && Array.isArray(b.children)) return false;
+  return true;
+}
+
+/** Deep copy with fresh ids, including a callout's children and every
+ *  block inside a columns block, so no two blocks ever share an id. */
+export function cloneWithFreshIds(b: Blk): Blk {
+  const copy: Blk = { ...b, id: nanoid(10) };
+  if (Array.isArray(b.children)) copy.children = b.children.map(cloneWithFreshIds);
+  if (Array.isArray(b.cols)) copy.cols = b.cols.map((col) => col.map(cloneWithFreshIds));
+  if (Array.isArray(b.rows)) copy.rows = b.rows.map((r) => [...r]);
+  if (Array.isArray(b.cells)) copy.cells = b.cells.map((r) => (Array.isArray(r) ? [...r] : r));
+  return copy;
+}
 
 export function splitBlock(
   list: Blk[],
@@ -266,11 +291,25 @@ export function splitBlock(
   if (idx === -1) return null;
   const cur = list[idx];
   const t = cur.text ?? "";
-  const left = t.slice(0, caret);
-  const right = t.slice(caret);
   const inheritTypes: BlockType[] = ["bullet", "numbered", "todo"];
   const newType: BlockType = inheritTypes.includes(cur.type) ? cur.type : "text";
+  const indent = typeof cur.indent === "number" && cur.indent > 0 ? cur.indent : 0;
+
+  // Enter at the very start of a non-empty block: open an empty line ABOVE
+  // and leave this block (its type, checkbox, heading level) untouched.
+  if (caret <= 0 && t !== "") {
+    const above = newBlock(newType);
+    if (indent && newType !== "text") above.indent = indent;
+    const next = [...list];
+    next.splice(idx, 0, above);
+    return { next, focus: { id, caret: "start" } };
+  }
+
+  // Close and re-open any mark around the caret, so neither half is left
+  // with a stray "**" or "](url)".
+  const [left, right] = splitInlineSource(t, caret);
   const spawn = newBlock(newType, right);
+  if (indent && (newType !== "text" || cur.type === "text")) spawn.indent = indent;
   const next = [...list];
   next[idx] = { ...cur, text: left };
   next.splice(idx + 1, 0, spawn);
@@ -281,6 +320,7 @@ export function mergeIntoPrev(list: Blk[], id: string): OpResult | null {
   const idx = list.findIndex((b) => b.id === id);
   if (idx <= 0) return null;
   const prev = list[idx - 1];
+  if (!isTextBearing(prev)) return null;
   const cur = list[idx];
   const prevText = prev.text ?? "";
   const merged = prevText + (cur.text ?? "");
@@ -288,6 +328,28 @@ export function mergeIntoPrev(list: Blk[], id: string): OpResult | null {
   next[idx - 1] = { ...prev, text: merged };
   next.splice(idx, 1);
   return { next, focus: { id: prev.id, caret: prevText.length } };
+}
+
+/** Forward Delete at the end of a block: pull the next block's text up.
+ *  A divider right after is simply removed. */
+export function mergeNextInto(list: Blk[], id: string): OpResult | null {
+  const idx = list.findIndex((b) => b.id === id);
+  if (idx === -1 || idx >= list.length - 1) return null;
+  const cur = list[idx];
+  const nxt = list[idx + 1];
+  const curText = cur.text ?? "";
+  if (nxt.type === "divider") {
+    const next = [...list];
+    next.splice(idx + 1, 1);
+    return { next, focus: { id, caret: curText.length } };
+  }
+  if (!isTextBearing(nxt) || nxt.type === "code") return null;
+  // A toggle keeps its hidden content in `body`: merging would lose it.
+  if (typeof nxt.body === "string" && nxt.body !== "") return null;
+  const next = [...list];
+  next[idx] = { ...cur, text: curText + (nxt.text ?? "") };
+  next.splice(idx + 1, 1);
+  return { next, focus: { id, caret: curText.length } };
 }
 
 export function convertToText(list: Blk[], id: string): OpResult | null {
@@ -335,7 +397,7 @@ export function insertAfter(
 export function duplicateBlock(list: Blk[], id: string): OpResult | null {
   const idx = list.findIndex((b) => b.id === id);
   if (idx === -1) return null;
-  const copy: Blk = { ...list[idx], id: nanoid(10) };
+  const copy: Blk = cloneWithFreshIds(list[idx]);
   const next = [...list];
   next.splice(idx + 1, 0, copy);
   return { next, focus: { id: copy.id, caret: "end" } };
@@ -379,28 +441,58 @@ export function splicePasteAtCaret(
   id: string,
   caret: number,
   parsed: Blk[],
+  caretEnd: number = caret,
 ): OpResult | null {
   if (parsed.length === 0) return null;
   const idx = list.findIndex((b) => b.id === id);
   if (idx === -1) return null;
   const cur = list[idx];
   const full = cur.text ?? "";
-  const before = full.slice(0, caret);
-  const after = full.slice(caret);
+  // Cut with the mark-aware split so neither side keeps half a "**", and
+  // drop any selected text (the paste replaces it).
+  const [before] = splitInlineSource(full, Math.min(caret, caretEnd));
+  const [, after] = splitInlineSource(full, Math.max(caret, caretEnd));
   const head = list.slice(0, idx);
   const tail = list.slice(idx + 1);
   let next: Blk[];
-  if (full === "") {
+  if (full === "" || (before === "" && after === "")) {
     next = [...head, ...parsed, ...tail];
   } else {
-    const currentPatched: Blk = { ...cur, text: before };
+    const currentPatched: Blk[] = before ? [{ ...cur, text: before }] : [];
+    // Pasting at the very start keeps the original block (its id, heading
+    // level, checkbox) after the pasted ones instead of a plain copy.
     const trailing: Blk[] = after
-      ? [{ id: nanoid(10), type: "text", text: after } as Blk]
+      ? before
+        ? [{ id: nanoid(10), type: "text", text: after } as Blk]
+        : [{ ...cur, text: after }]
       : [];
-    next = [...head, currentPatched, ...parsed, ...trailing, ...tail];
+    next = [...head, ...currentPatched, ...parsed, ...trailing, ...tail];
   }
   const focusId = parsed[parsed.length - 1].id;
   return { next: reclampIndents(next), focus: { id: focusId, caret: "end" } };
+}
+
+/** A paste that is one line of text going into a block that already has
+ *  text belongs INSIDE that block, at the caret (replacing any selected
+ *  text), keeping its bold/italic/links — not split into three blocks.
+ *  Returns the new source and caret, or null when the paste is structural
+ *  (several blocks, an image, a table…) or the block is empty. */
+export function inlinePaste(
+  src: string,
+  start: number,
+  end: number,
+  parsed: Blk[],
+): { text: string; caret: number } | null {
+  if (parsed.length !== 1 || src === "") return null;
+  const p = parsed[0];
+  const INLINE_OK = new Set(["text", "h1", "h2", "h3", "quote", "bullet", "numbered", "todo", "callout", "toggle"]);
+  if (!INLINE_OK.has(p.type)) return null;
+  if (Array.isArray(p.children)) return null;
+  const ins = p.text ?? "";
+  if (!ins || /\n/.test(ins)) return null;
+  const a = Math.max(0, Math.min(start, end));
+  const b = Math.min(src.length, Math.max(start, end));
+  return { text: src.slice(0, a) + ins + src.slice(b), caret: a + ins.length };
 }
 
 /* ────────── Indent ops ────────── */

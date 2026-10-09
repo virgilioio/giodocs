@@ -216,9 +216,14 @@ export const Editable = forwardRef<HTMLDivElement, EditableProps>(
       }));
     };
 
+    // An accent (´ then a) or an IME is "composing": rewriting the DOM in the
+    // middle of it cancels the composition, so wait for compositionend.
+    const composingRef = useRef(false);
+
     const handleInput = () => {
       const el = elRef.current;
       if (!el) return;
+      if (composingRef.current) return;
       const nextSource = htmlToInlineMarkdown(el);
       const caret = readCaretSource(el, nextSource);
       const newHtml = inlineToHtml(nextSource);
@@ -288,6 +293,7 @@ export const Editable = forwardRef<HTMLDivElement, EditableProps>(
     };
 
     const onKeyDownInternal = (e: KeyboardEvent<HTMLDivElement>) => {
+      if (e.nativeEvent.isComposing || e.keyCode === 229) return;
       if (trigger && results.length > 0) {
         if (e.key === "Escape") {
           e.preventDefault();
@@ -339,6 +345,13 @@ export const Editable = forwardRef<HTMLDivElement, EditableProps>(
           data-empty={isEmpty ? "true" : undefined}
           data-placeholder={placeholder}
           onInput={handleInput}
+          onCompositionStart={() => {
+            composingRef.current = true;
+          }}
+          onCompositionEnd={() => {
+            composingRef.current = false;
+            handleInput();
+          }}
           onKeyDown={onKeyDownInternal}
           onPaste={onPaste}
           onFocus={onFocus}

@@ -58,6 +58,39 @@ function hasInner(
   );
 }
 
+/** Pull a selection's ends inside any delimiters they sit on, so "**foo**"
+ *  selected as rendered "foo" is the source "foo" between its markers.
+ *  ⌘B on a bold word then unwraps it instead of producing "****foo****". */
+export function snapSelection(source: string, start: number, end: number): [number, number] {
+  if (start === end) return [start, end];
+  const tokens = tokenizeInline(source);
+  const s = snapStart(tokens, start);
+  const e = snapEnd(tokens, end);
+  return s <= e ? [s, e] : [start, end];
+}
+
+/** The link whose label covers [start, end), if any. */
+export function linkCovering(
+  source: string,
+  start: number,
+  end: number,
+): { labelStart: number; labelEnd: number; sourceEnd: number } | null {
+  const walk = (tokens: InlineToken[]): ReturnType<typeof linkCovering> => {
+    for (const t of tokens) {
+      if (start < t.sourceStart || end > t.sourceEnd) continue;
+      if (t.kind === "link") {
+        return { labelStart: t.sourceStart + t.openLen, labelEnd: t.sourceEnd - t.closeLen, sourceEnd: t.sourceEnd };
+      }
+      if (hasInner(t)) {
+        const inner = walk(t.children);
+        if (inner) return inner;
+      }
+    }
+    return null;
+  };
+  return walk(tokenizeInline(source));
+}
+
 function snapStart(tokens: InlineToken[], pos: number): number {
   for (const t of tokens) {
     if (pos < t.sourceStart || pos >= t.sourceEnd) continue;

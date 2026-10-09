@@ -332,9 +332,13 @@ export function readCaretSource(
   const rendered = getCaretOffset(el);
   if (!rendered) return null;
   const map = buildOffsetMap(source, opts);
+  // The very start of the block is source 0 even when the first word is
+  // formatted ("**Owner:** …" maps rendered 0 to just inside the "**").
+  // Every "caret at start" decision — Backspace merge, ← / ↑ out of the
+  // block, Enter above, ⌘A twice — depends on seeing 0 here.
   return {
-    start: map.toSource(rendered.start),
-    end: map.toSource(rendered.end),
+    start: rendered.start <= 0 ? 0 : map.toSource(rendered.start),
+    end: rendered.end <= 0 ? 0 : map.toSource(rendered.end),
   };
 }
 

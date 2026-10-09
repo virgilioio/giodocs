@@ -299,6 +299,15 @@ function escHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
+/** Text-node escaping, matching how the browser serialises innerHTML (it
+ *  never escapes quotes in text). Using escHtml here made the editor's
+ *  "did the HTML change?" check fail on every keystroke in any block with
+ *  an apostrophe, so the whole block was rewritten as you typed — which
+ *  flickers spellcheck and breaks autocorrect and accents. */
+function escText(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\u00a0/g, "&nbsp;");
+}
+
 /* Convert inline markdown to a safe HTML string. User text is HTML-escaped
  * FIRST and only then wrapped in structural tags — escaping is never
  * bypassed. Consumes the same tokenizer as renderInline. */
@@ -310,7 +319,7 @@ function tokensToHtml(
   let buf = "";
   const flush = () => {
     if (buf) {
-      out += escHtml(buf);
+      out += escText(buf);
       buf = "";
     }
   };
@@ -325,7 +334,7 @@ function tokensToHtml(
       if (opts?.emojiAs === "alt") {
         // The shortcode text. Still the fallback, not the export default:
         // an unresolved emoji degrades to this rather than breaking.
-        out += escHtml(sc);
+        out += escText(sc);
         continue;
       }
       if (opts?.emojiAs === "span") {
@@ -338,7 +347,7 @@ function tokensToHtml(
         if (opts.emojiClassNames?.has(t.name) && EMOJI_NAME_OK.test(t.name)) {
           out += `<span class="emoji e-${t.name}" role="img" aria-label="${escHtml(sc)}"></span>`;
         } else {
-          out += escHtml(sc);
+          out += escText(sc);
         }
         continue;
       }
@@ -353,7 +362,7 @@ function tokensToHtml(
       continue;
     }
     if (t.kind === "code") {
-      out += `<code>${escHtml(t.text)}</code>`;
+      out += `<code>${escText(t.text)}</code>`;
       continue;
     }
     if (t.kind === "bold") {

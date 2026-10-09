@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { primaryMod } from "@/lib/platform";
 import { createPortal } from "react-dom";
 import { toClipboard } from "@/lib/clipboard";
 import { Link, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
@@ -201,12 +202,12 @@ export function AppShell() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+      if (primaryMod(e) && (e.key === "k" || e.key === "K")) {
         e.preventDefault();
         setPaletteOpen((v) => !v);
         return;
       }
-      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+      if (primaryMod(e) && e.key === ",") {
         e.preventDefault();
         setSettingsOpen((v) => !v);
         return;
@@ -214,7 +215,7 @@ export function AppShell() {
       // ⌘\ toggles the sidebar. Guard against typing targets so it does
       // not fire while editing text — same rule as every other global
       // shortcut in this handler.
-      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
+      if (primaryMod(e) && e.key === "\\") {
         if (isTypingTarget(e.target)) return;
         e.preventDefault();
         setSidebarPopover(null);

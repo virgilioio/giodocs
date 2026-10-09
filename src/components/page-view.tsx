@@ -14,7 +14,11 @@ import {
   useRenamePage,
   useSetPageIcon,
   useSetPageProperty,
-  useUpdateBlocks,
+  useBlocksSender,
+  EditConflictError,
+  SaveRejectedError,
+  confirmedServerState,
+  setConfirmedServerState,
   useVerifyPage,
   useArchivePage,
 } from "@/hooks/use-page-mutations";
@@ -38,6 +42,11 @@ import { formatTimestamp } from "@/lib/format";
 
 import { EditableBody, EditableTitle } from "./page-editor-body";
 import { createBlocksSaver } from "@/lib/blocks-saver";
+import { jsonEqual } from "@/lib/json-equal";
+import { anyUnsaved, setSaveStatus } from "@/lib/save-status";
+import { useToast } from "@/lib/toast";
+import { qk } from "@/lib/query-keys";
+import { useQueryClient } from "@tanstack/react-query";
 import { useDelayedPending } from "./sk";
 import { PageSkeleton } from "./skeletons";
 import {
@@ -1005,6 +1014,8 @@ function PropertyStrip({
 
 /* ────────────── Container ────────────── */
 
+let saverSeq = 0;
+
 export function PageEditor({ pageId }: { pageId: string }) {
   const ws = useWorkspaceId();
   const shell = useWorkspaceShell(ws);
@@ -1013,7 +1024,8 @@ export function PageEditor({ pageId }: { pageId: string }) {
   const setProp = useSetPageProperty();
   const verify = useVerifyPage();
   const rename = useRenamePage();
-  const updateBlocks = useUpdateBlocks();
+  const sendBlocks = useBlocksSender();
+  const queryClient = useQueryClient();
   const archive = useArchivePage();
   const setPageIcon = useSetPageIcon();
 
@@ -1068,12 +1080,19 @@ export function PageEditor({ pageId }: { pageId: string }) {
   const titleValue = titleDraft ?? page?.title ?? "";
   const titleTimerRef = useRef<number | null>(null);
 
-  useEffect(
-    () => () => {
-      if (titleTimerRef.current) window.clearTimeout(titleTimerRef.current);
-    },
-    [],
-  );
+  // A pending title save is sent, not dropped, when the page goes away or
+  // the title loses focus.
+  const pendingTitleRef = useRef<{ pageId: string; title: string } | null>(null);
+  const renameRef = useRef(rename);
+  renameRef.current = rename;
+  const flushTitle = useCallback(() => {
+    if (titleTimerRef.current) window.clearTimeout(titleTimerRef.current);
+    titleTimerRef.current = null;
+    const pending = pendingTitleRef.current;
+    pendingTitleRef.current = null;
+    if (pending) renameRef.current.mutate(pending);
+  }, []);
+  useEffect(() => () => flushTitle(), [flushTitle]);
 
   // Focus title on freshly created page (via sessionStorage hint).
   const [titleAutoFocus, setTitleAutoFocus] = useState(false);
@@ -1093,26 +1112,34 @@ export function PageEditor({ pageId }: { pageId: string }) {
   const onTitleChange = useCallback(
     (v: string) => {
       setTitleDraft(v);
+      if (!page) return;
+      pendingTitleRef.current = { pageId: page.id, title: v };
       if (titleTimerRef.current) window.clearTimeout(titleTimerRef.current);
-      titleTimerRef.current = window.setTimeout(() => {
-        if (!page) return;
-        rename.mutate({ pageId: page.id, title: v });
-      }, 500);
+      titleTimerRef.current = window.setTimeout(flushTitle, 500);
     },
-    [page, rename],
+    [page, flushTitle],
   );
 
   const focusFirstBlock = useCallback(() => {
-    // The body always renders at least one block, so this always finds
-    // a textarea. No empty-state clicking, no Enter ritual.
-    const el = document.querySelector<HTMLTextAreaElement>(
-      "#page-body textarea",
+    flushTitle();
+    // The body always renders at least one block. Prose blocks are
+    // contenteditable; code blocks are textareas — take whichever is first.
+    const el = document.querySelector<HTMLElement>(
+      '#page-body [contenteditable="true"], #page-body textarea',
     );
-    if (el) {
-      el.focus();
+    if (!el) return;
+    el.focus();
+    if (el instanceof HTMLTextAreaElement) {
       el.setSelectionRange(0, 0);
+    } else {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      r.collapse(true);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(r);
     }
-  }, []);
+  }, [flushTitle]);
 
   /* ────────── Body debounced save ──────────
    *
@@ -1120,60 +1147,161 @@ export function PageEditor({ pageId }: { pageId: string }) {
    * guard, and follow-up dispatch. React only feeds it keystrokes and
    * triggers flushes. No React effect ever resets the saved marker
    * mid-mutation, so an optimistic cache patch cannot corrupt the diff. */
-  const updateBlocksRef = useRef(updateBlocks);
-  useEffect(() => {
-    updateBlocksRef.current = updateBlocks;
-  }, [updateBlocks]);
+  const sendBlocksRef = useRef(sendBlocks);
+  sendBlocksRef.current = sendBlocks;
 
   const saverRef = useRef<ReturnType<typeof createBlocksSaver<Block[]>> | null>(
     null,
   );
   const pageIdForSaver = page?.id;
   const locked = app.locked;
+  // What the server has as far as this tab knows: its edited_at and blocks.
+  const knownRef = useRef<{ editedAt: string | null; base: Block[] | null; attempts: Block[][]; force: boolean }>({
+    editedAt: null,
+    base: null,
+    attempts: [],
+    force: false,
+  });
+  const [conflict, setConflict] = useState<EditConflictError["server"] | null>(null);
+  const [editorKey, setEditorKey] = useState(0);
+  const toast = useToast();
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
 
   useEffect(() => {
     if (!pageIdForSaver) return;
+    const known = knownRef.current;
+    const owner = `saver-${++saverSeq}`;
     const saver = createBlocksSaver<Block[]>({
       debounceMs: 500,
+      equals: jsonEqual,
       send: async (blocks) => {
-        await updateBlocksRef.current.mutateAsync({
-          pageId: pageIdForSaver,
-          blocks,
-        });
+        const guard = {
+          editedAt: known.editedAt,
+          base: known.base,
+          attempts: [...known.attempts],
+          force: known.force,
+        };
+        known.attempts.push(blocks);
+        const row = await sendBlocksRef.current(pageIdForSaver, blocks, guard);
+        known.force = false;
+        known.editedAt = row.edited_at;
+        known.base = blocks;
+        known.attempts = [];
       },
+      isFatal: (err) => err instanceof EditConflictError || err instanceof SaveRejectedError,
+      onError: (err) => {
+        if (err instanceof EditConflictError) setConflict(err.server);
+        else if (err instanceof SaveRejectedError) toastRef.current.push(err.message);
+      },
+      onStatus: (st) => setSaveStatus(pageIdForSaver, st, owner),
     });
     saverRef.current = saver;
+    const onOnline = () => saver.retryNow();
+    window.addEventListener("online", onOnline);
     return () => {
-      // Flush before tearing down (route change / pageId change).
-      void saver.flush().finally(() => saver.dispose());
+      window.removeEventListener("online", onOnline);
       if (saverRef.current === saver) saverRef.current = null;
+      // Leaving the page never drops edits: flush, and if the server can't
+      // be reached yet, keep retrying in the background until it can.
+      const finish = () => {
+        const lost = saver.status() === "stopped";
+        saver.dispose();
+        setSaveStatus(pageIdForSaver, "idle", owner);
+        // A page you've left can't show the conflict banner any more, so
+        // say plainly that its last edits didn't make it.
+        if (lost) {
+          toastRef.current.push(
+            "Your last edits to a page you left weren't saved: it was changed somewhere else.",
+          );
+        }
+      };
+      void saver.flush().finally(() => {
+        if (!saver.hasUnsaved() || saver.status() === "stopped") {
+          finish();
+          return;
+        }
+        const stop = window.setInterval(() => {
+          if (!saver.hasUnsaved() || saver.status() === "stopped") {
+            window.clearInterval(stop);
+            finish();
+          }
+        }, 1000);
+      });
     };
   }, [pageIdForSaver]);
 
-  // Prime savedRef from the server-known blocks on first mount for this
-  // page so no-op saves don't fire.
+  // Prime the saver and the edit guard from the server-known page on first
+  // mount (and after "Load their version"), so no-op saves don't fire.
   const primedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!page || !saverRef.current) return;
-    if (primedRef.current === page.id) return;
-    primedRef.current = page.id;
-    saverRef.current.markSaved(
-      (Array.isArray(page.blocks) ? page.blocks : []) as Block[],
-    );
-  }, [page]);
+    const key = `${page.id}:${editorKey}`;
+    if (primedRef.current === key) return;
+    primedRef.current = key;
+    // Prefer what the server last confirmed: the cache may hold optimistic
+    // edits that never reached it (offline), which are not a valid base.
+    const conf = confirmedServerState(page.id);
+    const serverBlocks = conf ? conf.blocks : ((Array.isArray(page.blocks) ? page.blocks : []) as Block[]);
+    knownRef.current.editedAt = conf ? conf.editedAt : (page.edited_at ?? null);
+    knownRef.current.base = serverBlocks;
+    knownRef.current.attempts = [];
+    saverRef.current.markSaved(serverBlocks);
+  }, [page, editorKey]);
 
-  // Flush on page unload (tab close, hard nav).
+  // Save when the tab is hidden, and warn before closing it with edits the
+  // server hasn't confirmed (an async save can't finish during unload).
   useEffect(() => {
-    const onBeforeUnload = () => {
-      saverRef.current?.flush();
+    const onHide = () => {
+      if (document.visibilityState === "hidden") {
+        flushTitle();
+        void saverRef.current?.flush();
+      }
     };
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      flushTitle();
+      void saverRef.current?.flush();
+      if (anyUnsaved()) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    document.addEventListener("visibilitychange", onHide);
     window.addEventListener("beforeunload", onBeforeUnload);
-    window.addEventListener("pagehide", onBeforeUnload);
     return () => {
+      document.removeEventListener("visibilitychange", onHide);
       window.removeEventListener("beforeunload", onBeforeUnload);
-      window.removeEventListener("pagehide", onBeforeUnload);
     };
-  }, []);
+  }, [flushTitle]);
+
+  const keepMine = useCallback(() => {
+    if (!conflict) return;
+    knownRef.current.force = true;
+    setConflict(null);
+    saverRef.current?.resume();
+  }, [conflict]);
+
+  const loadTheirs = useCallback(() => {
+    if (!conflict || !page) return;
+    queryClient.setQueryData<PageFull | null>(qk.page(page.id), (prev) =>
+      prev
+        ? {
+            ...prev,
+            blocks: conflict.blocks as unknown as PageFull["blocks"],
+            edited_at: conflict.edited_at,
+            edited_by: conflict.edited_by,
+          }
+        : prev,
+    );
+    knownRef.current.editedAt = conflict.edited_at;
+    knownRef.current.base = conflict.blocks;
+    knownRef.current.attempts = [];
+    setConfirmedServerState(page.id, conflict.edited_at, conflict.blocks);
+    // Adopt their blocks as the saved value; nothing of ours is sent.
+    saverRef.current?.reset(conflict.blocks);
+    setConflict(null);
+    setEditorKey((k) => k + 1);
+  }, [conflict, page, queryClient]);
 
   const onBlocksChange = useCallback(
     (blocks: Block[]) => {
@@ -1344,7 +1472,34 @@ export function PageEditor({ pageId }: { pageId: string }) {
         }}
       >
 
+        {conflict ? (
+          <div
+            role="alert"
+            className="mb-3 mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-amberRing bg-amberTint px-3 py-2 text-row text-amberInk"
+          >
+            <span className="min-w-0 flex-1">
+              Someone else changed this page while you were editing. Your latest edits aren't saved yet.
+            </span>
+            <button
+              type="button"
+              onClick={loadTheirs}
+              className="rounded-md border border-line bg-surface px-3 text-meta text-body hover:bg-rail"
+              style={{ height: 28 }}
+            >
+              Load their version
+            </button>
+            <button
+              type="button"
+              onClick={keepMine}
+              className="rounded-md bg-btn px-3 text-meta text-btnFg"
+              style={{ height: 28 }}
+            >
+              Keep mine
+            </button>
+          </div>
+        ) : null}
         <EditableBody
+          key={editorKey}
           pageId={page.id}
           initialBlocks={blocks}
           onChange={onBlocksChange}

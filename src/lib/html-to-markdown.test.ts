@@ -260,3 +260,10 @@ describe("htmlToBlocks — Notion column_list → columns block", () => {
   });
 });
 
+
+describe("clipboard HTML from Chrome", () => {
+  it("does not drop everything after <meta charset>", () => {
+    expect(htmlToMarkdown('<meta charset="utf-8"><p>Hello <b>big</b> world</p>')).toBe("Hello **big** world");
+    expect(htmlToMarkdown("<meta charset='utf-8'><h2>Title</h2><p>Body</p>")).toBe("## Title\n\nBody");
+  });
+});

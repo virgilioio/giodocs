@@ -15,7 +15,7 @@
 import { useCallback, useContext, useMemo, useRef, useState } from "react";
 import type { Blk } from "@/lib/block-ops";
 import { PageImageCtx } from "@/components/image-block";
-import { signPath, uploadFile, gcImagePaths } from "@/lib/images";
+import { signPath, uploadFile } from "@/lib/images";
 import { useAuth } from "@/lib/auth-context";
 import { useFormatDate } from "@/lib/format";
 import { useToast } from "@/lib/toast";
@@ -219,7 +219,7 @@ export function FileBlock({
   const kind = fileKind(fname);
 
   const upload = useCallback(
-    (file: File, oldPath: string | null) => {
+    (file: File, _oldPath: string | null) => {
       const bad = rejectFileReason(file);
       if (bad) {
         toast.push(bad);
@@ -249,9 +249,8 @@ export function FileBlock({
           // carried only `path` could merge into a pre-upload snapshot and
           // erase the name and size that were already written.
           onChange({ ...meta, path: p } as Partial<Blk>);
-          // Replace deletes the object it superseded — the previous file is
-          // no longer reachable from any block.
-          if (oldPath) void gcImagePaths(ctx.pageId, [oldPath]);
+          // The superseded file is kept: ⌘Z restores the old block, and a
+          // duplicated page can still point at it.
         })
         .catch(() => {
           setPending(null);

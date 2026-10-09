@@ -13,6 +13,9 @@
  * block-key-handler and the toolbar cannot drift.
  */
 
+import { writeCaret } from "@/lib/caret-shim";
+import { primaryMod } from "@/lib/platform";
+import { snapSelection, linkCovering } from "@/lib/paste-link";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toggleWrap, isWrapped } from "@/lib/toggle-wrap";
@@ -51,7 +54,8 @@ function commitSource(el: HTMLElement, next: string, start: number, end: number)
 }
 
 function applyWrap(sel: Sel, open: string, close: string) {
-  const r = toggleWrap(sel.value, sel.start, sel.end, open, close);
+  const [s, e] = snapSelection(sel.value, sel.start, sel.end);
+  const r = toggleWrap(sel.value, s, e, open, close);
   commitSource(sel.el, r.text, r.start, r.end);
 }
 
@@ -62,11 +66,22 @@ function applyWrap(sel: Sel, open: string, close: string) {
 function applyLink(sel: Sel, rawUrl: string) {
   const url = safeUrl(rawUrl);
   if (!url) return false;
-  const label = sel.value.slice(sel.start, sel.end);
+  const [s, e] = snapSelection(sel.value, sel.start, sel.end);
+  // Inside an existing link: change its address instead of nesting a
+  // second link inside the first.
+  const existing = linkCovering(sel.value, s, e);
+  if (existing) {
+    const tail = `](${url})`;
+    const next =
+      sel.value.slice(0, existing.labelEnd) + tail + sel.value.slice(existing.sourceEnd);
+    const caret = existing.labelEnd + tail.length;
+    commitSource(sel.el, next, caret, caret);
+    return true;
+  }
+  const label = sel.value.slice(s, e);
   const insert = `[${label}](${url})`;
-  const next =
-    sel.value.slice(0, sel.start) + insert + sel.value.slice(sel.end);
-  const caret = sel.start + insert.length;
+  const next = sel.value.slice(0, s) + insert + sel.value.slice(e);
+  const caret = s + insert.length;
   commitSource(sel.el, next, caret, caret);
   return true;
 }
@@ -103,6 +118,10 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
   const barRef = useRef<HTMLDivElement | null>(null);
 
   const blockMode = !sel && !!blockSel && blockSel.count > 0;
+  // While the link field is open, focus is in it, not in the text: the
+  // selection tracker must not read that as "the selection went away".
+  const linkModeRef = useRef(false);
+  linkModeRef.current = linkMode;
 
   const hide = useCallback(() => {
     setSel(null);
@@ -118,6 +137,11 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
   useEffect(() => {
     function poll() {
       const active = document.activeElement;
+      if (
+        linkModeRef.current &&
+        (!active || active === document.body || barRef.current?.contains(active))
+      )
+        return;
       if (!isEditableProse(active)) {
         const t = active as Element | null;
         if (t && barRef.current && barRef.current.contains(t)) return;
@@ -149,11 +173,36 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
   useEffect(() => {
     if (!sel) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") hide();
+      // The link field handles its own Escape (back to the text).
+      if (e.key === "Escape" && !linkMode) hide();
+      // ⌘K with text selected adds a link, as in every editor, instead of
+      // opening the command palette.
+      if (!linkMode && primaryMod(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        e.stopPropagation();
+        setLinkMode(true);
+      }
     }
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
-  }, [sel, hide]);
+  }, [sel, hide, linkMode]);
+
+  /** Leave the link field and put the caret back on the selected words. */
+  const backToText = useCallback(() => {
+    setLinkMode(false);
+    setLinkValue("");
+    setLinkError(false);
+    if (!sel) return;
+    const { el, value, start, end } = sel;
+    requestAnimationFrame(() => {
+      el.focus({ preventScroll: true });
+      try {
+        writeCaret(el, value, start, end);
+      } catch {
+        /* noop */
+      }
+    });
+  }, [sel]);
 
   /* Hide-on-scroll is right for a TEXT range (the caret goes away) but wrong
    * for a block selection, which survives scrolling — that one repositions. */
@@ -218,24 +267,25 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
 
   if ((!sel && !blockMode) || !pos) return null;
 
+  const snapped: [number, number] = sel ? snapSelection(sel.value, sel.start, sel.end) : [0, 0];
   const activeBold = sel
-    ? isWrapped(sel.value, sel.start, sel.end, "**", "**")
+    ? isWrapped(sel.value, snapped[0], snapped[1], "**", "**")
     : !!blockSel?.active.bold;
   const activeItalic = sel
-    ? isWrapped(sel.value, sel.start, sel.end, "*", "*") &&
-      !isWrapped(sel.value, sel.start, sel.end, "**", "**")
+    ? isWrapped(sel.value, snapped[0], snapped[1], "*", "*") &&
+      !isWrapped(sel.value, snapped[0], snapped[1], "**", "**")
     : !!blockSel?.active.italic;
   const activeUnderline = sel
-    ? isWrapped(sel.value, sel.start, sel.end, "<u>", "</u>")
+    ? isWrapped(sel.value, snapped[0], snapped[1], "<u>", "</u>")
     : !!blockSel?.active.underline;
   const activeStrike = sel
-    ? isWrapped(sel.value, sel.start, sel.end, "~~", "~~")
+    ? isWrapped(sel.value, snapped[0], snapped[1], "~~", "~~")
     : !!blockSel?.active.strike;
   const activeCode = sel
-    ? isWrapped(sel.value, sel.start, sel.end, "`", "`")
+    ? isWrapped(sel.value, snapped[0], snapped[1], "`", "`")
     : !!blockSel?.active.code;
   const activeHighlight = sel
-    ? isWrapped(sel.value, sel.start, sel.end, "==", "==")
+    ? isWrapped(sel.value, snapped[0], snapped[1], "==", "==")
     : !!blockSel?.active.highlight;
 
   const apply = (open: string, close: string) => {
@@ -366,8 +416,7 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
                 hide();
               } else if (e.key === "Escape") {
                 e.preventDefault();
-                setLinkMode(false);
-                setLinkValue("");
+                backToText();
               }
             }}
             style={{
