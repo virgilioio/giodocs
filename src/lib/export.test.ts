@@ -320,7 +320,7 @@ describe("toHtml", () => {
     expect(html).not.toContain("<script>alert('x')</script>");
     expect(html).not.toContain("</style><script>bad()</script>");
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
-    expect(html).toContain("&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt;");
+    expect(html).toContain("&lt;script&gt;alert('x')&lt;/script&gt;");
     // The document itself carries exactly one <style> block (ours)
     expect(html.match(/<style>/g)?.length).toBe(1);
     expect(html.match(/<\/style>/g)?.length).toBe(1);

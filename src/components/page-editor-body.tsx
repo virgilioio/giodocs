@@ -129,6 +129,7 @@ import {
   duplicateBlock as opsDuplicate,
   parsePasteToBlocks,
   splicePasteAtCaret,
+  mergeNextInto as opsMergeNext,
   indentBlock as opsIndent,
   reclampIndents,
 } from "@/lib/block-ops";
@@ -440,6 +441,7 @@ export function EditableTitle({
       onChange={(e) => onChange(e.target.value.replace(/\n/g, ""))}
       onKeyDown={(e) => {
         if (readOnly) return;
+        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
         if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
           e.preventDefault();
           onEnter();
@@ -2835,6 +2837,8 @@ export function EditableBody({
           }}
           onKeyDown={(e) => {
             if (locked) return;
+            // An accent or IME composition owns the keyboard until it ends.
+            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
             const el = e.currentTarget as HTMLElement;
             const v = b.text ?? "";
             const caret = readCaret(el, v) ?? { start: 0, end: 0 };
@@ -2934,6 +2938,34 @@ export function EditableBody({
                 e.preventDefault();
                 mergeIntoPrev(b.id);
                 return;
+              case "remove-prev": {
+                e.preventDefault();
+                const i = blocks.findIndex((x) => x.id === b.id);
+                if (i > 0) {
+                  applyOp({
+                    next: blocks.filter((_, j) => j !== i - 1),
+                    focus: { id: b.id, caret: "start" },
+                  });
+                }
+                return;
+              }
+              case "select-prev": {
+                e.preventDefault();
+                const i = blocks.findIndex((x) => x.id === b.id);
+                if (i > 0) {
+                  el.blur();
+                  setSelectedIds(new Set([blocks[i - 1].id]));
+                }
+                return;
+              }
+              case "merge-next": {
+                const r = opsMergeNext(blocks, b.id);
+                if (r) {
+                  e.preventDefault();
+                  applyOp(r);
+                }
+                return;
+              }
               case "exit-to-title":
                 e.preventDefault();
                 if (!jumpTo(-1, "end")) focusTitle();
@@ -3222,6 +3254,7 @@ function BlockRow({
       data-block-id={block.id}
       data-block-type={block.type}
       data-block-no-editor={noEditor ? "true" : undefined}
+      data-selected={selected ? "true" : undefined}
       // `gio-row` (not Tailwind's `group`) owns the gutter reveal. A bare
       // `group` matches ANY ancestor, so a columns/callout row wrapping
       // inner rows revealed every inner gutter at once — the reveal now
@@ -4312,6 +4345,8 @@ function ColumnStack({
           }}
           onKeyDown={(e) => {
             if (locked) return;
+            // An accent or IME composition owns the keyboard until it ends.
+            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
             const el = e.currentTarget as HTMLElement;
             const v = b.text ?? "";
             const car = readCaret(el, v) ?? { start: 0, end: 0 };
@@ -4396,6 +4431,30 @@ function ColumnStack({
                 e.preventDefault();
                 applyOp(opsMerge(blocks, b.id));
                 return;
+              case "remove-prev": {
+                e.preventDefault();
+                const i = blocks.findIndex((x) => x.id === b.id);
+                if (i > 0) {
+                  applyOp({
+                    next: blocks.filter((_, j) => j !== i - 1),
+                    focus: { id: b.id, caret: "start" },
+                  });
+                }
+                return;
+              }
+              case "select-prev":
+                // Block selection is top-level only; inside a column the
+                // Backspace simply does nothing rather than hide the text.
+                e.preventDefault();
+                return;
+              case "merge-next": {
+                const r = opsMergeNext(blocks, b.id);
+                if (r) {
+                  e.preventDefault();
+                  applyOp(r);
+                }
+                return;
+              }
               case "dissolve-columns":
                 // Sole empty block of its column. The parent refuses unless
                 // EVERY column is empty, so the old guard survives for

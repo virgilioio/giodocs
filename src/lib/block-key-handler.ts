@@ -25,7 +25,7 @@
  * Everything else is identical by construction — the whole point.
  */
 
-import type { Blk } from "./block-ops";
+import { isTextBearing, type Blk } from "./block-ops";
 import { shouldSelectAllBlocks } from "./is-typing";
 import { enterAction } from "./enter-behaviour";
 
@@ -55,6 +55,14 @@ export type Op =
   | { kind: "convert-to-text" }
   /** Backspace at start with a non-empty text block → merge into previous. */
   | { kind: "merge-prev" }
+  /** Backspace at start right after a divider → delete the divider. */
+  | { kind: "remove-prev" }
+  /** Backspace at start right after an image, table, sheet, page link or
+   *  other block that has no text → select that block (a second Backspace
+   *  deletes it), never merge text into it where it would be hidden. */
+  | { kind: "select-prev" }
+  /** Forward Delete at the end → pull the next block's text up. */
+  | { kind: "merge-next" }
   /** Backspace at start on an empty non-list text block → remove it. */
   | { kind: "remove-empty" }
   /** Column-only: escape the column via the enterAction decision. */
@@ -121,6 +129,16 @@ export function resolveKey(
     return { kind: "duplicate" };
   }
 
+  // Code blocks are plain text: Enter is a newline and ⌘B/⌘I/… would only
+  // insert literal markers.
+  if (b?.type === "code") {
+    if (key === "Enter") return { kind: "none" };
+    if (meta && !["z", "y"].includes(key.toLowerCase())) {
+      const k = key.toLowerCase();
+      if (["b", "i", "u", "e", "h", "x"].includes(k)) return { kind: "none" };
+    }
+  }
+
   // Inline formatting shortcuts. All are ⌘/Ctrl-based; ⌘B and ⌘U are
   // browser-bound (bold/underline in every browser) and ⌘I is in some,
   // so the caller must preventDefault on the wrap op.
@@ -148,8 +166,12 @@ export function resolveKey(
   if (key === "Enter" && !shift) {
     if (!b) return { kind: "split", caret: selStart };
     const isEmpty = (b.text ?? "") === "";
-    // Empty list-like block: same at both scopes — convert to text.
-    if (isEmpty && LIST_TYPES.has(b.type)) return { kind: "convert-to-text" };
+    // Empty list-like block: an indented one steps out a level first (as in
+    // every outliner); at the top level it turns into text.
+    if (isEmpty && LIST_TYPES.has(b.type)) {
+      const ind = (b as { indent?: number }).indent ?? 0;
+      return ind > 0 ? { kind: "outdent" } : { kind: "convert-to-text" };
+    }
     if (scope === "column") {
       // Delegate to the shared enterAction decision (column-escape rules).
       const a = enterAction(list, index, selStart, value);
@@ -169,6 +191,11 @@ export function resolveKey(
     const curIndent = (b as { indent?: number }).indent ?? 0;
     if (curIndent > 0 && INDENTABLE.has(b.type)) return { kind: "outdent" };
     if (b.type !== "text") return { kind: "convert-to-text" };
+    // Never merge into (or hide text behind) a block that shows no text.
+    const prev = index > 0 ? list[index - 1] : undefined;
+    if (prev && !isTextBearing(prev) && (b.text ?? "") !== "") {
+      return prev.type === "divider" ? { kind: "remove-prev" } : { kind: "select-prev" };
+    }
     if ((b.text ?? "") === "") {
       if (scope === "column" && index === 0) {
         // Only block of its column, and empty: offer the dissolve. The
@@ -180,6 +207,12 @@ export function resolveKey(
     }
     if (scope === "column" && index === 0) return { kind: "none" };
     return { kind: "merge-prev" };
+  }
+
+  // Forward Delete at the very end pulls the next block up.
+  if (key === "Delete" && collapsed && selStart === valueLength && !meta) {
+    if (index < list.length - 1) return { kind: "merge-next" };
+    return { kind: "none" };
   }
 
   // Arrow navigation. Only with a collapsed caret; a real selection is
