@@ -139,8 +139,11 @@ export function EmojiPicker({
     const found = [...customHits, ...searchEmoji(query, 80)];
     const g = firstGrapheme(query);
     // If the query itself is an emoji grapheme and not already first,
-    // surface it as the first result so raw emoji stays reachable.
-    if (g && (!found[0] || found[0].char !== g)) {
+    // surface it as the first result so raw emoji stays reachable. Only an
+    // actual emoji: searching "rocket" used to offer "r" first, and Enter
+    // made the letter the icon.
+    const isEmoji = !!g && /\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(g);
+    if (g && isEmoji && (!found[0] || found[0].char !== g)) {
       return [
         { char: g, name: query.trim(), keywords: [], category: "symbols" as EmojiCategory },
         ...found,

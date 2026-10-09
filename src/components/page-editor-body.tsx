@@ -129,11 +129,14 @@ import {
   duplicateBlock as opsDuplicate,
   parsePasteToBlocks,
   splicePasteAtCaret,
+  inlinePaste,
   mergeNextInto as opsMergeNext,
   indentBlock as opsIndent,
   reclampIndents,
 } from "@/lib/block-ops";
 import { resolveKey, type Op as KeyOp } from "@/lib/block-key-handler";
+import { slashTrigger, stripSlash } from "@/lib/slash";
+import { applyCalloutDefaults, rememberCallout } from "@/lib/callout-prefs";
 import { toggleWrap } from "@/lib/toggle-wrap";
 import { linkPaste } from "@/lib/paste-link";
 import { commitSourceToEditable, readEditableSource } from "@/lib/link-commit";
@@ -1489,8 +1492,22 @@ export function EditableBody({
       const parsedOut = parsePasteToBlocks(htmlSrc, plainSrc);
 
       if (!parsedOut) return; // Let the browser handle a plain single-line paste.
-      e.preventDefault();
       const parsed = parsedOut.blocks;
+
+      // One line copied from a browser, Slack or Docs (it arrives as HTML)
+      // goes inside this block at the caret — not three blocks.
+      if (selectedIds.size === 0) {
+        const el = e.currentTarget;
+        const src = el ? readEditableSource(el) : "";
+        const car = el ? readCaret(el, src) : null;
+        const ip = car ? inlinePaste(src, car.start, car.end, parsed) : null;
+        if (ip) {
+          e.preventDefault();
+          commitSourceToEditable(el, ip.text, ip.caret);
+          return;
+        }
+      }
+      e.preventDefault();
 
       const idx = blocks.findIndex((b) => b.id === blockId);
       if (idx === -1) return;
@@ -1520,9 +1537,9 @@ export function EditableBody({
       } else {
         // Splice at caret within the target block, via the shared op.
         const ta = e.currentTarget;
-        const src = blocks[idx].text ?? "";
-        const caret = readCaret(ta, src)?.start ?? src.length;
-        const r = splicePasteAtCaret(blocks, blockId, caret, parsed);
+        const src = readEditableSource(ta);
+        const car = readCaret(ta, src);
+        const r = splicePasteAtCaret(blocks, blockId, car?.start ?? src.length, parsed, car?.end ?? src.length);
         if (!r) return;
         next = r.next;
       }
@@ -1828,6 +1845,8 @@ export function EditableBody({
   const [slash, setSlash] = useState<{
     blockId: string;
     query: string;
+    /** Where the "/" is in the block's source. */
+    at: number;
     x: number;
     y: number;
   } | null>(null);
@@ -1858,8 +1877,9 @@ export function EditableBody({
       if (idx === -1) return;
       const prev = blocks[idx];
       const t = (prev.text ?? "");
-      const slashPos = t.lastIndexOf("/");
-      const stripped = slashPos >= 0 ? t.slice(0, slashPos) : t;
+      const at = slash && slash.blockId === blockId ? slash.at : t.lastIndexOf("/");
+      const stripped = at >= 0 ? stripSlash(t, at, slash?.query ?? "") : t;
+      const caretAfter = at >= 0 ? at : stripped.length;
 
       // Columns: replace the current block wholesale with a fresh columns
       // block seeded with N empty text-column columns; focus cols[0][0].
@@ -1878,7 +1898,7 @@ export function EditableBody({
       const nb: Blk = { ...prev, type, text: stripped };
       if (type === "todo" && nb.checked == null) nb.checked = false;
       if (type === "toggle" && nb.open == null) nb.open = false;
-      if (type === "callout" && !nb.icon) nb.icon = "💡";
+      if (type === "callout") applyCalloutDefaults(nb);
       if (type === "table" && !nb.rows) nb.rows = [["", "", ""], ["", "", ""]];
       // Converting a text block into a sheet must seed the SAME grid the
       // factory makes; without it the sheet reached the model empty and
@@ -1897,9 +1917,9 @@ export function EditableBody({
       }
       commit(next);
       setSlash(null);
-      setFocusRequest({ id: blockId, caret: stripped.length });
+      setFocusRequest({ id: blockId, caret: caretAfter });
     },
-    [blocks, commit],
+    [blocks, commit, slash],
   );
 
 
@@ -2014,7 +2034,7 @@ export function EditableBody({
         const nb: Blk = { ...prev, type, ...(extra ?? {}) };
         if (type === "todo" && nb.checked == null) nb.checked = false;
         if (type === "toggle" && nb.open == null) nb.open = false;
-        if (type === "callout" && !nb.icon) nb.icon = "💡";
+        if (type === "callout") applyCalloutDefaults(nb);
         if (type === "table" && !nb.rows) nb.rows = [["", "", ""], ["", "", ""]];
       // Converting a text block into a sheet must seed the SAME grid the
       // factory makes; without it the sheet reached the model empty and
@@ -2255,6 +2275,7 @@ export function EditableBody({
             else nb.color = c;
             next[i] = nb;
           }
+          rememberCallout({ color: c });
           commitScoped(t?.scope ?? null, next);
           // Return to the block menu rather than closing: people try two
           // or three against the surrounding text.
@@ -2819,15 +2840,13 @@ export function EditableBody({
 
             const el = refs.current[b.id];
             const caret = el ? (readCaret(el, val)?.start ?? val.length) : val.length;
-            const before = val.slice(0, caret);
-            const slashPos = before.lastIndexOf("/");
-            const openable =
-              slashPos >= 0 && !/\s/.test(before.slice(slashPos + 1));
-            if (openable) {
+            const trig = slashTrigger(val, caret, b.type);
+            if (trig) {
               const rect = el?.getBoundingClientRect();
               setSlash({
                 blockId: b.id,
-                query: before.slice(slashPos + 1),
+                query: trig.query,
+                at: trig.at,
                 x: rect ? rect.left : 200,
                 y: rect ? rect.bottom + 4 : 200,
               });
@@ -2845,7 +2864,15 @@ export function EditableBody({
             const ss = caret.start;
             const se = caret.end;
 
-            if (slash?.blockId === b.id) {
+            // With nothing matching, the menu steps aside: Enter, arrows and
+            // Escape act on the text as usual.
+            if (slash?.blockId === b.id && filteredMenu.length === 0) {
+              setSlash(null);
+              if (e.key === "Escape") {
+                e.preventDefault();
+                return;
+              }
+            } else if (slash?.blockId === b.id) {
               if (e.key === "ArrowDown") {
                 e.preventDefault();
                 setMenuIdx((i) => Math.min(filteredMenu.length - 1, i + 1));
@@ -3818,6 +3845,7 @@ function CalloutIconPicker({
               // a callout without an icon has a ragged left edge and
               // the layout assumes one is present.
               onPick(e ?? "💡");
+              rememberCallout({ icon: e ?? "💡" });
               close();
             }}
           />
@@ -4029,6 +4057,8 @@ function ColumnStack({
   const [slash, setSlash] = useState<{
     blockId: string;
     query: string;
+    /** Where the "/" is in the block's source. */
+    at: number;
     x: number;
     y: number;
   } | null>(null);
@@ -4102,12 +4132,12 @@ function ColumnStack({
     if (idx === -1) return;
     const prev = blocks[idx];
     const t = prev.text ?? "";
-    const slashPos = t.lastIndexOf("/");
-    const stripped = slashPos >= 0 ? t.slice(0, slashPos) : t;
+    const at = slash && slash.blockId === blockId ? slash.at : t.lastIndexOf("/");
+    const stripped = at >= 0 ? stripSlash(t, at, slash?.query ?? "") : t;
     const nb: Blk = { ...prev, type, text: stripped, ...(extra ?? {}) };
     if (type === "todo" && nb.checked == null) nb.checked = false;
     if (type === "toggle" && nb.open == null) nb.open = false;
-    if (type === "callout" && !nb.icon) nb.icon = "💡";
+    if (type === "callout") applyCalloutDefaults(nb);
     if (type === "table" && !nb.rows) nb.rows = [["", "", ""], ["", "", ""]];
       // Converting a text block into a sheet must seed the SAME grid the
       // factory makes; without it the sheet reached the model empty and
@@ -4120,7 +4150,7 @@ function ColumnStack({
     next[idx] = nb;
     setBlocks(next);
     setSlash(null);
-    setFocusRequest({ id: blockId, caret: stripped.length });
+    setFocusRequest({ id: blockId, caret: at >= 0 ? at : stripped.length });
   }
 
   /* Structured paste inside a column — the priority for this task.
@@ -4150,11 +4180,16 @@ function ColumnStack({
       if (!parsedOut) return;
       const parsed = parsedOut.blocks.filter((p) => p.type !== "columns");
       if (parsed.length === 0) return;
-      e.preventDefault();
       const ta = e.currentTarget;
-      const src = blocks.find((b) => b.id === blockId)?.text ?? "";
-      const caret = readCaret(ta, src)?.start ?? src.length;
-      applyOp(splicePasteAtCaret(blocks, blockId, caret, parsed));
+      const src = readEditableSource(ta);
+      const car = readCaret(ta, src);
+      const ip = car ? inlinePaste(src, car.start, car.end, parsed) : null;
+      e.preventDefault();
+      if (ip) {
+        commitSourceToEditable(ta, ip.text, ip.caret);
+        return;
+      }
+      applyOp(splicePasteAtCaret(blocks, blockId, car?.start ?? src.length, parsed, car?.end ?? src.length));
     },
     [blocks, locked, applyOp],
   );
@@ -4327,15 +4362,13 @@ function ColumnStack({
             updateBlock(b.id, { text: val });
             const el = refs.current[b.id];
             const caret = el ? (readCaret(el, val)?.start ?? val.length) : val.length;
-            const before = val.slice(0, caret);
-            const slashPos = before.lastIndexOf("/");
-            const openable =
-              slashPos >= 0 && !/\s/.test(before.slice(slashPos + 1));
-            if (openable) {
+            const trig = slashTrigger(val, caret, b.type);
+            if (trig) {
               const rect = el?.getBoundingClientRect();
               setSlash({
                 blockId: b.id,
-                query: before.slice(slashPos + 1),
+                query: trig.query,
+                at: trig.at,
                 x: rect ? rect.left : 200,
                 y: rect ? rect.bottom + 4 : 200,
               });
@@ -4353,7 +4386,15 @@ function ColumnStack({
             const ss = car.start;
             const se = car.end;
 
-            if (slash?.blockId === b.id) {
+            // With nothing matching, the menu steps aside: Enter, arrows and
+            // Escape act on the text as usual.
+            if (slash?.blockId === b.id && filteredMenu.length === 0) {
+              setSlash(null);
+              if (e.key === "Escape") {
+                e.preventDefault();
+                return;
+              }
+            } else if (slash?.blockId === b.id) {
               if (e.key === "ArrowDown") {
                 e.preventDefault();
                 setMenuIdx((i) => Math.min(filteredMenu.length - 1, i + 1));

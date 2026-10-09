@@ -12,6 +12,7 @@
  */
 
 import { splitInlineSource } from "./split-inline";
+import { applyCalloutDefaults } from "./callout-prefs";
 import { nanoid } from "nanoid";
 import { parseMarkdown } from "@/lib/markdown-import";
 import { htmlToMarkdown, htmlToBlocks } from "@/lib/html-to-markdown";
@@ -155,7 +156,7 @@ export function newBlock(type: BlockType = "text", text = ""): Blk {
   const base: Blk = { id: nanoid(10), type, text };
   if (type === "todo") base.checked = false;
   if (type === "toggle") base.open = false;
-  if (type === "callout") base.icon = "💡";
+  if (type === "callout") applyCalloutDefaults(base);
   if (type === "table") base.rows = [["", "", ""], ["", "", ""]];
   if (type === "sheet") Object.assign(base, newSheetGrid() as Record<string, unknown>);
 
@@ -249,7 +250,7 @@ export function tryMarkdownShortcut(
     // the user typed a prefix then continued into the payload.
     const nb: Blk = { ...cur, type: m.type, text: remainder };
     if (m.type === "todo") nb.checked = false;
-    if (m.type === "callout" && !nb.icon) nb.icon = "💡";
+    if (m.type === "callout") applyCalloutDefaults(nb);
     const next = list.map((b, i) => (i === idx ? nb : b));
     return { next, focus: { id, caret: "start" } };
   }
@@ -438,28 +439,54 @@ export function splicePasteAtCaret(
   id: string,
   caret: number,
   parsed: Blk[],
+  caretEnd: number = caret,
 ): OpResult | null {
   if (parsed.length === 0) return null;
   const idx = list.findIndex((b) => b.id === id);
   if (idx === -1) return null;
   const cur = list[idx];
   const full = cur.text ?? "";
-  const before = full.slice(0, caret);
-  const after = full.slice(caret);
+  // Cut with the mark-aware split so neither side keeps half a "**", and
+  // drop any selected text (the paste replaces it).
+  const [before] = splitInlineSource(full, Math.min(caret, caretEnd));
+  const [, after] = splitInlineSource(full, Math.max(caret, caretEnd));
   const head = list.slice(0, idx);
   const tail = list.slice(idx + 1);
   let next: Blk[];
-  if (full === "") {
+  if (full === "" || (before === "" && after === "")) {
     next = [...head, ...parsed, ...tail];
   } else {
-    const currentPatched: Blk = { ...cur, text: before };
+    const currentPatched: Blk[] = before ? [{ ...cur, text: before }] : [];
     const trailing: Blk[] = after
       ? [{ id: nanoid(10), type: "text", text: after } as Blk]
       : [];
-    next = [...head, currentPatched, ...parsed, ...trailing, ...tail];
+    next = [...head, ...currentPatched, ...parsed, ...trailing, ...tail];
   }
   const focusId = parsed[parsed.length - 1].id;
   return { next: reclampIndents(next), focus: { id: focusId, caret: "end" } };
+}
+
+/** A paste that is one line of text going into a block that already has
+ *  text belongs INSIDE that block, at the caret (replacing any selected
+ *  text), keeping its bold/italic/links — not split into three blocks.
+ *  Returns the new source and caret, or null when the paste is structural
+ *  (several blocks, an image, a table…) or the block is empty. */
+export function inlinePaste(
+  src: string,
+  start: number,
+  end: number,
+  parsed: Blk[],
+): { text: string; caret: number } | null {
+  if (parsed.length !== 1 || src === "") return null;
+  const p = parsed[0];
+  const INLINE_OK = new Set(["text", "h1", "h2", "h3", "quote", "bullet", "numbered", "todo", "callout", "toggle"]);
+  if (!INLINE_OK.has(p.type)) return null;
+  if (Array.isArray(p.children)) return null;
+  const ins = p.text ?? "";
+  if (!ins || /\n/.test(ins)) return null;
+  const a = Math.max(0, Math.min(start, end));
+  const b = Math.min(src.length, Math.max(start, end));
+  return { text: src.slice(0, a) + ins + src.slice(b), caret: a + ins.length };
 }
 
 /* ────────── Indent ops ────────── */

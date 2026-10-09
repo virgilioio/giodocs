@@ -146,6 +146,13 @@ export function parseHtmlFragment(html: string): Node[] {
     }
 
     if (DROP.has(tag)) {
+      // A void element (<meta>, <link>) has no closer: skip just the tag.
+      // Looking for "</meta>" used to swallow the whole clipboard, because
+      // Chrome starts every copied fragment with <meta charset="utf-8">.
+      if (VOID.has(tag) || selfClose) {
+        i = gt + 1;
+        continue;
+      }
       // Fast-forward past the closer.
       const closer = new RegExp(`</${tag}\\s*>`, "i");
       const rest = src.slice(gt + 1);
