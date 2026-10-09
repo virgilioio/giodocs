@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toClipboard } from "@/lib/clipboard";
-import { useIsMutating } from "@tanstack/react-query";
+import { useSaveStatus } from "@/lib/save-status";
 import { useNavigate } from "@tanstack/react-router";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import {
@@ -93,11 +93,15 @@ function EditedStamp({
   editorName,
   saving,
   savedFlash,
+  unsaved = false,
+  stopped = false,
 }: {
   page: PageListItem;
   editorName: string | null;
   saving: boolean;
   savedFlash: boolean;
+  unsaved?: boolean;
+  stopped?: boolean;
 }) {
   const { prefs } = usePrefs();
   const [tick, setTick] = useState(0);
@@ -108,13 +112,15 @@ function EditedStamp({
   void tick;
 
   const label = useMemo(() => {
+    if (stopped) return "Not saved";
+    if (unsaved) return "Not saved · retrying";
     if (saving) return "Saving…";
     if (savedFlash) return "Saved";
     if (prefs.dateFormat === "absolute") {
       return `Edited ${formatTimestamp(page.edited_at, "absolute")}`;
     }
     return `Edited ${shortRel(page.edited_at)}`;
-  }, [page.edited_at, prefs.dateFormat, saving, savedFlash]);
+  }, [page.edited_at, prefs.dateFormat, saving, savedFlash, unsaved, stopped]);
 
   const tooltip = `${fullFmt.format(new Date(page.edited_at))}${
     editorName ? ` · ${editorName}` : ""
@@ -123,8 +129,9 @@ function EditedStamp({
   return (
     <span
       title={tooltip}
+      role="status"
       className={`hidden shrink-0 whitespace-nowrap text-meta md:block ${
-        saving ? "text-faint" : "text-muted"
+        unsaved ? "text-danger" : saving ? "text-faint" : "text-muted"
       }`}
     >
       {label}
@@ -236,17 +243,12 @@ export function PageTopbarActions({
     return m?.profiles?.full_name || m?.profiles?.email || null;
   }, [members, listRow]);
 
-  // Saving detection — any in-flight mutation whose variables target this page.
-  const inFlight = useIsMutating({
-    predicate: (m) => {
-      const v = m.state.variables as unknown;
-      if (typeof v === "string" && v === pageId) return true;
-      if (v && typeof v === "object" && "pageId" in v) {
-        return (v as { pageId?: string }).pageId === pageId;
-      }
-      return false;
-    },
-  });
+  // Save state comes from the page body's saver ("Saving…" only when a
+  // save takes a while; "Not saved" while it's retrying or stopped).
+  const saveStatus = useSaveStatus(pageId);
+  const inFlight = saveStatus === "saving";
+  const unsaved = saveStatus === "retrying" || saveStatus === "stopped";
+  const stopped = saveStatus === "stopped";
   const [showSaving, setShowSaving] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const wasSavingRef = useRef(false);
@@ -258,7 +260,7 @@ export function PageTopbarActions({
     }
     if (wasSavingRef.current) {
       wasSavingRef.current = false;
-      if (showSaving) {
+      if (showSaving && !unsaved) {
         setSavedFlash(true);
         const t = window.setTimeout(() => setSavedFlash(false), 1500);
         setShowSaving(false);
@@ -266,7 +268,7 @@ export function PageTopbarActions({
       }
     }
     setShowSaving(false);
-  }, [inFlight, showSaving]);
+  }, [inFlight, showSaving, unsaved]);
 
   /* ────────── Mutations ────────── */
   const verify = useVerifyPage();
@@ -402,6 +404,8 @@ export function PageTopbarActions({
         editorName={editedName}
         saving={showSaving}
         savedFlash={savedFlash}
+        unsaved={unsaved}
+        stopped={stopped}
       />
 
       <IconButton

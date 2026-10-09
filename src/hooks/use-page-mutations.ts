@@ -1,7 +1,8 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
+import { jsonEqual } from "@/lib/json-equal";
 import { qk } from "@/lib/query-keys";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
 import { useToast } from "@/lib/toast";
@@ -936,73 +937,120 @@ export function useRestorePage() {
 
 /* ────────────── Part B: block edits + create-and-open ────────────── */
 
+/** Someone else saved different blocks after this tab last loaded or saved
+ *  them. Carries the server's current row so the page can offer theirs. */
+export class EditConflictError extends Error {
+  constructor(
+    public server: { blocks: Block[]; edited_at: string; edited_by: string | null },
+  ) {
+    super("This page changed somewhere else while you were editing.");
+    this.name = "EditConflictError";
+  }
+}
+
+/** The save went through but touched no row, twice: no edit access any more
+ *  (or the page is gone). Not worth retrying. */
+export class SaveRejectedError extends Error {
+  constructor() {
+    super("Your changes couldn't be saved. You may no longer be able to edit this page.");
+    this.name = "SaveRejectedError";
+  }
+}
+
+export type BlocksSaveGuard = {
+  /** edited_at this tab last saw from the server; the update only applies
+   *  while the row still has it. null skips the check. */
+  editedAt: string | null;
+  /** The blocks this tab last loaded or saved. */
+  base: Block[] | null;
+  /** The last value this tab sent (its reply may have been lost). */
+  lastAttempt: Block[] | null;
+  /** Overwrite whatever is there ("Keep mine" after a conflict). */
+  force?: boolean;
+};
+
 /**
- * Writes pages.blocks and lets the server-side touch_page trigger bump
- * edited_at/edited_by. Optimistically patches the page detail cache and
- * the workspace list cache so the topbar's "Edited …" stamp updates
- * immediately. Variables carry `pageId` so useIsMutating in
- * page-topbar-actions can detect the in-flight save.
+ * Returns a stable function that writes pages.blocks. It is a plain
+ * function rather than a mutation so a page that has left the screen can
+ * keep retrying until its last edits are saved.
+ *
+ * The update is conditional on edited_at, so a second tab or a teammate
+ * can't be silently overwritten. When the condition fails it reads the
+ * row: if the blocks are still the ones this tab knows (the row changed
+ * for another reason, such as a title edit, or our own earlier save
+ * landed but its reply was lost) it retries against the new edited_at;
+ * otherwise it throws EditConflictError.
+ *
+ * Optimistically patches the page detail and list caches so the "Edited …"
+ * stamp moves immediately, then reconciles with the server's edited_at.
  */
-export function useUpdateBlocks() {
+export function useBlocksSender() {
   const qc = useQueryClient();
   const ws = useWorkspaceId();
   const { user } = useAuth();
-  const toast = useToast();
+  const userId = user?.id ?? null;
 
-  return useMutation({
-    mutationFn: async (v: { pageId: string; blocks: Block[] }) => {
-      const { data, error } = await supabase
-        .from("pages")
-        .update({ blocks: v.blocks as never })
-        .eq("id", v.pageId)
-        .select("edited_at, edited_by")
-        .single();
-      if (error) throw error;
-      return data as { edited_at: string; edited_by: string | null };
-    },
-    onMutate: async (v) => {
-      await qc.cancelQueries({ queryKey: qk.page(v.pageId) });
-      const nowIso = new Date().toISOString();
-
-      qc.setQueryData<PageFull | null>(qk.page(v.pageId), (prev) =>
+  return useMemo(() => {
+    const patchCaches = (pageId: string, edited_at: string, edited_by: string | null, blocks?: Block[]) => {
+      qc.setQueryData<PageFull | null>(qk.page(pageId), (prev) =>
         prev
           ? {
               ...prev,
-              blocks: v.blocks as unknown as PageFull["blocks"],
-              edited_at: nowIso,
-              edited_by: user?.id ?? prev.edited_by,
+              ...(blocks ? { blocks: blocks as unknown as PageFull["blocks"] } : {}),
+              edited_at,
+              edited_by: edited_by ?? prev.edited_by,
             }
           : prev,
       );
       qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) =>
         prev
           ? prev.map((p) =>
-              p.id === v.pageId
-                ? { ...p, edited_at: nowIso, edited_by: user?.id ?? p.edited_by }
-                : p,
+              p.id === pageId ? { ...p, edited_at, edited_by: edited_by ?? p.edited_by } : p,
             )
           : prev,
       );
-    },
-    onError: (err) => {
-      toast.push(`Couldn't save: ${(err as Error).message}`);
-    },
-    onSuccess: (row, v) => {
-      // Reconcile with the server-authoritative edited_at.
-      qc.setQueryData<PageFull | null>(qk.page(v.pageId), (prev) =>
-        prev ? { ...prev, edited_at: row.edited_at, edited_by: row.edited_by } : prev,
-      );
-      qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) =>
-        prev
-          ? prev.map((p) =>
-              p.id === v.pageId
-                ? { ...p, edited_at: row.edited_at, edited_by: row.edited_by }
-                : p,
-            )
-          : prev,
-      );
-    },
-  });
+    };
+
+    const write = async (pageId: string, blocks: Block[], editedAt: string | null) => {
+      let q = supabase.from("pages").update({ blocks: blocks as never }).eq("id", pageId);
+      if (editedAt) q = q.eq("edited_at", editedAt);
+      const { data, error } = await q.select("edited_at, edited_by");
+      if (error) throw error;
+      return (data?.[0] ?? null) as { edited_at: string; edited_by: string | null } | null;
+    };
+
+    return async (pageId: string, blocks: Block[], guard: BlocksSaveGuard) => {
+      await qc.cancelQueries({ queryKey: qk.page(pageId) });
+      patchCaches(pageId, new Date().toISOString(), userId, blocks);
+
+      let row = await write(pageId, blocks, guard.force ? null : guard.editedAt);
+      if (!row) {
+        const { data: server, error } = await supabase
+          .from("pages")
+          .select("blocks, edited_at, edited_by")
+          .eq("id", pageId)
+          .maybeSingle();
+        if (error) throw error;
+        if (!server) throw new SaveRejectedError();
+        const serverBlocks = (Array.isArray(server.blocks) ? server.blocks : []) as Block[];
+        const ours =
+          jsonEqual(serverBlocks, guard.base) ||
+          jsonEqual(serverBlocks, blocks) ||
+          (guard.lastAttempt !== null && jsonEqual(serverBlocks, guard.lastAttempt));
+        if (!ours) {
+          throw new EditConflictError({
+            blocks: serverBlocks,
+            edited_at: server.edited_at as string,
+            edited_by: (server.edited_by as string | null) ?? null,
+          });
+        }
+        row = await write(pageId, blocks, server.edited_at as string);
+        if (!row) throw new SaveRejectedError();
+      }
+      patchCaches(pageId, row.edited_at, row.edited_by);
+      return row;
+    };
+  }, [qc, ws, userId]);
 }
 
 /**
