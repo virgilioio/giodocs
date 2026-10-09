@@ -144,8 +144,8 @@ import { ImageBlock, ImageRowBlock, PageImageCtx } from "@/components/image-bloc
 import { FileBlock } from "@/components/file-block";
 import { PageBlock } from "@/components/page-block";
 import { SheetBlockView } from "@/components/sheet-block";
-import { collectImagePaths, droppedImagePaths, rejectReason } from "@/lib/image-ops";
-import { gcImagePaths, uploadImage } from "@/lib/images";
+import { droppedImagePaths, rejectReason } from "@/lib/image-ops";
+import { uploadImage } from "@/lib/images";
 import { FloatingToolbar } from "./floating-toolbar";
 import type { BlockSel, MarkName } from "./floating-toolbar";
 import {
@@ -3071,10 +3071,9 @@ export function EditableBody({
           onPaste={(e) => handlePaste(b.id, e)}
           onDelete={() => {
             if (locked) return;
-            // Explicit delete is the ONE place storage is collected: the
-            // objects are unreachable the moment the block is gone.
-            const paths = collectImagePaths([b]);
-            if (paths.length) void gcImagePaths(pageId, paths).catch(() => {});
+            // The image file is NOT deleted here. ⌘Z brings the block back,
+            // a duplicated block or a duplicated page can point at the same
+            // file, and deleting it broke every one of those copies.
             applyOp(opsRemove(blocks, b.id, { ensureOne: true }));
           }}
         />
@@ -4584,10 +4583,7 @@ function ColumnStack({
           onPaste={(e) => handlePaste(b.id, e)}
           onDelete={() => {
             if (locked) return;
-            const paths = collectImagePaths([b]);
-            if (paths.length && imgCtx) {
-              void gcImagePaths(imgCtx.pageId, paths).catch(() => {});
-            }
+            // Image files are kept: see the top-level delete.
             applyOp(opsRemove(blocks, b.id, { ensureOne: true }));
           }}
         />
