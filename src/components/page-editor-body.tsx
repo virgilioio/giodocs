@@ -1,5 +1,6 @@
 import {
   createContext,
+  memo,
   useCallback,
   useContext,
   useEffect,
@@ -465,6 +466,31 @@ export function EditableTitle({
 
 /* ────────────── Public: EditableBody ────────────── */
 
+
+/* Stable per-block callbacks. Each render records the LATEST handlers for a
+ * block; the functions handed to <BlockRow> are created once per block id and
+ * forward to those latest handlers. BlockRow is memoised, so typing in one
+ * block re-renders that block only — not every block on the page — while
+ * every callback still sees current state. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyFn = (...args: any[]) => any;
+function useStableRowHandlers() {
+  const latest = useRef(new Map<string, Record<string, AnyFn | undefined>>());
+  const cache = useRef(new Map<string, Record<string, AnyFn>>());
+  return useCallback(<T extends Record<string, AnyFn | undefined>>(id: string, handlers: T): T => {
+    latest.current.set(id, handlers);
+    let c = cache.current.get(id);
+    if (!c) {
+      c = {};
+      cache.current.set(id, c);
+    }
+    for (const k of Object.keys(handlers)) {
+      if (!c[k]) c[k] = (...args: unknown[]) => latest.current.get(id)?.[k]?.(...args);
+    }
+    return c as T;
+  }, []);
+}
+
 export function EditableBody({
   pageId,
   initialBlocks,
@@ -488,6 +514,7 @@ export function EditableBody({
   });
   // If the incoming server data changes for a different page, resync.
   const workspaceId = useWorkspaceId();
+  const rowHandlers = useStableRowHandlers();
   const navigate = useNavigate();
   const lastPage = useRef(pageId);
   useEffect(() => {
@@ -3017,32 +3044,35 @@ export function EditableBody({
       {blocks.map((b) => (
         <BlockRow
           key={b.id}
-          onEditorFocus={() => setFocusedId(b.id)}
-          onEditorBlur={() =>
-            setFocusedId((cur) => (cur === b.id ? null : cur))
-          }
           block={b}
           ordinal={b.type === "numbered" ? (ordinalMap.get(b.id) ?? 1) : undefined}
           locked={!!locked}
           selected={selectedIds.has(b.id)}
           dimmed={draggingIdSet.has(b.id)}
           registerRowEl={registerRowEl}
-          onHandlePointerDown={(ev) => beginDrag(b.id, ev)}
-          onHandleClick={(anchor) => {
+          {...rowHandlers(
+            b.id,
+            {
+              onEditorFocus: () => setFocusedId(b.id),
+              onEditorBlur: () =>
+            setFocusedId((cur) => (cur === b.id ? null : cur))
+          ,
+              onHandlePointerDown: (ev) => beginDrag(b.id, ev),
+              onHandleClick: (anchor) => {
             const initial = buildBlockHandleSpec(b.id, {
               setSpec: setHandleMenuSpec,
               close: closeHandleMenu,
             });
             setHandleMenu({ blockId: b.id, anchor, spec: initial });
-          }}
-          onHandleShiftClick={() => handleShiftClick(b.id)}
-          onBlur={onBlur}
-          registerRef={(el) => {
+          },
+              onHandleShiftClick: () => handleShiftClick(b.id),
+              onBlur: onBlur,
+              registerRef: (el) => {
             if (el) refs.current[b.id] = el;
             else delete refs.current[b.id];
-          }}
-          onChange={(patch) => updateBlock(b.id, patch)}
-          onInput={(val) => {
+          },
+              onChange: (patch) => updateBlock(b.id, patch),
+              onInput: (val) => {
             // Shortcut FIRST — on match, apply the structural op and skip
             // the text update, so a single keystroke produces exactly one
             // commit (one undo entry) and the caret lands per applyOp.
@@ -3067,8 +3097,8 @@ export function EditableBody({
             } else if (slash?.blockId === b.id) {
               setSlash(null);
             }
-          }}
-          onKeyDown={(e) => {
+          },
+              onKeyDown: (e) => {
             if (locked) return;
             // An accent or IME composition owns the keyboard until it ends.
             if (e.nativeEvent.isComposing || e.keyCode === 229) return;
@@ -3309,17 +3339,19 @@ export function EditableBody({
                 return;
               }
             }
-          }}
-          onAddBelow={() => { if (!locked) insertAfter(b.id); }}
-          onSetIcon={(icon) => updateBlock(b.id, { icon })}
-          onPaste={(e) => handlePaste(b.id, e)}
-          onDelete={() => {
+          },
+              onAddBelow: () => { if (!locked) insertAfter(b.id); },
+              onSetIcon: (icon) => updateBlock(b.id, { icon }),
+              onPaste: (e) => handlePaste(b.id, e),
+              onDelete: () => {
             if (locked) return;
             // The image file is NOT deleted here. ⌘Z brings the block back,
             // a duplicated block or a duplicated page can point at the same
             // file, and deleting it broke every one of those copies.
             applyOp(opsRemove(blocks, b.id, { ensureOne: true }));
-          }}
+          },
+            },
+          )}
         />
       ))}
 
@@ -3448,7 +3480,8 @@ export function EditableBody({
 
 /* ────────────── One row: gutter + block ────────────── */
 
-function BlockRow({
+const BlockRow = memo(BlockRowImpl);
+function BlockRowImpl({
   block,
   ordinal,
   locked,
@@ -4292,6 +4325,7 @@ function ColumnStack({
     return () => bridge?.registerTrack(colRef, null);
   }, [bridge, colRef]);
 
+  const rowHandlers = useStableRowHandlers();
   const refs = useRef<Record<string, HTMLElement | null>>({});
   const [focusRequest, setFocusRequest] = useState<{
     id: string;
@@ -4572,28 +4606,31 @@ function ColumnStack({
           locked={locked}
           selected={bridge?.selectedIds.has(b.id) ?? false}
           dimmed={false}
-          onEditorFocus={() => setFocusedId(b.id)}
-          onEditorBlur={() =>
-            setFocusedId((cur) => (cur === b.id ? null : cur))
-          }
           registerRowEl={(id, el) => bridge?.registerRow(colRef, id, el)}
-          onHandlePointerDown={(ev) => {
+          {...rowHandlers(
+            b.id,
+            {
+              onEditorFocus: () => setFocusedId(b.id),
+              onEditorBlur: () =>
+            setFocusedId((cur) => (cur === b.id ? null : cur))
+          ,
+              onHandlePointerDown: (ev) => {
             if (bridge) bridge.beginDrag(b.id, ev, colRef);
-          }}
-          onHandleClick={(anchor) => {
+          },
+              onHandleClick: (anchor) => {
             const initial = buildColMenuSpec(b.id, {
               setSpec: setHandleMenuSpec,
               close: closeHandleMenu,
             });
             setHandleMenu({ blockId: b.id, anchor, spec: initial });
-          }}
-          onHandleShiftClick={() => bridge?.shiftClick(b.id, colRef)}
-          registerRef={(el) => {
+          },
+              onHandleShiftClick: () => bridge?.shiftClick(b.id, colRef),
+              registerRef: (el) => {
             if (el) refs.current[b.id] = el;
             else delete refs.current[b.id];
-          }}
-          onChange={(patch) => updateBlock(b.id, patch)}
-          onInput={(val) => {
+          },
+              onChange: (patch) => updateBlock(b.id, patch),
+              onInput: (val) => {
             // Same single-commit shape as top-level: shortcut first, then
             // the text update. Column scope goes through the same pure
             // op so the two paths cannot drift.
@@ -4621,8 +4658,8 @@ function ColumnStack({
             } else if (slash?.blockId === b.id) {
               setSlash(null);
             }
-          }}
-          onKeyDown={(e) => {
+          },
+              onKeyDown: (e) => {
             if (locked) return;
             // An accent or IME composition owns the keyboard until it ends.
             if (e.nativeEvent.isComposing || e.keyCode === 229) return;
@@ -4827,17 +4864,19 @@ function ColumnStack({
                 return;
               }
             }
-          }}
-          onAddBelow={() => {
+          },
+              onAddBelow: () => {
             if (!locked) applyOp(opsInsertAfter(blocks, b.id));
-          }}
-          onSetIcon={(icon) => updateBlock(b.id, { icon })}
-          onPaste={(e) => handlePaste(b.id, e)}
-          onDelete={() => {
+          },
+              onSetIcon: (icon) => updateBlock(b.id, { icon }),
+              onPaste: (e) => handlePaste(b.id, e),
+              onDelete: () => {
             if (locked) return;
             // Image files are kept: see the top-level delete.
             applyOp(opsRemove(blocks, b.id, { ensureOne: true }));
-          }}
+          },
+            },
+          )}
         />
       ))}
       {slash ? (

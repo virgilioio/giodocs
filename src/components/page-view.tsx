@@ -1357,7 +1357,11 @@ export function PageEditor({ pageId }: { pageId: string }) {
     >
       {/* 1+2. Title row: emoji + editable title, side-by-side, height 51. */}
       <div
-        style={{ display: "flex", alignItems: "center", height: 51, gap: 13 }}
+        // minHeight, not height: a title that wraps to a second line grows
+        // the row instead of spilling over the permissions row below it.
+        // Top-aligned (offsets keep the single-line layout exactly as it
+        // was) so the icon sits beside the first line of a long title.
+        style={{ display: "flex", alignItems: "flex-start", minHeight: 51, gap: 13 }}
       >
         <Popover
           width={264}
@@ -1369,7 +1373,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
               aria-label="Change page icon"
               aria-expanded={open}
               className="grid select-none place-items-center rounded-md hover:bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-              style={{ width: 42, height: 42, fontSize: 34, lineHeight: 1, flex: "none" }}
+              style={{ width: 42, height: 42, fontSize: 34, lineHeight: 1, flex: "none", marginTop: 4.5 }}
             >
               <Ico icon={page.icon || "📄"} size={34} />
             </button>
@@ -1385,7 +1389,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
           )}
         </Popover>
 
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1" style={{ paddingTop: 3.5 }}>
           <EditableTitle
             value={titleValue}
             onChange={onTitleChange}
