@@ -1483,6 +1483,9 @@ export function EditableBody({
       const htmlSrc = e.clipboardData?.getData("text/html") ?? "";
       const plainSrc = e.clipboardData?.getData("text/plain") ?? "";
 
+      // A code block is plain text: let the browser paste the plain text.
+      if (blocksRef.current.find((x) => x.id === blockId)?.type === "code") return;
+
       // Pasting a bare URL over a text SELECTION hyperlinks the selection
       // instead of replacing it. Checked after the file branch (a pasted
       // screenshot still wins) and before block parsing, which returns null
@@ -2071,6 +2074,11 @@ export function EditableBody({
     if (selectedIds.size === 0) return;
     const onKey = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return;
+      // Only when nothing else has focus (or focus is in the page body): a
+      // focused menu item, dialog button or emoji grid keeps its own
+      // Enter, Tab and arrows.
+      const tgt = e.target as HTMLElement | null;
+      if (tgt && tgt !== document.body && !tgt.closest?.("[data-gio-page-body]")) return;
       const s = selectedInScope(blocksRef.current);
       if (!s) return;
       const ids = s.list.map((b) => b.id);
@@ -2919,6 +2927,11 @@ export function EditableBody({
         // opens in a new tab.
         try {
           const u = new URL(href, window.location.href);
+          // A block on this same page: change the hash, which scrolls to it.
+          if (u.origin === window.location.origin && u.pathname === window.location.pathname && u.hash) {
+            window.location.hash = u.hash;
+            return;
+          }
           if (u.origin === window.location.origin) {
             void navigate({ href: u.pathname + u.search + u.hash });
             return;
@@ -4392,6 +4405,8 @@ function ColumnStack({
       if (locked) return;
       const htmlSrc = e.clipboardData?.getData("text/html") ?? "";
       const plainSrc = e.clipboardData?.getData("text/plain") ?? "";
+      // A code block is plain text: let the browser paste the plain text.
+      if (blocks.find((x) => x.id === blockId)?.type === "code") return;
 
       // Same rule as the top level: a bare URL over a selection links it.
       {

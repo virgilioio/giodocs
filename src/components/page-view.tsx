@@ -17,6 +17,8 @@ import {
   useBlocksSender,
   EditConflictError,
   SaveRejectedError,
+  confirmedServerState,
+  setConfirmedServerState,
   useVerifyPage,
   useArchivePage,
 } from "@/hooks/use-page-mutations";
@@ -1012,6 +1014,8 @@ function PropertyStrip({
 
 /* ────────────── Container ────────────── */
 
+let saverSeq = 0;
+
 export function PageEditor({ pageId }: { pageId: string }) {
   const ws = useWorkspaceId();
   const shell = useWorkspaceShell(ws);
@@ -1152,10 +1156,10 @@ export function PageEditor({ pageId }: { pageId: string }) {
   const pageIdForSaver = page?.id;
   const locked = app.locked;
   // What the server has as far as this tab knows: its edited_at and blocks.
-  const knownRef = useRef<{ editedAt: string | null; base: Block[] | null; lastAttempt: Block[] | null; force: boolean }>({
+  const knownRef = useRef<{ editedAt: string | null; base: Block[] | null; attempts: Block[][]; force: boolean }>({
     editedAt: null,
     base: null,
-    lastAttempt: null,
+    attempts: [],
     force: false,
   });
   const [conflict, setConflict] = useState<EditConflictError["server"] | null>(null);
@@ -1167,27 +1171,30 @@ export function PageEditor({ pageId }: { pageId: string }) {
   useEffect(() => {
     if (!pageIdForSaver) return;
     const known = knownRef.current;
+    const owner = `saver-${++saverSeq}`;
     const saver = createBlocksSaver<Block[]>({
       debounceMs: 500,
       equals: jsonEqual,
       send: async (blocks) => {
-        known.lastAttempt = blocks;
-        const row = await sendBlocksRef.current(pageIdForSaver, blocks, {
+        const guard = {
           editedAt: known.editedAt,
           base: known.base,
-          lastAttempt: known.lastAttempt,
+          attempts: [...known.attempts],
           force: known.force,
-        });
+        };
+        known.attempts.push(blocks);
+        const row = await sendBlocksRef.current(pageIdForSaver, blocks, guard);
         known.force = false;
         known.editedAt = row.edited_at;
         known.base = blocks;
+        known.attempts = [];
       },
       isFatal: (err) => err instanceof EditConflictError || err instanceof SaveRejectedError,
       onError: (err) => {
         if (err instanceof EditConflictError) setConflict(err.server);
         else if (err instanceof SaveRejectedError) toastRef.current.push(err.message);
       },
-      onStatus: (st) => setSaveStatus(pageIdForSaver, st),
+      onStatus: (st) => setSaveStatus(pageIdForSaver, st, owner),
     });
     saverRef.current = saver;
     const onOnline = () => saver.retryNow();
@@ -1197,16 +1204,27 @@ export function PageEditor({ pageId }: { pageId: string }) {
       if (saverRef.current === saver) saverRef.current = null;
       // Leaving the page never drops edits: flush, and if the server can't
       // be reached yet, keep retrying in the background until it can.
+      const finish = () => {
+        const lost = saver.status() === "stopped";
+        saver.dispose();
+        setSaveStatus(pageIdForSaver, "idle", owner);
+        // A page you've left can't show the conflict banner any more, so
+        // say plainly that its last edits didn't make it.
+        if (lost) {
+          toastRef.current.push(
+            "Your last edits to a page you left weren't saved: it was changed somewhere else.",
+          );
+        }
+      };
       void saver.flush().finally(() => {
         if (!saver.hasUnsaved() || saver.status() === "stopped") {
-          saver.dispose();
-          if (saver.status() === "stopped") setSaveStatus(pageIdForSaver, "idle");
+          finish();
           return;
         }
         const stop = window.setInterval(() => {
-          if (!saver.hasUnsaved()) {
+          if (!saver.hasUnsaved() || saver.status() === "stopped") {
             window.clearInterval(stop);
-            saver.dispose();
+            finish();
           }
         }, 1000);
       });
@@ -1221,9 +1239,13 @@ export function PageEditor({ pageId }: { pageId: string }) {
     const key = `${page.id}:${editorKey}`;
     if (primedRef.current === key) return;
     primedRef.current = key;
-    const serverBlocks = (Array.isArray(page.blocks) ? page.blocks : []) as Block[];
-    knownRef.current.editedAt = page.edited_at ?? null;
+    // Prefer what the server last confirmed: the cache may hold optimistic
+    // edits that never reached it (offline), which are not a valid base.
+    const conf = confirmedServerState(page.id);
+    const serverBlocks = conf ? conf.blocks : ((Array.isArray(page.blocks) ? page.blocks : []) as Block[]);
+    knownRef.current.editedAt = conf ? conf.editedAt : (page.edited_at ?? null);
     knownRef.current.base = serverBlocks;
+    knownRef.current.attempts = [];
     saverRef.current.markSaved(serverBlocks);
   }, [page, editorKey]);
 
@@ -1273,8 +1295,10 @@ export function PageEditor({ pageId }: { pageId: string }) {
     );
     knownRef.current.editedAt = conflict.edited_at;
     knownRef.current.base = conflict.blocks;
-    saverRef.current?.markSaved(conflict.blocks);
-    saverRef.current?.resume();
+    knownRef.current.attempts = [];
+    setConfirmedServerState(page.id, conflict.edited_at, conflict.blocks);
+    // Adopt their blocks as the saved value; nothing of ours is sent.
+    saverRef.current?.reset(conflict.blocks);
     setConflict(null);
     setEditorKey((k) => k + 1);
   }, [conflict, page, queryClient]);

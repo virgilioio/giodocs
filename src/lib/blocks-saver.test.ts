@@ -209,4 +209,60 @@ describe("createBlocksSaver", () => {
     expect(calls).toEqual([1, 2]);
     expect(saver.status()).toBe("idle");
   });
+
+  it("never runs two sends at once, even when a timer fires during a slow save", async () => {
+    const timer = makeFakeTimer();
+    let inflight = 0;
+    let maxInflight = 0;
+    const releases: Array<() => void> = [];
+    const saver = createBlocksSaver<number>({
+      debounceMs: 500,
+      send: () =>
+        new Promise<void>((resolve) => {
+          inflight++;
+          maxInflight = Math.max(maxInflight, inflight);
+          releases.push(() => {
+            inflight--;
+            resolve();
+          });
+        }),
+      setTimer: timer.setTimer,
+      clearTimer: timer.clearTimer,
+    });
+    saver.set(1);
+    timer.advance(500);
+    saver.set(2);
+    timer.advance(500); // debounce fires while the first save is in flight
+    expect(maxInflight).toBe(1);
+    releases.shift()!();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(maxInflight).toBe(1);
+    releases.shift()!();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(saver.hasUnsaved()).toBe(false);
+  });
+
+  it("reset() adopts a value without sending it", async () => {
+    const timer = makeFakeTimer();
+    const calls: number[] = [];
+    const saver = createBlocksSaver<number>({
+      debounceMs: 500,
+      send: async (v) => {
+        calls.push(v);
+        throw new Error("conflict");
+      },
+      isFatal: () => true,
+      setTimer: timer.setTimer,
+      clearTimer: timer.clearTimer,
+    });
+    saver.set(1);
+    timer.advance(500);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(saver.status()).toBe("stopped");
+    saver.reset(9);
+    timer.advance(5000);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls).toEqual([1]);
+    expect(saver.status()).toBe("idle");
+  });
 });

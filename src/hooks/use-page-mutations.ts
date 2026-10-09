@@ -957,14 +957,26 @@ export class SaveRejectedError extends Error {
   }
 }
 
+/** What the server last confirmed for each page this tab has saved: its
+ *  edited_at and blocks. The page cache can't be trusted for this — it is
+ *  patched optimistically with edits that may not have been saved yet. */
+const confirmed = new Map<string, { editedAt: string | null; blocks: Block[] }>();
+export function confirmedServerState(pageId: string) {
+  return confirmed.get(pageId) ?? null;
+}
+export function setConfirmedServerState(pageId: string, editedAt: string | null, blocks: Block[]) {
+  confirmed.set(pageId, { editedAt, blocks });
+}
+
 export type BlocksSaveGuard = {
   /** edited_at this tab last saw from the server; the update only applies
    *  while the row still has it. null skips the check. */
   editedAt: string | null;
   /** The blocks this tab last loaded or saved. */
   base: Block[] | null;
-  /** The last value this tab sent (its reply may have been lost). */
-  lastAttempt: Block[] | null;
+  /** Values this tab sent since the last confirmed save. One of them may
+   *  have landed even though its reply was lost. */
+  attempts: Block[][];
   /** Overwrite whatever is there ("Keep mine" after a conflict). */
   force?: boolean;
 };
@@ -1020,6 +1032,9 @@ export function useBlocksSender() {
     };
 
     return async (pageId: string, blocks: Block[], guard: BlocksSaveGuard) => {
+      if (!confirmed.has(pageId) && guard.base) {
+        confirmed.set(pageId, { editedAt: guard.editedAt, blocks: guard.base });
+      }
       await qc.cancelQueries({ queryKey: qk.page(pageId) });
       patchCaches(pageId, new Date().toISOString(), userId, blocks);
 
@@ -1036,7 +1051,7 @@ export function useBlocksSender() {
         const ours =
           jsonEqual(serverBlocks, guard.base) ||
           jsonEqual(serverBlocks, blocks) ||
-          (guard.lastAttempt !== null && jsonEqual(serverBlocks, guard.lastAttempt));
+          guard.attempts.some((a) => jsonEqual(serverBlocks, a));
         if (!ours) {
           throw new EditConflictError({
             blocks: serverBlocks,
@@ -1048,6 +1063,7 @@ export function useBlocksSender() {
         if (!row) throw new SaveRejectedError();
       }
       patchCaches(pageId, row.edited_at, row.edited_by);
+      confirmed.set(pageId, { editedAt: row.edited_at, blocks });
       return row;
     };
   }, [qc, ws, userId]);

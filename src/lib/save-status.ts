@@ -6,22 +6,33 @@ import type { SaverStatus } from "./blocks-saver";
  * top bar ("Saving…", "Not saved") and the unload guard. A page that left
  * the screen with unsaved work keeps its entry until its saver catches up.
  */
-const statuses = new Map<string, SaverStatus>();
+// pageId → (saver instance → status). A page reopened while its previous
+// editor's saver is still retrying has two savers; the worst status wins.
+const statuses = new Map<string, Map<string, SaverStatus>>();
 const listeners = new Set<() => void>();
+const RANK: Record<SaverStatus, number> = { idle: 0, pending: 1, saving: 2, retrying: 3, stopped: 4 };
 
-export function setSaveStatus(pageId: string, status: SaverStatus): void {
-  if (status === "idle") statuses.delete(pageId);
-  else statuses.set(pageId, status);
+export function setSaveStatus(pageId: string, status: SaverStatus, owner = "default"): void {
+  let m = statuses.get(pageId);
+  if (status === "idle") {
+    m?.delete(owner);
+    if (m && m.size === 0) statuses.delete(pageId);
+  } else {
+    if (!m) statuses.set(pageId, (m = new Map()));
+    m.set(owner, status);
+  }
   listeners.forEach((l) => l());
 }
 
 export function getSaveStatus(pageId: string): SaverStatus {
-  return statuses.get(pageId) ?? "idle";
+  let worst: SaverStatus = "idle";
+  for (const st of statuses.get(pageId)?.values() ?? []) if (RANK[st] > RANK[worst]) worst = st;
+  return worst;
 }
 
 /** True when any page has work the server hasn't confirmed. */
 export function anyUnsaved(): boolean {
-  for (const s of statuses.values()) if (s !== "idle") return true;
+  for (const m of statuses.values()) for (const st of m.values()) if (st !== "idle") return true;
   return false;
 }
 

@@ -42,6 +42,9 @@ export type BlocksSaver<T> = {
   retryNow: () => void;
   /** Clear a fatal stop and send the latest value again. */
   resume: () => void;
+  /** Adopt `value` as both the latest and the saved value (e.g. after
+   *  loading someone else's version): clears a stop, sends nothing. */
+  reset: (value: T) => void;
   /** Current status. */
   status: () => SaverStatus;
 };
@@ -143,6 +146,11 @@ export function createBlocksSaver<T>(
   async function doSend(): Promise<void> {
     if (state.disposed || state.stopped) return;
     if (!state.latest) return;
+    // Single flight: a timer firing during a slow save must not start a
+    // second one (both would carry the same edit guard, and the later one
+    // would fail it). The running save sends the newest value afterwards.
+    if (state.inflight) return;
+    clear();
     if (state.saved && equals(state.latest.value, state.saved.value)) {
       state.failures = 0;
       emit();
@@ -282,6 +290,15 @@ export function createBlocksSaver<T>(
       emit();
       clear();
       void doSend();
+    },
+    reset(value) {
+      if (state.disposed) return;
+      clear();
+      state.latest = { value };
+      state.saved = { value };
+      state.stopped = false;
+      state.failures = 0;
+      emit();
     },
     status() {
       return state.status;

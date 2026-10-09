@@ -344,6 +344,8 @@ export function mergeNextInto(list: Blk[], id: string): OpResult | null {
     return { next, focus: { id, caret: curText.length } };
   }
   if (!isTextBearing(nxt) || nxt.type === "code") return null;
+  // A toggle keeps its hidden content in `body`: merging would lose it.
+  if (typeof nxt.body === "string" && nxt.body !== "") return null;
   const next = [...list];
   next[idx] = { ...cur, text: curText + (nxt.text ?? "") };
   next.splice(idx + 1, 1);
@@ -457,8 +459,12 @@ export function splicePasteAtCaret(
     next = [...head, ...parsed, ...tail];
   } else {
     const currentPatched: Blk[] = before ? [{ ...cur, text: before }] : [];
+    // Pasting at the very start keeps the original block (its id, heading
+    // level, checkbox) after the pasted ones instead of a plain copy.
     const trailing: Blk[] = after
-      ? [{ id: nanoid(10), type: "text", text: after } as Blk]
+      ? before
+        ? [{ id: nanoid(10), type: "text", text: after } as Blk]
+        : [{ ...cur, text: after }]
       : [];
     next = [...head, ...currentPatched, ...parsed, ...trailing, ...tail];
   }
