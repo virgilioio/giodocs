@@ -1,4 +1,5 @@
 import React, { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { primaryMod } from "@/lib/platform";
 import { toClipboard } from "@/lib/clipboard";
 import { usePrefs } from "@/lib/preferences";
 import { formatTimestamp } from "@/lib/format";
@@ -1790,11 +1791,12 @@ export function MainView({ selection }: { selection: Selection }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return;
-      const mod = e.metaKey || e.ctrlKey;
+      const mod = primaryMod(e);
       if (!mod) return;
       const k = e.key.toLowerCase();
       // ⌘⌥L / Ctrl+Alt+L — copy link (view or area).
-      if (k === "l" && e.altKey && (view || selection.kind === "area")) {
+      // e.code: on a Mac ⌥L types "¬", so e.key never reads "l".
+      if (e.code === "KeyL" && e.altKey && (view || selection.kind === "area")) {
         e.preventDefault();
         copyLinkHere();
         return;

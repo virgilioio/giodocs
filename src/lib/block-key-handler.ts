@@ -63,6 +63,10 @@ export type Op =
   | { kind: "select-prev" }
   /** Forward Delete at the end → pull the next block's text up. */
   | { kind: "merge-next" }
+  /** ⇧↑ at the start / ⇧↓ at the end of a block: the selection can't grow
+   *  inside the text any more, so it becomes a block selection of this
+   *  block and its neighbour. */
+  | { kind: "extend-to-blocks"; dir: 1 | -1 }
   /** Backspace at start on an empty non-list text block → remove it. */
   | { kind: "remove-empty" }
   /** Column-only: escape the column via the enterAction decision. */
@@ -214,6 +218,17 @@ export function resolveKey(
     if (index < list.length - 1) return { kind: "merge-next" };
     return { kind: "none" };
   }
+
+  // ⇧-arrows select text natively; at the edge of the block they grow into
+  // a block selection instead of jumping the caret to the next block.
+  if (shift && !meta && (key === "ArrowUp" || key === "ArrowDown")) {
+    if (key === "ArrowDown" && selEnd === valueLength && index < list.length - 1)
+      return { kind: "extend-to-blocks", dir: 1 };
+    if (key === "ArrowUp" && selStart === 0 && index > 0)
+      return { kind: "extend-to-blocks", dir: -1 };
+    return { kind: "none" };
+  }
+  if (shift && (key === "ArrowLeft" || key === "ArrowRight")) return { kind: "none" };
 
   // Arrow navigation. Only with a collapsed caret; a real selection is
   // left alone so shift-arrow and drag-select keep working.

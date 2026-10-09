@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { primaryMod } from "@/lib/platform";
 import { toClipboard } from "@/lib/clipboard";
 import { useSaveStatus } from "@/lib/save-status";
 import { useNavigate } from "@tanstack/react-router";
@@ -339,8 +340,9 @@ export function PageTopbarActions({
     if (!listRow) return;
     const onKey = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return;
-      const meta = e.metaKey || e.ctrlKey;
-      if (meta && e.altKey && (e.key === "l" || e.key === "L")) {
+      const meta = primaryMod(e);
+      // e.code: on a Mac ⌥L types "¬", so e.key never reads "l".
+      if (meta && e.altKey && e.code === "KeyL") {
         e.preventDefault();
         void doCopyLink();
         return;

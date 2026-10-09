@@ -1,3 +1,4 @@
+import { tokenizeInline } from "./inline-tokens";
 /* Block-level inline formatting.
  *
  * The range-level primitives in toggle-wrap.ts format a SELECTION inside one
@@ -48,6 +49,15 @@ function isBoldish(t: string): boolean {
   return t.startsWith("**") && t.endsWith("**") && t.length >= 4;
 }
 
+const PAIR_KIND: Record<string, string> = {
+  "**": "bold",
+  "*": "italic",
+  "<u>": "underline",
+  "~~": "strike",
+  "`": "code",
+  "==": "highlight",
+};
+
 export function isWholeWrapped(text: string, pair: MarkPair): boolean {
   const [open, close] = pair;
   const t = text.trim();
@@ -55,6 +65,13 @@ export function isWholeWrapped(text: string, pair: MarkPair): boolean {
   if (!t.startsWith(open) || !t.endsWith(close)) return false;
   // `*x*` inside `**x**`: an italic check must not claim a bold run.
   if (open === "*" && close === "*" && isBoldish(t)) return false;
+  // "**A** and **B**" starts and ends with "**" but is two bold runs, not
+  // one: ask the tokenizer whether ONE mark spans the whole text.
+  const kind = PAIR_KIND[open];
+  if (kind) {
+    const toks = tokenizeInline(t);
+    if (toks.length !== 1 || toks[0].kind !== kind) return false;
+  }
   return true;
 }
 
