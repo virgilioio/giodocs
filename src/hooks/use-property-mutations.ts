@@ -30,25 +30,6 @@ function message(err: unknown): string {
   return m || "Something went wrong.";
 }
 
-/** A new option for a select / status property, coloured from its label. */
-export function newOption(label: string, existing: SelectOption[]): SelectOption {
-  const clean = label.trim();
-  const taken = new Set(existing.map((o) => o.value));
-  let value = clean
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "") || "option";
-  if (taken.has(value)) {
-    let i = 2;
-    while (taken.has(`${value}_${i}`)) i++;
-    value = `${value}_${i}`;
-  }
-  const pair = hashTag(clean);
-  return { value, label: clean, tint: pair.tint, ink: pair.ink };
-}
-
 export function useCreateProperty() {
   const qc = useQueryClient();
   const ws = useWorkspaceId();
@@ -66,23 +47,30 @@ export function useCreateProperty() {
         .limit(300);
       if (e1) throw e1;
       const rows = all ?? [];
-      const key = keyForLabel(label, rows.map((r) => r.key));
+      const taken = rows.map((r) => r.key);
       const position = rows.reduce((m, r) => Math.max(m, r.position ?? 0), 0) + 1;
-      const { data, error } = await supabase
-        .from("property_defs")
-        .insert({
-          workspace_id: ws,
-          key,
-          label,
-          type: v.type,
-          options: [],
-          position,
-          created_by: user!.id,
-        })
-        .select("*")
-        .single();
-      if (error) throw error;
-      return data as PropDef;
+      // Two people naming a property the same at the same moment: the second
+      // takes the next key instead of failing.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const key = keyForLabel(label, taken);
+        const { data, error } = await supabase
+          .from("property_defs")
+          .insert({
+            workspace_id: ws,
+            key,
+            label,
+            type: v.type,
+            options: [],
+            position,
+            created_by: user!.id,
+          })
+          .select("*")
+          .single();
+        if (!error) return data as PropDef;
+        if ((error as { code?: string }).code !== "23505") throw error;
+        taken.push(key);
+      }
+      throw new Error("Someone just made a property with that name. Try again.");
     },
     onSuccess: (def) => {
       qc.setQueryData<PropDef[]>(qk.propDefs(ws), (prev) =>
@@ -103,7 +91,9 @@ export function useUpdateProperty() {
   return useMutation({
     mutationFn: async (v: {
       id: string;
-      patch: { label?: string; options?: SelectOption[]; type?: PropertyType };
+      /** Options change one at a time: useAddPropertyOption /
+       *  useRenamePropertyOption. */
+      patch: { label?: string; type?: PropertyType };
     }) => {
       const patch: Database["public"]["Tables"]["property_defs"]["Update"] = {};
       if (v.patch.label !== undefined) {
@@ -111,7 +101,6 @@ export function useUpdateProperty() {
         if (!label) throw new Error("A property needs a name.");
         patch.label = label;
       }
-      if (v.patch.options !== undefined) patch.options = v.patch.options as never;
       if (v.patch.type !== undefined) patch.type = v.patch.type;
       const { error } = await supabase.from("property_defs").update(patch).eq("id", v.id);
       if (error) throw error;
@@ -126,7 +115,6 @@ export function useUpdateProperty() {
             ? {
                 ...d,
                 ...(v.patch.label !== undefined ? { label: v.patch.label.trim() } : null),
-                ...(v.patch.options !== undefined ? { options: v.patch.options as never } : null),
                 ...(v.patch.type !== undefined ? { type: v.patch.type } : null),
               }
             : d,
@@ -145,42 +133,87 @@ export function useUpdateProperty() {
 }
 
 /** Add an option to a select / status property and return its value, so the
- *  caller can pick it right away. */
+ *  caller can pick it right away. One option at a time, under a row lock in
+ *  the database (add_property_option), so two people adding at once both
+ *  keep theirs. The same name again returns the existing option. */
 export function useAddPropertyOption() {
   const qc = useQueryClient();
   const ws = useWorkspaceId();
   const toast = useToast();
   return useMutation({
     mutationFn: async (v: { id: string; label: string }) => {
-      // Read the stored list so two people adding options don't erase each
-      // other's.
-      const { data, error: e1 } = await supabase
-        .from("property_defs")
-        .select("options")
-        .eq("id", v.id)
-        .single();
-      if (e1) throw e1;
-      const current = (Array.isArray(data?.options) ? data!.options : []) as SelectOption[];
-      const hit = current.find((o) => o.label.toLowerCase() === v.label.trim().toLowerCase());
-      if (hit) return { value: hit.value, options: current };
-      const opt = newOption(v.label, current);
-      const options = [...current, opt];
-      const { error } = await supabase
-        .from("property_defs")
-        .update({ options: options as never })
-        .eq("id", v.id);
+      const { data, error } = await supabase.rpc("add_property_option", {
+        p_def: v.id,
+        p_label: v.label,
+      });
       if (error) throw error;
-      return { value: opt.value, options };
+      return { value: data as string };
     },
-    onSuccess: (r, v) => {
+    onSuccess: async (r, v) => {
+      await qc.cancelQueries({ queryKey: qk.propDefs(ws) });
+      await qc.cancelQueries({ queryKey: qk.propDefsAll(ws) });
+      // Show it at once; the refetch below brings the stored colours.
       const apply = (list?: PropDef[]) =>
-        list?.map((d) => (d.id === v.id ? { ...d, options: r.options as never } : d));
+        list?.map((d) => {
+          if (d.id !== v.id) return d;
+          const cur = (Array.isArray(d.options) ? d.options : []) as unknown as SelectOption[];
+          if (cur.some((o) => o.value === r.value)) return d;
+          const pair = hashTag(v.label.trim());
+          return {
+            ...d,
+            options: [...cur, { value: r.value, label: v.label.trim(), ...pair }] as never,
+          };
+        });
       qc.setQueryData<PropDef[]>(qk.propDefs(ws), (prev) => apply(prev));
       qc.setQueryData<PropDef[]>(qk.propDefsAll(ws), (prev) => apply(prev));
+      refresh(qc, ws);
     },
     onError: (err) => {
       toast.push(`Couldn't add the option: ${message(err)}`);
     },
+  });
+}
+
+/** Rename one option (its value, and so every page using it, stays). */
+export function useRenamePropertyOption() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (v: { id: string; value: string; label: string }) => {
+      const { error } = await supabase.rpc("rename_property_option", {
+        p_def: v.id,
+        p_value: v.value,
+        p_label: v.label,
+      });
+      if (error) throw error;
+    },
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: qk.propDefs(ws) });
+      await qc.cancelQueries({ queryKey: qk.propDefsAll(ws) });
+      const snap = qc.getQueryData<PropDef[]>(qk.propDefs(ws));
+      const snapAll = qc.getQueryData<PropDef[]>(qk.propDefsAll(ws));
+      const apply = (list?: PropDef[]) =>
+        list?.map((d) =>
+          d.id !== v.id
+            ? d
+            : {
+                ...d,
+                options: ((Array.isArray(d.options) ? d.options : []) as unknown as SelectOption[]).map(
+                  (o) => (o.value === v.value ? { ...o, label: v.label.trim() } : o),
+                ) as never,
+              },
+        );
+      if (snap) qc.setQueryData(qk.propDefs(ws), apply(snap));
+      if (snapAll) qc.setQueryData(qk.propDefsAll(ws), apply(snapAll));
+      return { snap, snapAll };
+    },
+    onError: (err, _v, ctx) => {
+      if (ctx?.snap) qc.setQueryData(qk.propDefs(ws), ctx.snap);
+      if (ctx?.snapAll) qc.setQueryData(qk.propDefsAll(ws), ctx.snapAll);
+      toast.push(`Couldn't rename the option: ${message(err)}`);
+    },
+    onSettled: () => refresh(qc, ws),
   });
 }
 

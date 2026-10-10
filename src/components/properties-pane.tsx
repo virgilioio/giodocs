@@ -5,6 +5,7 @@ import { useAllPropDefs, useWorkspaceShell } from "@/hooks/use-workspace-data";
 import {
   useAddPropertyOption,
   useCreateProperty,
+  useRenamePropertyOption,
   useSetPropertyArchived,
   useUpdateProperty,
 } from "@/hooks/use-property-mutations";
@@ -240,7 +241,7 @@ function PropertyRow({ def, isOwner, count }: { def: PropDef; isOwner: boolean; 
  *  use are never removed (their pages would stop validating), so there is no
  *  delete here. */
 function OptionsEditor({ def }: { def: PropDef }) {
-  const update = useUpdateProperty();
+  const renameOption = useRenamePropertyOption();
   const addOption = useAddPropertyOption();
   const options = (Array.isArray(def.options) ? def.options : []) as unknown as SelectOption[];
   const [adding, setAdding] = useState("");
@@ -248,10 +249,7 @@ function OptionsEditor({ def }: { def: PropDef }) {
     const clean = label.trim();
     const cur = options.find((o) => o.value === value);
     if (!clean || !cur || cur.label === clean) return;
-    update.mutate({
-      id: def.id,
-      patch: { options: options.map((o) => (o.value === value ? { ...o, label: clean } : o)) },
-    });
+    renameOption.mutate({ id: def.id, value, label: clean });
   };
   return (
     <Popover
