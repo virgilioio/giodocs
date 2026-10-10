@@ -1,4 +1,6 @@
 import { assignmentsOf } from "@/lib/assignments";
+import { useHomePrefs, useSaveHomePrefs } from "@/hooks/use-home";
+import type { StartPage } from "@/lib/home";
 import {
   useEffect,
   useMemo,
@@ -494,6 +496,7 @@ function PreferencesPane() {
             ]}
           />
         </Row>
+        <StartPageRow />
         <Row label="Date format" help="Changes every timestamp in the app.">
           <Segmented<DateFormatMode>
             value={prefs.dateFormat}
@@ -515,6 +518,25 @@ function PreferencesPane() {
   );
 }
 
+
+/** Where the app opens: Home, or the last page visited. Saved with the
+ *  person's Home settings, so it follows them to any device. */
+function StartPageRow() {
+  const prefsQ = useHomePrefs();
+  const save = useSaveHomePrefs();
+  return (
+    <Row label="Start page" help="What opens when you come back to Gio Docs.">
+      <Segmented<StartPage>
+        value={prefsQ.data?.start_page ?? "home"}
+        onChange={(v) => save.mutate({ start_page: v })}
+        options={[
+          { value: "home", label: "Home" },
+          { value: "last", label: "Last page visited" },
+        ]}
+      />
+    </Row>
+  );
+}
 
 /* ─────────────────────────── General pane ─────────────────────────── */
 

@@ -52,6 +52,11 @@ import { descendantsOf } from "@/lib/page-tree";
 import { useAllowedDomains } from "@/hooks/use-workspace-data";
 import { isTypingTarget } from "@/lib/is-typing";
 import { exitOnly } from "@/lib/exit-motion";
+import { HomeView } from "./home-view";
+import { useHomePrefs, useRecentVisits, useRecordVisit } from "@/hooks/use-home";
+import { startTarget } from "@/lib/home";
+
+const HOME_GLYPH = "M3 11l9-7 9 7M5 10v10h5v-6h4v6h5V10";
 
 /* What the URL points at. A database page and a plain page share /p/:id;
  * the pages list says which it is. /v/:id and /a/:area are old links that
@@ -61,6 +66,7 @@ type Selection =
   | { kind: "page"; id: string }
   | { kind: "old-view"; id: string }
   | { kind: "old-area" }
+  | { kind: "home" }
   | null;
 
 // gio.sidebarOpen — boolean, default true. Renamed from an earlier
@@ -77,7 +83,7 @@ const SIDEBAR_DEFAULT = 240;
 
 /** The route's page id and `?v=` view, before the pages list says what
  * kind of page it is. */
-function useRouteTarget(): { pageId: string; viewId: string | null } | { oldView: string } | "old-area" | null {
+function useRouteTarget(): { pageId: string; viewId: string | null } | { oldView: string } | "old-area" | "home" | null {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const search = useRouterState({ select: (s) => s.location.search }) as { v?: unknown };
   const viewParams = useParams({ strict: false }) as {
@@ -87,6 +93,7 @@ function useRouteTarget(): { pageId: string; viewId: string | null } | { oldView
   };
   if (pathname.startsWith("/v/") && viewParams.viewId) return { oldView: viewParams.viewId };
   if (pathname.startsWith("/a/")) return "old-area";
+  if (pathname === "/home") return "home";
   if (pathname.startsWith("/p/") && viewParams.pageId) {
     return { pageId: viewParams.pageId, viewId: typeof search.v === "string" ? search.v : null };
   }
@@ -146,6 +153,7 @@ export function AppShell() {
   const selection = useMemo<Selection>(() => {
     if (target === null) return null;
     if (target === "old-area") return { kind: "old-area" };
+    if (target === "home") return { kind: "home" };
     if ("oldView" in target) return { kind: "old-view", id: target.oldView };
     // The URL may be the raw UUID or the cosmetic slug-shortId form emitted
     // by Copy link. Resolve to the canonical id so downstream queries hit.
@@ -275,19 +283,26 @@ export function AppShell() {
   const workspaceName = workspace?.name ?? "";
 
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  // The root URL opens the first page of the workspace (a shared one
-  // first). Old /v and /a links go to the database their view belongs to.
-  // On /p we never redirect: a transient null selection during router
-  // transitions used to bounce the user back to the previous view.
+  // The root URL opens the start page the person chose: Home (the default)
+  // or the last page they visited. Old /v and /a links go to the database
+  // their view belongs to. On /p we never redirect: a transient null
+  // selection during router transitions used to bounce the user back to
+  // the previous view.
+  const homePrefsQ = useHomePrefs();
+  const visitsQ = useRecentVisits(workspaceId);
+  const startPage = homePrefsQ.data?.start_page ?? (homePrefsQ.isError ? "home" : null);
+  useRecordVisit(
+    workspaceId,
+    selection?.kind === "page" || selection?.kind === "database" ? selection.id : null,
+  );
   useEffect(() => {
     if (!pagesLoaded) return;
     if (pathname === "/") {
-      const roots = pages.filter((p) => !p.parent_id && !p.archived_at);
-      const first =
-        roots.find((p) => p.access_type === "workspace" && p.is_database) ??
-        roots.find((p) => p.access_type === "workspace") ??
-        roots[0];
-      if (first) navigate({ to: "/p/$pageId", params: { pageId: first.id }, replace: true });
+      if (startPage === null) return;
+      if (startPage === "last" && visitsQ.isLoading) return;
+      const to = startTarget(startPage, visitsQ.data ?? [], pages);
+      if (to.to === "page") navigate({ to: "/p/$pageId", params: { pageId: to.id }, replace: true });
+      else navigate({ to: "/home", replace: true });
       return;
     }
     if (selection?.kind === "old-view") {
@@ -304,7 +319,7 @@ export function AppShell() {
       return;
     }
     if (selection?.kind === "old-area") navigate({ to: "/", replace: true });
-  }, [pathname, pages, pagesLoaded, views, shell.views.isLoading, selection, navigate]);
+  }, [pathname, pages, pagesLoaded, views, shell.views.isLoading, selection, navigate, startPage, visitsQ.isLoading, visitsQ.data]);
 
   // On page routes, a back arrow returns to the database view the page was
   // opened from, when there is one; the breadcrumb shows where it lives.
@@ -511,6 +526,11 @@ export function AppShell() {
           ) : null}
           {selection && (selection.kind === "page" || selection.kind === "database") ? (
             <PageBreadcrumb pageId={selection.id} pages={pages} />
+          ) : selection?.kind === "home" ? (
+            <span className="flex items-center gap-1.5 px-1.5 text-ui text-strong">
+              <Glyph path={HOME_GLYPH} className="h-4 w-4 text-muted" />
+              Home
+            </span>
           ) : null}
 
           {selection && (selection.kind === "page" || selection.kind === "database") ? (
@@ -530,8 +550,8 @@ export function AppShell() {
             <DatabaseView key={`d:${selection.id}`} selection={selection} />
           ) : selection?.kind === "page" && pagesLoaded ? (
             <PageEditor key={selection.id} pageId={selection.id} />
-          ) : pathname === "/" && pagesLoaded && pages.length === 0 ? (
-            <EmptyWorkspace />
+          ) : selection?.kind === "home" ? (
+            <HomeView empty={pagesLoaded && pages.length === 0 ? <EmptyWorkspace /> : undefined} />
           ) : showShellSkeleton ? (
             <ViewSkeleton layout="table" />
           ) : null}
@@ -889,6 +909,14 @@ function SidebarBody({
             ⌘K
           </span>
         </button>
+        <Link
+          to="/home"
+          aria-current={selection?.kind === "home" ? "page" : undefined}
+          className={`mt-1 flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-ui hover:bg-railHover ${selection?.kind === "home" ? "bg-selected text-strong" : "text-secondary"}`}
+        >
+          <Glyph path={HOME_GLYPH} className="h-4 w-4 text-muted" />
+          <span className="flex-1 text-left">Home</span>
+        </Link>
         <InboxButton />
 
         {loading ? (

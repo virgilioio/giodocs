@@ -278,6 +278,22 @@ provider Virgilio already has; don't build them until asked.
 - `.gio-line` (the shared editable metrics) lives in the base layer so a
   block's size class wins over its inherits.
 
+## Decisions (Allan, 2026-10-10: Home)
+- Home (/home) is each person's start page: a greeting and Recently
+  visited first; My tasks, pinned views and templates join it. "/" opens
+  the start page they chose in Settings › Preferences (Home, the default,
+  or the last page visited).
+- page_visits holds one row per person per page, the last time they
+  opened it. Only record_page_visit writes it (it checks the page can be
+  opened); people read only their own rows. Recently visited shows the
+  12 newest that are still in the pages list; ⌘K shows them when empty.
+- home_prefs is each person's own row: the greeting's name and emoji,
+  the start page, hidden sections and pinned views.
+- A database becomes a task database through pages.task_config: which of
+  its own live properties says done (status, select or checkbox, plus
+  the done values), the assignee (person) and the due date (date). The
+  guard_task_config trigger enforces it.
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.

@@ -6,6 +6,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useRecentVisits } from "@/hooks/use-home";
+import { recentPages } from "@/lib/home";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -126,6 +128,7 @@ export function CommandPalette({
   }, [open]);
 
   const debounced = useDebounced(q.trim(), 200);
+  const visitsQ = useRecentVisits(ws);
 
   const searchQ = useQuery({
     queryKey: ["search", ws, debounced],
@@ -155,11 +158,16 @@ export function CommandPalette({
     const term = debounced;
 
     if (!term) {
-      const recents = [...pages]
+      // Recently visited first (Notion's way); pages you edited fill in
+      // when you haven't opened six yet.
+      const visited = recentPages(visitsQ.data ?? [], pages, 6);
+      const seen = new Set(visited.map((p) => p.id));
+      const edited = [...pages]
+        .filter((p) => !seen.has(p.id))
         .sort((a, b) =>
           (b.edited_at ?? "").localeCompare(a.edited_at ?? ""),
-        )
-        .slice(0, 6);
+        );
+      const recents = [...visited, ...edited].slice(0, 6);
       for (const p of recents) list.push({ kind: "page", page: p });
       list.push({
         kind: "action",
@@ -232,7 +240,7 @@ export function CommandPalette({
     });
 
     return list;
-  }, [debounced, pages, searchQ.data, views, createPage, navigate, onClose]);
+  }, [debounced, pages, searchQ.data, views, createPage, navigate, onClose, visitsQ.data]);
 
   // Group rows preserving group order
   const grouped = useMemo(() => {
@@ -353,7 +361,7 @@ export function CommandPalette({
           {grouped.map(({ group, items }) => (
             <div key={group} className="mb-1">
               <div className="px-3.5 pt-2 pb-1 text-label uppercase text-faint">
-                {group === "Pages" && !debounced ? "Recently edited" : group}
+                {group === "Pages" && !debounced ? "Recent" : group}
               </div>
               <ul>
                 {items.map(({ row, index }) => (

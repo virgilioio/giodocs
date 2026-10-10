@@ -22,4 +22,8 @@ export const qk = {
   comments: (pageId: string) => ["comments", pageId] as const,
   /** Pages marked as templates. */
   templates: (ws: string) => ["templates", ws] as const,
+  /** This person's Home settings (home_prefs). */
+  homePrefs: (userId: string) => ["homePrefs", userId] as const,
+  /** This person's visits in a workspace, newest first. */
+  recentVisits: (ws: string) => ["recentVisits", ws] as const,
 };
