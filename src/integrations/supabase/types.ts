@@ -688,6 +688,10 @@ export type Database = {
     }
     Functions: {
       accept_workspace_invite: { Args: { p_token: string }; Returns: string }
+      add_property_option: {
+        Args: { p_def: string; p_label: string }
+        Returns: string
+      }
       can_manage_page_access: { Args: { p_page: string }; Returns: boolean }
       can_read_page: { Args: { p_page: string }; Returns: boolean }
       create_workspace_invite: {
@@ -817,6 +821,10 @@ export type Database = {
           p_workspace: string
         }
         Returns: number
+      }
+      rename_property_option: {
+        Args: { p_def: string; p_label: string; p_value: string }
+        Returns: undefined
       }
       restore_page: { Args: { p_page: string }; Returns: undefined }
       restore_page_version: { Args: { p_version: string }; Returns: undefined }
