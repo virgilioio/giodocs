@@ -99,7 +99,7 @@ export function parseMarkdown(text: string): Blk[] {
           .replace(/^\|/, "")
           .replace(/\|$/, "")
           .split("|")
-          .map((c) => c.trim());
+          .map((c) => c.trim().replace(/[ \t]*<br\s*\/?>[ \t]*/gi, "\n"));
       // GFM separator encodes per-column alignment:
       //   ":---:" center · "---:" right · ":---" left · plain "---" default.
       // We record only the intentional ones; plain "---" falls back to

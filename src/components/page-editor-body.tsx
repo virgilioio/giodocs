@@ -15,6 +15,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { primaryMod } from "@/lib/platform";
 import { nanoid } from "nanoid";
 import { toClipboard } from "@/lib/clipboard";
+import { bulletOnSpace, newLine, unlistOnBackspace } from "@/lib/cell-lines";
 import {
   CELLS_MIME,
   cellSel,
@@ -208,6 +209,7 @@ import { Editable } from "./editable";
 import { EmojiPicker } from "./emoji-picker";
 import { Popover } from "./popover";
 import { readCaret, writeCaret } from "@/lib/caret-shim";
+import { inlineToHtml } from "@/lib/inline-markdown";
 import { useDragSession } from "@/hooks/use-drag-session";
 
 import { ordinalLabel } from "@/lib/blocks";
@@ -5962,13 +5964,46 @@ export function TableBlock({
       focusCell(nRows, 0);
       return;
     }
+    // Lines and lists inside a cell (src/lib/cell-lines.ts): Shift+Enter
+    // breaks the line (continuing a list), "- " starts a bullet, and
+    // Backspace right after a mark takes it off.
+    if (
+      (e.key === "Enter" && e.shiftKey) ||
+      (e.key === " " && !meta && !e.altKey) ||
+      (e.key === "Backspace" && !meta && !e.altKey && !e.shiftKey)
+    ) {
+      const el = e.currentTarget as HTMLElement;
+      const src = rows[r]?.[c] ?? "";
+      const cur = readCaret(el, src);
+      if (cur) {
+        const edit =
+          e.key === "Enter"
+            ? newLine(src, cur.start, cur.end)
+            : cur.start !== cur.end
+              ? null
+              : e.key === " "
+                ? bulletOnSpace(src, cur.start)
+                : unlistOnBackspace(src, cur.start);
+        if (edit) {
+          e.preventDefault();
+          e.stopPropagation();
+          // Synchronous, no deferred caret restore: the next key may come
+          // before a frame and must land after the edit.
+          el.innerHTML = inlineToHtml(edit.text);
+          writeCaret(el, edit.text, edit.caret);
+          el.dispatchEvent(new InputEvent("input", { bubbles: true }));
+          return;
+        }
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+    }
     if (e.key === "Enter") {
       e.preventDefault();
       e.stopPropagation();
-      if (e.shiftKey) {
-        if (r > 0) focusCell(r - 1, c);
-        return;
-      }
       if (r < nRows - 1) {
         focusCell(r + 1, c);
         return;
@@ -6908,7 +6943,7 @@ export function TableBlock({
                           onBlur={onBlur}
                           ariaLabel={`Row ${ri + 1} column ${ci + 1}`}
                           dataAttrs={{ "data-table-cell": `${ri},${ci}` }}
-                          className="w-full px-2.5 py-1.5 outline-none"
+                          className="w-full whitespace-pre-wrap px-2.5 py-1.5 outline-none"
                         />
                         {ri === 0 && !locked && !(fit && ci === nCols - 1) && (
                           // Resize grip on the right border of each

@@ -344,10 +344,10 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
         const copy = r.slice();
         while (copy.length < width) copy.push("");
         // A literal "|" would end the cell and a newline would end the
-        // table, so both are neutralised here. Cell text is otherwise
-        // already markdown and passes through untouched.
+        // table: "|" is escaped and a line break inside a cell is written
+        // as <br> (GFM's convention, read back by the importer).
         return copy.map((c) =>
-          c.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " "),
+          c.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/[ \t]*\n[ \t]*/g, "<br>"),
         );
       });
       // Per-column alignment survives via the GFM pipe-table separator row:
@@ -754,9 +754,10 @@ function blockHtml(b: Block, ordinal = 1): string {
       const headerCol = (b as { headerCol?: unknown }).headerCol === true;
       // Cells carry inline markdown now, so they go through `inline`
       // (which escapes first, then inserts tags) — never raw `esc`.
+      const cellHtml = (c: string) => inline(c).replace(/\n/g, "<br>");
       const th = (c: string, i: number, scope: "col" | "row", r: number) =>
-        `<th scope="${scope}"${styleFor(i, r)}>${inline(c)}</th>`;
-      const td = (c: string, i: number, r: number) => `<td${styleFor(i, r)}>${inline(c)}</td>`;
+        `<th scope="${scope}"${styleFor(i, r)}>${cellHtml(c)}</th>`;
+      const td = (c: string, i: number, r: number) => `<td${styleFor(i, r)}>${cellHtml(c)}</td>`;
       const bodyRow = (row: string[], r: number) =>
         `${trOpen(pad(row))}${pad(row)
           .map((c, i) => (headerCol && i === 0 ? th(c, i, "row", r) : td(c, i, r)))

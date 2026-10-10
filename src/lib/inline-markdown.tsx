@@ -454,7 +454,12 @@ function tokensToHtml(
 }
 
 export function inlineToHtml(text: string, opts?: InlineRenderOpts): string {
-  return tokensToHtml(tokenizeInline(text ?? "", opts), opts);
+  const html = tokensToHtml(tokenizeInline(text ?? "", opts), opts);
+  // A line break at the very end (Shift+Enter in a table cell) only gets a
+  // line of its own, and room for the caret, when something follows it.
+  // The tail <br> is layout only: no text, so the caret map ignores it,
+  // and htmlToInlineMarkdown skips it.
+  return text && text.endsWith("\n") ? html + '<br data-tail="">' : html;
 }
 
 /** Re-exported so a consumer can prove it shares the tokenizer's set. */

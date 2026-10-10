@@ -442,7 +442,7 @@ function walkNode(node: Node): string {
   }
   const tag = el.tagName ? el.tagName.toLowerCase() : "";
   if (tag === "script" || tag === "style") return "";
-  if (tag === "br") return "\n";
+  if (tag === "br") return el.hasAttribute("data-tail") ? "" : "\n";
   if (tag === "div") return "\n" + walkChildren(el);
   if (tag === "strong" || tag === "b") return "**" + walkChildren(el) + "**";
   if (tag === "em" || tag === "i") return "*" + walkChildren(el) + "*";

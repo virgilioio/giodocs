@@ -245,6 +245,12 @@ provider Virgilio already has; don't build them until asked.
   cells. Every structural op goes through applyTableOp (table-ops.ts), so
   align, widths and colours follow their rows and columns. HTML/PDF carry
   colours; Markdown drops them.
+- A cell can hold several lines: Shift+Enter breaks the line, Enter still
+  moves down a row. "- " or "* " at a line start becomes "• "; "1. " is a
+  numbered line; Shift+Enter continues a list and ends it on an empty
+  item; Backspace right after a mark removes it (src/lib/cell-lines.ts).
+  Marks are plain characters in the source. Markdown writes line breaks
+  as <br> and reads them back; HTML/PDF break the line.
 - The grid looks like Notion's: borders in line with the text column,
   header cells on `canvas` in normal case, body-size text.
 
