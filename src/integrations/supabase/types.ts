@@ -79,6 +79,60 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          actor_id: string | null
+          block_id: string | null
+          created_at: string
+          excerpt: string
+          id: string
+          kind: string
+          page_id: string
+          read_at: string | null
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          block_id?: string | null
+          created_at?: string
+          excerpt?: string
+          id?: string
+          kind: string
+          page_id: string
+          read_at?: string | null
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          block_id?: string | null
+          created_at?: string
+          excerpt?: string
+          id?: string
+          kind?: string
+          page_id?: string
+          read_at?: string | null
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       page_access: {
         Row: {
           capability: string
@@ -695,6 +749,14 @@ export type Database = {
         Args: { p_def: string; p_label: string }
         Returns: string
       }
+      block_mentions: {
+        Args: { p_blocks: Json }
+        Returns: {
+          block_id: string
+          body: string
+          user_id: string
+        }[]
+      }
       can_manage_page_access: { Args: { p_page: string }; Returns: boolean }
       can_read_page: { Args: { p_page: string }; Returns: boolean }
       create_workspace_invite: {
@@ -784,6 +846,7 @@ export type Database = {
           page_count: number
         }[]
       }
+      mention_excerpt: { Args: { p_text: string }; Returns: string }
       page_backlinks: {
         Args: { p_page: string }
         Returns: {
