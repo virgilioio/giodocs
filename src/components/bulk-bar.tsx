@@ -16,6 +16,12 @@ import type { Database } from "@/integrations/supabase/types";
 import type { Filter, SortSpec } from "@/lib/run-view";
 import { runView } from "@/lib/run-view";
 import { exitOnly } from "@/lib/exit-motion";
+import {
+  actionIcon,
+  actionLabel,
+  actionableDefs,
+  valueRows,
+} from "@/lib/prop-actions";
 
 type PropDef = Database["public"]["Tables"]["property_defs"]["Row"];
 type ViewRow = Database["public"]["Tables"]["views"]["Row"];
@@ -37,10 +43,6 @@ function propsOf(p: PageListItem): Record<string, unknown> {
     : {};
 }
 
-function firstNameOf(m: MemberRow | undefined): string {
-  const full = m?.profiles?.full_name ?? m?.profiles?.email ?? "";
-  return (full.split(" ")[0] ?? full).trim() || "someone";
-}
 
 /** Compact "n page(s)" helper. */
 function nPages(n: number): string {
@@ -50,10 +52,9 @@ function nPages(n: number): string {
 export type BulkActions = {
   /** Bulk verify — MUST use verify_page per page. Never touch edited_at. */
   verify: (pageIds: string[]) => Promise<void> | void;
-  setStatus: (pageIds: string[], value: string, label: string) => Promise<void> | void;
-  setOwner: (pageIds: string[], userId: string | null, label: string) => Promise<void> | void;
-  moveArea: (pageIds: string[], area: string | null) => Promise<void> | void;
-  addTag: (pageIds: string[], tag: string) => Promise<void> | void;
+  /** Set one of the database's own properties on every page. For a
+   *  multi-select, `picked` is the option to ADD (the caller merges). */
+  setValue: (pageIds: string[], def: PropDef, picked: unknown) => Promise<void> | void;
   archive: (pageIds: string[]) => Promise<void> | void;
   deletePages: (pageIds: string[]) => Promise<void> | void;
   toast: (message: string) => void;
@@ -66,8 +67,6 @@ type BulkContext = {
   selectedIds: string[];
   propDefs: PropDef[];
   members: MemberRow[];
-  areas: string[];
-  tags: string[];
   views: ViewRow[];
   actions: BulkActions;
   onClear: () => void;
@@ -97,20 +96,6 @@ function needsReviewViewName(views: ViewRow[]): string | null {
 
 /* ─────────────────────── menu spec builders ─────────────────────── */
 
-function selectOptions(def: PropDef | undefined): Array<{
-  value: string;
-  label: string;
-  tint: string;
-  ink: string;
-}> {
-  return (def?.options as unknown as Array<{
-    value: string;
-    label: string;
-    tint: string;
-    ink: string;
-  }>) ?? [];
-}
-
 function buildRoot(ctx: BulkContext, mctx: MenuBuildCtx): MenuSpec {
   const n = ctx.selectedIds.length;
 
@@ -124,7 +109,6 @@ function buildRoot(ctx: BulkContext, mctx: MenuBuildCtx): MenuSpec {
 
   const selected = ctx.pages.filter((p) => ctx.selectedIds.includes(p.id));
   const staleN = countStale(selected, ctx.actions.staleDays);
-  const statusDef = ctx.propDefs.find((d) => d.key === "status");
 
   // Snapshot the id list at build time — used by every action closure below
   // so a selection mutation while a submenu is up cannot leak into the
@@ -145,39 +129,17 @@ function buildRoot(ctx: BulkContext, mctx: MenuBuildCtx): MenuSpec {
     },
   });
 
-  if (statusDef) {
+  // The database's own properties, by type — never a property found by
+  // name (src/lib/prop-actions.ts).
+  for (const def of actionableDefs(ctx.propDefs)) {
     rows.push({
       kind: "row",
-      label: "Set status",
-      icon: "dot",
+      label: actionLabel(def),
+      icon: actionIcon(def),
       hint: { text: "›" },
-      onPick: () => mctx.setSpec(buildStatusSubmenu(ctx, ids, mctx)),
+      onPick: () => mctx.setSpec(buildValueSubmenu(ctx, ids, def, mctx)),
     });
   }
-
-  rows.push({
-    kind: "row",
-    label: "Set owner",
-    icon: "person",
-    hint: { text: "›" },
-    onPick: () => mctx.setSpec(buildOwnerSubmenu(ctx, ids, mctx)),
-  });
-
-  rows.push({
-    kind: "row",
-    label: "Move to area",
-    icon: "arrow",
-    hint: { text: "›" },
-    onPick: () => mctx.setSpec(buildAreaSubmenu(ctx, ids, mctx)),
-  });
-
-  rows.push({
-    kind: "row",
-    label: "Add tag",
-    icon: "tag",
-    hint: { text: "›" },
-    onPick: () => mctx.setSpec(buildTagSubmenu(ctx, ids, mctx)),
-  });
 
   rows.push({ kind: "sep" });
 
@@ -227,130 +189,43 @@ function buildRoot(ctx: BulkContext, mctx: MenuBuildCtx): MenuSpec {
   };
 }
 
-function buildStatusSubmenu(
+function buildValueSubmenu(
   ctx: BulkContext,
   ids: string[],
+  def: PropDef,
   mctx: MenuBuildCtx,
 ): MenuSpec {
-  const def = ctx.propDefs.find((d) => d.key === "status");
-  const opts = selectOptions(def);
+  const selected = ctx.pages.filter((p) => ids.includes(p.id));
+  // Checked only when every selected page already has that value.
+  const values = selected.map((p) => propsOf(p)[def.key] ?? null);
+  const same = values.every((v) => JSON.stringify(v) === JSON.stringify(values[0]));
+  const current = same && def.type !== "multi_select" ? values[0] : undefined;
+  // Values typed into an open multi-select that aren't options yet.
+  const extra = new Set<string>();
+  if (def.type === "multi_select") {
+    for (const p of ctx.pages) {
+      const v = propsOf(p)[def.key];
+      if (Array.isArray(v)) for (const x of v) if (typeof x === "string") extra.add(x);
+    }
+  }
   return {
-    title: "Set status",
+    title: actionLabel(def),
     onBack: () => mctx.setSpec(buildRoot(ctx, mctx)),
-    rows: opts.map<MenuRow>((o) => ({
-      kind: "row",
-      label: o.label,
-      dot: `var(--color-${o.ink})`,
-      onPick: () => {
-        void doSetStatus(ctx, ids, o.value, o.label);
+    rows: valueRows(
+      def,
+      current,
+      ctx.members,
+      (value, label) => {
+        void doSetValue(ctx, ids, def, value, label);
         mctx.close();
         ctx.onClear();
       },
-    })),
+      [...extra],
+    ),
     footer:
-      "Applies to every selected page. Pages may leave views that filtered the old value.",
-  };
-}
-
-function buildOwnerSubmenu(
-  ctx: BulkContext,
-  ids: string[],
-  mctx: MenuBuildCtx,
-): MenuSpec {
-  const rows: MenuRow[] = ctx.members.map((m) => ({
-    kind: "row",
-    label: m.profiles?.full_name ?? m.profiles?.email ?? "Someone",
-    person: {
-      initials: (m.profiles?.full_name ?? m.profiles?.email ?? "?")
-        .slice(0, 1)
-        .toUpperCase(),
-      tint: `var(--color-${m.profiles?.avatar_tint ?? "sunken"})`,
-      ink: `var(--color-${m.profiles?.avatar_ink ?? "body"})`,
-    },
-    onPick: () => {
-      void doSetOwner(ctx, ids, m.user_id, firstNameOf(m));
-      mctx.close();
-      ctx.onClear();
-    },
-  }));
-  rows.push({ kind: "sep" });
-  rows.push({
-    kind: "row",
-    label: "Clear owner",
-    icon: "clear",
-    onPick: () => {
-      void doSetOwner(ctx, ids, null, "no one");
-      mctx.close();
-      ctx.onClear();
-    },
-  });
-  return {
-    title: "Set owner",
-    onBack: () => mctx.setSpec(buildRoot(ctx, mctx)),
-    rows,
-    footer:
-      "Reassigning is how a departure gets handled — no page is left orphaned.",
-  };
-}
-
-function buildAreaSubmenu(
-  ctx: BulkContext,
-  ids: string[],
-  mctx: MenuBuildCtx,
-): MenuSpec {
-  const rows: MenuRow[] = ctx.areas.map<MenuRow>((a) => ({
-    kind: "row",
-    label: a,
-    icon: "arrow",
-    onPick: () => {
-      void doMoveArea(ctx, ids, a);
-      mctx.close();
-      ctx.onClear();
-    },
-  }));
-  rows.push({ kind: "sep" });
-  rows.push({
-    kind: "row",
-    label: "Clear area",
-    icon: "clear",
-    onPick: () => {
-      void doMoveArea(ctx, ids, null);
-      mctx.close();
-      ctx.onClear();
-    },
-  });
-  return {
-    title: "Move to area",
-    onBack: () => mctx.setSpec(buildRoot(ctx, mctx)),
-    rows,
-    footer:
-      "An area is a property. Moving pages rewrites it — nothing is filed anywhere.",
-  };
-}
-
-function buildTagSubmenu(
-  ctx: BulkContext,
-  ids: string[],
-  mctx: MenuBuildCtx,
-): MenuSpec {
-  const rows: MenuRow[] =
-    ctx.tags.length === 0
-      ? []
-      : ctx.tags.map<MenuRow>((t) => ({
-          kind: "row",
-          label: t,
-          icon: "tag",
-          onPick: () => {
-            void doAddTag(ctx, ids, t);
-            mctx.close();
-            ctx.onClear();
-          },
-        }));
-  return {
-    title: "Add tag",
-    onBack: () => mctx.setSpec(buildRoot(ctx, mctx)),
-    rows,
-    footer: "Tags accumulate — existing tags stay.",
+      def.type === "multi_select"
+        ? "Adds to every selected page. Values already there stay."
+        : "Applies to every selected page. Pages may leave views that filtered the old value.",
   };
 }
 
@@ -374,46 +249,18 @@ async function doVerify(ctx: BulkContext, ids: string[]) {
   }
 }
 
-async function doSetStatus(
+async function doSetValue(
   ctx: BulkContext,
   ids: string[],
-  value: string,
+  def: PropDef,
+  value: unknown,
   label: string,
 ) {
-  await ctx.actions.setStatus(ids, value, label);
-  ctx.actions.toast(`${nPages(ids.length)} set to "${label}".`);
-}
-
-async function doSetOwner(
-  ctx: BulkContext,
-  ids: string[],
-  userId: string | null,
-  label: string,
-) {
-  await ctx.actions.setOwner(ids, userId, label);
-  if (userId) {
-    ctx.actions.toast(`${nPages(ids.length)} reassigned to ${label}.`);
-  } else {
-    ctx.actions.toast(`${nPages(ids.length)} — owner cleared.`);
-  }
-}
-
-async function doMoveArea(
-  ctx: BulkContext,
-  ids: string[],
-  area: string | null,
-) {
-  await ctx.actions.moveArea(ids, area);
-  if (area) {
-    ctx.actions.toast(`${nPages(ids.length)} moved to ${area} — joined "${area}".`);
-  } else {
-    ctx.actions.toast(`${nPages(ids.length)} — area cleared.`);
-  }
-}
-
-async function doAddTag(ctx: BulkContext, ids: string[], tag: string) {
-  await ctx.actions.addTag(ids, tag);
-  ctx.actions.toast(`${nPages(ids.length)} tagged "${tag}".`);
+  await ctx.actions.setValue(ids, def, value);
+  const name = def.label || def.key;
+  if (def.type === "multi_select") ctx.actions.toast(`${nPages(ids.length)}: added "${label}" to ${name}.`);
+  else if (value === null) ctx.actions.toast(`${nPages(ids.length)}: ${name} cleared.`);
+  else ctx.actions.toast(`${nPages(ids.length)}: ${name} set to "${label}".`);
 }
 
 async function doArchive(ctx: BulkContext, ids: string[]) {
@@ -437,8 +284,6 @@ export function BulkBar(props: {
   selectedIds: string[];
   propDefs: PropDef[];
   members: MemberRow[];
-  areas: string[];
-  tags: string[];
   views: ViewRow[];
   actions: BulkActions;
   onClear: () => void;

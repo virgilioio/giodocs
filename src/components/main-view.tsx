@@ -1,3 +1,5 @@
+import { actionableDefs, valueLabel } from "@/lib/prop-actions";
+import { PROPERTY_KINDS } from "@/lib/property-kinds";
 import React, { useMemo, useState, type ReactNode } from "react";
 import { setViewDateMode, viewTime } from "@/lib/view-time";
 import { useNavigate } from "@tanstack/react-router";
@@ -465,28 +467,19 @@ function FilterBuilderContent({
   })();
   const [step, setStep] = useState<BuilderStep>(initialStep);
 
+  // Icons by TYPE: every database names its properties its own way.
+  const TYPE_ICON: Record<string, string> = Object.fromEntries(
+    PROPERTY_KINDS.map((k) => [k.type, k.icon]),
+  );
   const ROOT_ICON: Record<string, string> = {
-    area: "M4 12h14m-5-5 5 5-5 5",
-    owner:
-      "M12 3.4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 20.6v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2",
-    status: "M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8z",
-    stage: "M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8z",
-    priority: "M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8z",
-    tags:
-      "M20.4 13.6 13.6 20.4a2 2 0 0 1-2.8 0L3.6 13.2V4.4a.8.8 0 0 1 .8-.8h8.8l7.2 7.2a2 2 0 0 1 0 2.8zM7.6 7.6h.01",
     __freshness: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7.5V12l3.2 1.9",
   };
   const rootItems: Array<{ key: string; label: string }> = [];
-  const FIRST = ["area", "owner", "status", "stage", "priority", "tags"];
-  for (const k of FIRST) {
-    const def = propDefs.find((d) => d.key === k);
-    if (!def) continue;
-    rootItems.push({ key: k, label: k === "tags" ? "Tag" : def.label });
-  }
-  // Then every other live property, in workspace order.
+  // The database's live properties, in its own order.
   for (const def of [...propDefs].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))) {
-    if (FIRST.includes(def.key)) continue;
+    if (def.archived_at) continue;
     rootItems.push({ key: def.key, label: def.label });
+    ROOT_ICON[def.key] = TYPE_ICON[def.type] ?? "";
   }
   rootItems.push({ key: "@created", label: "Created" });
   rootItems.push({ key: "@created_by", label: "Created by" });
@@ -587,48 +580,6 @@ function FilterBuilderContent({
     );
   }
 
-  if (key === "area") {
-    const areas = new Set<string>();
-    for (const p of pages) {
-      const a = propsOf(p)["area"];
-      if (typeof a === "string" && a) areas.add(a);
-    }
-    const list = [...areas].sort();
-    return (
-      <div style={{ padding: "2px 0" }}>
-        <StepTitle onBack={back}>{def.label}</StepTitle>
-        {list.length === 0 && <EmptyValues />}
-        {list.map((a) => (
-          <BuilderRow
-            key={a}
-            onClick={() => onPick({ op: "eq", prop: "area", value: a })}
-          >
-            {a}
-          </BuilderRow>
-        ))}
-      </div>
-    );
-  }
-
-  if (key === "owner") {
-    return (
-      <div style={{ padding: "2px 0" }}>
-        <StepTitle onBack={back}>{def.label}</StepTitle>
-        <BuilderRow onClick={() => onPick({ op: "is_me", prop: "owner" })}>
-          Me
-        </BuilderRow>
-        {people.map((p) => (
-          <BuilderRow
-            key={p.id}
-            onClick={() => onPick({ op: "eq", prop: "owner", value: p.id })}
-          >
-            {p.full_name ?? "Someone"}
-          </BuilderRow>
-        ))}
-      </div>
-    );
-  }
-
   if (def.type === "select" || def.type === "status") {
     const opts =
       (def.options as unknown as Array<{
@@ -637,17 +588,24 @@ function FilterBuilderContent({
         tint: string;
         ink: string;
       }>) ?? [];
+    // An open property also holds values typed in that aren't options yet.
+    const known = new Set(opts.map((o) => o.value));
+    const typed = new Set<string>();
+    for (const p of pages) {
+      const v = propsOf(p)[def.key];
+      if (typeof v === "string" && v && !known.has(v)) typed.add(v);
+    }
+    const allOpts = [
+      ...opts,
+      ...[...typed].sort().map((v) => ({ value: v, label: v, tint: "sunken", ink: "muted" })),
+    ];
     return (
       <div style={{ padding: "2px 0" }}>
         <StepTitle onBack={back}>{def.label}</StepTitle>
-        {key !== "status" && (
-          <BuilderRow
-            onClick={() => onPick({ op: "not_empty", prop: def.key })}
-          >
-            Has any {def.label.toLowerCase()}
-          </BuilderRow>
-        )}
-        {opts.map((o) => (
+        <BuilderRow onClick={() => onPick({ op: "not_empty", prop: def.key })}>
+          Has any {def.label.toLowerCase()}
+        </BuilderRow>
+        {allOpts.map((o) => (
           <BuilderRow
             key={o.value}
             leading={
@@ -670,29 +628,6 @@ function FilterBuilderContent({
         <BuilderRow onClick={() => onPick({ op: "empty", prop: def.key })}>
           No {def.label.toLowerCase()}
         </BuilderRow>
-      </div>
-    );
-  }
-
-  if (key === "tags") {
-    const tagSet = new Set<string>();
-    for (const p of pages) {
-      const t = propsOf(p)["tags"];
-      if (Array.isArray(t)) t.forEach((x) => tagSet.add(String(x)));
-    }
-    const tags = [...tagSet].sort();
-    return (
-      <div style={{ padding: "2px 0" }}>
-        <StepTitle onBack={back}>Tag</StepTitle>
-        {tags.length === 0 && <EmptyValues />}
-        {tags.map((t) => (
-          <BuilderRow
-            key={t}
-            onClick={() => onPick({ op: "includes", prop: "tags", value: t })}
-          >
-            {t}
-          </BuilderRow>
-        ))}
       </div>
     );
   }
@@ -1461,6 +1396,9 @@ export function BoardBody({
   const [overCol, setOverCol] = useState<string | null>(null);
 
   const def = propDefs.find((d) => d.key === groupBy);
+  // The face on a card is the database's first person property — whatever
+  // it's called there (src/lib/prop-actions.ts).
+  const personDef = actionableDefs(propDefs).find((d) => d.type === "person");
   const opts =
     (def?.options as unknown as Array<{
       value: string;
@@ -1537,7 +1475,7 @@ export function BoardBody({
           <div className="flex flex-col gap-2">
             {col.pages.map((p) => {
               const isStale = new Date(p.verified_at).getTime() < staleThreshold;
-              const ownerId = propsOf(p)["owner"];
+              const ownerId = personDef ? propsOf(p)[personDef.key] : null;
               const owner =
                 typeof ownerId === "string"
                   ? members.find((m) => m.user_id === ownerId)?.profiles
@@ -1681,24 +1619,26 @@ export function ListBody({
   const navigate = useNavigate();
   const setOrigin = useSetPageOrigin();
 
-  const statusDef = propDefs.find((d) => d.key === "status");
-  const statusOpts =
-    (statusDef?.options as unknown as Array<{ value: string; label: string }>) ?? [];
+  // A row's line reads its database's first status-or-select property and
+  // first person property, by type, never by name.
+  const acts = actionableDefs(propDefs);
+  const stateDef = acts.find((d) => d.type === "status") ?? acts.find((d) => d.type === "select");
+  const personDef = acts.find((d) => d.type === "person");
 
   return (
     <div style={{ maxWidth: 800 }}>
       {rows.map((p, idx) => {
         const props = propsOf(p);
         const isStale = new Date(p.verified_at).getTime() < staleThreshold;
-        const ownerId = props["owner"];
+        const ownerId = personDef ? props[personDef.key] : null;
         const owner =
           typeof ownerId === "string"
             ? members.find((m) => m.user_id === ownerId)?.profiles
             : null;
-        const status = statusOpts.find((o) => o.value === props["status"])?.label;
-        const area = typeof props["area"] === "string" ? props["area"] : null;
+        const v = stateDef ? props[stateDef.key] : null;
+        const status = stateDef && typeof v === "string" && v ? valueLabel(stateDef, v, []) : null;
         const ownerName = owner?.full_name ?? owner?.email ?? null;
-        const parts = [area, ownerName, status].filter(Boolean) as string[];
+        const parts = [ownerName, status].filter(Boolean) as string[];
         const isLast = idx === rows.length - 1;
         const isSelected = selectedSet.has(p.id);
         return (

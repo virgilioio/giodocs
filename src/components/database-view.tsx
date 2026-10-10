@@ -40,11 +40,11 @@ import {
   useUnpublishView,
   useVerifyPage,
   useDeletePage,
-  useMovePageToArea,
   useRestorePage,
   useArchivePage,
 } from "@/hooks/use-page-mutations";
 import { BulkBar } from "./bulk-bar";
+import { nextValue } from "@/lib/prop-actions";
 import { CalendarViewBody } from "./calendar-view";
 import { ExportViewDialog } from "./export-view-dialog";
 import { useDelayedPending } from "./sk";
@@ -396,7 +396,6 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
   const unpublishView = useUnpublishView();
   const verifyPage = useVerifyPage();
   const deletePage = useDeletePage();
-  const movePageToArea = useMovePageToArea();
   const restorePage = useRestorePage();
   const archivePage = useArchivePage();
 
@@ -573,18 +572,19 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
       : null;
 
   const statusDef = propDefs.find((d) => d.key === "status");
-  const groupableDefs = propDefs.filter((d) => d.type === "select" || d.type === "status");
-  const dateDefs = propDefs.filter((d) => d.type === "date");
+  const groupableDefs = propDefs.filter((d) => !d.archived_at && (d.type === "select" || d.type === "status"));
+  const dateDefs = propDefs.filter((d) => !d.archived_at && d.type === "date");
   const groupBy: string =
     propDefs.length === 0
       ? storedGroupBy
       : layout === "calendar"
         ? dateDefs.some((d) => d.key === storedGroupBy)
           ? storedGroupBy
-          : (dateDefs.find((d) => d.key === "due") ?? dateDefs[0])?.key ?? ""
+          : dateDefs[0]?.key ?? ""
         : groupableDefs.some((d) => d.key === storedGroupBy)
           ? storedGroupBy
-          : (groupableDefs.find((d) => d.key === "status") ?? groupableDefs[0])?.key ?? "status";
+          : // Any database: its first status property, else its first select.
+            (groupableDefs.find((d) => d.type === "status") ?? groupableDefs[0])?.key ?? "";
   const groupByDef = propDefs.find((d) => d.key === groupBy);
 
   /* --- new rows -------------------------------------------------------- */
@@ -777,7 +777,14 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
     });
   };
   const specPropDefs = useMemo(
-    () => propDefs.map((d) => ({ key: d.key, label: d.label ?? d.key, options: d.options })),
+    () =>
+      propDefs.map((d) => ({
+        key: d.key,
+        label: d.label ?? d.key,
+        type: d.type,
+        options: d.options,
+        archived_at: d.archived_at,
+      })),
     [propDefs],
   );
   const getPageMenuBuild = (p: PageListItem) => {
@@ -792,9 +799,7 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
           editedByFirstName,
           onOpen: () => navigate({ to: "/p/$pageId", params: { pageId: p.id } }),
           onVerify: () => verifyPage.mutate(p.id),
-          onSetStatus: (v) => setProp.mutate({ pageId: p.id, key: "status", value: v }),
-          onSetOwner: (uid) => setProp.mutate({ pageId: p.id, key: "owner", value: uid }),
-          onMoveArea: (a) => movePageToArea.mutate({ pageId: p.id, area: a }),
+          onSetValue: (key, value) => setProp.mutate({ pageId: p.id, key, value }),
           onDelete: () => onDeleteWithUndo(p),
         },
         mctx,
@@ -1002,8 +1007,6 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
           selectedIds={selPages}
           propDefs={propDefs}
           members={members}
-          areas={areas}
-          tags={tagsWs}
           views={views}
           onClear={clearSelection}
           actions={{
@@ -1012,25 +1015,12 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
             verify: async (ids) => {
               await Promise.all(ids.map((id) => verifyPage.mutateAsync(id)));
             },
-            setStatus: async (ids, value) => {
-              await Promise.all(ids.map((id) => setProp.mutateAsync({ pageId: id, key: "status", value })));
-            },
-            setOwner: async (ids, uid) => {
-              await Promise.all(ids.map((id) => setProp.mutateAsync({ pageId: id, key: "owner", value: uid })));
-            },
-            moveArea: async (ids, area) => {
-              await Promise.all(ids.map((id) => movePageToArea.mutateAsync({ pageId: id, area })));
-            },
-            addTag: async (ids, tag) => {
+            setValue: async (ids, def, picked) => {
               await Promise.all(
                 ids.map((id) => {
                   const p = pages.find((x) => x.id === id);
-                  const existing = (propsOf(p ?? ({} as PageListItem))["tags"] ?? []) as unknown[];
-                  const arr = Array.isArray(existing)
-                    ? existing.filter((x): x is string => typeof x === "string")
-                    : [];
-                  const next = arr.includes(tag) ? arr : [...arr, tag];
-                  return setProp.mutateAsync({ pageId: id, key: "tags", value: next });
+                  const value = nextValue(def, propsOf(p ?? ({} as PageListItem))[def.key], picked);
+                  return setProp.mutateAsync({ pageId: id, key: def.key, value });
                 }),
               );
             },

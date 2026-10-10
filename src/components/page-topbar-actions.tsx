@@ -278,15 +278,6 @@ export function PageTopbarActions({
   const workspace = shell.workspace.data;
   const workspaceName = workspace?.name ?? "";
   const memberCount = members.length;
-  const areas = useMemo(() => {
-    const s = new Set<string>();
-    for (const p of pages) {
-      const a = propsOf(p)["area"];
-      if (typeof a === "string" && a) s.add(a);
-    }
-    return [...s].sort();
-  }, [pages]);
-
   const editedName = useMemo(() => {
     if (!listRow) return null;
     const m = members.find((x) => x.user_id === listRow.edited_by);
@@ -489,7 +480,6 @@ export function PageTopbarActions({
           workspaceName={workspaceName}
           memberCount={memberCount}
           access={access}
-          areas={areas}
           appearance={app}
           onAppearance={setAppearance}
           handlers={{
@@ -512,18 +502,6 @@ export function PageTopbarActions({
               );
               const rect = btn?.getBoundingClientRect();
               if (rect) openPermissionsPopover(rect);
-            },
-            onMoveArea: (area) => {
-              setProp.mutate({ pageId: page.id, key: "area", value: area });
-              const from =
-                page.props && typeof page.props === "object" && !Array.isArray(page.props)
-                  ? ((page.props as Record<string, unknown>).area as string | undefined)
-                  : undefined;
-              toast.push(
-                area
-                  ? `Moved to ${area}${from ? ` · was ${from}` : ""}`
-                  : `Cleared area${from ? ` · was ${from}` : ""}`,
-              );
             },
           }}
         />

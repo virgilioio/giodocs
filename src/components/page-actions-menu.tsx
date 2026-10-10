@@ -278,48 +278,6 @@ function DeleteConfirm({
   );
 }
 
-/* ────────────── Area sub-screen ────────────── */
-
-function AreaScreen({
-  areas, current, onPick, onBack,
-}: {
-  areas: string[]; current: string | null;
-  onPick: (a: string | null) => void; onBack: () => void;
-}) {
-  return (
-    <div>
-      <button
-        type="button" onClick={onBack}
-        style={{
-          display: "flex", alignItems: "center", gap: 8,
-          padding: "6px 9px", borderRadius: 8, width: "100%",
-          background: "transparent", cursor: "pointer",
-          color: "var(--color-secondary)", fontSize: 13,
-        }}
-      >
-        <Ic path="M15 6l-6 6 6 6" size={14} color="var(--color-muted)" />
-        <span>Change area</span>
-      </button>
-      <div style={{ borderTop: "1px solid var(--color-sunken)", margin: "4px 0" }} />
-      <ActionRow
-        label="No area"
-        hint={current == null ? <Ic path={P.check} size={14} color="var(--color-accent)" /> : undefined}
-        hintKind="value"
-        onClick={() => onPick(null)}
-      />
-      {areas.map((a) => (
-        <ActionRow
-          key={a}
-          label={a}
-          hint={a === current ? <Ic path={P.check} size={14} color="var(--color-accent)" /> : undefined}
-          hintKind="value"
-          onClick={() => onPick(a)}
-        />
-      ))}
-    </div>
-  );
-}
-
 /* ────────────── Panel ────────────── */
 
 export type PageActionsHandlers = {
@@ -333,11 +291,10 @@ export type PageActionsHandlers = {
   onDelete: () => void;
   onVerify: () => void;
   onOpenPermissions: () => void;      /* opens the existing permissions surface */
-  onMoveArea: (a: string | null) => void;
 };
 
 export function PageActionsMenu({
-  open, onClose, page, workspaceName, memberCount, access, areas, appearance,
+  open, onClose, page, workspaceName, memberCount, access, appearance,
   onAppearance, handlers,
 }: {
   open: boolean;
@@ -346,17 +303,15 @@ export function PageActionsMenu({
   workspaceName: string;
   memberCount: number;
   access: PageAccessRow[];
-  areas: string[];
   appearance: PageAppearance;
   onAppearance: <K extends keyof PageAppearance>(key: K, value: PageAppearance[K]) => void;
   handlers: PageActionsHandlers;
 }) {
-  const [screen, setScreen] = useState<"root" | "area">("root");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Reset internal state on close.
-  useEffect(() => { if (!open) { setScreen("root"); setConfirmDelete(false); } }, [open]);
+  useEffect(() => { if (!open) setConfirmDelete(false); }, [open]);
 
   // Escape inside menu: close the menu (unless a sub-screen is up, which
   // handles its own back). Global escape stack in page-view keeps priority.
@@ -365,13 +320,12 @@ export function PageActionsMenu({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (confirmDelete) { setConfirmDelete(false); e.stopPropagation(); return; }
-      if (screen !== "root") { setScreen("root"); e.stopPropagation(); return; }
       onClose();
       e.stopPropagation();
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [open, onClose, screen, confirmDelete]);
+  }, [open, onClose, confirmDelete]);
 
   if (!open) return null;
 
@@ -381,12 +335,6 @@ export function PageActionsMenu({
     ? `Everyone at ${workspaceName || `${memberCount} people`}`
     : `Only ${nExplicit} ${nExplicit === 1 ? "person" : "people"}`;
 
-  const propsObj: Record<string, unknown> =
-    page.props && typeof page.props === "object" && !Array.isArray(page.props)
-      ? (page.props as Record<string, unknown>) : {};
-  const currentArea =
-    typeof propsObj.area === "string" && propsObj.area
-      ? (propsObj.area as string) : null;
   const isArchived = !!page.archived_at;
 
   const isVerifiedToday = (() => {
@@ -413,14 +361,7 @@ export function PageActionsMenu({
           transformOrigin: "top right",
         }}
       >
-        {screen === "area" ? (
-          <AreaScreen
-            areas={areas}
-            current={currentArea}
-            onPick={(a) => { handlers.onMoveArea(a); setScreen("root"); }}
-            onBack={() => setScreen("root")}
-          />
-        ) : (
+        {(
           <>
             {/* GROUP 1 — Typeface */}
             <div style={{
@@ -479,13 +420,6 @@ export function PageActionsMenu({
                 hint={whoLabel}
                 hintKind="value"
                 onClick={() => { onClose(); handlers.onOpenPermissions(); }}
-              />
-              <ActionRow
-                icon={P.arrow}
-                label="Change area"
-                hint={currentArea ?? "None"}
-                hintKind="value"
-                onClick={() => setScreen("area")}
               />
               <ActionRow
                 icon={P.shieldCheck}

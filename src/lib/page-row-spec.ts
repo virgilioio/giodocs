@@ -11,6 +11,15 @@ import type { MenuSpec } from "@/components/row-menu";
 import { formatTimestamp } from "@/lib/format";
 import { pageRowFooter } from "@/lib/page-row-footer";
 import type { PageListItem } from "@/lib/types";
+import {
+  actionIcon,
+  actionLabel,
+  actionableDefs,
+  nextValue,
+  valueLabel,
+  valueRows,
+  type ActionDef,
+} from "@/lib/prop-actions";
 
 export type MemberLite = {
   user_id: string;
@@ -47,14 +56,14 @@ function relTime(iso: string) {
 export type BuildPageRowSpecArgs = {
   p: PageListItem;
   isStale: boolean;
-  propDefs: Array<{ key: string; label: string; options: unknown }>;
+  /** The database's own properties (any database: never looked up by name). */
+  propDefs: ActionDef[];
   members: MemberLite[];
   editedByFirstName: string;
   onOpen: () => void;
   onVerify: () => void;
-  onSetStatus: (v: string) => void;
-  onSetOwner: (uid: string) => void;
-  onMoveArea: (area: string | null) => void;
+  /** Write a property's new value (a multi-select arrives already merged). */
+  onSetValue: (key: string, value: unknown) => void;
   onDelete: () => void;
 };
 
@@ -70,9 +79,7 @@ export function buildPageRowSpec(
     editedByFirstName,
     onOpen,
     onVerify,
-    onSetStatus,
-    onSetOwner,
-    onMoveArea,
+    onSetValue,
     onDelete,
   } = args;
 
@@ -80,24 +87,6 @@ export function buildPageRowSpec(
     p.props && typeof p.props === "object" && !Array.isArray(p.props)
       ? (p.props as Record<string, unknown>)
       : {};
-  const currentStatus = typeof props.status === "string" ? props.status : "";
-  const currentOwner = typeof props.owner === "string" ? props.owner : "";
-  const currentArea = typeof props.area === "string" ? props.area : "";
-
-  const statusDef = propDefs.find((d) => d.key === "status");
-  const statusOptions = (
-    (statusDef?.options as Array<{ value: string; color?: string }>) ?? []
-  ).filter(Boolean);
-  const areaDef = propDefs.find((d) => d.key === "area");
-  const areaOptions = ((areaDef?.options as Array<{ value: string }>) ?? [])
-    .map((o) => o.value)
-    .filter(Boolean);
-
-  const ownerMember = members.find((m) => m.user_id === currentOwner);
-  const ownerFirst = firstNameOf(ownerMember);
-  const currentStatusColor =
-    statusOptions.find((o) => o.value === currentStatus)?.color ??
-    "var(--color-muted)";
   const title = p.title || "Untitled";
 
   const footer = pageRowFooter({
@@ -131,82 +120,21 @@ export function buildPageRowSpec(
           mctx.close();
         },
       },
-      {
-        kind: "row",
-        label: "Set status",
-        dot: currentStatusColor,
-        hint: { text: currentStatus || "empty" },
+      ...actionableDefs(propDefs).map((def) => ({
+        kind: "row" as const,
+        label: actionLabel(def),
+        icon: actionIcon(def),
+        hint: { text: def.type === "multi_select" ? "›" : valueLabel(def, props[def.key], members) },
         onPick: () =>
           mctx.setSpec({
-            title: "Set status",
-            rows: statusOptions.map((o) => ({
-              kind: "row" as const,
-              label: o.value,
-              dot: o.color || "var(--color-muted)",
-              checked: o.value === currentStatus,
-              onPick: () => {
-                onSetStatus(o.value);
-                mctx.close();
-              },
-            })),
+            title: actionLabel(def),
+            onBack: () => mctx.setSpec(listSpec),
+            rows: valueRows(def, props[def.key], members, (value) => {
+              onSetValue(def.key, nextValue(def, props[def.key], value));
+              mctx.close();
+            }),
           }),
-      },
-      {
-        kind: "row",
-        label: "Set owner",
-        icon: "person",
-        hint: { text: ownerFirst || "none" },
-        onPick: () =>
-          mctx.setSpec({
-            title: "Set owner",
-            rows: members.map((m) => ({
-              kind: "row" as const,
-              label:
-                m.profiles?.full_name || m.profiles?.email || "Unknown",
-              person: {
-                tint: m.profiles?.avatar_tint || "var(--color-sunken)",
-                ink: m.profiles?.avatar_ink || "var(--color-noir)",
-                initials: initialsOf(m),
-              },
-              checked: m.user_id === currentOwner,
-              onPick: () => {
-                onSetOwner(m.user_id);
-                mctx.close();
-              },
-            })),
-          }),
-      },
-      {
-        kind: "row",
-        label: "Move to area",
-        icon: "arrow",
-        hint: { text: currentArea || "none" },
-        onPick: () =>
-          mctx.setSpec({
-            title: "Move to area",
-            rows: [
-              {
-                kind: "row" as const,
-                label: "No area",
-                checked: !currentArea,
-                onPick: () => {
-                  onMoveArea(null);
-                  mctx.close();
-                },
-              },
-              { kind: "sep" as const },
-              ...areaOptions.map((a) => ({
-                kind: "row" as const,
-                label: a,
-                checked: a === currentArea,
-                onPick: () => {
-                  onMoveArea(a);
-                  mctx.close();
-                },
-              })),
-            ],
-          }),
-      },
+      })),
       { kind: "sep" },
       {
         kind: "row",
