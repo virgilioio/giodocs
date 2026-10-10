@@ -9,6 +9,7 @@ describe("readInlineView", () => {
   it("reads a stored view, dropping anything malformed", () => {
     expect(
       readInlineView({
+        database_id: "db1",
         name: "Open tasks",
         layout: "board",
         filter: [{ op: "eq", prop: "status", value: "todo" }, 3, { prop: "x" }],
@@ -17,6 +18,7 @@ describe("readInlineView", () => {
         group_by: "status",
       }),
     ).toEqual({
+      database_id: "db1",
       name: "Open tasks",
       layout: "board",
       filter: [{ op: "eq", prop: "status", value: "todo" }],
@@ -25,9 +27,10 @@ describe("readInlineView", () => {
       group_by: "status",
     });
   });
-  it("falls back to a table sorted by newest edits", () => {
+  it("falls back to a table sorted by newest edits, with no database yet", () => {
     expect(readInlineView({ layout: "calendar", sort: [] })).toEqual({
       ...defaultInlineView(),
+      database_id: null,
       layout: "table",
     });
   });
@@ -36,6 +39,7 @@ describe("readInlineView", () => {
 describe("inlineFromView", () => {
   it("copies a saved view's query and settings", () => {
     const v = inlineFromView({
+      database_id: "db1",
       name: "Roadmap",
       layout: "list",
       filter: [{ op: "is_me", prop: "owner" }],
@@ -44,6 +48,7 @@ describe("inlineFromView", () => {
       group_by: null,
     });
     expect(v).toEqual({
+      database_id: "db1",
       name: "Roadmap",
       layout: "list",
       filter: [{ op: "is_me", prop: "owner" }],

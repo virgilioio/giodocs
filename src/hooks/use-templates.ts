@@ -14,12 +14,19 @@ import type { Block, PageFull } from "@/lib/types";
  * A template is an ordinary page with template_at set; see the
  * page_templates migration. */
 
-type TemplateContent = { title: string; icon: string | null; props: unknown; blocks: unknown };
+type TemplateContent = {
+  title: string;
+  icon: string | null;
+  props: unknown;
+  blocks: unknown;
+  parent_id: string | null;
+  database_id: string | null;
+};
 
 async function fetchTemplateContent(templateId: string): Promise<TemplateContent> {
   const { data, error } = await supabase
     .from("pages")
-    .select("title, icon, props, blocks")
+    .select("title, icon, props, blocks, parent_id, database_id")
     .eq("id", templateId)
     .maybeSingle();
   if (error) throw error;
@@ -92,19 +99,21 @@ async function copyTemplateFiles(blocks: unknown[], pageId: string): Promise<unk
 
 /** Fill a blank page from a template: its blocks (with new ids, and its
  *  images copied over), icon and title, and its properties under the ones
- *  the page already has. */
+ *  the page already has. Properties only carry over inside the template's
+ *  own database: a plain page has none, and another database has its own. */
 export async function applyTemplate(
   pageId: string,
   templateId: string,
-  current: { title: string; props: unknown },
+  current: { title: string; props: unknown; databaseId?: string | null },
 ): Promise<AppliedPage> {
   const tpl = await fetchTemplateContent(templateId);
   const blocks = await copyTemplateFiles(cloneBlocksFresh(tpl.blocks), pageId);
+  const sameDatabase = !!tpl.database_id && current.databaseId === tpl.database_id;
   const patch = {
     blocks: blocks as never,
     icon: tpl.icon || "📄",
     title: current.title.trim() ? current.title : tpl.title,
-    props: mergeTemplateProps(current.props, tpl.props) as never,
+    ...(sameDatabase ? { props: mergeTemplateProps(current.props, tpl.props) as never } : {}),
   };
   const { error } = await supabase.from("pages").update(patch).eq("id", pageId);
   if (error) throw error;
@@ -120,8 +129,10 @@ export async function applyTemplate(
   };
 }
 
-/** Start a new page from a template and open it. The page is made first
- *  (its images can only be copied under a page that exists), then filled. */
+/** Start a new page from a template and open it, beside the template (a
+ *  template that is a row makes a row of the same database). The page is
+ *  made first (its images can only be copied under a page that exists),
+ *  then filled. */
 export function useNewPageFromTemplate() {
   const create = useCreatePage();
   const qc = useQueryClient();
@@ -131,11 +142,16 @@ export function useNewPageFromTemplate() {
     try {
       const tpl = await fetchTemplateContent(templateId);
       const created = await create.mutateAsync({
-        seedProps: mergeTemplateProps({}, tpl.props),
+        seedProps: tpl.database_id ? mergeTemplateProps({}, tpl.props) : {},
         title: tpl.title,
         icon: tpl.icon || "📄",
+        parentId: tpl.parent_id,
       });
-      const row = await applyTemplate(created.id, templateId, { title: tpl.title, props: created.props });
+      const row = await applyTemplate(created.id, templateId, {
+        title: tpl.title,
+        props: created.props,
+        databaseId: tpl.database_id,
+      });
       qc.setQueryData<PageFull | null>(qk.page(created.id), (prev) =>
         prev
           ? ({

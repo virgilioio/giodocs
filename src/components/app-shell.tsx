@@ -6,7 +6,6 @@ import {
   type ReactNode,
 } from "react";
 import { primaryMod } from "@/lib/platform";
-import { createPortal } from "react-dom";
 import { toClipboard } from "@/lib/clipboard";
 import { Link, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,11 +13,10 @@ import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { useRealtimeWorkspace } from "@/hooks/use-realtime";
-import { runView, type Filter, type SortSpec } from "@/lib/run-view";
 import { getPageOrigin } from "@/lib/page-origin";
 import { Ico } from "./emoji-icon";
 import { PageBreadcrumb } from "./page-breadcrumb";
-import { SidebarTree, TREE_ASIDE } from "./sidebar-tree";
+import { SidebarTreeView, useTreeExpanded, type TreeNode } from "./sidebar-tree";
 import { useEmojiSet } from "@/hooks/use-custom-emoji";
 import { setInlineEmojiSet } from "@/lib/emoji-registry";
 import { mentionPage, setMentionDirectory } from "@/lib/mention-directory";
@@ -30,33 +28,14 @@ import { resolvePageIdParam } from "@/lib/slug";
 
 import {
   useCreatePageAndOpen,
-
-  useCreateView,
-  useDeleteView,
   useDeletePage,
   useRestorePage,
-
-  
-  useForkView,
-  useUnpublishView,
-
-  useMovePageToArea,
-  useRenameArea,
-  useSetPageProperty,
-  useUpdateView,
-  usePublishView,
-  useVerifyPage,
-  useSetAreaIcon,
-  useRegisterArea,
-  useClearArea,
-
-
+  useShareToWorkspace,
 } from "@/hooks/use-page-mutations";
 
 import { useToast } from "@/lib/toast";
-import { formatTimestamp } from "@/lib/format";
 import type { PageListItem } from "@/lib/types";
-import { MainView } from "./main-view";
+import { DatabaseView } from "./database-view";
 import { ViewSkeleton } from "./skeletons";
 import { useDelayedPending } from "./sk";
 import { PageEditor } from "./page-view";
@@ -65,39 +44,20 @@ import { CommandPalette } from "./command-palette";
 import { SettingsModal, type SettingsPane } from "./settings-modal";
 import { AddMembersModal } from "./add-members-modal";
 import { useWorkspaceInvites, useCancelInvite } from "@/hooks/use-invites";
-import { Popover } from "./popover";
-import { EmojiPicker } from "./emoji-picker";
-import {
-  RowMenuProvider,
-  SpecMenuTrigger,
-  type MenuSpec,
-  type MenuRow,
-} from "./row-menu";
-import { areaMenuFooter } from "@/lib/area-menu-footer";
-import { pageRowFooter } from "@/lib/page-row-footer";
-import {
-  buildPageRowSpec,
-  firstNameOf,
-  initialsOf,
-  type MemberLite,
-} from "@/lib/page-row-spec";
-import { personalViewFooter } from "@/lib/personal-view-footer";
-import { layoutOf, type ViewLayout } from "@/lib/view-drafts";
-import { readConfig } from "@/lib/view-config";
-import { sortLabel } from "@/lib/sort-label";
-import { useDrafts, patchDraft as storePatchDraft } from "@/lib/view-drafts-store";
-
-
-import { useAllowedDomains, useMembers, usePropDefs } from "@/hooks/use-workspace-data";
-import { usePrefs } from "@/lib/preferences";
+import { RowMenuProvider, SpecMenuTrigger, type MenuSpec } from "./row-menu";
+import { descendantsOf } from "@/lib/page-tree";
+import { useAllowedDomains } from "@/hooks/use-workspace-data";
 import { isTypingTarget } from "@/lib/is-typing";
 import { exitOnly } from "@/lib/exit-motion";
 
-
+/* What the URL points at. A database page and a plain page share /p/:id;
+ * the pages list says which it is. /v/:id and /a/:area are old links that
+ * redirect. */
 type Selection =
-  | { kind: "view"; id: string }
-  | { kind: "area"; area: string }
+  | { kind: "database"; id: string; viewId: string | null }
   | { kind: "page"; id: string }
+  | { kind: "old-view"; id: string }
+  | { kind: "old-area" }
   | null;
 
 // gio.sidebarOpen — boolean, default true. Renamed from an earlier
@@ -106,27 +66,26 @@ type Selection =
 // the user's chosen width across a collapse is the point — see R1 in
 // the task brief.
 const SIDEBAR_OPEN_KEY = "gio.sidebarOpen";
-const SECTION_KEY = "gio.sidebar.sections"; // JSON { my, team, areas, pages }
+const SECTION_KEY = "gio.sidebar.sections"; // JSON { private, workspace }
 const SIDEBAR_W_KEY = "gio.sidebarWidth";
 const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 460;
 const SIDEBAR_DEFAULT = 240;
 
-function useSelection(): Selection {
+/** The route's page id and `?v=` view, before the pages list says what
+ * kind of page it is. */
+function useRouteTarget(): { pageId: string; viewId: string | null } | { oldView: string } | "old-area" | null {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const search = useRouterState({ select: (s) => s.location.search }) as { v?: unknown };
   const viewParams = useParams({ strict: false }) as {
     viewId?: string;
     area?: string;
     pageId?: string;
   };
-  if (pathname.startsWith("/v/") && viewParams.viewId) {
-    return { kind: "view", id: viewParams.viewId };
-  }
-  if (pathname.startsWith("/a/") && viewParams.area) {
-    return { kind: "area", area: decodeURIComponent(viewParams.area) };
-  }
+  if (pathname.startsWith("/v/") && viewParams.viewId) return { oldView: viewParams.viewId };
+  if (pathname.startsWith("/a/")) return "old-area";
   if (pathname.startsWith("/p/") && viewParams.pageId) {
-    return { kind: "page", id: viewParams.pageId };
+    return { pageId: viewParams.pageId, viewId: typeof search.v === "string" ? search.v : null };
   }
   return null;
 }
@@ -177,17 +136,21 @@ export function AppShell() {
       },
     });
   });
-  const rawSelection = useSelection();
-  const pagesForResolve = (shell.pages.data ?? []) as PageListItem[];
+  const target = useRouteTarget();
+  const pagesData = shell.pages.data;
+  const pagesForResolve = useMemo(() => (pagesData ?? []) as PageListItem[], [pagesData]);
+  const pagesLoaded = !!pagesData;
   const selection = useMemo<Selection>(() => {
-    if (rawSelection?.kind === "page") {
-      // The URL may be the raw UUID or the cosmetic slug-shortId form emitted
-      // by Copy link. Resolve to the canonical id so downstream queries hit.
-      const resolved = resolvePageIdParam(rawSelection.id, pagesForResolve);
-      return { kind: "page", id: resolved };
-    }
-    return rawSelection;
-  }, [rawSelection, pagesForResolve]);
+    if (target === null) return null;
+    if (target === "old-area") return { kind: "old-area" };
+    if ("oldView" in target) return { kind: "old-view", id: target.oldView };
+    // The URL may be the raw UUID or the cosmetic slug-shortId form emitted
+    // by Copy link. Resolve to the canonical id so downstream queries hit.
+    const resolved = resolvePageIdParam(target.pageId, pagesForResolve);
+    const listed = pagesForResolve.find((p) => p.id === resolved);
+    if (listed?.is_database) return { kind: "database", id: resolved, viewId: target.viewId };
+    return { kind: "page", id: resolved };
+  }, [target, pagesForResolve]);
   const navigate = useNavigate();
 
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
@@ -231,7 +194,7 @@ export function AppShell() {
   const invitesQ = useWorkspaceInvites();
   const pendingInvites = invitesQ.data ?? [];
   const cancelInvite = useCancelInvite();
-  const [sidebarPopover, setSidebarPopover] = useState<"view" | "area" | null>(null);
+  const [sidebarPopover, setSidebarPopover] = useState<"new" | null>(null);
   const [pageMenuOpen, setPageMenuOpen] = useState(false);
 
   const domainsQ = useAllowedDomains(workspaceId);
@@ -300,85 +263,60 @@ export function AppShell() {
     return () => window.removeEventListener("keydown", onKey);
   }, [inviteOpen, settingsOpen, accountMenu, sidebarPopover, pageMenuOpen]);
 
-  const pages = (shell.pages.data ?? []) as PageListItem[];
-  const views = shell.views.data ?? [];
+  const pages = pagesForResolve;
+  const viewsData = shell.views.data;
+  const views = useMemo(() => viewsData ?? [], [viewsData]);
   const workspace = shell.workspace.data;
-  const propDefs = shell.propDefs.data ?? [];
   const { user, profile } = useAuth();
-  const staleDays = workspace?.stale_days ?? 30;
   const memberCount = shell.members.data?.length ?? 0;
   const workspaceName = workspace?.name ?? "";
 
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  // The root URL opens the first page of the workspace (a shared one
+  // first). Old /v and /a links go to the database their view belongs to.
+  // On /p we never redirect: a transient null selection during router
+  // transitions used to bounce the user back to the previous view.
   useEffect(() => {
-    // Only auto-pick a default view on the root URL. On /p, /v, /a we must
-    // never redirect: a transient null selection during router transitions
-    // used to silently bounce the user back to the previous view.
-    if (pathname !== "/") return;
-    if (shell.views.isLoading) return;
-    const first = [...views]
-      .filter((v) => v.scope === "personal")
-      .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name))[0];
-    if (first) {
-      navigate({ to: "/v/$viewId", params: { viewId: first.id }, replace: true });
+    if (!pagesLoaded) return;
+    if (pathname === "/") {
+      const roots = pages.filter((p) => !p.parent_id && !p.archived_at);
+      const first =
+        roots.find((p) => p.access_type === "workspace" && p.is_database) ??
+        roots.find((p) => p.access_type === "workspace") ??
+        roots[0];
+      if (first) navigate({ to: "/p/$pageId", params: { pageId: first.id }, replace: true });
+      return;
     }
-  }, [pathname, views, shell.views.isLoading, navigate]);
-
-  const ctx = useMemo(
-    () => ({ me: user?.id ?? "", staleDays }),
-    [user?.id, staleDays],
-  );
-
-  const areaIcons = useMemo(() => {
-    const m = new Map<string, string>();
-    const def = propDefs.find((d) => d.key === "area");
-    const opts = (def?.options as unknown as
-      | Array<{ value: string; icon?: string }>
-      | undefined) ?? [];
-    for (const o of opts) if (o.icon) m.set(o.value, o.icon);
-    return m;
-  }, [propDefs]);
-
-  const breadcrumb = useMemo(() => {
-    if (!selection) return null;
-    if (selection.kind === "view") {
+    if (selection?.kind === "old-view") {
+      if (shell.views.isLoading) return;
       const v = views.find((x) => x.id === selection.id);
-      if (!v) return null;
-      const section = v.scope === "team" ? "Team views" : "My views";
-      return { crumbs: [section], name: v.name };
+      if (v) {
+        navigate({
+          to: "/p/$pageId",
+          params: { pageId: v.database_id },
+          search: { v: v.id },
+          replace: true,
+        });
+      } else navigate({ to: "/", replace: true });
+      return;
     }
-    if (selection.kind === "area") {
-      return { crumbs: ["Areas"], name: selection.area };
-    }
-    return null;
-  }, [selection, views]);
+    if (selection?.kind === "old-area") navigate({ to: "/", replace: true });
+  }, [pathname, pages, pagesLoaded, views, shell.views.isLoading, selection, navigate]);
 
-  // On page routes, the breadcrumb is replaced by a back-arrow + origin label.
+  // On page routes, a back arrow returns to the database view the page was
+  // opened from, when there is one; the breadcrumb shows where it lives.
   const pageBack = useMemo(() => {
     if (!selection || selection.kind !== "page") return null;
     const origin = getPageOrigin(selection.id);
-    if (origin) {
-      if (origin.kind === "view") {
-        return {
-          label: origin.viewName,
-          to: "/v/$viewId" as const,
-          params: { viewId: origin.viewId },
-        };
-      }
-      if (origin.kind === "area") {
-        return {
-          label: origin.area,
-          to: "/a/$area" as const,
-          params: { area: encodeURIComponent(origin.area) },
-        };
-      }
+    if (origin?.kind === "database") {
+      return {
+        label: origin.name,
+        to: "/p/$pageId" as const,
+        params: { pageId: origin.databaseId },
+        search: origin.viewId ? { v: origin.viewId } : {},
+      };
     }
-    // Fall back to "All pages" (home) when the origin is unknown.
-    return {
-      label: "All pages",
-      to: "/" as const,
-      params: {} as Record<string, string>,
-    };
+    return null;
   }, [selection]);
 
 
@@ -397,10 +335,9 @@ export function AppShell() {
     .join("")
     .toUpperCase();
 
-  const showShellSkeleton = useDelayedPending(!selection);
+  const showShellSkeleton = useDelayedPending(!selection || !pagesLoaded);
 
-  const loading =
-    shell.pages.isLoading || shell.views.isLoading || shell.workspace.isLoading;
+  const loading = shell.pages.isLoading || shell.workspace.isLoading;
 
   const startResize = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!sidebarOpen) return;
@@ -468,8 +405,6 @@ export function AppShell() {
           <SidebarBody
             loading={loading}
             pages={pages}
-            views={views}
-            ctx={ctx}
             selection={selection}
             profile={profile}
             userEmail={user?.email ?? ""}
@@ -477,7 +412,6 @@ export function AppShell() {
             workspaceName={workspaceName}
             workspaceIcon={workspace?.icon ?? "📄"}
             memberCount={memberCount}
-            areaIcons={areaIcons}
             accountMenu={accountMenu}
             onOpenAccountMenu={() => setAccountMenu(true)}
             onCloseAccountMenu={() => setAccountMenu(false)}
@@ -490,10 +424,6 @@ export function AppShell() {
               setInviteOpen(true);
             }}
             onOpenPalette={() => setPaletteOpen(true)}
-            sidebarPopover={sidebarPopover}
-            onOpenNewView={() => setSidebarPopover("view")}
-            onOpenNewArea={() => setSidebarPopover("area")}
-            onCloseSidebarPopover={() => setSidebarPopover(null)}
           />
         </div>
         {sidebarOpen && (
@@ -567,31 +497,20 @@ export function AppShell() {
           {pageBack ? (
             <Link
               to={pageBack.to}
-              params={pageBack.params as never}
+              params={pageBack.params}
+              search={pageBack.search}
               className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-ui text-secondary hover:bg-rail hover:text-strong"
               title={`Back to ${pageBack.label}`}
             >
               <Glyph path="M15 6l-6 6 6 6" className="h-4 w-4" />
               <span className="min-w-0 truncate">{pageBack.label}</span>
             </Link>
-          ) : breadcrumb ? (
-            <div className="flex min-w-0 items-center gap-2">
-              {breadcrumb.crumbs.map((c, i) => (
-                <span key={i} className="flex items-center gap-2 shrink-0">
-                  <span className="text-ui text-secondary">{c}</span>
-                  <span className="text-ui text-rule">/</span>
-                </span>
-              ))}
-              <span className="min-w-0 truncate text-ui text-body">
-                {breadcrumb.name}
-              </span>
-            </div>
           ) : null}
-          {selection && selection.kind === "page" ? (
+          {selection && (selection.kind === "page" || selection.kind === "database") ? (
             <PageBreadcrumb pageId={selection.id} pages={pages} />
           ) : null}
 
-          {selection && selection.kind === "page" ? (
+          {selection && (selection.kind === "page" || selection.kind === "database") ? (
             <div className="ml-auto flex items-center gap-2.5">
               <PageTopbarActions
                 pageId={selection.id}
@@ -604,17 +523,12 @@ export function AppShell() {
         </header>
 
         <main className="min-w-0 flex-1 bg-surface overflow-y-auto">
-          {selection && selection.kind === "page" ? (
+          {selection?.kind === "database" ? (
+            <DatabaseView key={`d:${selection.id}`} selection={selection} />
+          ) : selection?.kind === "page" && pagesLoaded ? (
             <PageEditor key={selection.id} pageId={selection.id} />
-          ) : selection ? (
-            <MainView
-              key={
-                selection.kind === "view"
-                  ? `v:${selection.id}`
-                  : `a:${selection.area}`
-              }
-              selection={selection}
-            />
+          ) : pathname === "/" && pagesLoaded && pages.length === 0 ? (
+            <EmptyWorkspace />
           ) : showShellSkeleton ? (
             <ViewSkeleton layout="table" />
           ) : null}
@@ -645,58 +559,80 @@ export function AppShell() {
 }
 
 
-type ViewRow = {
-  id: string;
-  name: string;
-  scope: "personal" | "team";
-  layout: "table" | "board" | "list" | "calendar";
-  position: number;
-  filter: unknown;
-  sort: unknown;
-  icon: string | null;
-  owner_id: string;
-  /** What a board groups by / a calendar places by. */
-  group_by?: string | null;
-};
 
-type SectionKey = "my" | "team" | "areas" | "pages";
+/* ─────────────────── Sidebar: the page tree ─────────────────── */
+
+type SectionKey = "private" | "workspace";
 type SectionState = Record<SectionKey, boolean>;
 
 function useSectionState(): [SectionState, (k: SectionKey) => void] {
   const [state, setState] = useState<SectionState>(() => {
-    if (typeof window === "undefined")
-      return { my: true, team: true, areas: true, pages: true };
+    if (typeof window === "undefined") return { private: true, workspace: true };
     try {
       const raw = window.localStorage.getItem(SECTION_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<SectionState>;
-        return {
-          my: parsed.my !== false,
-          team: parsed.team !== false,
-          areas: parsed.areas !== false,
-          pages: parsed.pages !== false,
-        };
+        return { private: parsed.private !== false, workspace: parsed.workspace !== false };
       }
     } catch {
       /* ignore */
     }
-    return { my: true, team: true, areas: true, pages: true };
+    return { private: true, workspace: true };
   });
   useEffect(() => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(SECTION_KEY, JSON.stringify(state));
     }
   }, [state]);
-  const toggle = (k: SectionKey) =>
-    setState((prev) => ({ ...prev, [k]: !prev[k] }));
+  const toggle = (k: SectionKey) => setState((prev) => ({ ...prev, [k]: !prev[k] }));
   return [state, toggle];
+}
+
+/** The "+" beside a section: a page or a database at the top level. */
+function NewTopLevelMenu({
+  section,
+  onCreate,
+}: {
+  section: SectionKey;
+  onCreate: (kind: "page" | "database") => void;
+}) {
+  const where = section === "workspace" ? "everyone in the workspace" : "only you, until shared";
+  return (
+    <SpecMenuTrigger
+      size="sm"
+      ariaLabel={section === "workspace" ? "New in Workspace" : "New in Private"}
+      build={(mctx) => ({
+        title: section === "workspace" ? "New in Workspace" : "New in Private",
+        rows: [
+          {
+            kind: "row",
+            label: "New page",
+            icon: "bPage",
+            onPick: () => {
+              onCreate("page");
+              mctx.close();
+            },
+          },
+          {
+            kind: "row",
+            label: "New database",
+            icon: "bTable",
+            hint: { text: "rows, properties, views" },
+            onPick: () => {
+              onCreate("database");
+              mctx.close();
+            },
+          },
+        ],
+        footer: `Visible to ${where}.`,
+      })}
+    />
+  );
 }
 
 function SidebarBody({
   loading,
   pages,
-  views,
-  ctx,
   selection,
   profile,
   userEmail,
@@ -704,7 +640,6 @@ function SidebarBody({
   workspaceName,
   workspaceIcon,
   memberCount,
-  areaIcons,
   accountMenu,
   onOpenAccountMenu,
   onCloseAccountMenu,
@@ -712,15 +647,9 @@ function SidebarBody({
   onOpenSettings,
   onOpenInvite,
   onOpenPalette,
-  sidebarPopover,
-  onOpenNewView,
-  onOpenNewArea,
-  onCloseSidebarPopover,
 }: {
   loading: boolean;
   pages: PageListItem[];
-  views: ViewRow[];
-  ctx: { me: string; staleDays: number };
   selection: Selection;
   profile: { full_name: string; avatar_tint: string; avatar_ink: string } | null;
   userEmail: string;
@@ -728,7 +657,6 @@ function SidebarBody({
   workspaceName: string;
   workspaceIcon: string;
   memberCount: number;
-  areaIcons: Map<string, string>;
   accountMenu: boolean;
   onOpenAccountMenu: () => void;
   onCloseAccountMenu: () => void;
@@ -736,153 +664,151 @@ function SidebarBody({
   onOpenSettings: () => void;
   onOpenInvite: () => void;
   onOpenPalette: () => void;
-  sidebarPopover: "view" | "area" | null;
-  onOpenNewView: () => void;
-  onOpenNewArea: () => void;
-  onCloseSidebarPopover: () => void;
 }) {
   const [sections, toggleSection] = useSectionState();
-  const { prefs } = usePrefs();
-  const showSidebarCounts = prefs.showSidebarCounts;
-  const { user } = useAuth();
   const navigate = useNavigate();
-  const wsId = useWorkspaceId();
-  const members = (useMembers(wsId).data ?? []) as MemberLite[];
-  const propDefs = (usePropDefs(wsId).data ?? []) as Array<{
-    key: string;
-    label: string;
-    options: unknown;
-  }>;
-  const verifyPage = useVerifyPage();
-  const setPageProperty = useSetPageProperty();
-  const moveToArea = useMovePageToArea();
+  const toast = useToast();
+  const createAndOpen = useCreatePageAndOpen();
   const deletePage = useDeletePage();
+  const restorePage = useRestorePage();
+  const shareToWorkspace = useShareToWorkspace();
+  const [expanded, toggleExpanded, openExpanded] = useTreeExpanded();
 
-  // Local "hide from my sidebar" list for team views. Persisted per-user.
-  const hideKey = user?.id ? `gio.hiddenTeamViews.${user.id}` : "";
-  const [hiddenTeamViews, setHiddenTeamViews] = useState<Set<string>>(() => {
-    if (typeof window === "undefined" || !hideKey) return new Set();
-    try {
-      const raw = window.localStorage.getItem(hideKey);
-      return new Set<string>(raw ? (JSON.parse(raw) as string[]) : []);
-    } catch {
-      return new Set<string>();
-    }
-  });
-  const hideTeamView = (id: string) => {
-    setHiddenTeamViews((prev) => {
-      const next = new Set(prev);
-      next.add(id);
-      if (hideKey && typeof window !== "undefined")
-        window.localStorage.setItem(hideKey, JSON.stringify([...next]));
-      return next;
-    });
-  };
-  const unhideAllTeamViews = () => {
-    setHiddenTeamViews(new Set());
-    if (hideKey && typeof window !== "undefined")
-      window.localStorage.removeItem(hideKey);
-  };
-
-  const isWorkspaceOwner = !!user?.id && members.some(
-    (m) => m.user_id === user.id && m.role === "owner",
+  const live = useMemo(() => pages.filter((p) => !p.archived_at), [pages]);
+  const nonRoots = useMemo(() => live.filter((p) => !!p.parent_id), [live]);
+  const privateTree = useMemo(
+    () => [...live.filter((p) => !p.parent_id && p.access_type !== "workspace"), ...nonRoots],
+    [live, nonRoots],
   );
+  const workspaceTree = useMemo(
+    () => [...live.filter((p) => !p.parent_id && p.access_type === "workspace"), ...nonRoots],
+    [live, nonRoots],
+  );
+  const activeId =
+    selection?.kind === "page" || selection?.kind === "database" ? selection.id : undefined;
 
-  const personal = views
-    .filter((v) => v.scope === "personal")
-    .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
-  const teamAll = views.filter((v) => v.scope === "team");
-  const team = teamAll
-    .filter((v) => !hiddenTeamViews.has(v.id))
-    .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
-  const hiddenTeamCount = teamAll.filter((v) => hiddenTeamViews.has(v.id)).length;
-
-
-  const areas = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const p of pages) {
-      if (p.archived_at) continue;
-      const props =
-        p.props && typeof p.props === "object" && !Array.isArray(p.props)
-          ? (p.props as Record<string, unknown>)
-          : {};
-      const a = props.area;
-      if (typeof a === "string" && a) counts.set(a, (counts.get(a) ?? 0) + 1);
+  // The open page's ancestors stay expanded, so the tree shows where you are.
+  useEffect(() => {
+    if (!activeId) return;
+    const byId = new Map(pages.map((p) => [p.id, p]));
+    let cur = byId.get(activeId)?.parent_id ?? null;
+    let hops = 0;
+    while (cur && hops++ < 50) {
+      openExpanded(cur);
+      cur = byId.get(cur)?.parent_id ?? null;
     }
-    return Array.from(counts, ([area, count]) => ({ area, count })).sort((a, b) =>
-      a.area.localeCompare(b.area),
-    );
-  }, [pages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, pages.length]);
 
-  const areaPages = useMemo(() => {
-    const m = new Map<string, PageListItem[]>();
-    for (const p of pages) {
-      if (p.archived_at) continue;
-      const props =
-        p.props && typeof p.props === "object" && !Array.isArray(p.props)
-          ? (p.props as Record<string, unknown>)
-          : {};
-      const a = props.area;
-      if (typeof a === "string" && a) {
-        const arr = m.get(a) ?? [];
-        arr.push(p);
-        m.set(a, arr);
-      }
-    }
-    for (const [, arr] of m) {
-      arr.sort((x, y) => (x.title ?? "").localeCompare(y.title ?? ""));
-    }
-    return m;
-  }, [pages]);
-
-  const staleThreshold = Date.now() - ctx.staleDays * 24 * 60 * 60 * 1000;
-  const isStale = (p: PageListItem) =>
-    new Date(p.verified_at).getTime() < staleThreshold;
-
-  const countFor = (v: ViewRow): number | "!" => {
-    try {
-      return runView(
-        pages,
-        {
-          filter: (v.filter ?? []) as Filter[],
-          sort: (v.sort ?? { prop: "edited", dir: "desc" }) as SortSpec | SortSpec[],
-        },
-        ctx,
-      ).length;
-    } catch (err) {
-      console.error(`[view ${v.id} "${v.name}"] invalid filter:`, err);
-      return "!";
-    }
+  const createTop = (section: SectionKey, kind: "page" | "database") => {
+    void (async () => {
+      const created = await createAndOpen({ seedProps: {}, isDatabase: kind === "database" });
+      if (section === "workspace") shareToWorkspace.mutate(created.id);
+    })();
   };
-
-  const renderCount = (c: number | "!", sizeClass: string) => {
-    if (c === "!") {
-      return (
-        <span
-          className={`tnum ${sizeClass} text-amberInk`}
-          title="This view's filter is invalid"
-        >
-          !
-        </span>
-      );
-    }
-    if (!showSidebarCounts) return null;
-    return <span className={`tnum ${sizeClass} text-whisper`}>{c}</span>;
+  const addInside = (p: PageListItem, kind: "page" | "database" = "page") => {
+    openExpanded(p.id);
+    void createAndOpen({ seedProps: {}, parentId: p.id, isDatabase: kind === "database" });
   };
-
-  const [openAreas, setOpenAreas] = useState<Set<string>>(new Set());
-  const toggleArea = (a: string) =>
-    setOpenAreas((prev) => {
-      const next = new Set(prev);
-      if (next.has(a)) next.delete(a);
-      else next.add(a);
-      return next;
+  const deleteWithUndo = (p: PageListItem) => {
+    const inside = descendantsOf(p.id, pages).size;
+    deletePage.mutate(p.id, {
+      onSuccess: () => {
+        toast.push({
+          message:
+            inside > 0
+              ? `Deleted "${p.title || "Untitled"}" and the ${inside} ${inside === 1 ? "page" : "pages"} inside it.`
+              : `Deleted "${p.title || "Untitled"}".`,
+          action: { label: "Undo", onClick: () => restorePage.mutate({ pageId: p.id, row: p }) },
+          durationMs: 10_000,
+        });
+        if (activeId === p.id) void navigate({ to: "/" });
+      },
     });
+  };
+  const copyLink = (p: PageListItem) => {
+    const origin = typeof window !== "undefined" && window.location ? window.location.origin : "";
+    toClipboard(`${origin}/p/${p.id}`);
+    toast.push(`Copied link to "${p.title || "Untitled"}"`);
+  };
+  const menuFor = (p: TreeNode & PageListItem) => (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }): MenuSpec => {
+    const title = p.title || "Untitled";
+    const inside = descendantsOf(p.id, pages).size;
+    return {
+      title: p.is_database ? "Database" : "Page",
+      rows: [
+        {
+          kind: "row",
+          label: "Open",
+          icon: "open",
+          onPick: () => {
+            void navigate({ to: "/p/$pageId", params: { pageId: p.id } });
+            mctx.close();
+          },
+        },
+        {
+          kind: "row",
+          label: p.is_database ? "New row" : "New page inside",
+          icon: "bPage",
+          onPick: () => {
+            addInside(p, "page");
+            mctx.close();
+          },
+        },
+        ...(p.is_database
+          ? []
+          : [
+              {
+                kind: "row" as const,
+                label: "New database inside",
+                icon: "bTable",
+                onPick: () => {
+                  addInside(p, "database");
+                  mctx.close();
+                },
+              },
+            ]),
+        { kind: "sep" },
+        {
+          kind: "row",
+          label: "Copy link",
+          icon: "link",
+          onPick: () => {
+            copyLink(p);
+            mctx.close();
+          },
+        },
+        { kind: "sep" },
+        {
+          kind: "row",
+          label: p.is_database ? "Delete database" : "Delete",
+          icon: "trash",
+          danger: true,
+          onPick: () =>
+            mctx.setSpec({
+              title: p.is_database ? "Database" : "Page",
+              rows: [],
+              confirm: {
+                title: `Delete "${title}"?`,
+                body:
+                  inside > 0
+                    ? `The ${inside} ${inside === 1 ? "page" : "pages"} inside it go too. You can undo for a moment afterwards.`
+                    : "You can undo for a moment afterwards.",
+                cta: p.is_database ? "Delete database" : "Delete page",
+                danger: true,
+                onConfirm: () => deleteWithUndo(p),
+              },
+            }),
+        },
+      ],
+    };
+  };
 
-  const viewActive = (id: string) =>
-    selection?.kind === "view" && selection.id === id;
-  const areaActive = (a: string) =>
-    selection?.kind === "area" && selection.area === a;
+  const sectionEmpty = (section: SectionKey) => (
+    <p className="px-2 py-1 text-caption italic text-faint">
+      {section === "workspace" ? "Nothing shared with everyone yet." : "No private pages."}
+    </p>
+  );
 
   return (
     <>
@@ -905,169 +831,46 @@ function SidebarBody({
           <SkeletonList />
         ) : (
           <>
-            {/* My views */}
             <SectionHeader
-              label="My views"
-              open={sections.my}
-              onToggle={() => toggleSection("my")}
-              trailing={
-                <SidebarPlusButton
-                  title="New personal view"
-                  open={sidebarPopover === "view"}
-                  onToggle={() =>
-                    sidebarPopover === "view"
-                      ? onCloseSidebarPopover()
-                      : onOpenNewView()
-                  }
-                >
-                  <NewPersonalViewPopover
-                    onClose={onCloseSidebarPopover}
-                    currentView={
-                      selection?.kind === "view"
-                        ? views.find((v) => v.id === selection.id)
-                        : undefined
-                    }
-                  />
-                </SidebarPlusButton>
-              }
+              label="Workspace"
+              open={sections.workspace}
+              onToggle={() => toggleSection("workspace")}
+              trailing={<NewTopLevelMenu section="workspace" onCreate={(k) => createTop("workspace", k)} />}
             />
-            {sections.my && (
-              <ul>
-                {personal.map((v) => (
-                  <MyViewRow
-                    key={v.id}
-                    v={v}
-                    active={viewActive(v.id)}
-                    count={countFor(v)}
-                    renderCount={renderCount}
-                    wsName={workspaceName}
-                    wsMembers={memberCount}
-                    isWorkspaceOwner={isWorkspaceOwner}
-                    pages={pages}
-                    ctx={ctx}
-                  />
-                ))}
-              </ul>
+            {sections.workspace && (
+              <SidebarTreeView
+                pages={workspaceTree}
+                expanded={expanded}
+                activeId={activeId}
+                onToggle={toggleExpanded}
+                onOpen={(id) => void navigate({ to: "/p/$pageId", params: { pageId: id } })}
+                onAddInside={(p) => addInside(p)}
+                menuFor={menuFor}
+                empty={sectionEmpty("workspace")}
+              />
             )}
 
-            {/* Team views */}
             <SectionHeader
-              label="Team views"
-              open={sections.team}
-              onToggle={() => toggleSection("team")}
+              label="Private"
+              open={sections.private}
+              onToggle={() => toggleSection("private")}
+              trailing={<NewTopLevelMenu section="private" onCreate={(k) => createTop("private", k)} />}
             />
-            {sections.team && (
-              <>
-                <ul>
-                  {team.map((v) => (
-                    <TeamViewRow
-                      key={v.id}
-                      v={v}
-                      active={viewActive(v.id)}
-                      count={countFor(v)}
-                      renderCount={renderCount}
-                      isOwner={v.owner_id === user?.id}
-                      isWorkspaceOwner={isWorkspaceOwner}
-                      memberCount={memberCount}
-                      pages={pages}
-                      ctx={ctx}
-                      onHide={hideTeamView}
-                    />
-                  ))}
-                  {hiddenTeamCount > 0 && (
-                    <li>
-                      <button
-                        type="button"
-                        onClick={unhideAllTeamViews}
-                        style={{ height: "var(--spacing-rowTeam)" }}
-                        className="flex w-full items-center gap-2 rounded-md px-2 text-meta text-faint italic hover:bg-railHover"
-                      >
-                        <span className="min-w-0 flex-1 truncate text-left">
-                          {hiddenTeamCount} hidden
-                        </span>
-                      </button>
-                    </li>
-                  )}
-                </ul>
-                <p className="px-2 pt-1 text-caption italic text-faint">
-                  Published from My views — open a view's ⋯ menu.
-                </p>
-              </>
-            )}
-
-
-            {/* Areas */}
-            <SectionHeader
-              label="Areas"
-              open={sections.areas}
-              onToggle={() => toggleSection("areas")}
-              trailing={
-                <SidebarPlusButton
-                  title="New area"
-                  open={sidebarPopover === "area"}
-                  onToggle={() =>
-                    sidebarPopover === "area"
-                      ? onCloseSidebarPopover()
-                      : onOpenNewArea()
-                  }
-                >
-                  <NewAreaPopover
-                    onClose={onCloseSidebarPopover}
-                    existingAreas={areas.map((a) => a.area)}
-                  />
-                </SidebarPlusButton>
-              }
-            />
-            {sections.areas && (
-              <ul>
-                {areas.map(({ area, count }) => {
-                  const open = openAreas.has(area);
-                  const items = areaPages.get(area) ?? [];
-                  return (
-                    <AreaLi
-                      key={area}
-                      area={area}
-                      count={count}
-                      icon={areaIcons.get(area)}
-                      open={open}
-                      onToggle={() => toggleArea(area)}
-                      active={areaActive(area)}
-                      items={items}
-                      isStale={isStale}
-                      propDefs={propDefs}
-                      members={members}
-                      me={user?.id ?? ""}
-                      onVerify={(id) => verifyPage.mutate(id)}
-                      setPageProperty={setPageProperty}
-                      moveToArea={moveToArea}
-                      deletePage={deletePage}
-                      navigate={navigate}
-                    />
-                  );
-                })}
-              </ul>
-            )}
-
-            {/* Pages — ONE flat list carrying its own depth, no recursion. */}
-            <SectionHeader
-              label="Pages"
-              open={sections.pages}
-              onToggle={() => toggleSection("pages")}
-            />
-            {sections.pages && (
-              <SidebarTree
-                pages={pages.filter((p) => !p.archived_at)}
-                activeId={selection?.kind === "page" ? selection.id : undefined}
+            {sections.private && (
+              <SidebarTreeView
+                pages={privateTree}
+                expanded={expanded}
+                activeId={activeId}
+                onToggle={toggleExpanded}
+                onOpen={(id) => void navigate({ to: "/p/$pageId", params: { pageId: id } })}
+                onAddInside={(p) => addInside(p)}
+                menuFor={menuFor}
+                empty={sectionEmpty("private")}
               />
             )}
           </>
         )}
       </div>
-
-      {/* Divider + aside + footer, in that order */}
-      <p className="border-t border-line px-3 py-2 text-caption italic text-faint">
-        {TREE_ASIDE}
-      </p>
 
       <FooterAccount
         profile={profile}
@@ -1087,975 +890,34 @@ function SidebarBody({
   );
 }
 
-/* ─────────────────── View rows w/ hover ⋯ menus ─────────────────── */
-
-/* Relative time hint for menu items. Kept tiny — spec-defined format. */
-function relTime(iso: string) {
-  return formatTimestamp(iso, "relative");
-}
-
-/* MemberLite + initialsOf + firstNameOf now live in @/lib/page-row-spec. */
-
-/* Personal view row — hover reveals ⋯ in place of the count. */
-/* Sort label used by the personal-view menu footer. Matches the labels
- * shown by the toolbar's sort picker in MainView. */
-function sortLabelFor(
-  sort: SortSpec | SortSpec[] | null | undefined,
-  defs: Array<{ key: string; label: string | null }>,
-): string {
-  return sortLabel(
-    sort,
-    defs.map((d) => ({ key: d.key, label: d.label ?? d.key })),
-  );
-}
-
-/* The three layout choices with their sub-line copy. Used by the layout
- * submenu on both personal and team view rows. */
-const LAYOUT_ROWS: Array<{ layout: ViewLayout; label: string; sub: string; icon: string }> = [
-  { layout: "table", label: "Table", sub: "rows + properties", icon: "layout" },
-  { layout: "board", label: "Board", sub: "grouped by select", icon: "board" },
-  { layout: "list",  label: "List",  sub: "title + sub-line", icon: "list" },
-  { layout: "calendar", label: "Calendar", sub: "by a date", icon: "M5 5h14v15H5zM5 10h14M9 3v4M15 3v4" },
-];
-
-function buildLayoutSubmenu(
-  current: ViewLayout,
-  onPick: (l: ViewLayout) => void,
-  ctxClose: () => void,
-): MenuSpec {
-  return {
-    title: "Change layout",
-    footer: "Same query, different arrangement — no page moves.",
-    rows: LAYOUT_ROWS.map((r) => ({
-      kind: "row",
-      label: r.label,
-      icon: r.icon,
-      hint: { text: r.sub },
-      checked: r.layout === current,
-      onPick: () => {
-        if (r.layout !== current) onPick(r.layout);
-        ctxClose();
-      },
-    })),
-  };
-}
-
-function copyViewLink(id: string): string {
-  const origin =
-    typeof window !== "undefined" && window.location ? window.location.origin : "";
-  return `${origin}/v/${id}`;
-}
-
-function MyViewRow({
-  v,
-  active,
-  count,
-  renderCount,
-  wsName,
-  wsMembers,
-  isWorkspaceOwner,
-  pages,
-  ctx,
-}: {
-  v: ViewRow;
-  active: boolean;
-  count: number | "!";
-  renderCount: (c: number | "!", size: string) => ReactNode;
-  wsName: string;
-  wsMembers: number;
-  isWorkspaceOwner: boolean;
-  pages: PageListItem[];
-  ctx: { me: string; staleDays: number };
-}) {
-  const [hover, setHover] = useState(false);
-  const updateView = useUpdateView();
-  const createView = useCreateView();
-  const deleteView = useDeleteView();
-  const publishView = usePublishView();
-  const navigate = useNavigate();
-  const toast = useToast();
-  const drafts = useDrafts();
-
-  const effectiveLayout = layoutOf(v, drafts);
-  const sortDefs = (usePropDefs(useWorkspaceId()).data ?? []) as Array<{
-    key: string;
-    label: string | null;
-  }>;
-
-  const build = (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }): MenuSpec => {
-    const filters = (v.filter ?? []) as Filter[];
-    const sort = (v.sort as SortSpec | SortSpec[] | null) ?? { prop: "edited", dir: "desc" };
-    const total = pages.length;
-    const matched = runView(pages, { filter: filters, sort }, ctx).length;
-    const footer = personalViewFooter({
-      matchCount: matched,
-      totalCount: total,
-      sortLabel: sortLabelFor(sort, sortDefs),
-    });
-
-    const rows: MenuRow[] = [
-      {
-        kind: "row",
-        label: "Open view",
-        icon: "open",
-        hint: { text: "↵", mono: true },
-        onPick: () => {
-          navigate({ to: "/v/$viewId", params: { viewId: v.id } });
-          mctx.close();
-        },
-      },
-      { kind: "sep" },
-      {
-        kind: "row",
-        label: "Rename",
-        icon: "pencil",
-        hint: { text: "⌘⇧R", mono: true },
-        onPick: () =>
-          mctx.setSpec({
-            title: "Rename view",
-            rows: [],
-            input: {
-              placeholder: "View name",
-              initial: v.name,
-              selectOnFocus: true,
-              onCommit: (name) => {
-                if (name && name !== v.name)
-                  updateView.mutate({ id: v.id, patch: { name } });
-              },
-            },
-          }),
-      },
-      {
-        kind: "row",
-        label: "Change layout",
-        icon: "layout",
-        hint: { text: LAYOUT_ROWS.find((r) => r.layout === effectiveLayout)?.label ?? "Table" },
-        onPick: () =>
-          mctx.setSpec(
-            buildLayoutSubmenu(effectiveLayout, (l) => {
-              updateView.mutate({ id: v.id, patch: { layout: l } });
-            }, mctx.close),
-          ),
-      },
-      {
-        kind: "row",
-        label: "Duplicate",
-        icon: "dup",
-        hint: { text: "⌘D", mono: true },
-        onPick: () => {
-          createView.mutate({
-            name: `${v.name} copy`,
-            icon: v.icon,
-            filter: filters,
-            sort,
-            layout: v.layout,
-            groupBy: v.group_by ?? null,
-            config: readConfig((v as { config?: unknown }).config),
-          });
-          mctx.close();
-        },
-      },
-      {
-        kind: "row",
-        label: "Copy link",
-        icon: "link",
-        hint: { text: "⌘⌥L", mono: true },
-        onPick: () => {
-          toClipboard(copyViewLink(v.id));
-          toast.push(`Copied link to "${v.name}"`);
-          mctx.close();
-        },
-      },
-      ...(isWorkspaceOwner
-        ? ([
-            { kind: "sep" },
-            {
-              kind: "row",
-              label: "Publish to team",
-              icon: "people",
-              hint: { text: "shared" },
-              onPick: () =>
-                mctx.setSpec({
-                  title: `Publish "${v.name}"?`,
-                  rows: [],
-                  confirm: {
-                    title: `Publish "${v.name}" to the team?`,
-                    body: `It moves out of My views into Team views for all ${wsMembers} people at ${wsName}. Publishing is the only way a view becomes shared.`,
-                    cta: "Publish",
-                    onConfirm: () => publishView.mutate(v.id),
-                  },
-                }),
-            },
-          ] satisfies MenuRow[])
-        : []),
-      { kind: "sep" },
-      {
-        kind: "row",
-        label: "Delete view",
-        icon: "trash",
-        danger: true,
-        onPick: () =>
-          mctx.setSpec({
-            title: `Delete "${v.name}"?`,
-            rows: [],
-            confirm: {
-              title: `Delete "${v.name}"?`,
-              body: "The view disappears from your sidebar — the pages it filtered are untouched.",
-              cta: "Delete view",
-              danger: true,
-              onConfirm: () => deleteView.mutate(v.id),
-            },
-          }),
-      },
-    ];
-
-    return { title: "My view", rows, footer };
-  };
-
-  return (
-    <li
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      className="relative"
-    >
-      <Link
-        to="/v/$viewId"
-        params={{ viewId: v.id }}
-        style={{ height: "var(--spacing-rowMy)" }}
-        className={rowClass(active) + " min-w-0"}
-      >
-        <ViewIconSlot
-          view={v}
-          effectiveLayout={effectiveLayout}
-          onSet={(icon) => updateView.mutate({ id: v.id, patch: { icon } })}
-        />
-        <span
-          className="min-w-0 flex-1 truncate text-row"
-          style={{ flex: "1 1 auto" }}
-          title={v.name}
-        >
-          {v.name}
-        </span>
-        <span
-          className="relative flex shrink-0 items-center justify-end"
-          style={{ height: 17, minWidth: 17, flex: "none" }}
-        >
-          {hover ? (
-            <SpecMenuTrigger size="sm" build={build} />
-          ) : (
-            renderCount(count, "text-row")
-          )}
-        </span>
-      </Link>
-
-    </li>
-  );
-}
-
-/**
- * Clickable icon slot for a personal view — opens the shared emoji picker
- * in a portalled popover. Clicks stopPropagation so the enclosing row
- * doesn't navigate.
- */
-function ViewIconSlot({
-  view,
-  effectiveLayout,
-  onSet,
-}: {
-  view: ViewRow;
-  effectiveLayout: ViewLayout;
-  onSet: (icon: string | null) => void;
-}) {
-  return (
-    <span
-      className="shrink-0"
-      style={{ flex: "none" }}
-      onClick={(e) => e.stopPropagation()}
-      onMouseDown={(e) => e.stopPropagation()}
-    >
-      <Popover
-        width={264}
-        trigger={({ open, onClick, ref }) => (
-          <button
-            ref={ref}
-            type="button"
-            aria-label="Change view icon"
-            aria-expanded={open}
-            onClick={(e) => {
-              e.preventDefault();
-              onClick();
-            }}
-            className="grid place-items-center rounded-sm hover:bg-sunken"
-            style={{ width: 18, height: 18 }}
-          >
-            {view.icon ? (
-              <Ico icon={view.icon} size={15} />
-            ) : (
-              <LayoutGlyph layout={effectiveLayout} />
-            )}
-          </button>
-        )}
-      >
-        {(close) => (
-          <EmojiPicker
-            removable
-            onPick={(e) => {
-              onSet(e);
-              close();
-            }}
-          />
-        )}
-      </Popover>
-    </span>
-  );
-}
-
-/* Team view row — non-owners get a short menu; owners also get Unpublish. */
-function TeamViewRow({
-  v,
-  active,
-  count,
-  renderCount,
-  isOwner,
-  isWorkspaceOwner,
-  memberCount,
-  pages,
-  ctx,
-  onHide,
-}: {
-  v: ViewRow;
-  active: boolean;
-  count: number | "!";
-  renderCount: (c: number | "!", size: string) => ReactNode;
-  isOwner: boolean;
-  isWorkspaceOwner: boolean;
-  memberCount: number;
-  pages: PageListItem[];
-  ctx: { me: string; staleDays: number };
-  onHide: (id: string) => void;
-}) {
-  const [hover, setHover] = useState(false);
-  const fork = useForkView();
-  const unpublish = useUnpublishView();
-  const navigate = useNavigate();
-  const toast = useToast();
-  const drafts = useDrafts();
-
-  const effectiveLayout = layoutOf(v, drafts);
-  const sortDefs = (usePropDefs(useWorkspaceId()).data ?? []) as Array<{
-    key: string;
-    label: string | null;
-  }>;
-
-  const build = (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }): MenuSpec => {
-    const filters = (v.filter ?? []) as Filter[];
-    const sort = (v.sort as SortSpec | SortSpec[] | null) ?? { prop: "edited", dir: "desc" };
-    const total = pages.length;
-    const matched = runView(pages, { filter: filters, sort }, ctx).length;
-    const footer = personalViewFooter({
-      matchCount: matched,
-      totalCount: total,
-      sortLabel: sortLabelFor(sort, sortDefs),
-    });
-
-    const rows: MenuRow[] = [
-      {
-        kind: "row",
-        label: "Open view",
-        icon: "open",
-        hint: { text: "↵", mono: true },
-        onPick: () => {
-          navigate({ to: "/v/$viewId", params: { viewId: v.id } });
-          mctx.close();
-        },
-      },
-      { kind: "sep" },
-      {
-        kind: "row",
-        label: "Change layout",
-        icon: "layout",
-        hint: { text: LAYOUT_ROWS.find((r) => r.layout === effectiveLayout)?.label ?? "Table" },
-        onPick: () =>
-          mctx.setSpec(
-            buildLayoutSubmenu(effectiveLayout, (l) => {
-              // Team views: session-only draft, never persisted from the row.
-              storePatchDraft(v.id, { layout: l }, {
-                filter: filters,
-                sort,
-                layout: v.layout,
-                group_by: null,
-              });
-            }, mctx.close),
-          ),
-      },
-      {
-        kind: "row",
-        label: "Duplicate into My views",
-        icon: "dup",
-        hint: { text: "personal" },
-        onPick: () => {
-          fork.mutate({
-            viewId: v.id,
-            name: `${v.name} copy`,
-            filter: filters,
-            sort,
-            layout: v.layout,
-            groupBy: v.group_by ?? null,
-            config: readConfig((v as { config?: unknown }).config),
-          });
-          mctx.close();
-        },
-      },
-      {
-        kind: "row",
-        label: "Copy link",
-        icon: "link",
-        hint: { text: "⌘⌥L", mono: true },
-        onPick: () => {
-          toClipboard(copyViewLink(v.id));
-          toast.push(`Copied link to "${v.name}"`);
-          mctx.close();
-        },
-      },
-      { kind: "sep" },
-      {
-        kind: "row",
-        label: "Hide from my sidebar",
-        icon: "eyeOff",
-        onPick: () => {
-          onHide(v.id);
-          mctx.close();
-        },
-      },
-      ...(isOwner && isWorkspaceOwner
-        ? ([
-            { kind: "sep" },
-            {
-              kind: "row",
-              label: "Unpublish",
-              icon: "arrow",
-              hint: { text: "back to mine" },
-              danger: true,
-              onPick: () =>
-                mctx.setSpec({
-                  title: `Unpublish "${v.name}"?`,
-                  rows: [],
-                  confirm: {
-                    title: `Unpublish "${v.name}"?`,
-                    body: `The view leaves Team views and returns to your My views. The pages it filtered are untouched. Only workspace owners can publish or unpublish team views. (${memberCount} members)`,
-                    cta: "Unpublish",
-                    danger: true,
-                    onConfirm: () => unpublish.mutate(v.id),
-                  },
-                }),
-            },
-          ] satisfies MenuRow[])
-        : []),
-    ];
-
-    return { title: "Team view", rows, footer };
-  };
-
-  return (
-    <li
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      className="relative"
-    >
-      <Link
-        to="/v/$viewId"
-        params={{ viewId: v.id }}
-        style={{ height: "var(--spacing-rowTeam)" }}
-        className={rowClass(active) + " min-w-0"}
-      >
-        <span
-          className="grid shrink-0 place-items-center"
-          style={{ width: 18, height: 18, flex: "none" }}
-        >
-          <LayoutGlyph layout={effectiveLayout} />
-        </span>
-        <span
-          className="min-w-0 flex-1 truncate text-meta text-secondary"
-          style={{ flex: "1 1 auto" }}
-          title={v.name}
-        >
-          {v.name}
-        </span>
-        <span
-          className="relative flex shrink-0 items-center justify-end"
-          style={{ height: 17, minWidth: 17, flex: "none" }}
-        >
-          {hover ? (
-            <SpecMenuTrigger size="sm" build={build} />
-          ) : (
-            renderCount(count, "text-meta")
-          )}
-        </span>
-      </Link>
-
-    </li>
-  );
-}
-
-
-
-/* Area row — its menu carries area-scope actions plus rename with a footer. */
-function AreaLi({
-  area,
-  count,
-  icon,
-  open,
-  onToggle,
-  active,
-  items,
-  isStale,
-  propDefs,
-  members,
-  me,
-  onVerify,
-  setPageProperty,
-  moveToArea,
-  deletePage,
-  navigate,
-}: {
-  area: string;
-  count: number;
-  icon: string | undefined;
-  open: boolean;
-  onToggle: () => void;
-  active: boolean;
-  items: PageListItem[];
-  isStale: (p: PageListItem) => boolean;
-  propDefs: Array<{ key: string; label: string; options: unknown }>;
-  members: MemberLite[];
-  me: string;
-  onVerify: (pageId: string) => void;
-  setPageProperty: ReturnType<typeof useSetPageProperty>;
-  moveToArea: ReturnType<typeof useMovePageToArea>;
-  deletePage: ReturnType<typeof useDeletePage>;
-  navigate: ReturnType<typeof useNavigate>;
-}) {
-  const [hover, setHover] = useState(false);
-  const toast = useToast();
+/** The root URL with nothing to open yet. */
+function EmptyWorkspace() {
   const createAndOpen = useCreatePageAndOpen();
-  const createView = useCreateView();
-  const renameArea = useRenameArea();
-  const setAreaIcon = useSetAreaIcon();
-  const clearArea = useClearArea();
-  const [emojiOpen, setEmojiOpen] = useState(false);
-
-  const staleCount = items.reduce((n, p) => n + (isStale(p) ? 1 : 0), 0);
-  const footer = areaMenuFooter({
-    pages: items.map((p) => ({ edited_at: p.edited_at, edited_by: p.edited_by })),
-    members: members.map((m) => ({
-      user_id: m.user_id,
-      full_name: m.profiles?.full_name ?? null,
-      email: m.profiles?.email ?? null,
-    })),
-    needsReverify: staleCount,
-  });
-
-  const buildAreaSpec = (ctx: { setSpec: (s: MenuSpec) => void; close: () => void }): MenuSpec => {
-    const listSpec: MenuSpec = {
-      title: `${area} · ${count} ${count === 1 ? "page" : "pages"}`,
-      footer: footer || undefined,
-      rows: [
-        {
-          kind: "row",
-          label: "Open area",
-          icon: "open",
-          hint: { text: "↵", mono: true },
-          onPick: () => {
-            navigate({ to: "/a/$area", params: { area } });
-            ctx.close();
-          },
-        },
-        {
-          kind: "row",
-          label: open ? "Collapse pages" : "Show pages",
-          icon: open ? "chevUp" : "chevDown",
-          hint: { text: String(count) },
-          onPick: () => {
-            onToggle();
-            ctx.close();
-          },
-        },
-        { kind: "sep" },
-        {
-          kind: "row",
-          label: "New page here",
-          icon: "plus",
-          hint: { text: "area preset" },
-          onPick: () => {
-            void createAndOpen({ seedProps: { area } });
-            ctx.close();
-          },
-        },
-        {
-          kind: "row",
-          label: "Rename area",
-          icon: "pencil",
-          hint: { text: `${count} ${count === 1 ? "page" : "pages"} follow` },
-          onPick: () =>
-            ctx.setSpec({
-              title: `Rename "${area}"`,
-              rows: [],
-              input: {
-                placeholder: "Area name",
-                initial: area,
-                selectOnFocus: true,
-                onCommit: (v) => {
-                  if (v && v !== area) renameArea.mutate({ from: area, to: v });
-                },
-              },
-              footer: "Every page with this area follows.",
-            }),
-        },
-        {
-          kind: "row",
-          label: "Save as my view",
-          icon: "bookmark",
-          hint: { text: "personal" },
-          onPick: () => {
-            createView.mutate({
-              name: area,
-              filter: [{ op: "eq", prop: "area", value: area }],
-              sort: { prop: "edited", dir: "desc" },
-              layout: "table",
-            });
-            ctx.close();
-          },
-        },
-        {
-          kind: "row",
-          label: "Copy link",
-          icon: "link",
-          hint: { text: "⌘⌥L", mono: true },
-          onPick: () => {
-            const origin =
-              typeof window !== "undefined" && window.location ? window.location.origin : "";
-            const url = `${origin}/a/${encodeURIComponent(area)}`;
-            toClipboard(url);
-            toast.push(`Copied link to "${area}"`);
-            ctx.close();
-          },
-        },
-        { kind: "sep" },
-        {
-          kind: "row",
-          label: `Clear area on ${count} ${count === 1 ? "page" : "pages"}`,
-          icon: "clear",
-          danger: true,
-          onPick: () =>
-            ctx.setSpec({
-              title: listSpec.title,
-              rows: [],
-              confirm: {
-                title: `Clear "${area}"?`,
-                body:
-                  count === 0
-                    ? "The area has no pages — it will just disappear from your sidebar."
-                    : `The area is removed from ${count} ${count === 1 ? "page" : "pages"}. The pages themselves are kept.`,
-                cta: "Clear area",
-                danger: true,
-                onConfirm: () => clearArea.mutate(area),
-              },
-            }),
-        },
-      ],
-    };
-    return listSpec;
-  };
-
-
-
   return (
-    <li
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-    >
-      <div className="relative flex min-w-0 items-center">
+    <div className="grid place-items-center py-24 text-center">
+      <div className="font-display text-subhead text-noir">No pages yet.</div>
+      <p className="mt-2 text-meta text-secondary">
+        Start with a page, or a database for things that come in rows.
+      </p>
+      <div className="mt-4 flex items-center gap-2">
         <button
           type="button"
-          onClick={onToggle}
-          aria-label={open ? `Collapse ${area}` : `Expand ${area}`}
-          className="grid h-6 w-6 shrink-0 place-items-center rounded-sm text-muted hover:bg-railHover"
+          onClick={() => void createAndOpen({ seedProps: {} })}
+          className="rounded-lg bg-btn px-3 text-btnFg"
+          style={{ height: 30, fontSize: 13.5, fontWeight: 700 }}
         >
-          <Glyph
-            path="M9 6l6 6-6 6"
-            className="h-3.5 w-3.5"
-            style={{ transform: open ? "rotate(90deg)" : "rotate(0deg)" }}
-          />
+          New page
         </button>
-        <Link
-          to="/a/$area"
-          params={{ area }}
-          style={{ height: "var(--spacing-rowArea)" }}
-          className={
-            "flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 " +
-            (active
-              ? "bg-selected font-bold text-noir"
-              : "text-body hover:bg-railHover")
-          }
+        <button
+          type="button"
+          onClick={() => void createAndOpen({ seedProps: {}, isDatabase: true })}
+          className="rounded-lg border border-line bg-surface px-3 text-body"
+          style={{ height: 30, fontSize: 13.5, fontWeight: 700 }}
         >
-          <AreaEmojiSlot
-            icon={icon}
-            emojiOpen={emojiOpen}
-            setEmojiOpen={setEmojiOpen}
-            hoverRow={hover}
-            onPick={(e) => setAreaIcon.mutate({ area, emoji: e })}
-          />
-
-          <span
-            className="min-w-0 flex-1 truncate text-row"
-            style={{ flex: "1 1 auto" }}
-            title={area}
-          >
-            {area}
-          </span>
-          <span
-            className="relative flex shrink-0 items-center justify-end"
-            style={{ height: 17, minWidth: 17, flex: "none" }}
-          >
-            {hover ? (
-              <SpecMenuTrigger size="sm" build={buildAreaSpec} />
-            ) : (
-              <span className="tnum text-row text-whisper">{count}</span>
-            )}
-
-          </span>
-        </Link>
+          New database
+        </button>
       </div>
-
-      {open && (
-        <ul className="ml-6">
-          {items.map((p) => (
-            <PageRowLi
-              key={p.id}
-              p={p}
-              isStale={isStale(p)}
-              propDefs={propDefs}
-              members={members}
-              me={me}
-              onVerify={onVerify}
-              setPageProperty={setPageProperty}
-              moveToArea={moveToArea}
-              deletePage={deletePage}
-              navigate={navigate}
-            />
-          ))}
-          <li>
-            <button
-              type="button"
-              onClick={() => void createAndOpen({ seedProps: { area } })}
-              style={{ height: "var(--spacing-rowPage)" }}
-              className="flex w-full items-center gap-2 rounded-md px-2 text-meta text-faint hover:bg-railHover"
-            >
-              <Glyph path="M12 5v14M5 12h14" className="h-3 w-3" />
-              <span>New page</span>
-            </button>
-          </li>
-        </ul>
-      )}
-    </li>
-  );
-}
-
-// AreaMenu now lives inline as `buildAreaSpec` inside AreaLi (chunk 2a).
-
-
-
-/**
- * Emoji slot for an area row — clickable target that opens the shared
- * picker. On rows with no emoji, a subtle dashed 18px placeholder appears
- * only when the outer row is hovered. `emojiOpen` is controlled by the
- * area row so the "Change emoji" menu item can open the picker without a
- * click on the slot.
- */
-function AreaEmojiSlot({
-  icon,
-  emojiOpen,
-  setEmojiOpen,
-  hoverRow,
-  onPick,
-}: {
-  icon: string | null | undefined;
-  emojiOpen: boolean;
-  setEmojiOpen: (v: boolean) => void;
-  hoverRow: boolean;
-  onPick: (emoji: string | null) => void;
-}) {
-  return (
-    <span
-      className="shrink-0"
-      style={{ flex: "none" }}
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-      }}
-      onMouseDown={(e) => e.stopPropagation()}
-    >
-      <Popover
-        onOpenChange={setEmojiOpen}
-        width={264}
-        trigger={({ onClick, ref }) => {
-          // Sync external open request from the menu.
-          if (emojiOpen && !ref) return null;
-          return (
-            <button
-              ref={ref}
-              type="button"
-              aria-label="Change area emoji"
-              onClick={(e) => {
-                e.preventDefault();
-                onClick();
-              }}
-              className="grid place-items-center rounded-sm hover:bg-sunken"
-              style={{ width: 18, height: 18 }}
-            >
-              {icon ? (
-                <Ico icon={icon} size={15} />
-              ) : hoverRow ? (
-                <span
-                  aria-hidden
-                  className="inline-block rounded-full border border-dashed border-line"
-                  style={{ width: 12, height: 12 }}
-                />
-              ) : null}
-            </button>
-          );
-        }}
-      >
-        {(close) => (
-          <EmojiPicker
-            removable
-            onPick={(e) => {
-              onPick(e);
-              close();
-            }}
-          />
-        )}
-      </Popover>
-    </span>
-  );
-}
-
-
-/* Nested page row with hover ⋯ + full page menu (submenus swap in place). */
-function PageRowLi({
-  p,
-  isStale,
-  propDefs,
-  members,
-  me,
-  onVerify,
-  setPageProperty,
-  moveToArea,
-  deletePage,
-  navigate,
-}: {
-  p: PageListItem;
-  isStale: boolean;
-  propDefs: Array<{ key: string; label: string; options: unknown }>;
-  members: MemberLite[];
-  me: string;
-  onVerify: (pageId: string) => void;
-  setPageProperty: ReturnType<typeof useSetPageProperty>;
-  moveToArea: ReturnType<typeof useMovePageToArea>;
-  deletePage: ReturnType<typeof useDeletePage>;
-  navigate: ReturnType<typeof useNavigate>;
-}) {
-  const [hover, setHover] = useState(false);
-  const toast = useToast();
-  const restorePage = useRestorePage();
-  const onDeleteWithUndo = (row: PageListItem) => {
-    const snap = row;
-    deletePage.mutate(row.id, {
-      onSuccess: () => {
-        toast.push({
-          message: "Page deleted — it left every view at once.",
-          action: {
-            label: "Undo",
-            onClick: () => restorePage.mutate({ pageId: snap.id, row: snap }),
-          },
-          durationMs: 10_000,
-        });
-      },
-    });
-  };
-  const props =
-    p.props && typeof p.props === "object" && !Array.isArray(p.props)
-      ? (p.props as Record<string, unknown>)
-      : {};
-
-  const editedByFirstName = firstNameOf(
-    members.find((m) => m.user_id === p.edited_by),
-  );
-
-  const build = (mctx: {
-    setSpec: (s: MenuSpec) => void;
-    close: () => void;
-  }): MenuSpec =>
-    buildPageRowSpec(
-      {
-        p,
-        isStale,
-        propDefs,
-        members,
-        editedByFirstName,
-        onOpen: () =>
-          navigate({ to: "/p/$pageId", params: { pageId: p.id } }),
-        onVerify: () => onVerify(p.id),
-        onSetStatus: (v) =>
-          setPageProperty.mutate({ pageId: p.id, key: "status", value: v }),
-        onSetOwner: (uid) =>
-          setPageProperty.mutate({ pageId: p.id, key: "owner", value: uid }),
-        onMoveArea: (a) => moveToArea.mutate({ pageId: p.id, area: a }),
-        onDelete: () => onDeleteWithUndo(p),
-      },
-      mctx,
-    );
-  void me;
-  void props;
-  return (
-    <li
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-    >
-      <Link
-        to="/p/$pageId"
-        params={{ pageId: p.id }}
-        style={{ height: "var(--spacing-rowPage)" }}
-        className="flex min-w-0 cursor-pointer items-center gap-2 rounded-md px-2 text-meta text-secondary hover:bg-railHover"
-      >
-        {isStale && (
-          <span
-            aria-label="Stale"
-            className="h-1.5 w-1.5 shrink-0 rounded-full bg-amberDot"
-          />
-        )}
-        <span
-          className="min-w-0 flex-1 truncate"
-          style={{ flex: "1 1 auto" }}
-          title={p.title || "Untitled"}
-        >
-          {p.title || "Untitled"}
-        </span>
-        <span
-          className="relative flex shrink-0 items-center justify-end"
-          style={{ height: 17, minWidth: 17, flex: "none" }}
-        >
-
-          {hover ? (
-            <SpecMenuTrigger
-              size="sm"
-              ariaLabel="Page actions"
-              build={build}
-            />
-          ) : null}
-        </span>
-      </Link>
-    </li>
+    </div>
   );
 }
 
@@ -2294,20 +1156,6 @@ function DropdownRow({
   );
 }
 
-/* ─────────────────── Menu primitives ─────────────────── */
-
-/* Legacy MoreButton / MenuItem / MenuDivider removed: the whole product now
-   goes through <RowMenuProvider> + <MoreButton> + <RowMenuList> in
-   src/components/row-menu.tsx. If a surface needs a ⋯ dropdown, import
-   MoreButton from there — do NOT reintroduce a local variant. */
-
-function rowClass(active: boolean) {
-  return (
-    "flex items-center gap-2 rounded-md px-2 " +
-    (active ? "bg-selected font-bold text-noir" : "text-body hover:bg-railHover")
-  );
-}
-
 function SectionHeader({
   label,
   open,
@@ -2338,18 +1186,6 @@ function SectionHeader({
       {trailing}
     </div>
   );
-}
-
-function LayoutGlyph({ layout }: { layout: "table" | "board" | "list" | "calendar" }) {
-  const path =
-    layout === "board"
-      ? "M4 5v14M10 5v14M16 5v14"
-      : layout === "list"
-        ? "M4 6h16M4 12h16M4 18h16"
-        : layout === "calendar"
-          ? "M5 5h14v15H5zM5 10h14M9 3v4M15 3v4"
-          : "M3 6h18M3 12h18M3 18h18M9 6v12M15 6v12";
-  return <Glyph path={path} className="h-3.5 w-3.5 shrink-0 text-muted" />;
 }
 
 function Glyph({
@@ -2403,289 +1239,3 @@ function SkeletonList() {
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// Sidebar "+" button + popovers
-// ─────────────────────────────────────────────────────────────
-
-function SidebarPlusButton({
-  title,
-  open,
-  onToggle,
-  children,
-}: {
-  title: string;
-  open: boolean;
-  onToggle: () => void;
-  children: ReactNode;
-}) {
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-
-  useEffect(() => {
-    if (!open) {
-      setPos(null);
-      return;
-    }
-    const place = () => {
-      const el = btnRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      const width = 262;
-      const gap = 6;
-      // Anchor to the button's right edge, but keep the popover on-screen.
-      let left = r.right - width;
-      const margin = 8;
-      if (left < margin) left = margin;
-      const maxLeft = window.innerWidth - width - margin;
-      if (left > maxLeft) left = maxLeft;
-      setPos({ top: r.bottom + gap, left });
-    };
-    place();
-    window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, true);
-    return () => {
-      window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", place, true);
-    };
-  }, [open]);
-
-  return (
-    <>
-      <button
-        ref={btnRef}
-        type="button"
-        title={title}
-        aria-label={title}
-        aria-expanded={open}
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggle();
-        }}
-        className="grid h-5 w-5 place-items-center rounded-sm text-faint hover:bg-railHover hover:text-secondary"
-      >
-        <Glyph path="M12 5v14M5 12h14" className="h-3.5 w-3.5" />
-      </button>
-      {open && pos
-        ? createPortal(
-            <div
-              style={{
-                position: "fixed",
-                top: pos.top,
-                left: pos.left,
-                width: 262,
-                zIndex: 60,
-              }}
-            >
-              {children}
-            </div>,
-            document.body,
-          )
-        : null}
-    </>
-  );
-}
-
-function NewPersonalViewPopover({
-  onClose,
-  currentView,
-}: {
-  onClose: () => void;
-  currentView?: ViewRow;
-}) {
-  const [name, setName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const createView = useCreateView();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, []);
-
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      if (!rootRef.current) return;
-      if (!rootRef.current.contains(e.target as Node)) onClose();
-    };
-    window.addEventListener("mousedown", onDown);
-    return () => window.removeEventListener("mousedown", onDown);
-  }, [onClose]);
-
-  const trimmed = name.trim();
-  const valid = trimmed.length > 0 && trimmed.length <= 60;
-
-  const submit = async () => {
-    if (!valid || submitting) return;
-    setSubmitting(true);
-    try {
-      const seedFilter = (currentView?.filter ?? []) as Filter[];
-      const seedSort =
-        (currentView?.sort as SortSpec | SortSpec[] | null) ?? { prop: "edited", dir: "desc" };
-      const seedLayout = currentView?.layout ?? "table";
-      const created = await createView.mutateAsync({
-        name: trimmed,
-        filter: seedFilter,
-        sort: seedSort,
-        layout: seedLayout,
-        groupBy: (currentView as { group_by?: string | null } | null | undefined)?.group_by ?? null,
-        config: readConfig((currentView as { config?: unknown } | null | undefined)?.config),
-      });
-      onClose();
-      navigate({ to: "/v/$viewId", params: { viewId: created.id } });
-    } catch (err) {
-      console.error(err);
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div
-      ref={rootRef}
-      onMouseDown={(e) => e.stopPropagation()}
-      style={{ width: 262 }}
-      className="rounded-md border border-rule bg-surface p-3 shadow-lg"
-    >
-      <div className="mb-2 text-label uppercase text-faint">New view</div>
-      <input
-        ref={inputRef}
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            submit();
-          }
-        }}
-        maxLength={60}
-        placeholder="View name"
-        className="w-full rounded-sm border border-rule bg-canvas px-2 py-1.5 text-ui text-strong placeholder:text-faint focus:border-accent focus:outline-none"
-      />
-      <p className="mt-1.5 text-caption text-faint">
-        {currentView
-          ? `Seeded from "${currentView.name}"`
-          : "Empty personal view"}
-      </p>
-      <div className="mt-3 flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-sm px-2 py-1 text-ui text-secondary hover:bg-rail"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          disabled={!valid || submitting}
-          onClick={submit}
-          className="rounded-sm bg-brand px-2.5 py-1 text-ui text-onBrand disabled:opacity-50"
-        >
-          {submitting ? "Creating…" : "Create view"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function NewAreaPopover({
-  onClose,
-  existingAreas,
-}: {
-  onClose: () => void;
-  existingAreas: string[];
-}) {
-  const [name, setName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const registerArea = useRegisterArea();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, []);
-
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      if (!rootRef.current) return;
-      if (!rootRef.current.contains(e.target as Node)) onClose();
-    };
-    window.addEventListener("mousedown", onDown);
-    return () => window.removeEventListener("mousedown", onDown);
-  }, [onClose]);
-
-  const trimmed = name.trim();
-  const lower = trimmed.toLowerCase();
-  const duplicate =
-    trimmed.length > 0 &&
-    existingAreas.some((a) => a.toLowerCase() === lower);
-  const valid = trimmed.length > 0 && trimmed.length <= 60 && !duplicate;
-
-  const submit = async () => {
-    if (!valid || submitting) return;
-    setSubmitting(true);
-    try {
-      // Register the area in property_defs. No page is created — areas
-      // are queries over pages, not containers. The area view will render
-      // its empty state until a page's props.area matches.
-      await registerArea.mutateAsync(trimmed);
-
-      onClose();
-      navigate({ to: "/a/$area", params: { area: trimmed } });
-    } catch (err) {
-      console.error(err);
-      setSubmitting(false);
-    }
-  };
-
-
-  return (
-    <div
-      ref={rootRef}
-      onMouseDown={(e) => e.stopPropagation()}
-      style={{ width: 262 }}
-      className="rounded-md border border-rule bg-surface p-3 shadow-lg"
-    >
-      <div className="mb-2 text-label uppercase text-faint">New area</div>
-      <input
-        ref={inputRef}
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            submit();
-          }
-        }}
-        maxLength={60}
-        placeholder="Area name"
-        aria-invalid={duplicate}
-        className="w-full rounded-sm border border-rule bg-canvas px-2 py-1.5 text-ui text-strong placeholder:text-faint focus:border-accent focus:outline-none"
-      />
-      <p className="mt-1.5 text-caption text-faint">
-        {duplicate
-          ? "That area already exists."
-          : "Creates the area and opens a new untitled page in it."}
-      </p>
-      <div className="mt-3 flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-sm px-2 py-1 text-ui text-secondary hover:bg-rail"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          disabled={!valid || submitting}
-          onClick={submit}
-          className="rounded-sm bg-brand px-2.5 py-1 text-ui text-onBrand disabled:opacity-50"
-        >
-          {submitting ? "Creating…" : "Create area"}
-        </button>
-      </div>
-    </div>
-  );
-}

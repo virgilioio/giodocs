@@ -1,13 +1,10 @@
 import { createContext, useContext } from "react";
 
-// Records where the user opened a page from, so the topbar breadcrumb can
-// say "Areas / Ops / Title" or "My views / Assigned to me / Title" rather
-// than the useless "Page / Title" fallback.
-
+// Records where the user opened a page from, so the topbar can offer a way
+// back to the database view they came from rather than a plain "Back".
 
 export type PageOrigin =
-  | { kind: "view"; viewId: string; viewName: string; scope: "team" | "personal" }
-  | { kind: "area"; area: string }
+  | { kind: "database"; databaseId: string; viewId: string | null; name: string }
   | { kind: "search" };
 
 const KEY = "gio.page-origin.";
@@ -23,7 +20,11 @@ export function setPageOrigin(pageId: string, origin: PageOrigin) {
 export function getPageOrigin(pageId: string): PageOrigin | null {
   try {
     const raw = sessionStorage.getItem(KEY + pageId);
-    return raw ? (JSON.parse(raw) as PageOrigin) : null;
+    if (!raw) return null;
+    const o = JSON.parse(raw) as { kind?: string };
+    // Origins written before databases (views, areas) no longer resolve.
+    if (o.kind !== "database" && o.kind !== "search") return null;
+    return o as PageOrigin;
   } catch {
     return null;
   }

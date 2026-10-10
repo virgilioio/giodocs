@@ -37,11 +37,14 @@ export function useCreateProperty() {
   const toast = useToast();
   return useMutation({
     mutationFn: async (v: {
+      /** The database the property belongs to. */
+      databaseId: string;
       label: string;
       type: PropertyType;
       /** A relation's or rollup's settings (property_defs.config). */
       config?: Record<string, unknown>;
-      /** A two-way relation: its far side, named for the linked pages. */
+      /** A two-way relation: its far side, named for the linked pages. It
+       *  lives in the database the relation links to. */
       backLabel?: string;
     }) => {
       const label = v.label.trim();
@@ -64,6 +67,7 @@ export function useCreateProperty() {
         const backKey = backLabel ? keyForLabel(backLabel, [...taken, key]) : null;
         const row = {
           workspace_id: ws,
+          database_id: v.databaseId,
           key,
           label,
           type: v.type,
@@ -72,6 +76,8 @@ export function useCreateProperty() {
           created_by: user!.id,
           config: (backKey ? { ...(v.config ?? {}), back: backKey } : (v.config ?? {})) as never,
         };
+        const farDatabase =
+          typeof v.config?.database_id === "string" ? v.config.database_id : v.databaseId;
         // A two-way relation's two sides are made in one statement, so
         // neither exists without the other.
         const rows = backKey
@@ -79,6 +85,7 @@ export function useCreateProperty() {
               row,
               {
                 ...row,
+                database_id: farDatabase,
                 key: backKey,
                 label: backLabel!,
                 position: position + 1,

@@ -1,7 +1,7 @@
 import type { PageListItem } from "./types";
 import { formatDue } from "./due-date";
 import { relList } from "./related-links";
-import { propValue, runView, type Filter, type RunViewCtx } from "./run-view";
+import { propValue } from "./run-view";
 import {
   calcValue,
   calculateRaw,
@@ -27,9 +27,12 @@ export type RelDefLike = {
   label?: string | null;
   config?: unknown;
   options?: unknown;
+  database_id?: string | null;
 };
 
-export type RelationConfig = { viewId: string | null; back: string | null; of: string | null };
+/** databaseId: the database whose rows this relation links to (null on a
+ *  far side, whose database is wherever the near side points). */
+export type RelationConfig = { databaseId: string | null; back: string | null; of: string | null };
 
 /** "show" lists the related pages' values instead of calculating. */
 export type RollupCalc = CalcId | "show";
@@ -44,7 +47,7 @@ const str = (v: unknown): string | null => (typeof v === "string" && v ? v : nul
 
 export function relationConfig(def: RelDefLike | undefined): RelationConfig {
   const c = cfgOf(def);
-  return { viewId: str(c.view_id), back: str(c.back), of: str(c.of) };
+  return { databaseId: str(c.database_id), back: str(c.back), of: str(c.of) };
 }
 
 export function rollupConfig(def: RelDefLike | undefined): RollupConfig | null {
@@ -251,33 +254,25 @@ export function relationWrite(
   };
 }
 
-/** The pages a relation can link to from this page: the pages of its view
- *  when it has one (as that view filters them), otherwise every page. */
+/** The pages a relation can link to from this page: the rows of the
+ *  database it points at (a far side links to rows of the near side's own
+ *  database), never the page itself. By title. */
 export function relationCandidates(
   def: RelDefLike,
   page: PageListItem | null,
   idx: RelationIndex,
-  views: Array<{ id: string; filter: unknown }>,
-  ctx: RunViewCtx,
 ): PageListItem[] {
-  const all = [...idx.byId.values()];
-  const { viewId, of } = relationConfig(def);
-  let pool = all;
-  if (!of && viewId) {
-    const v = views.find((x) => x.id === viewId);
-    if (v)
-      pool = runView(
-        all,
-        { filter: (v.filter ?? []) as Filter[], sort: { prop: "title", dir: "asc" } },
-        ctx,
-      );
-  }
-  const out = pool.filter((p) => p.id !== page?.id);
-  return pool === all
-    ? out.sort((a, b) =>
-        (a.title || "").localeCompare(b.title || "", undefined, { sensitivity: "base" }),
-      )
-    : out;
+  const { databaseId, of } = relationConfig(def);
+  const near = of ? idx.defs.get(of) : def;
+  // The far side's candidates are rows of the database the near side
+  // lives in: the pages that could link here.
+  const target = of ? (near?.database_id ?? null) : databaseId;
+  const out = [...idx.byId.values()].filter(
+    (p) => p.id !== page?.id && (target ? p.database_id === target : false),
+  );
+  return out.sort((a, b) =>
+    (a.title || "").localeCompare(b.title || "", undefined, { sensitivity: "base" }),
+  );
 }
 
 /** How a rollup that shows values writes each one: option labels, people's

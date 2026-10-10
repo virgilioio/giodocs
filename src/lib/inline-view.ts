@@ -1,15 +1,18 @@
 import type { Filter, SortSpec } from "./run-view";
 import { readConfig, type ViewConfig } from "./view-config";
 
-/* A view placed inside a page (the "view" block). It's a saved query like
- * any view (AGENTS.md: a view stores a filter, never a list of page ids),
- * kept in the page's blocks so every reader of the page sees it, and
- * shows the pages each reader can open. Page editors change it in place;
- * the change saves with the page. Pure. */
+/* A view placed inside a page (the "view" block). It names a database and
+ * is a saved query over its rows like any view (AGENTS.md: a view stores a
+ * filter, never a list of page ids), kept in the page's blocks so every
+ * reader of the page sees it, and shows the rows each reader can open.
+ * Page editors change it in place; the change saves with the page. Pure. */
 
 export type InlineLayout = "table" | "board" | "list";
 
 export type InlineView = {
+  /** The database whose rows it shows. Null only in blocks saved before
+   *  databases existed; such a block shows nothing until one is picked. */
+  database_id: string | null;
   name: string;
   layout: InlineLayout;
   filter: Filter[];
@@ -21,8 +24,9 @@ export type InlineView = {
 
 const LAYOUTS: InlineLayout[] = ["table", "board", "list"];
 
-export function defaultInlineView(): InlineView {
+export function defaultInlineView(databaseId: string | null = null): InlineView {
   return {
+    database_id: databaseId,
     name: "",
     layout: "table",
     filter: [],
@@ -53,6 +57,7 @@ export function readInlineView(raw: unknown): InlineView | null {
   const base = defaultInlineView();
   const sort = Array.isArray(r.sort) ? r.sort.filter(isSort) : isSort(r.sort) ? r.sort : base.sort;
   return {
+    database_id: typeof r.database_id === "string" && r.database_id ? r.database_id : null,
     name: typeof r.name === "string" ? r.name.slice(0, 200) : "",
     layout: LAYOUTS.includes(r.layout as InlineLayout) ? (r.layout as InlineLayout) : "table",
     filter: Array.isArray(r.filter) ? r.filter.filter(isFilter) : [],
@@ -66,6 +71,7 @@ export function readInlineView(raw: unknown): InlineView | null {
  *  A calendar view starts as a table here (pages show as a table, board or
  *  list inside a page). */
 export function inlineFromView(v: {
+  database_id?: string | null;
   name: string;
   layout?: string | null;
   filter?: unknown;
@@ -74,6 +80,7 @@ export function inlineFromView(v: {
   group_by?: string | null;
 }): InlineView {
   const read = readInlineView({
+    database_id: v.database_id ?? null,
     name: v.name,
     layout: v.layout,
     filter: v.filter,

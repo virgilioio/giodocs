@@ -776,14 +776,18 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 function AddPropertyPopover({
+  databaseId,
   propDefs,
   present,
-  views,
+  databases,
   onAdd,
 }: {
+  /** The database the page is a row of: new properties are made there. */
+  databaseId: string;
   propDefs: PropDef[];
   present: Set<string>;
-  views: Array<{ id: string; name: string }>;
+  /** Databases a relation can link to. */
+  databases: Array<{ id: string; title: string | null; icon: string | null }>;
   onAdd: (key: string, seed: unknown, focusAfter: boolean) => void;
 }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -826,7 +830,7 @@ function AddPropertyPopover({
     backLabel?: string,
   ) =>
     createProperty.mutate(
-      { label, type, config, backLabel },
+      { databaseId, label, type, config, backLabel },
       { onSuccess: (def) => onAdd(def.key, seedFor(def.type), true) },
     );
 
@@ -839,7 +843,7 @@ function AddPropertyPopover({
     title: `New ${kindLabel(type).toLowerCase()} property`,
     rows: [],
     onBack: () => setSub(back),
-    footer: "Everyone in the workspace can use it. Only owners can archive it.",
+    footer: "Every row of this database gets it. Only owners can archive it.",
     input: {
       placeholder: "Name it, then press Enter",
       onCommit: (label) => (then ? then(label) : create(label, type)),
@@ -848,52 +852,44 @@ function AddPropertyPopover({
     },
   });
 
-  /* Relation: which pages it links to, its name, then one way or both. */
+  /* Relation: which database it links to, its name, then one way or both. */
   const relationScopeSpec = (): MenuSpec => ({
-    title: "Link to",
+    title: "Link to rows of",
     onBack: () => setSub(typeSpec),
-    footer: "A view keeps the choice to its pages, as it filters them.",
-    rows: [
-      {
-        kind: "row",
-        label: "Any page",
-        icon: "M5 4h10l4 4v12H5z",
-        onPick: () => setSub(relationName(null)),
-      },
-      ...(views.length ? [{ kind: "sep" as const }] : []),
-      ...views.map<MenuRow>((v) => ({
-        kind: "row",
-        label: `Pages in ${v.name}`,
-        icon: "M4 5h16v14H4zM4 10h16",
-        onPick: () => setSub(relationName(v.id)),
-      })),
-    ],
+    footer: "A relation links to the rows of one database.",
+    rows: databases.map<MenuRow>((d) => ({
+      kind: "row",
+      label: d.title?.trim() || "Untitled",
+      icon: d.id === databaseId ? "M4 5h16v14H4zM4 10h16M10 5v14" : "M4 5h16v14H4zM4 10h16",
+      hint: d.id === databaseId ? { text: "this database" } : undefined,
+      onPick: () => setSub(relationName(d.id)),
+    })),
   });
-  const relationName = (viewId: string | null): MenuSpec =>
-    nameSpec("relation", (label) => setSub(relationSides(label, viewId)), relationScopeSpec());
-  const relationSides = (label: string, viewId: string | null): MenuSpec => ({
+  const relationName = (targetId: string): MenuSpec =>
+    nameSpec("relation", (label) => setSub(relationSides(label, targetId)), relationScopeSpec());
+  const relationSides = (label: string, targetId: string): MenuSpec => ({
     title: label,
-    onBack: () => setSub(relationName(viewId)),
+    onBack: () => setSub(relationName(targetId)),
     rows: [
       {
         kind: "row",
         label: "Only here",
         hint: { text: "One way" },
-        onPick: () => create(label, "relation", { view_id: viewId }),
+        onPick: () => create(label, "relation", { database_id: targetId }),
       },
       {
         kind: "row",
-        label: "Also on the linked pages…",
+        label: "Also on the linked rows…",
         hint: { text: "Two way" },
         onPick: () =>
           setSub({
-            title: "On the linked pages",
+            title: "On the linked rows",
             rows: [],
-            onBack: () => setSub(relationSides(label, viewId)),
-            footer: `A page this one links to with ${label} shows it under this name, and links can be made from either side.`,
+            onBack: () => setSub(relationSides(label, targetId)),
+            footer: `A row this one links to with ${label} shows it under this name, and links can be made from either side.`,
             input: {
               placeholder: "Name it there, then press Enter",
-              onCommit: (back) => create(label, "relation", { view_id: viewId }, back),
+              onCommit: (back) => create(label, "relation", { database_id: targetId }, back),
             },
           }),
       },
@@ -1019,8 +1015,8 @@ function AddPropertyPopover({
     rows,
     footer:
       candidates.length === 0
-        ? "Every property is already on this page. Make a new one for anything else."
-        : "Adding one puts this page in every view that filters on it.",
+        ? "Every property is already on this row. Make a new one for anything else."
+        : "Adding one puts this row in every view that filters on it.",
   };
 
   return (
@@ -1062,7 +1058,7 @@ function AddPropertyPopover({
 
 function PropertyStrip({
   page,
-  propDefs,
+  allPropDefs,
   members,
   meId,
   pages,
@@ -1072,10 +1068,11 @@ function PropertyStrip({
   justVerified,
   onSet,
   onSetPage,
-  views,
 }: {
   page: PageFull;
-  propDefs: PropDef[];
+  /** Every property in the workspace; the strip shows the page's own
+   *  database's, and relations may reach into others. */
+  allPropDefs: PropDef[];
   members: MemberRow[];
   meId: string;
   pages: PageListItem[];
@@ -1086,12 +1083,25 @@ function PropertyStrip({
   onSet: (key: string, value: unknown) => void;
   /** A change to another page (the far side of a relation writes there). */
   onSetPage: (pageId: string, key: string, value: unknown) => void;
-  views: Array<{ id: string; name: string; filter: unknown }>;
 }) {
   const propsRec = propsOf(page);
   const setRef = useRef({ onSet, onSetPage });
   setRef.current = { onSet, onSetPage };
-  const relIdx = useMemo(() => buildRelationIndex(pages, propDefs), [pages, propDefs]);
+  // A plain page (no database) has no properties beyond the built-ins.
+  const databaseId = page.database_id ?? null;
+  const propDefs = useMemo(
+    () => (databaseId ? allPropDefs.filter((d) => d.database_id === databaseId) : []),
+    [allPropDefs, databaseId],
+  );
+  const databases = useMemo(
+    () =>
+      pages
+        .filter((p) => p.is_database && !p.archived_at)
+        .map((p) => ({ id: p.id, title: p.title, icon: p.icon }))
+        .sort((a, b) => (a.title ?? "").localeCompare(b.title ?? "")),
+    [pages],
+  );
+  const relIdx = useMemo(() => buildRelationIndex(pages, allPropDefs), [pages, allPropDefs]);
   const relations = useMemo<StripRelations>(() => {
     const names = new Map(
       members.map((m) => [m.user_id, m.profiles?.full_name || m.profiles?.email || ""]),
@@ -1100,11 +1110,10 @@ function PropertyStrip({
     return {
       idx: relIdx,
       words: valueWords({ defs: relIdx.defs, nameOf: (id) => names.get(id) || id, titleOf }),
-      candidates: (def, self) =>
-        relationCandidates(def, self, relIdx, views, { me: meId, staleDays }),
+      candidates: (def, self) => relationCandidates(def, self, relIdx),
       scopeNote: (def) => {
-        const v = views.find((x) => x.id === relationConfig(def).viewId);
-        return v ? `Pages in ${v.name}` : undefined;
+        const d = databases.find((x) => x.id === relationConfig(def).databaseId);
+        return d ? `Rows of ${d.title?.trim() || "Untitled"}` : undefined;
       },
       // Through refs: the latest handlers (and the page's current edit
       // access) apply, whatever render built this.
@@ -1113,7 +1122,7 @@ function PropertyStrip({
           ? setRef.current.onSet(w.key, w.value)
           : setRef.current.onSetPage(w.pageId, w.key, w.value),
     };
-  }, [relIdx, members, views, meId, staleDays, page.id]);
+  }, [relIdx, members, databases, page.id]);
   // null-is-absent: set_page_property stores an explicit null when a value
   // is cleared rather than dropping the key, so a cleared property must not
   // count as present — otherwise the strip keeps an unremovable empty row.
@@ -1154,7 +1163,7 @@ function PropertyStrip({
     .filter((d) => shown.has(d.key));
 
   const rows = [
-    ...PROPS_ORDER_TOP.map((k) => ({ key: k })),
+    ...PROPS_ORDER_TOP.filter((k) => propDefs.some((d) => d.key === k)).map((k) => ({ key: k })),
     ...rest.map((d) => ({ key: d.key })),
   ];
 
@@ -1497,10 +1506,12 @@ function PropertyStrip({
       </div>
 
 
+      {databaseId ? (
       <AddPropertyPopover
+        databaseId={databaseId}
         propDefs={propDefs}
         present={shown}
-        views={views}
+        databases={databases}
         onAdd={(key, seed) => {
           setAdded((prev) => new Set(prev).add(key));
           // Worked-out properties hold nothing to seed, and a stored value
@@ -1510,6 +1521,7 @@ function PropertyStrip({
             onSet(key, seed);
         }}
       />
+      ) : null}
       </div>
       </div>
     </div>
@@ -1971,7 +1983,11 @@ export function PageEditor({ pageId }: { pageId: string }) {
         return;
       }
       try {
-        const row = await applyTemplate(page.id, templateId, { title: page.title ?? "", props: page.props });
+        const row = await applyTemplate(page.id, templateId, {
+          title: page.title ?? "",
+          props: page.props,
+          databaseId: page.database_id ?? null,
+        });
         queryClient.setQueryData<PageFull | null>(qk.page(page.id), (prev) => (prev ? { ...prev, props: row.props } : prev));
         adoptRestored(row);
         void queryClient.invalidateQueries({ queryKey: qk.pages(ws) });
@@ -2143,11 +2159,10 @@ export function PageEditor({ pageId }: { pageId: string }) {
        * banner's job (18px instead of 22px). */}
       <PropertyStrip
         page={page}
-        propDefs={propDefs}
+        allPropDefs={propDefs}
         members={members}
         meId={meId}
         pages={(shell.pages.data ?? []) as PageListItem[]}
-        views={(shell.views.data ?? []) as Array<{ id: string; name: string; filter: unknown }>}
         onSetPage={(pageId, key, value) => setProp.mutate({ pageId, key, value })}
         areas={areasList}
         staleDays={staleDays}

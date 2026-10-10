@@ -790,6 +790,12 @@ function PeoplePane({
   const removeMember = useRemoveMember();
   const createView = useCreateView();
   const navigate = useNavigate();
+  // "Owner" lives in one database (the Pages database, after the 2026-10-10
+  // migration); a saved view of someone's pages is a view of that database.
+  const ownerDatabaseId = useMemo(() => {
+    const defs = (shell.propDefs.data ?? []) as Array<{ key: string; database_id: string }>;
+    return defs.find((d) => d.key === "owner")?.database_id ?? null;
+  }, [shell.propDefs.data]);
 
   const ownedBy = useMemo(() => {
     const m = new Map<string, PageListItem[]>();
@@ -960,9 +966,11 @@ function PeoplePane({
                       <button
                         type="button"
                         onClick={() => {
+                          if (!ownerDatabaseId) return;
                           const first = (name.split(/\s+/)[0] || name);
                           createView.mutate(
                             {
+                              databaseId: ownerDatabaseId,
                               name: `${first}'s pages`,
                               filter: [{ op: "eq", prop: "owner", value: m.user_id }],
                               sort: { prop: "edited", dir: "desc" },
@@ -971,8 +979,12 @@ function PeoplePane({
                             {
                               onSuccess: (row) => {
                                 onClose();
-                                navigate({ to: "/v/$viewId", params: { viewId: row.id } });
-                                toast.push(`Saved '${first}'s pages' to My views`);
+                                navigate({
+                                  to: "/p/$pageId",
+                                  params: { pageId: row.database_id },
+                                  search: { v: row.id },
+                                });
+                                toast.push(`Saved '${first}'s pages' as your own view`);
                               },
                             },
                           );
@@ -1784,6 +1796,10 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const createView = useCreateView();
   const qc = useQueryClient();
+  const ownerDatabaseId = useMemo(() => {
+    const defs = (shell.propDefs.data ?? []) as Array<{ key: string; database_id: string }>;
+    return defs.find((d) => d.key === "owner")?.database_id ?? null;
+  }, [shell.propDefs.data]);
 
   const myId = user?.id ?? "";
   const myRow = members.find((m) => m.user_id === myId);
@@ -1983,8 +1999,13 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
   const verifiedByMe = pages.filter((p) => p.verified_by === myId).length;
 
   function openView(name: string, filter: unknown, sort: unknown) {
+    if (!ownerDatabaseId) {
+      toast.push("No database has an Owner property yet.");
+      return;
+    }
     createView.mutate(
       {
+        databaseId: ownerDatabaseId,
         name,
         filter: filter as never,
         sort: sort as never,
@@ -1993,8 +2014,8 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
       {
         onSuccess: (row) => {
           onClose();
-          navigate({ to: "/v/$viewId", params: { viewId: row.id } });
-          toast.push(`Saved '${name}' to My views`);
+          navigate({ to: "/p/$pageId", params: { pageId: row.database_id }, search: { v: row.id } });
+          toast.push(`Saved '${name}' as your own view`);
         },
       },
     );

@@ -350,20 +350,23 @@ export function PageTopbarActions({
     // Return to whatever origin the sidebar/table recorded, else the root
     // which auto-picks the first personal view.
     const origin = getPageOrigin(pageId);
-    if (origin?.kind === "view") {
-      navigate({ to: "/v/$viewId", params: { viewId: origin.viewId }, replace: true });
-      return;
-    }
-    if (origin?.kind === "area") {
+    if (origin?.kind === "database") {
       navigate({
-        to: "/a/$area",
-        params: { area: encodeURIComponent(origin.area) },
+        to: "/p/$pageId",
+        params: { pageId: origin.databaseId },
+        search: origin.viewId ? { v: origin.viewId } : {},
         replace: true,
       });
       return;
     }
+    // Else the page it was in, or the root.
+    const parent = listRow?.parent_id;
+    if (parent) {
+      navigate({ to: "/p/$pageId", params: { pageId: parent }, replace: true });
+      return;
+    }
     navigate({ to: "/", replace: true });
-  }, [navigate, pageId]);
+  }, [navigate, pageId, listRow?.parent_id]);
 
   const doDelete = useCallback(() => {
     if (!listRow) return;

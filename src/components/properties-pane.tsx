@@ -15,12 +15,12 @@ import type { SelectOption } from "./property-pickers";
 import type { Database } from "@/integrations/supabase/types";
 import type { PageListItem } from "@/lib/types";
 
-/* Settings › Properties — the workspace's property list.
+/* Settings › Properties — every database's properties, database by database.
  *
- * Anyone can add a property, rename one and add options to a select or
- * status. Only owners archive (hide; values stay) or restore. Built-in
- * properties are listed but locked. The database enforces all of this; the
- * pane just doesn't offer what you can't do. */
+ * Anyone who can edit a database adds a property to it, renames one and
+ * adds options to a select or status. Only owners archive (hide; values
+ * stay) or restore. The database enforces all of this; the pane just
+ * doesn't offer what you can't do. */
 
 type PropDef = Database["public"]["Tables"]["property_defs"]["Row"];
 
@@ -63,27 +63,52 @@ export function PropertiesPaneBody() {
 
   const live = all.filter((d) => !d.archived_at);
   const archived = all.filter((d) => d.archived_at);
+  const databases = useMemo(
+    () =>
+      (pagesData ?? [])
+        .filter((p) => p.is_database && !p.archived_at)
+        .map((p) => ({ id: p.id, title: p.title?.trim() || "Untitled", icon: p.icon }))
+        .sort((a, b) => a.title.localeCompare(b.title)),
+    [pagesData],
+  );
 
   return (
     <div style={{ padding: "0 30px 30px" }}>
-      <NewPropertyForm />
+      <NewPropertyForm databases={databases} />
 
-      <div className="mt-5 text-label uppercase text-faint">In use · {live.length}</div>
-      <div className="mt-2 overflow-hidden rounded-xl border border-line">
-        <div
-          className="grid items-center bg-rail text-label uppercase text-faint"
-          style={{ gridTemplateColumns: GRID, gap: 10, padding: "8px 12px" }}
-        >
-          <span />
-          <span>Name</span>
-          <span>Type</span>
-          <span>Used on</span>
-          <span />
-        </div>
-        {live.map((d) => (
-          <PropertyRow key={d.id} def={d} isOwner={isOwner} count={usedOn.get(d.key) ?? 0} />
-        ))}
-      </div>
+      {databases.map((db) => {
+        const own = live.filter((d) => d.database_id === db.id);
+        return (
+          <div key={db.id}>
+            <div className="mt-5 text-label uppercase text-faint">
+              {db.title} · {own.length}
+            </div>
+            <div className="mt-2 overflow-hidden rounded-xl border border-line">
+              <div
+                className="grid items-center bg-rail text-label uppercase text-faint"
+                style={{ gridTemplateColumns: GRID, gap: 10, padding: "8px 12px" }}
+              >
+                <span />
+                <span>Name</span>
+                <span>Type</span>
+                <span>Used on</span>
+                <span />
+              </div>
+              {own.length === 0 ? (
+                <p className="px-3 py-2 text-meta text-muted">No properties yet.</p>
+              ) : null}
+              {own.map((d) => (
+                <PropertyRow key={d.id} def={d} isOwner={isOwner} count={usedOn.get(d.key) ?? 0} />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+      {databases.length === 0 ? (
+        <p className="mt-5 text-meta text-muted">
+          Properties belong to databases. Make a database first.
+        </p>
+      ) : null}
 
       {archived.length > 0 ? (
         <>
@@ -102,15 +127,22 @@ export function PropertiesPaneBody() {
   );
 }
 
-function NewPropertyForm() {
+function NewPropertyForm({
+  databases,
+}: {
+  databases: Array<{ id: string; title: string; icon: string | null }>;
+}) {
   const create = useCreateProperty();
   const [label, setLabel] = useState("");
   const [type, setType] = useState<PropertyType>("text");
+  const [dbId, setDbId] = useState<string>("");
+  const databaseId = databases.some((d) => d.id === dbId) ? dbId : (databases[0]?.id ?? "");
   const submit = () => {
     const l = label.trim();
-    if (!l || create.isPending) return;
-    create.mutate({ label: l, type }, { onSuccess: () => setLabel("") });
+    if (!l || !databaseId || create.isPending) return;
+    create.mutate({ databaseId, label: l, type }, { onSuccess: () => setLabel("") });
   };
+  if (databases.length === 0) return null;
   return (
     <>
       <form
@@ -120,6 +152,19 @@ function NewPropertyForm() {
           submit();
         }}
       >
+        <select
+          value={databaseId}
+          onChange={(e) => setDbId(e.target.value)}
+          aria-label="Database"
+          className="rounded-md border border-line bg-surface focus:border-accent focus:outline-none"
+          style={{ padding: "6px 8px", fontSize: 14, maxWidth: 180 }}
+        >
+          {databases.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.title}
+            </option>
+          ))}
+        </select>
         <input
           value={label}
           onChange={(e) => setLabel(e.target.value)}

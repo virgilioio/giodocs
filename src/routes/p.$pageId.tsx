@@ -5,6 +5,9 @@ import { AppShell } from "@/components/app-shell";
 import { RouteErrorFallback, RouteNotFound } from "@/components/route-boundaries";
 
 export const Route = createFileRoute("/p/$pageId")({
+  // ?v=<viewId>: which of a database's views to show.
+  validateSearch: (search: Record<string, unknown>): { v?: string } =>
+    typeof search.v === "string" && search.v ? { v: search.v } : {},
   head: () => ({
     meta: [
       { title: "Page — Gio Docs" },

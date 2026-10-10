@@ -264,7 +264,11 @@ export function CommandPalette({
         });
       } else if (row.kind === "view") {
         onClose();
-        navigate({ to: "/v/$viewId", params: { viewId: row.view.id } });
+        navigate({
+          to: "/p/$pageId",
+          params: { pageId: row.view.database_id },
+          search: { v: row.view.id },
+        });
       } else {
         row.run();
       }
@@ -358,6 +362,7 @@ export function CommandPalette({
                       propDefs={propDefs}
                       staleDays={staleDays}
                       term={debounced}
+                      pages={pages}
                     />
                   </li>
                 ))}
@@ -396,6 +401,7 @@ function PaletteRow({
   propDefs,
   staleDays,
   term,
+  pages,
 }: {
   row: Row;
   active: boolean;
@@ -405,6 +411,7 @@ function PaletteRow({
   propDefs: PropDef[];
   staleDays: number;
   term: string;
+  pages: PageListItem[];
 }) {
   const cls =
     "flex w-full items-center gap-3 px-3.5 py-2 text-left " +
@@ -448,9 +455,12 @@ function PaletteRow({
     const v = row.view;
     const filters = (v.filter ?? []) as Filter[];
     const people = Array.from(memberBy, ([id, full_name]) => ({ id, full_name }));
-    const desc = filters.length
-      ? filters.map((f) => filterLabel(f, { people, staleDays, defs: propDefs })).join(" · ")
-      : "all pages";
+    const dbTitle = pages.find((p) => p.id === v.database_id)?.title?.trim() || "Untitled";
+    const desc =
+      `${dbTitle} · ` +
+      (filters.length
+        ? filters.map((f) => filterLabel(f, { people, staleDays, defs: propDefs })).join(" · ")
+        : "all rows");
     const glyph =
       v.layout === "board"
         ? "M4 5v14M10 5v14M16 5v14"

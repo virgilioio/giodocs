@@ -31,9 +31,11 @@ function pg(
   };
 }
 
+// Tasks (database "tdb") link to projects (database "pdb"); the far side
+// lives with the projects.
 const DEFS = [
-  { key: "project", type: "relation", config: { back: "tasks" } },
-  { key: "tasks", type: "relation", config: { of: "project" } },
+  { key: "project", type: "relation", config: { back: "tasks", database_id: "pdb" }, database_id: "tdb" },
+  { key: "tasks", type: "relation", config: { of: "project" }, database_id: "pdb" },
   { key: "effort", type: "number" },
   { key: "done", type: "checkbox" },
   { key: "due", type: "date" },
@@ -49,12 +51,12 @@ const DEFS = [
 ];
 
 const pages = [
-  pg("p1", {}),
-  pg("p2", {}),
-  pg("t1", { project: ["p1"], effort: 3, done: true, due: "2026-10-20" }),
-  pg("t2", { project: ["p1", "p1", "gone"], effort: 5, due: "2026-10-12/2026-10-22" }),
-  pg("t3", { project: ["p2"], effort: 1 }),
-  pg("t4", { project: ["p1"], effort: 100 }, { archived_at: "2026-10-01T00:00:00Z" }),
+  pg("p1", {}, { database_id: "pdb" }),
+  pg("p2", {}, { database_id: "pdb" }),
+  pg("t1", { project: ["p1"], effort: 3, done: true, due: "2026-10-20" }, { database_id: "tdb" }),
+  pg("t2", { project: ["p1", "p1", "gone"], effort: 5, due: "2026-10-12/2026-10-22" }, { database_id: "tdb" }),
+  pg("t3", { project: ["p2"], effort: 1 }, { database_id: "tdb" }),
+  pg("t4", { project: ["p1"], effort: 100 }, { archived_at: "2026-10-01T00:00:00Z", database_id: "tdb" }),
 ];
 const idx = buildRelationIndex(pages, DEFS);
 const byId = (id: string) => pages.find((p) => p.id === id)!;
@@ -157,20 +159,19 @@ describe("editing relations", () => {
   it("an unlink keeps links the reader can't see", () => {
     expect(relationWrite(DEFS[0], byId("t2"), "p1", false, idx)?.value).toEqual(["gone"]);
   });
-  it("candidates: a view's pages, or every page but this one", () => {
-    const ctx = { me: "me", staleDays: 30 };
-    const views = [{ id: "v1", filter: [{ op: "empty", prop: "project" }] }];
-    const scoped = { key: "x", type: "relation", config: { view_id: "v1" } };
-    expect(
-      relationCandidates(scoped, byId("t1"), idx, views, ctx)
-        .map((p) => p.id)
-        .sort(),
-    ).toEqual(["p1", "p2"]);
-    expect(relationCandidates(DEFS[0], byId("t1"), idx, views, ctx).map((p) => p.id)).toEqual([
-      "p1",
-      "p2",
+  it("candidates: the rows of the database the relation points at", () => {
+    expect(relationCandidates(DEFS[0], byId("t1"), idx).map((p) => p.id)).toEqual(["p1", "p2"]);
+    // The far side offers the rows of the near side's database, never the
+    // page itself; archived rows are out.
+    expect(relationCandidates(DEFS[1], byId("p1"), idx).map((p) => p.id)).toEqual([
+      "t1",
       "t2",
       "t3",
     ]);
+    // A relation to the page's own database leaves the page out.
+    const self = { key: "rel", type: "relation", config: { database_id: "tdb" }, database_id: "tdb" };
+    expect(relationCandidates(self, byId("t1"), idx).map((p) => p.id)).toEqual(["t2", "t3"]);
+    // No database yet: nothing to offer.
+    expect(relationCandidates({ key: "x", type: "relation", config: {} }, byId("t1"), idx)).toEqual([]);
   });
 });

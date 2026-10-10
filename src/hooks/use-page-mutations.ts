@@ -11,6 +11,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import type { PageListItem, PageFull, Block } from "@/lib/types";
+import { descendantsOf } from "@/lib/page-tree";
 
 
 type ViewRow = {
@@ -18,6 +19,7 @@ type ViewRow = {
   name: string;
   filter: unknown;
   sort: unknown;
+  database_id?: string | null;
 };
 
 function viewSpec(v: ViewRow) {
@@ -27,6 +29,7 @@ function viewSpec(v: ViewRow) {
   };
 }
 
+/** The views (of the page's own database) the page is listed in. */
 function memberViewIds(
   pages: PageListItem[],
   pageId: string,
@@ -34,9 +37,13 @@ function memberViewIds(
   ctx: { me: string; staleDays: number },
 ): Set<string> {
   const out = new Set<string>();
+  const dbId = pages.find((p) => p.id === pageId)?.database_id ?? null;
+  if (!dbId) return out;
+  const rowsOfDb = pages.filter((p) => p.database_id === dbId);
   for (const v of views) {
+    if (v.database_id !== dbId) continue;
     try {
-      const rows = runView(pages, viewSpec(v), ctx);
+      const rows = runView(rowsOfDb, viewSpec(v), ctx);
       if (rows.some((r) => r.id === pageId)) out.add(v.id);
     } catch {
       /* ignore invalid view */
@@ -247,6 +254,7 @@ type ViewFull = {
   id: string;
   workspace_id: string;
   owner_id: string;
+  database_id: string;
   name: string;
   scope: "personal" | "team";
   layout: "table" | "board" | "list" | "calendar";
@@ -266,6 +274,10 @@ export function useCreateView() {
   const toast = useToast();
   return useMutation({
     mutationFn: async (v: {
+      /** The database the view belongs to. */
+      databaseId: string;
+      /** "team": a tab for everyone who can open the database. */
+      scope?: "personal" | "team";
       name: string;
       icon?: string | null;
       filter?: Filter[];
@@ -280,8 +292,9 @@ export function useCreateView() {
         .insert({
           workspace_id: ws,
           owner_id: user!.id,
+          database_id: v.databaseId,
           name: v.name,
-          scope: "personal",
+          scope: v.scope ?? "personal",
           layout: v.layout ?? "table",
           filter: (v.filter ?? []) as never,
           sort: (v.sort ?? { prop: "edited", dir: "desc" }) as never,
@@ -304,8 +317,9 @@ export function useCreateView() {
         id: tempId,
         workspace_id: ws,
         owner_id: user!.id,
+        database_id: v.databaseId,
         name: v.name,
-        scope: "personal",
+        scope: v.scope ?? "personal",
         layout: v.layout ?? "table",
         position: 0,
         filter: (v.filter ?? []) as unknown,
@@ -411,6 +425,7 @@ export function useForkView() {
   return useMutation({
     mutationFn: async (v: {
       viewId: string;
+      databaseId?: string;
       name: string;
       filter: Filter[];
       sort: SortSpec | SortSpec[];
@@ -452,6 +467,10 @@ export function useForkView() {
         id: tempId,
         workspace_id: ws,
         owner_id: user!.id,
+        database_id:
+          v.databaseId ??
+          qc.getQueryData<ViewFull[]>(qk.views(ws))?.find((x) => x.id === v.viewId)?.database_id ??
+          "",
         name: v.name,
         scope: "personal",
         layout: v.layout,
@@ -473,7 +492,7 @@ export function useForkView() {
         const filtered = prev.filter((x) => x.id !== ctx?.tempId && x.id !== row.id);
         return [...filtered, row];
       });
-      toast.push(`Saved to My views — "${row.name}" is unchanged for the team.`);
+      toast.push(`Saved as your own view — "${row.name}".`);
     },
     onError: (err, _v, ctx) => {
       if (ctx?.tempId) {
@@ -504,6 +523,8 @@ export function useCreatePage() {
       icon?: string;
       /** No "New page created" toast (a row added inside a table). */
       quiet?: boolean;
+      /** A database: a page whose children are its rows. */
+      isDatabase?: boolean;
       _tempId?: string;
     }) => {
       // New pages are private to their creator: the database adds the
@@ -517,9 +538,10 @@ export function useCreatePage() {
         created_by: user!.id,
         edited_by: user!.id,
         verified_by: user!.id,
-        icon: v.icon || "📄",
+        icon: v.icon || (v.isDatabase ? "🗂️" : "📄"),
         title: v.title ?? "",
         parent_id: v.parentId ?? null,
+        is_database: !!v.isDatabase,
         props: v.seedProps as never,
         blocks: (v.blocks ?? []) as never,
         access_type: "restricted",
@@ -528,7 +550,7 @@ export function useCreatePage() {
       const { data, error } = await supabase
         .from("pages")
         .select(
-          "id, workspace_id, title, icon, props, blocks, access_type, verified_at, verified_by, edited_at, edited_by, created_by, created_at, deleted_at, archived_at, parent_id",
+          "id, workspace_id, title, icon, props, blocks, access_type, ws_role, verified_at, verified_by, edited_at, edited_by, created_by, created_at, deleted_at, archived_at, parent_id, database_id, is_database",
         )
         .eq("id", id)
         .single();
@@ -542,11 +564,16 @@ export function useCreatePage() {
         (globalThis.crypto?.randomUUID?.() ?? `tmp-${Date.now()}-${Math.random()}`);
       v._tempId = tempId;
       const nowIso = new Date().toISOString();
+      const parent = v.parentId
+        ? qc.getQueryData<PageListItem[]>(qk.pages(ws))?.find((p) => p.id === v.parentId)
+        : undefined;
       const optimistic: PageListItem = {
         id: tempId,
         title: v.title ?? "",
-        icon: v.icon || "📄",
+        icon: v.icon || (v.isDatabase ? "🗂️" : "📄"),
         parent_id: v.parentId ?? null,
+        database_id: parent?.is_database ? parent.id : null,
+        is_database: !!v.isDatabase,
         props: v.seedProps as PageListItem["props"],
         verified_at: nowIso,
         verified_by: user?.id ?? null,
@@ -578,6 +605,8 @@ export function useCreatePage() {
         access_type: row.access_type,
         archived_at: row.archived_at ?? null,
         parent_id: row.parent_id ?? null,
+        database_id: row.database_id ?? null,
+        is_database: !!row.is_database,
       };
       qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) => {
         if (!prev) return [listRow];
@@ -587,7 +616,7 @@ export function useCreatePage() {
       // Seed the page-detail cache so /p/{id} renders instantly with correct
       // data instead of flashing a loading skeleton.
       qc.setQueryData<PageFull>(qk.page(row.id), row);
-      if (!v.quiet) toast.push(`New page created`);
+      if (!v.quiet) toast.push(v.isDatabase ? `New database created` : `New page created`);
     },
     onError: (err, _v, ctx) => {
       if (ctx?.tempId) {
@@ -921,8 +950,9 @@ export function useArchivePage() {
 }
 
 
-/** Soft-delete via the delete_page RPC. Returns the removed row (from
- *  cache) so the caller can offer an Undo action to restore_page. */
+/** Soft-delete via the delete_page RPC, which takes the pages inside it
+ *  (a database's rows included) in the same moment. Returns the removed row
+ *  (from cache) so the caller can offer an Undo action to restore_page. */
 export function useDeletePage() {
   const qc = useQueryClient();
   const ws = useWorkspaceId();
@@ -936,9 +966,11 @@ export function useDeletePage() {
       await qc.cancelQueries({ queryKey: qk.pages(ws) });
       const snapshot = qc.getQueryData<PageListItem[]>(qk.pages(ws)) ?? [];
       const removed = snapshot.find((p) => p.id === pageId) ?? null;
+      const gone = descendantsOf(pageId, snapshot);
+      gone.add(pageId);
       qc.setQueryData<PageListItem[]>(
         qk.pages(ws),
-        snapshot.filter((p) => p.id !== pageId),
+        snapshot.filter((p) => !gone.has(p.id)),
       );
       return { snapshot, removed };
     },
@@ -948,6 +980,46 @@ export function useDeletePage() {
     },
     // The topbar menu owns the undo toast — it needs the restore mutation
     // and a page-detail reference, both of which live at the call site.
+  });
+}
+
+/** Share a page with everyone in the workspace (editing), keeping the
+ *  caller as an editor. Used by the sidebar's "New page in Workspace". */
+export function useShareToWorkspace() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const { user } = useAuth();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (pageId: string) => {
+      const { error } = await supabase.rpc("set_page_access", {
+        p_page: pageId,
+        p_type: "workspace",
+        p_ws_role: "edit",
+        p_people: [{ id: user!.id, role: "edit" }] as never,
+        p_guests: [] as never,
+      });
+      if (error) throw error;
+    },
+    onMutate: async (pageId) => {
+      await qc.cancelQueries({ queryKey: qk.pages(ws) });
+      qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) =>
+        prev
+          ? prev.map((p) =>
+              p.id === pageId ? { ...p, access_type: "workspace" as PageListItem["access_type"] } : p,
+            )
+          : prev,
+      );
+      qc.setQueryData<PageFull | null>(qk.page(pageId), (prev) =>
+        prev ? { ...prev, access_type: "workspace", ws_role: "edit" } : prev,
+      );
+    },
+    onError: (err) => toast.push(`Couldn't share: ${(err as Error).message}`),
+    onSettled: (_d, _e, pageId) => {
+      void qc.invalidateQueries({ queryKey: qk.pages(ws) });
+      void qc.invalidateQueries({ queryKey: qk.page(pageId) });
+      void qc.invalidateQueries({ queryKey: qk.pageAccess(pageId) });
+    },
   });
 }
 
@@ -1126,7 +1198,15 @@ export function useCreatePageAndOpen() {
   const create = useCreatePage();
   const navigate = useNavigate();
   return useCallback(
-    async (v: { seedProps: Record<string, unknown>; blocks?: unknown[]; title?: string; icon?: string }) => {
+    async (v: {
+      seedProps: Record<string, unknown>;
+      blocks?: unknown[];
+      title?: string;
+      icon?: string;
+      /** Where the page goes: inside this page (a row, when it's a database). */
+      parentId?: string | null;
+      isDatabase?: boolean;
+    }) => {
       const created = await create.mutateAsync(v);
       try {
         sessionStorage.setItem("gio.focus-title", created.id);

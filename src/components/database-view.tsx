@@ -1,0 +1,1369 @@
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { primaryMod } from "@/lib/platform";
+import { toClipboard } from "@/lib/clipboard";
+import { usePrefs } from "@/lib/preferences";
+import { useAuth } from "@/lib/auth-context";
+import { usePage, usePageAccess } from "@/hooks/use-workspace-data";
+import { runView, sortsOf, type Filter, type SortSpec } from "@/lib/run-view";
+import { readConfig, type ViewConfig } from "@/lib/view-config";
+import { sortLabel as sortLabelOf } from "@/lib/sort-label";
+import { seedForGroup, seedFromFilters } from "@/lib/view-seed";
+import { ViewTable } from "./view-table";
+import { useViewRuntime } from "@/hooks/use-view-runtime";
+import { PageOriginContext, type PageOrigin } from "@/lib/page-origin";
+import { currentView, type ViewBase, type ViewDraft } from "@/lib/view-drafts";
+import {
+  useDrafts,
+  patchDraft as storePatchDraft,
+  clearDraft as storeClearDraft,
+} from "@/lib/view-drafts-store";
+import { useToast } from "@/lib/toast";
+import { Popover } from "./popover";
+import { EmojiPicker } from "./emoji-picker";
+import { Ico } from "./emoji-icon";
+import { type MenuSpec, type MenuRow } from "./row-menu";
+import { personalViewFooter } from "@/lib/personal-view-footer";
+import { buildPageRowSpec, firstNameOf } from "@/lib/page-row-spec";
+import { rangeSelect } from "@/lib/row-selection";
+import {
+  useSetPageProperty,
+  useRenamePage,
+  useSetPageIcon,
+  useCreatePage,
+  useCreatePageAndOpen,
+  useUpdateView,
+  useCreateView,
+  useForkView,
+  usePublishView,
+  useDeleteView,
+  useUnpublishView,
+  useVerifyPage,
+  useDeletePage,
+  useMovePageToArea,
+  useRestorePage,
+  useArchivePage,
+} from "@/hooks/use-page-mutations";
+import { BulkBar } from "./bulk-bar";
+import { CalendarViewBody } from "./calendar-view";
+import { ExportViewDialog } from "./export-view-dialog";
+import { useDelayedPending } from "./sk";
+import { ViewSkeleton, BoardSkeleton } from "./skeletons";
+import {
+  QueryToolbar,
+  BoardBody,
+  ListBody,
+  LayoutGlyph,
+  Glyph,
+  setDateModeForMainView,
+} from "./main-view";
+import type { ExportViewRow } from "@/lib/export";
+import type { PageListItem } from "@/lib/types";
+import type { Database } from "@/integrations/supabase/types";
+import { isTypingTarget } from "@/lib/is-typing";
+
+/* The database page: its title, its views as tabs, and the chosen view
+ * over its rows. Replaces the old MainView (views and areas over one pool
+ * of pages). Everything a view needs comes from useViewRuntime(databaseId),
+ * shared with views placed inside pages. */
+
+type Layout = "table" | "board" | "list" | "calendar";
+type ViewRow = Database["public"]["Tables"]["views"]["Row"];
+type MemberRow = {
+  user_id: string;
+  role: string;
+  profiles: {
+    id: string;
+    full_name: string | null;
+    email: string | null;
+    avatar_tint: string | null;
+    avatar_ink: string | null;
+  } | null;
+};
+
+const EMPTY_CONFIG: ViewConfig = {};
+const DEFAULT_SORT: SortSpec = { prop: "edited", dir: "desc" };
+
+export type DatabaseSelection = { kind: "database"; id: string; viewId: string | null };
+
+function propsOf(p: PageListItem): Record<string, unknown> {
+  return p.props && typeof p.props === "object" && !Array.isArray(p.props)
+    ? (p.props as Record<string, unknown>)
+    : {};
+}
+
+/** The view a database opens on: the one in the URL, else its first shared
+ * view, else its first view. */
+function pickView(views: readonly ViewRow[], viewId: string | null): ViewRow | null {
+  if (viewId) {
+    const hit = views.find((v) => v.id === viewId);
+    if (hit) return hit;
+  }
+  return views.find((v) => v.scope === "team") ?? views[0] ?? null;
+}
+
+/* ─────────────────────────── Database header ─────────────────────────── */
+
+function DatabaseHeader({
+  database,
+  canEdit,
+  rowCount,
+  onRename,
+  onSetIcon,
+  onNewRow,
+  layout,
+  onChangeLayout,
+}: {
+  database: PageListItem;
+  canEdit: boolean;
+  rowCount: number;
+  onRename: (title: string) => void;
+  onSetIcon: (icon: string) => void;
+  onNewRow: () => void;
+  layout: Layout;
+  onChangeLayout: (l: Layout) => void;
+}) {
+  const title = database.title ?? "";
+  const [draft, setDraft] = useState<string | null>(null);
+  // A database just made opens with its title ready to type.
+  const titleRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem("gio.focus-title") === database.id) {
+        sessionStorage.removeItem("gio.focus-title");
+        titleRef.current?.focus();
+      }
+    } catch {
+      /* storage unavailable */
+    }
+  }, [database.id]);
+  const countLabel = `${rowCount} ${rowCount === 1 ? "row" : "rows"}`;
+  const icon = (
+    <span className="grid place-items-center" style={{ width: 34, height: 34 }}>
+      <Ico icon={database.icon ?? "🗂️"} size={26} />
+    </span>
+  );
+  return (
+    <div className="mb-3 flex items-start justify-between gap-4">
+      <div className="flex min-w-0 items-center gap-2">
+        {canEdit ? (
+          <Popover
+            width={264}
+            trigger={({ open, onClick, ref }) => (
+              <button
+                ref={ref}
+                type="button"
+                aria-label="Change database icon"
+                aria-expanded={open}
+                onClick={onClick}
+                className="shrink-0 rounded-md hover:bg-sunken"
+              >
+                {icon}
+              </button>
+            )}
+          >
+            {(close) => (
+              <EmojiPicker
+                onPick={(e) => {
+                  if (e) onSetIcon(e);
+                  close();
+                }}
+              />
+            )}
+          </Popover>
+        ) : (
+          <span className="shrink-0">{icon}</span>
+        )}
+        <h1
+          className="min-w-0 flex-1 font-display text-title text-noir"
+          style={{ height: 34, lineHeight: "34px" }}
+        >
+          <input
+            ref={titleRef}
+            aria-label="Database title"
+            value={draft ?? title}
+            readOnly={!canEdit}
+            placeholder="Untitled"
+            onChange={(e) => setDraft(e.currentTarget.value)}
+            onBlur={() => {
+              if (draft !== null && draft.trim() !== title) onRename(draft.trim());
+              setDraft(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setDraft(null);
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            className="w-full min-w-0 bg-transparent font-display text-title text-noir focus:outline-none"
+            style={{ letterSpacing: "-0.035em", height: 34, lineHeight: "34px" }}
+          />
+        </h1>
+        <span className="shrink-0 text-ui text-faint">{countLabel}</span>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <div
+          className="flex items-center overflow-hidden rounded-lg border border-line"
+          style={{ height: 30 }}
+        >
+          {(["table", "board", "list", "calendar"] as const).map((l, i) => {
+            const active = l === layout;
+            return (
+              <button
+                key={l}
+                type="button"
+                title={l}
+                aria-label={l}
+                aria-pressed={active}
+                onClick={() => onChangeLayout(l)}
+                className={
+                  "grid place-items-center " +
+                  (i > 0 ? "border-l border-line " : "") +
+                  (active ? "bg-selected text-noir" : "text-faint hover:bg-sunken")
+                }
+                style={{ height: 30, width: 32 }}
+              >
+                <LayoutGlyph layout={l} />
+              </button>
+            );
+          })}
+        </div>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={onNewRow}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-btn text-btnFg"
+            style={{ height: 30, padding: "0 13px", fontSize: 13.5, fontWeight: 700 }}
+          >
+            <Glyph path="M12 5v14M5 12h14" className="h-3 w-3" />
+            New
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────── View tabs ─────────────────────────── */
+
+function ViewTabs({
+  views,
+  activeId,
+  drafts,
+  onPick,
+  onAdd,
+  renamingId,
+  onRenameCommit,
+  onRenameCancel,
+}: {
+  views: readonly ViewRow[];
+  activeId: string | null;
+  drafts: Record<string, ViewDraft>;
+  onPick: (id: string) => void;
+  onAdd: (() => void) | null;
+  renamingId: string | null;
+  onRenameCommit: (id: string, name: string) => void;
+  onRenameCancel: () => void;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Views"
+      className="mb-2 flex items-center gap-1 border-b border-line"
+      data-view-tabs
+    >
+      {views.map((v) => {
+        const active = v.id === activeId;
+        const layout = (drafts[v.id]?.layout ?? v.layout ?? "table") as Layout;
+        const renaming = renamingId === v.id;
+        return (
+          <button
+            key={v.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            title={v.scope === "personal" ? `${v.name} — only you see this view` : v.name}
+            onClick={() => onPick(v.id)}
+            onDoubleClick={active ? undefined : () => onPick(v.id)}
+            className={
+              "relative inline-flex items-center gap-1.5 rounded-t-md px-2 text-ui " +
+              (active ? "text-noir" : "text-faint hover:bg-sunken hover:text-secondary")
+            }
+            style={{ height: 32, fontWeight: active ? 600 : 500 }}
+          >
+            {v.icon ? <Ico icon={v.icon} size={14} /> : <LayoutGlyph layout={layout} />}
+            {renaming ? (
+              <input
+                autoFocus
+                aria-label="View name"
+                defaultValue={v.name}
+                onClick={(e) => e.stopPropagation()}
+                onBlur={(e) => onRenameCommit(v.id, e.currentTarget.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    onRenameCancel();
+                  }
+                }}
+                className="bg-transparent text-ui text-noir focus:outline-none"
+                style={{ width: Math.max(60, v.name.length * 8) }}
+              />
+            ) : (
+              <span className="max-w-48 truncate">{v.name}</span>
+            )}
+            {v.scope === "personal" && (
+              <Glyph
+                path="M12 12a4 4 0 100-8 4 4 0 000 8zm-7 9c0-4 3-6 7-6s7 2 7 6"
+                className="h-3 w-3 text-faint"
+              />
+            )}
+            {active && (
+              <span
+                aria-hidden
+                className="absolute inset-x-1 bottom-0 rounded-full bg-noir"
+                style={{ height: 2 }}
+              />
+            )}
+          </button>
+        );
+      })}
+      {onAdd && (
+        <button
+          type="button"
+          onClick={onAdd}
+          aria-label="Add view"
+          title="Add view"
+          className="inline-flex items-center gap-1 rounded-md px-2 text-ui text-faint hover:bg-sunken hover:text-secondary"
+          style={{ height: 28 }}
+        >
+          <Glyph path="M12 5v14M5 12h14" className="h-3 w-3" />
+          <span>Add view</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────────── The database page ─────────────────────────── */
+
+export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
+  const { user } = useAuth();
+  const me = user?.id ?? "";
+  const databaseId = selection.id;
+  const {
+    shell,
+    database,
+    pages,
+    views,
+    members: tableMembers,
+    propDefs,
+    staleDays,
+    runCtx,
+    tableRelations,
+    people,
+  } = useViewRuntime(databaseId);
+  const members = tableMembers as unknown as MemberRow[];
+  const pagesPending = shell.pages.isPending && !shell.pages.data;
+  const showSkeleton = useDelayedPending(pagesPending);
+  const navigate = useNavigate();
+  const toast = useToast();
+
+  // Who can change the database page itself (its rows, its shared views):
+  // the database's rule, can_edit_page.
+  const dbQ = usePage(databaseId);
+  const accessQ = usePageAccess(databaseId);
+  const isWorkspaceOwner = members.some((m) => m.user_id === me && m.role === "owner");
+  const canEditDb = useMemo(() => {
+    const full = dbQ.data;
+    if (!full) return false;
+    if (full.access_type === "workspace" && (full.ws_role !== "view" || isWorkspaceOwner)) return true;
+    return (accessQ.data ?? []).some((a) => a.user_id === me && a.capability === "write");
+  }, [dbQ.data, accessQ.data, me, isWorkspaceOwner]);
+
+  const setProp = useSetPageProperty();
+  const rename = useRenamePage();
+  const setIcon = useSetPageIcon();
+  const create = useCreatePage();
+  const createAndOpen = useCreatePageAndOpen();
+  const updateView = useUpdateView();
+  const createView = useCreateView();
+  const forkView = useForkView();
+  const publishView = usePublishView();
+  const deleteView = useDeleteView();
+  const unpublishView = useUnpublishView();
+  const verifyPage = useVerifyPage();
+  const deletePage = useDeletePage();
+  const movePageToArea = useMovePageToArea();
+  const restorePage = useRestorePage();
+  const archivePage = useArchivePage();
+
+  const view = useMemo(() => pickView(views, selection.viewId), [views, selection.viewId]);
+  const isTeamView = !!view && view.scope === "team";
+  const isOwnerOfView = !!view && view.owner_id === me && view.scope === "personal";
+  // Changes save straight to a view I own, or to a shared view of a database
+  // I can edit; anything else is a draft until "Save as my view".
+  const canPersist = !!view && (isOwnerOfView || (isTeamView && (canEditDb || isWorkspaceOwner)));
+  const canManageView = canPersist;
+
+  const drafts = useDrafts();
+  const [renamingView, setRenamingView] = useState<string | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [selPages, setSelPages] = useState<string[]>([]);
+  const [selPageAnchor, setSelPageAnchor] = useState<string | null>(null);
+
+  const goToView = useCallback(
+    (viewId: string | null, replace = false) =>
+      navigate({
+        to: "/p/$pageId",
+        params: { pageId: databaseId },
+        search: viewId ? { v: viewId } : {},
+        replace,
+      }),
+    [navigate, databaseId],
+  );
+
+  // A database with no view yet shows a plain table; saving it makes the
+  // first view.
+  const base: ViewBase = useMemo(() => {
+    if (view)
+      return {
+        id: view.id,
+        name: view.name,
+        scope: view.scope === "team" ? "team" : "personal",
+        layout: (view.layout as ViewBase["layout"]) ?? "table",
+        filter: (view.filter ?? []) as Filter[],
+        sort: (view.sort as SortSpec | SortSpec[] | null) ?? DEFAULT_SORT,
+        group_by: view.group_by ?? null,
+        config: readConfig(view.config),
+      };
+    return {
+      id: `default:${databaseId}`,
+      name: "Table",
+      scope: "team",
+      layout: "table",
+      filter: [],
+      sort: DEFAULT_SORT,
+      group_by: null,
+      config: {},
+    };
+  }, [view, databaseId]);
+
+  const current = useMemo(() => currentView(base, drafts), [base, drafts]);
+  const filters: Filter[] = current.filter;
+  const sort: SortSpec | SortSpec[] = current.sort;
+  const layout: Layout = (current.layout as Layout) ?? "table";
+  const storedGroupBy: string = current.group_by ?? "status";
+  const viewConfig: ViewConfig = current.config ?? EMPTY_CONFIG;
+
+  const patchDraft = (patch: ViewDraft) =>
+    storePatchDraft(base.id, patch, {
+      filter: base.filter,
+      sort: base.sort,
+      layout: base.layout,
+      group_by: base.group_by,
+      config: base.config,
+    });
+  const clearDraft = (id: string) => storeClearDraft(id);
+
+  const rows = useMemo(
+    () => runView(pages, { filter: filters, sort }, runCtx),
+    [pages, filters, sort, runCtx],
+  );
+
+  /* --- selection ------------------------------------------------------- */
+  const rowIds = useMemo(() => rows.map((r) => r.id), [rows]);
+  const selectedSet = useMemo(() => new Set(selPages), [selPages]);
+  const anySelection = selPages.length > 0;
+  const toggleOne = (id: string) => {
+    setSelPages((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setSelPageAnchor(id);
+  };
+  const toggleShift = (id: string) => {
+    setSelPages((prev) => rangeSelect(rowIds, selPageAnchor, id, prev));
+    setSelPageAnchor(id);
+  };
+  const checkboxRef = useRef({ toggleOne, toggleShift });
+  checkboxRef.current = { toggleOne, toggleShift };
+  const onCheckboxClick = useCallback((id: string, shift: boolean) => {
+    if (shift) checkboxRef.current.toggleShift(id);
+    else checkboxRef.current.toggleOne(id);
+  }, []);
+  const clearSelection = () => {
+    setSelPages([]);
+    setSelPageAnchor(null);
+  };
+  const selectAllState: "none" | "some" | "all" =
+    selPages.length === 0
+      ? "none"
+      : rowIds.length > 0 && rowIds.every((id) => selectedSet.has(id))
+        ? "all"
+        : "some";
+  const onHeaderCheckboxClick = () => {
+    if (selectAllState === "none") {
+      setSelPages(rowIds);
+      setSelPageAnchor(rowIds[rowIds.length - 1] ?? null);
+    } else clearSelection();
+  };
+  useEffect(() => {
+    if (!anySelection) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") clearSelection();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [anySelection]);
+
+  const tagsWs = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of pages) {
+      const t = propsOf(p)["tags"];
+      if (Array.isArray(t)) for (const x of t) if (typeof x === "string" && x) s.add(x);
+    }
+    return [...s].sort();
+  }, [pages]);
+  const areas = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of pages) {
+      const a = propsOf(p)["area"];
+      if (typeof a === "string" && a) s.add(a);
+    }
+    return [...s].sort();
+  }, [pages]);
+
+  const unfilteredCount = useMemo(() => pages.filter((p) => !p.archived_at).length, [pages]);
+  const staleThreshold = Date.now() - staleDays * 24 * 60 * 60 * 1000;
+
+  /* --- view changes ---------------------------------------------------- */
+  const persistOrDraft = (patch: ViewDraft) => {
+    if (canPersist && view) {
+      clearDraft(base.id);
+      const dbPatch: Parameters<typeof updateView.mutate>[0]["patch"] = {};
+      if ("filter" in patch) dbPatch.filter = patch.filter ?? [];
+      if ("sort" in patch) dbPatch.sort = patch.sort ?? DEFAULT_SORT;
+      if ("layout" in patch) dbPatch.layout = patch.layout as ViewBase["layout"];
+      if ("group_by" in patch) dbPatch.group_by = patch.group_by ?? null;
+      if ("config" in patch) dbPatch.config = patch.config ?? {};
+      updateView.mutate({ id: view.id, patch: dbPatch });
+    } else {
+      patchDraft(patch);
+    }
+  };
+  const onChangeFilters = (next: Filter[]) => persistOrDraft({ filter: next });
+  const onChangeSort = (s: SortSpec | SortSpec[]) => persistOrDraft({ sort: s });
+  const onChangeLayout = (l: Layout) => persistOrDraft({ layout: l });
+  const onChangeGroupBy = (g: string) => persistOrDraft({ group_by: g });
+  const onChangeConfig = (next: ViewConfig) => persistOrDraft({ config: next });
+
+  const tableGroupChoices = useMemo(
+    () => [
+      ...propDefs
+        .filter((d) => ["select", "status", "person", "checkbox"].includes(d.type))
+        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+        .map((d) => ({ key: d.key, label: d.label })),
+      { key: "@created_by", label: "Created by" },
+    ],
+    [propDefs],
+  );
+  const tableGroup: string | null =
+    viewConfig.group && tableGroupChoices.some((c) => c.key === viewConfig.group)
+      ? viewConfig.group
+      : null;
+
+  const statusDef = propDefs.find((d) => d.key === "status");
+  const groupableDefs = propDefs.filter((d) => d.type === "select" || d.type === "status");
+  const dateDefs = propDefs.filter((d) => d.type === "date");
+  const groupBy: string =
+    propDefs.length === 0
+      ? storedGroupBy
+      : layout === "calendar"
+        ? dateDefs.some((d) => d.key === storedGroupBy)
+          ? storedGroupBy
+          : (dateDefs.find((d) => d.key === "due") ?? dateDefs[0])?.key ?? ""
+        : groupableDefs.some((d) => d.key === storedGroupBy)
+          ? storedGroupBy
+          : (groupableDefs.find((d) => d.key === "status") ?? groupableDefs[0])?.key ?? "status";
+  const groupByDef = propDefs.find((d) => d.key === groupBy);
+
+  /* --- new rows -------------------------------------------------------- */
+  const seedForView = (): Record<string, unknown> => seedFromFilters(filters, propDefs, me);
+  const onNewPage = () => {
+    void createAndOpen({ seedProps: seedForView(), parentId: databaseId });
+  };
+  const onNewRow = async (groupValue: string | null | undefined): Promise<string | null> => {
+    const seed = {
+      ...seedForView(),
+      ...(groupValue !== undefined ? seedForGroup(tableGroup, groupValue, propDefs) : {}),
+    };
+    try {
+      const row = await create.mutateAsync({ seedProps: seed, parentId: databaseId, quiet: true });
+      const listed = { ...(row as unknown as PageListItem), database_id: databaseId };
+      const fits = runView([listed], { filter: filters, sort }, runCtx).length > 0;
+      if (!fits) {
+        toast.push({
+          message: "Row added. It doesn’t match this view’s filters, so it isn’t listed here.",
+          action: {
+            label: "Open",
+            onClick: () => navigate({ to: "/p/$pageId", params: { pageId: row.id } }),
+          },
+        });
+        return null;
+      }
+      return row.id;
+    } catch {
+      return null;
+    }
+  };
+
+  const isModified = current._modified && !canPersist;
+
+  /* --- view operations ------------------------------------------------- */
+  const newViewName = (layoutName: Layout) => {
+    const label = layoutName === "table" ? "Table" : layoutName === "board" ? "Board" : layoutName === "list" ? "List" : "Calendar";
+    const taken = new Set(views.map((v) => v.name));
+    if (!taken.has(label)) return label;
+    let n = 2;
+    while (taken.has(`${label} ${n}`)) n++;
+    return `${label} ${n}`;
+  };
+  const doAddView = () => {
+    createView.mutate(
+      {
+        databaseId,
+        scope: canEditDb ? "team" : "personal",
+        name: newViewName("table"),
+        filter: [],
+        sort: DEFAULT_SORT,
+        layout: "table",
+      },
+      { onSuccess: (row) => void goToView(row.id) },
+    );
+  };
+  const doSaveAsMyView = () => {
+    if (!isModified) return;
+    const baseName = base.name;
+    createView.mutate(
+      {
+        databaseId,
+        scope: "personal",
+        name: view ? `${baseName} (mine)` : newViewName(layout),
+        icon: null,
+        filter: filters,
+        sort,
+        layout,
+        groupBy: layout === "board" || layout === "calendar" ? groupBy || null : null,
+        config: viewConfig,
+      },
+      {
+        onSuccess: (row) => {
+          clearDraft(base.id);
+          void goToView(row.id);
+          if (view) toast.push(`Saved as your own view — "${baseName}" is unchanged for everyone else.`);
+        },
+      },
+    );
+  };
+  const doDiscard = () => clearDraft(base.id);
+  const doPublish = () => {
+    if (!view) return;
+    publishView.mutate(view.id);
+  };
+  const doUnpublish = () => {
+    if (!view) return;
+    unpublishView.mutate(view.id);
+  };
+  const doDelete = () => {
+    if (!view) return;
+    deleteView.mutate(view.id, {
+      onSuccess: () => {
+        const next = pickView(views.filter((v) => v.id !== view.id), null);
+        void goToView(next?.id ?? null, true);
+      },
+    });
+  };
+  const doDuplicatePersonal = () => {
+    if (!view) return;
+    createView.mutate(
+      {
+        databaseId,
+        scope: "personal",
+        name: `${view.name} copy`,
+        icon: view.icon,
+        filter: (view.filter ?? []) as Filter[],
+        sort: (view.sort ?? DEFAULT_SORT) as SortSpec | SortSpec[],
+        layout: view.layout as Layout,
+        groupBy: view.group_by ?? null,
+        config: readConfig(view.config),
+      },
+      { onSuccess: (row) => void goToView(row.id) },
+    );
+  };
+  const doDuplicateTeam = () => {
+    if (!view) return;
+    forkView.mutate(
+      {
+        viewId: view.id,
+        name: `${view.name} copy`,
+        filter: (view.filter ?? []) as Filter[],
+        sort: (view.sort ?? DEFAULT_SORT) as SortSpec | SortSpec[],
+        layout: view.layout as Layout,
+        groupBy: view.group_by ?? null,
+        config: readConfig(view.config),
+      },
+      { onSuccess: (row) => void goToView(row.id) },
+    );
+  };
+  const doRenameCommit = (id: string, v: string) => {
+    setRenamingView(null);
+    const target = views.find((x) => x.id === id);
+    if (!target) return;
+    const next = v.trim();
+    if (next && next !== target.name) updateView.mutate({ id, patch: { name: next } });
+  };
+
+  const sortLabel = useMemo(() => sortLabelOf(sort, propDefs), [sort, propDefs]);
+  const publisherName = useMemo(() => {
+    if (!view || view.scope !== "team" || !view.owner_id) return "";
+    const m = members.find((mm) => mm.user_id === view.owner_id);
+    return m?.profiles?.full_name || m?.profiles?.email || "";
+  }, [view, members]);
+
+  const copyLinkHere = () => {
+    const origin = typeof window !== "undefined" && window.location ? window.location.origin : "";
+    const url = view ? `${origin}/p/${databaseId}?v=${view.id}` : `${origin}/p/${databaseId}`;
+    toClipboard(url);
+    toast.push(`Copied link to "${view?.name ?? database?.title ?? "this database"}"`);
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
+      if (!primaryMod(e)) return;
+      const k = e.key.toLowerCase();
+      if (e.code === "KeyL" && e.altKey) {
+        e.preventDefault();
+        copyLinkHere();
+        return;
+      }
+      if (k === "d" && !e.altKey && !e.shiftKey && view) {
+        e.preventDefault();
+        if (isTeamView) doDuplicateTeam();
+        else doDuplicatePersonal();
+        return;
+      }
+      if (k === "r" && e.shiftKey && !e.altKey && view && canManageView) {
+        e.preventDefault();
+        setRenamingView(view.id);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, isTeamView, canManageView]);
+
+  /* --- rows' menus ----------------------------------------------------- */
+  const onDeleteWithUndo = (row: PageListItem) => {
+    const snap = row;
+    deletePage.mutate(row.id, {
+      onSuccess: () => {
+        toast.push({
+          message: "Row deleted, with the pages inside it.",
+          action: { label: "Undo", onClick: () => restorePage.mutate({ pageId: snap.id, row: snap }) },
+          durationMs: 10_000,
+        });
+      },
+    });
+  };
+  const specPropDefs = useMemo(
+    () => propDefs.map((d) => ({ key: d.key, label: d.label ?? d.key, options: d.options })),
+    [propDefs],
+  );
+  const getPageMenuBuild = (p: PageListItem) => {
+    const editedByFirstName = firstNameOf(members.find((m) => m.user_id === p.edited_by));
+    return (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) =>
+      buildPageRowSpec(
+        {
+          p,
+          isStale: new Date(p.verified_at).getTime() < staleThreshold,
+          propDefs: specPropDefs,
+          members,
+          editedByFirstName,
+          onOpen: () => navigate({ to: "/p/$pageId", params: { pageId: p.id } }),
+          onVerify: () => verifyPage.mutate(p.id),
+          onSetStatus: (v) => setProp.mutate({ pageId: p.id, key: "status", value: v }),
+          onSetOwner: (uid) => setProp.mutate({ pageId: p.id, key: "owner", value: uid }),
+          onMoveArea: (a) => movePageToArea.mutate({ pageId: p.id, area: a }),
+          onDelete: () => onDeleteWithUndo(p),
+        },
+        mctx,
+      );
+  };
+  const menuBuildRef = useRef(getPageMenuBuild);
+  menuBuildRef.current = getPageMenuBuild;
+  const stableMenuBuild = useCallback(
+    (p: PageListItem) => (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) =>
+      menuBuildRef.current(p)(mctx),
+    [],
+  );
+
+  const emptyBody = (
+    <div className="grid place-items-center py-20 text-center">
+      <div className="font-display text-subhead text-noir">Nothing matches this view yet.</div>
+      <p className="mt-2 text-meta text-secondary">
+        A view is a query over this database&apos;s rows — they appear here the moment their properties match.
+      </p>
+    </div>
+  );
+
+  let body: ReactNode;
+  if (rows.length === 0 && layout !== "table") body = emptyBody;
+  else if (layout === "calendar")
+    body = (
+      <CalendarViewBody
+        rows={rows}
+        dateKey={groupBy || null}
+        dateLabel={groupByDef?.label ?? "Date"}
+        onMove={(pageId, date) => setProp.mutate({ pageId, key: groupBy, value: date })}
+      />
+    );
+  else if (layout === "board")
+    body = (
+      <BoardBody
+        rows={rows}
+        groupBy={groupBy}
+        propDefs={propDefs}
+        members={members}
+        staleThreshold={staleThreshold}
+        onMove={(pageId, value) => setProp.mutate({ pageId, key: groupBy, value })}
+        selectedSet={selectedSet}
+        anySelection={anySelection}
+        onCheckboxClick={onCheckboxClick}
+        getPageMenuBuild={getPageMenuBuild}
+        onNewCard={(value) =>
+          void createAndOpen({
+            seedProps: { ...seedForView(), ...seedForGroup(groupBy, value, propDefs) },
+            parentId: databaseId,
+          })
+        }
+      />
+    );
+  else if (layout === "list")
+    body = (
+      <ListBody
+        rows={rows}
+        members={members}
+        propDefs={propDefs}
+        staleThreshold={staleThreshold}
+        selectedSet={selectedSet}
+        anySelection={anySelection}
+        onCheckboxClick={onCheckboxClick}
+        getPageMenuBuild={getPageMenuBuild}
+      />
+    );
+  else
+    body = (
+      <ViewTable
+        rows={rows}
+        pages={pages}
+        members={members}
+        areas={areas}
+        staleThreshold={staleThreshold}
+        rename={rename}
+        setProp={setProp}
+        selectedSet={selectedSet}
+        anySelection={anySelection}
+        onCheckboxClick={onCheckboxClick}
+        selectAllState={selectAllState}
+        onHeaderCheckboxClick={onHeaderCheckboxClick}
+        getPageMenuBuild={stableMenuBuild}
+        propDefs={propDefs}
+        config={viewConfig}
+        onConfig={onChangeConfig}
+        canArrange
+        sorts={sortsOf(sort)}
+        onSort={onChangeSort}
+        groupKey={tableGroup}
+        onNewRow={canEditDb ? onNewRow : undefined}
+        relations={tableRelations}
+      />
+    );
+
+  const { prefs } = usePrefs();
+  useEffect(() => {
+    setDateModeForMainView(prefs.dateFormat);
+  }, [prefs.dateFormat]);
+
+  const originValue: PageOrigin = {
+    kind: "database",
+    databaseId,
+    viewId: view?.id ?? null,
+    name: database?.title || "Untitled",
+  };
+
+  if (pagesPending) {
+    if (!showSkeleton) return null;
+    if (layout === "board") return <BoardSkeleton />;
+    return <ViewSkeleton layout={layout === "list" ? "list" : "table"} />;
+  }
+  if (!database) {
+    return (
+      <div className="mx-auto" style={{ maxWidth: 780, padding: "42px 44px" }}>
+        <h1 className="font-display text-title text-noir">Database not found</h1>
+        <p className="mt-2 text-meta text-muted">It may have been deleted, or you don&apos;t have access.</p>
+      </div>
+    );
+  }
+
+  return (
+    <PageOriginContext.Provider value={originValue}>
+      <div className="mx-auto" style={{ maxWidth: "var(--container-view)", padding: "34px 40px" }}>
+        <DatabaseHeader
+          database={database}
+          canEdit={canEditDb}
+          rowCount={unfilteredCount}
+          onRename={(title) => rename.mutate({ pageId: databaseId, title })}
+          onSetIcon={(icon) => setIcon.mutate({ pageId: databaseId, icon })}
+          onNewRow={onNewPage}
+          layout={layout}
+          onChangeLayout={onChangeLayout}
+        />
+
+        <ViewTabs
+          views={views}
+          activeId={view?.id ?? null}
+          drafts={drafts}
+          onPick={(id) => void goToView(id)}
+          onAdd={doAddView}
+          renamingId={renamingView}
+          onRenameCommit={doRenameCommit}
+          onRenameCancel={() => setRenamingView(null)}
+        />
+
+        <QueryToolbar
+          filters={filters}
+          sort={sort}
+          groupBy={groupBy}
+          layout={layout}
+          onChangeFilters={onChangeFilters}
+          onChangeSort={onChangeSort}
+          onChangeGroupBy={onChangeGroupBy}
+          tableGroup={tableGroup}
+          tableGroupChoices={tableGroupChoices}
+          onChangeTableGroup={(g) => onChangeConfig({ ...viewConfig, group: g })}
+          propDefs={propDefs}
+          people={people}
+          staleDays={staleDays}
+          editable
+          pages={pages}
+          verbose={prefs.explainQuery}
+          pill={isModified ? <ModifiedPill onSave={doSaveAsMyView} onDiscard={doDiscard} /> : null}
+          menuSpec={(mctx) =>
+            buildViewToolbarSpec(
+              {
+                scope: view ? (isTeamView ? "team" : "personal") : "none",
+                isModified,
+                canManage: canManageView,
+                canShare: isOwnerOfView && (canEditDb || isWorkspaceOwner),
+                name: view?.name ?? base.name,
+                databaseName: database.title || "Untitled",
+                publisherName,
+                layout,
+                rowCount: rows.length,
+                unfilteredCount,
+                sortLabel,
+                onSaveAsMyView: doSaveAsMyView,
+                onDiscard: doDiscard,
+                onDuplicate: isTeamView ? doDuplicateTeam : doDuplicatePersonal,
+                onChangeLayout,
+                onCopyLink: copyLinkHere,
+                onRename: () => view && setRenamingView(view.id),
+                onPublish: doPublish,
+                onUnpublish: doUnpublish,
+                onDelete: doDelete,
+                onExportView: () => setExportOpen(true),
+              },
+              mctx,
+            )
+          }
+        />
+
+        {isModified && <ModifiedBand baseName={base.name} saved={!!view} />}
+
+        {rows.length < unfilteredCount && (
+          <div style={{ marginTop: 6, marginBottom: 4, fontSize: 12.5, color: "var(--color-whisper)" }}>
+            {rows.length} of {unfilteredCount} rows
+          </div>
+        )}
+
+        <BulkBar
+          pages={pages}
+          selectedIds={selPages}
+          propDefs={propDefs}
+          members={members}
+          areas={areas}
+          tags={tagsWs}
+          views={views}
+          onClear={clearSelection}
+          actions={{
+            staleDays,
+            meId: me,
+            verify: async (ids) => {
+              await Promise.all(ids.map((id) => verifyPage.mutateAsync(id)));
+            },
+            setStatus: async (ids, value) => {
+              await Promise.all(ids.map((id) => setProp.mutateAsync({ pageId: id, key: "status", value })));
+            },
+            setOwner: async (ids, uid) => {
+              await Promise.all(ids.map((id) => setProp.mutateAsync({ pageId: id, key: "owner", value: uid })));
+            },
+            moveArea: async (ids, area) => {
+              await Promise.all(ids.map((id) => movePageToArea.mutateAsync({ pageId: id, area })));
+            },
+            addTag: async (ids, tag) => {
+              await Promise.all(
+                ids.map((id) => {
+                  const p = pages.find((x) => x.id === id);
+                  const existing = (propsOf(p ?? ({} as PageListItem))["tags"] ?? []) as unknown[];
+                  const arr = Array.isArray(existing)
+                    ? existing.filter((x): x is string => typeof x === "string")
+                    : [];
+                  const next = arr.includes(tag) ? arr : [...arr, tag];
+                  return setProp.mutateAsync({ pageId: id, key: "tags", value: next });
+                }),
+              );
+            },
+            archive: async (ids) => {
+              await Promise.all(ids.map((id) => archivePage.mutateAsync({ pageId: id, archived: true })));
+            },
+            deletePages: async (ids) => {
+              await Promise.all(ids.map((id) => deletePage.mutateAsync(id)));
+            },
+            toast: (message) => toast.push(message),
+          }}
+        />
+
+        {body}
+
+        {exportOpen && (
+          <ExportViewDialog
+            name={view?.name ?? database.title ?? "view"}
+            rows={rows.map<ExportViewRow>((p) => {
+              const pp = propsOf(p);
+              const area = typeof pp.area === "string" ? pp.area : null;
+              const ownerId = typeof pp.owner === "string" ? pp.owner : null;
+              const statusVal = typeof pp.status === "string" ? pp.status : null;
+              const statusOpts =
+                (statusDef?.options as unknown as Array<{ value: string; label: string }>) ?? [];
+              const status = statusOpts.find((o) => o.value === statusVal)?.label ?? statusVal;
+              const tags = Array.isArray(pp.tags)
+                ? (pp.tags as unknown[]).filter((t): t is string => typeof t === "string")
+                : [];
+              return {
+                title: p.title ?? null,
+                area,
+                ownerId,
+                status,
+                tags,
+                verifiedAt: p.verified_at ?? null,
+                editedAt: p.edited_at ?? null,
+              };
+            })}
+            resolveOwner={(id) => {
+              if (!id) return "";
+              const m = members.find((mm) => mm.user_id === id);
+              return m?.profiles?.full_name || m?.profiles?.email || "";
+            }}
+            onClose={() => setExportOpen(false)}
+          />
+        )}
+      </div>
+    </PageOriginContext.Provider>
+  );
+}
+
+/* ─────────────────────────── Modified pill + band ─────────────────────────── */
+
+function ModifiedPill({ onSave, onDiscard }: { onSave: () => void; onDiscard: () => void }) {
+  return (
+    <span
+      className="inline-flex items-center animate-fadeIn"
+      style={{
+        gap: 8,
+        background: "var(--color-amberTint)",
+        border: "1px solid var(--color-amberRing)",
+        borderRadius: 9,
+        padding: "3px 5px 3px 10px",
+      }}
+    >
+      <span
+        aria-hidden
+        style={{ width: 6, height: 6, borderRadius: 999, background: "var(--color-amberDot)" }}
+      />
+      <span
+        className="font-display uppercase"
+        style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: "0.05em", color: "var(--color-amberInk)" }}
+      >
+        MODIFIED
+      </span>
+      <button
+        type="button"
+        onClick={onSave}
+        className="font-display"
+        style={{
+          background: "var(--color-noir)",
+          color: "var(--color-track)",
+          fontSize: 12.5,
+          fontWeight: 700,
+          borderRadius: 6,
+          padding: "2px 8px",
+        }}
+      >
+        Save as my view
+      </button>
+      <button
+        type="button"
+        aria-label="Discard changes"
+        onClick={onDiscard}
+        className="grid place-items-center hover:bg-amberRing"
+        style={{ width: 20, height: 20, borderRadius: 4, color: "var(--color-amberInk)", fontSize: 14, lineHeight: 1 }}
+      >
+        ×
+      </button>
+    </span>
+  );
+}
+
+function ModifiedBand({ baseName, saved }: { baseName: string; saved: boolean }) {
+  return (
+    <div
+      role="status"
+      className="flex items-start animate-fadeIn"
+      style={{
+        marginTop: 10,
+        gap: 10,
+        background: "var(--color-amberTint)",
+        border: "1px solid var(--color-amberRing)",
+        borderRadius: 9,
+        padding: "9px 13px",
+        fontSize: 13.5,
+        color: "var(--color-amberInk)",
+      }}
+    >
+      <svg
+        aria-hidden
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{ flexShrink: 0, marginTop: 2 }}
+      >
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+      <span>
+        {saved ? (
+          <>
+            You&apos;re looking at unsaved changes. <b>{baseName}</b> is untouched for everyone
+            else — saving makes a view of your own.
+          </>
+        ) : (
+          <>These changes aren&apos;t saved yet — save them as a view to keep them.</>
+        )}
+      </span>
+    </div>
+  );
+}
+
+/* ─────────────────────────── View toolbar ⋯ spec ─────────────────────────── */
+
+/** The view toolbar's ⋯ menu. Pure builder — no React state. */
+function buildViewToolbarSpec(
+  args: {
+    scope: "team" | "personal" | "none";
+    isModified: boolean;
+    /** Rename, share or delete this view: its owner, or an editor of the
+     *  database for a shared view. */
+    canManage: boolean;
+    /** Offer "Share with everyone": my own view, on a database I can edit. */
+    canShare: boolean;
+    name: string;
+    databaseName: string;
+    publisherName: string;
+    layout: Layout;
+    rowCount: number;
+    unfilteredCount: number;
+    sortLabel: string;
+    onSaveAsMyView: () => void;
+    onDiscard: () => void;
+    onDuplicate: () => void;
+    onChangeLayout: (l: Layout) => void;
+    onCopyLink: () => void;
+    onRename: () => void;
+    onPublish: () => void;
+    onUnpublish: () => void;
+    onDelete: () => void;
+    onExportView: () => void;
+  },
+  mctx: { setSpec: (s: MenuSpec) => void; close: () => void },
+): MenuSpec {
+  const { scope, isModified, canManage, canShare, name, databaseName, publisherName, layout, rowCount, unfilteredCount, sortLabel } = args;
+
+  const title = scope === "team" ? "Shared view" : scope === "personal" ? "My view" : "View";
+  const footer =
+    scope === "team"
+      ? `Shared with everyone who can open "${databaseName}"${publisherName ? ` · added by ${publisherName}` : ""}.`
+      : scope === "none"
+        ? "This database has no saved view yet. Change anything and save it as a view."
+        : personalViewFooter({ matchCount: rowCount, totalCount: unfilteredCount, sortLabel });
+
+  const layoutSubmenu = (): MenuSpec => ({
+    title: "Change layout",
+    rows: (["table", "board", "list", "calendar"] as const).map((l) => ({
+      kind: "row" as const,
+      label: l === "table" ? "Table" : l === "board" ? "Board" : l === "list" ? "List" : "Calendar",
+      icon: l === "table" ? "layout" : l === "board" ? "board" : l === "list" ? "list" : "M5 5h14v15H5zM5 10h14M9 3v4M15 3v4",
+      checked: l === layout,
+      onPick: () => {
+        args.onChangeLayout(l);
+        mctx.close();
+      },
+    })),
+  });
+
+  const rows: MenuRow[] = [];
+  if (isModified) {
+    rows.push({
+      kind: "row",
+      label: "Save as my view",
+      icon: "bookmark",
+      hint: { text: "only you" },
+      onPick: () => {
+        args.onSaveAsMyView();
+        mctx.close();
+      },
+    });
+    rows.push({
+      kind: "row",
+      label: "Discard my changes",
+      icon: "clear",
+      hint: { text: "back to saved" },
+      onPick: () => {
+        args.onDiscard();
+        mctx.close();
+      },
+    });
+  } else if (scope !== "none") {
+    rows.push({
+      kind: "row",
+      label: "Duplicate as my view",
+      icon: "dup",
+      hint: { text: "⌘D", mono: true },
+      onPick: () => {
+        args.onDuplicate();
+        mctx.close();
+      },
+    });
+  }
+  if (rows.length > 0) rows.push({ kind: "sep" });
+
+  rows.push({
+    kind: "row",
+    label: "Change layout",
+    icon: "layout",
+    hint: { text: layout },
+    onPick: () => mctx.setSpec(layoutSubmenu()),
+  });
+  rows.push({
+    kind: "row",
+    label: "Copy link",
+    icon: "link",
+    hint: { text: "⌘⌥L", mono: true },
+    onPick: () => {
+      args.onCopyLink();
+      mctx.close();
+    },
+  });
+  rows.push({
+    kind: "row",
+    label: "Export view",
+    icon: "download",
+    hint: { text: "CSV, Markdown" },
+    onPick: () => {
+      args.onExportView();
+      mctx.close();
+    },
+  });
+
+  if (scope !== "none" && canManage) {
+    rows.push({ kind: "sep" });
+    rows.push({
+      kind: "row",
+      label: "Rename view",
+      icon: "pencil",
+      hint: { text: "⌘⇧R", mono: true },
+      onPick: () => {
+        args.onRename();
+        mctx.close();
+      },
+    });
+    if (scope === "personal" && canShare) {
+      rows.push({
+        kind: "row",
+        label: "Share with everyone",
+        icon: "people",
+        hint: { text: "a tab for all" },
+        onPick: () =>
+          mctx.setSpec({
+            title,
+            rows: [],
+            confirm: {
+              title: `Share "${name}"?`,
+              body: `Everyone who can open "${databaseName}" gets this view as a tab. Editors of the database can change it.`,
+              cta: "Share",
+              onConfirm: args.onPublish,
+            },
+          }),
+      });
+    }
+    if (scope === "team") {
+      rows.push({
+        kind: "row",
+        label: "Make it my view",
+        icon: "eyeOff",
+        hint: { text: "only you" },
+        onPick: () => {
+          args.onUnpublish();
+          mctx.close();
+        },
+      });
+    }
+    rows.push({ kind: "sep" });
+    rows.push({
+      kind: "row",
+      label: "Delete view",
+      icon: "trash",
+      danger: true,
+      onPick: () =>
+        mctx.setSpec({
+          title,
+          rows: [],
+          confirm: {
+            title: `Delete "${name}"?`,
+            body: "The view disappears — the rows it showed are untouched.",
+            cta: "Delete view",
+            danger: true,
+            onConfirm: args.onDelete,
+          },
+        }),
+    });
+  }
+
+  return { title, rows, footer: footer || undefined };
+}

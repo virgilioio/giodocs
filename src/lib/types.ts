@@ -20,6 +20,11 @@ export type PageListItem = Pick<
   created_by?: string | null;
   archived_at?: string | null;
   parent_id?: string | null;
+  /** The database this page is a row of (its parent, when that's a
+   *  database), or null for a plain page. Kept by the database. */
+  database_id?: string | null;
+  /** A database: its children are its rows. */
+  is_database?: boolean;
 };
 
 export type PageFull = Omit<PageRow, "search_tsv"> & {

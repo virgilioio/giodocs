@@ -17,6 +17,10 @@ const PAGE_LIST_FIELDS: (keyof PageListItem)[] = [
   "created_at",
   "created_by",
   "access_type",
+  "archived_at",
+  "parent_id",
+  "database_id",
+  "is_database",
 ];
 
 function projectPage(row: Record<string, unknown>): PageListItem {

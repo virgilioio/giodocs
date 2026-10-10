@@ -62,9 +62,10 @@ once. The decisions below replace it wherever an older section disagrees.
   properties beyond the built-ins (Verified, Created, Edited); its props
   stay {}. validate_page_props checks a row's values against ITS
   database's properties, by (database_id, key).
-- Property keys are unique per database, not per workspace. Two databases
-  can both have "status". Everything that reads a property must know the
-  page's database (src/lib/relations.ts keys its index by database).
+- Property keys stay unique per workspace (the constraint is kept): a
+  second "Status" in another database gets the key status_2. Labels are
+  what people see, keys are internal. One relation index over every page
+  and property therefore serves all databases (src/lib/relations.ts).
 - Views belong to a database. Opening a database page shows its views as
   tabs (/p/<id>?v=<viewId>); /v/<id> redirects there. A view can be
   shared (scope "team": everyone who can open the database) or personal.

@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useContext, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { FRESH_VIEW_BLOCKS, type Blk } from "@/lib/block-ops";
+import { PageImageCtx } from "@/components/image-block";
 import {
   defaultInlineView,
   inlineFromView,
@@ -25,11 +26,12 @@ import { ViewTable } from "./view-table";
 import type { MenuSpec } from "./row-menu";
 import type { PageListItem } from "@/lib/types";
 
-/* A view placed inside a page: a live table, board or list of pages with
- * its own filters, sort and properties. Its settings live in the block
- * (src/lib/inline-view.ts) and save with the page; what it lists is each
- * reader's own pages, so it never shows someone a page they can't open.
- * People who can edit the page change it; everyone else reads it. */
+/* A view placed inside a page: a live table, board or list of one
+ * database's rows with its own filters, sort and properties. Its settings
+ * live in the block (src/lib/inline-view.ts) and save with the page; what
+ * it lists is each reader's own rows, so it never shows someone a page
+ * they can't open. People who can edit the page change it; everyone else
+ * reads it. */
 
 const ROW_LIMIT = 25;
 const EMPTY_SET = new Set<string>();
@@ -61,7 +63,7 @@ export function ViewBlock({
   onDelete: () => void;
 }) {
   const view = readInlineView(block.view);
-  if (!view) {
+  if (!view || !view.database_id) {
     return locked ? null : (
       <StartFrom
         autoFocus={FRESH_VIEW_BLOCKS.has(block.id)}
@@ -76,7 +78,8 @@ export function ViewBlock({
   return <InlineViewBody view={view} locked={locked} onChange={(v) => onChange({ view: v })} />;
 }
 
-/** Where a new view starts: every page, or a copy of a saved view. */
+/** Where a new view starts: a new database inside this page, a database's
+ * rows, or a copy of one of its saved views. */
 function StartFrom({
   autoFocus,
   onPick,
@@ -86,11 +89,36 @@ function StartFrom({
   onPick: (v: InlineView) => void;
   onCancel: () => void;
 }) {
-  const { views } = useViewRuntime();
+  const { allPages, allViews } = useViewRuntime(null);
   const { user } = useAuth();
-  const mine = views.filter((v) => v.scope === "personal" && v.owner_id === user?.id);
-  const team = views.filter((v) => v.scope === "team");
-  const row = (label: string, onClick: () => void, key: string, first = false) => (
+  const hostPageId = useContext(PageImageCtx)?.pageId ?? null;
+  const create = useCreatePage();
+  const [busy, setBusy] = useState(false);
+  const databases = allPages
+    .filter((p) => p.is_database && !p.archived_at)
+    .sort((a, b) => (a.title ?? "").localeCompare(b.title ?? ""));
+  const [picked, setPicked] = useState<string | null>(null);
+  const db = picked ? databases.find((d) => d.id === picked) : undefined;
+  const viewsOf = (id: string) =>
+    allViews.filter(
+      (v) => v.database_id === id && (v.scope === "team" || v.owner_id === user?.id),
+    );
+  const newDatabaseHere = async () => {
+    if (!hostPageId || busy) return;
+    setBusy(true);
+    try {
+      const made = await create.mutateAsync({
+        seedProps: {},
+        parentId: hostPageId,
+        isDatabase: true,
+        quiet: true,
+      });
+      onPick({ ...defaultInlineView(made.id), name: "" });
+    } catch {
+      setBusy(false);
+    }
+  };
+  const row = (label: string, onClick: () => void, key: string, first = false, hint?: string) => (
     <button
       key={key}
       type="button"
@@ -99,7 +127,8 @@ function StartFrom({
       className="flex w-full items-center rounded-md text-left text-row text-body hover:bg-rail"
       style={{ gap: 8, padding: "6px 10px" }}
     >
-      {label}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {hint ? <span className="shrink-0 text-caption text-faint">{hint}</span> : null}
     </button>
   );
   return (
@@ -108,23 +137,61 @@ function StartFrom({
       className="rounded-lg border border-line bg-surface"
       style={{ padding: 8, maxWidth: 420 }}
     >
-      <div className="text-label uppercase text-faint" style={{ padding: "4px 10px 6px" }}>
-        Show pages from
-      </div>
-      {row("All pages", () => onPick({ ...defaultInlineView(), name: "All pages" }), "all", true)}
-      {mine.length ? (
-        <div className="text-caption text-faint" style={{ padding: "8px 10px 2px" }}>
-          A copy of one of your views
-        </div>
-      ) : null}
-      {mine.map((v) => row(v.name, () => onPick(inlineFromView(v)), v.id))}
-      {team.length ? (
-        <div className="text-caption text-faint" style={{ padding: "8px 10px 2px" }}>
-          A copy of a team view
-        </div>
-      ) : null}
-      {team.map((v) => row(v.name, () => onPick(inlineFromView(v)), v.id))}
-      <div className="mt-1 flex justify-end" style={{ padding: "4px 6px 0" }}>
+      {db ? (
+        <>
+          <div className="text-label uppercase text-faint" style={{ padding: "4px 10px 6px" }}>
+            {db.title?.trim() || "Untitled"}
+          </div>
+          {row(
+            "All rows",
+            () => onPick({ ...defaultInlineView(db.id), name: db.title?.trim() || "" }),
+            "all",
+            true,
+          )}
+          {viewsOf(db.id).length ? (
+            <div className="text-caption text-faint" style={{ padding: "8px 10px 2px" }}>
+              A copy of one of its views
+            </div>
+          ) : null}
+          {viewsOf(db.id).map((v) =>
+            row(v.name, () => onPick(inlineFromView(v)), v.id, false, v.scope === "team" ? "shared" : "mine"),
+          )}
+          <div className="mt-1 flex justify-between" style={{ padding: "4px 6px 0" }}>
+            <button
+              type="button"
+              onClick={() => setPicked(null)}
+              className="rounded-md text-meta text-muted hover:bg-sunken hover:text-strong"
+              style={{ padding: "3px 9px" }}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-md text-meta text-muted hover:bg-sunken hover:text-strong"
+              style={{ padding: "3px 9px" }}
+            >
+              Cancel
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="text-label uppercase text-faint" style={{ padding: "4px 10px 6px" }}>
+            Show rows from
+          </div>
+          {hostPageId
+            ? row(busy ? "Making a database…" : "A new database inside this page", () => void newDatabaseHere(), "new", true, "table")
+            : null}
+          {databases.length ? (
+            <div className="text-caption text-faint" style={{ padding: "8px 10px 2px" }}>
+              An existing database
+            </div>
+          ) : null}
+          {databases.map((d, i) =>
+            row(d.title?.trim() || "Untitled", () => setPicked(d.id), d.id, !hostPageId && i === 0),
+          )}
+          <div className="mt-1 flex justify-end" style={{ padding: "4px 6px 0" }}>
         <button
           type="button"
           onClick={onCancel}
@@ -134,6 +201,8 @@ function StartFrom({
           Cancel
         </button>
       </div>
+        </>
+      )}
       <p className="text-caption text-faint" style={{ padding: "4px 10px 2px" }}>
         It keeps its own filters from here on. Changing it never changes the view it came from.
       </p>
@@ -150,7 +219,7 @@ function InlineViewBody({
   locked: boolean;
   onChange: (v: InlineView) => void;
 }) {
-  const rt = useViewRuntime();
+  const rt = useViewRuntime(view.database_id);
   const { user } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
@@ -180,6 +249,15 @@ function InlineViewBody({
     [rt.pages, view.filter, sort, rt.runCtx],
   );
   const staleThreshold = Date.now() - rt.staleDays * 24 * 60 * 60 * 1000;
+  const areas = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of rt.pages) {
+      const props = p.props as Record<string, unknown> | null;
+      const a = props?.area;
+      if (typeof a === "string" && a) s.add(a);
+    }
+    return [...s].sort();
+  }, [rt.pages]);
   const groupable = rt.propDefs.filter((d) => d.type === "select" || d.type === "status");
   const boardGroup =
     view.group_by && groupable.some((d) => d.key === view.group_by)
@@ -213,12 +291,16 @@ function InlineViewBody({
         ...seed(),
         ...(groupValue !== undefined ? seedForGroup(tableGroup, groupValue, rt.propDefs) : {}),
       };
-      const row = await create.mutateAsync({ seedProps, quiet: true });
-      const fits =
-        runView([row as unknown as PageListItem], { filter: view.filter, sort }, rt.runCtx).length > 0;
+      const row = await create.mutateAsync({
+        seedProps,
+        parentId: view.database_id,
+        quiet: true,
+      });
+      const listed = { ...(row as unknown as PageListItem), database_id: view.database_id };
+      const fits = runView([listed], { filter: view.filter, sort }, rt.runCtx).length > 0;
       if (!fits) {
         toast.push({
-          message: "Page added. It doesn’t match this view’s filters, so it isn’t listed here.",
+          message: "Row added. It doesn’t match this view’s filters, so it isn’t listed here.",
           action: { label: "Open", onClick: () => open(row.id) },
         });
         return null;
@@ -249,7 +331,10 @@ function InlineViewBody({
           onNewCard={
             editable
               ? (value) =>
-                  void createAndOpen({ seedProps: { ...seed(), [boardGroup]: value } })
+                  void createAndOpen({
+                    seedProps: { ...seed(), [boardGroup]: value },
+                    parentId: view.database_id,
+                  })
               : undefined
           }
         />
@@ -278,7 +363,7 @@ function InlineViewBody({
               className="mt-1 w-full rounded-md text-left text-meta text-muted hover:bg-sunken hover:text-strong"
               style={{ padding: "7px 10px" }}
             >
-              Show all {rows.length} pages
+              Show all {rows.length} rows
             </button>
           ) : null}
         </>
@@ -289,7 +374,7 @@ function InlineViewBody({
         rows={rows}
         pages={rt.pages}
         members={rt.members}
-        areas={rt.areas}
+        areas={areas}
         staleThreshold={staleThreshold}
         rename={rename}
         setProp={setProp}
@@ -342,8 +427,19 @@ function InlineViewBody({
             {view.name || "Untitled view"}
           </span>
         )}
+        {rt.database ? (
+          <button
+            type="button"
+            onClick={() => void navigate({ to: "/p/$pageId", params: { pageId: rt.database!.id } })}
+            className="shrink-0 truncate rounded-sm text-meta text-faint hover:bg-sunken hover:text-strong"
+            style={{ maxWidth: 160, padding: "1px 5px" }}
+            title={`Open ${rt.database.title?.trim() || "Untitled"}`}
+          >
+            {rt.database.title?.trim() || "Untitled"}
+          </button>
+        ) : null}
         <span className="tnum shrink-0 text-meta text-faint">
-          {rows.length} {rows.length === 1 ? "page" : "pages"}
+          {rows.length} {rows.length === 1 ? "row" : "rows"}
         </span>
         {editable ? (
           <div role="group" aria-label="Layout" className="flex shrink-0 items-center rounded-md border border-line" style={{ padding: 2, gap: 2 }}>
@@ -396,7 +492,7 @@ function InlineViewBody({
 function Empty() {
   return (
     <div className="rounded-lg border border-lineSoft text-meta text-secondary" style={{ padding: "18px 16px" }}>
-      Nothing matches this view yet. Pages appear here the moment their properties match.
+      Nothing matches this view yet. Rows appear here the moment their properties match.
     </div>
   );
 }
