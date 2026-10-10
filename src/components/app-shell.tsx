@@ -173,6 +173,7 @@ export function AppShell() {
     return Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, n));
   });
   const [resizing, setResizing] = useState(false);
+  const shellRootRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(SIDEBAR_W_KEY, String(sidebarWidth));
@@ -371,12 +372,17 @@ export function AppShell() {
       document.body.style.userSelect = "none";
       document.body.style.cursor = "col-resize";
     }
+    // Follow the pointer by writing the CSS variable directly: the whole
+    // app shell doesn't re-render (and localStorage isn't written) on every
+    // pixel. React state and storage are updated once, on release.
+    let lastW = startW;
     const onMove = (ev: PointerEvent) => {
       const next = Math.min(
         SIDEBAR_MAX,
         Math.max(SIDEBAR_MIN, startW + (ev.clientX - startX)),
       );
-      setSidebarWidth(next);
+      lastW = next;
+      shellRootRef.current?.style.setProperty("--gio-sidebar-w", `${next}px`);
     };
     const onUp = (ev: PointerEvent) => {
       try {
@@ -388,6 +394,7 @@ export function AppShell() {
       target.removeEventListener("pointerup", onUp);
       target.removeEventListener("pointercancel", onUp);
       setResizing(false);
+      setSidebarWidth(lastW);
       if (typeof document !== "undefined") {
         document.body.style.userSelect = "";
         document.body.style.cursor = "";
@@ -401,6 +408,7 @@ export function AppShell() {
   return (
     <RowMenuProvider>
     <div
+      ref={shellRootRef}
       className="flex h-screen overflow-hidden bg-canvas"
       style={{ "--gio-sidebar-w": `${sidebarWidth}px` } as React.CSSProperties}
     >
