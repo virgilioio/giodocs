@@ -22,7 +22,10 @@ import { useToast } from "@/lib/toast";
 import { Popover } from "./popover";
 import { EmojiPicker } from "./emoji-picker";
 import { Ico } from "./emoji-icon";
-import { type MenuSpec, type MenuRow } from "./row-menu";
+import { RowMenu, type MenuSpec, type MenuRow } from "./row-menu";
+import { useTemplates } from "@/hooks/use-workspace-data";
+import { useNewPageFromTemplate, useSetTemplate } from "@/hooks/use-templates";
+import { useWorkspaceId } from "@/lib/workspace-context";
 import { personalViewFooter } from "@/lib/personal-view-footer";
 import { buildPageRowSpec, firstNameOf } from "@/lib/page-row-spec";
 import { rangeSelect } from "@/lib/row-selection";
@@ -231,18 +234,82 @@ function DatabaseHeader({
           })}
         </div>
         {canEdit && (
-          <button
-            type="button"
-            onClick={onNewRow}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-btn text-btnFg"
-            style={{ height: 30, padding: "0 13px", fontSize: 13.5, fontWeight: 700 }}
-          >
-            <Glyph path="M12 5v14M5 12h14" className="h-3 w-3" />
-            New
-          </button>
+          <div className="inline-flex items-stretch overflow-hidden rounded-lg bg-btn text-btnFg" style={{ height: 30 }}>
+            <button
+              type="button"
+              onClick={onNewRow}
+              className="inline-flex items-center gap-1.5"
+              style={{ padding: "0 11px 0 13px", fontSize: 13.5, fontWeight: 700 }}
+            >
+              <Glyph path="M12 5v14M5 12h14" className="h-3 w-3" />
+              New
+            </button>
+            <NewFromTemplateButton databaseId={database.id} />
+          </div>
         )}
       </div>
     </div>
+  );
+}
+
+/** The ▾ beside New: start a row from one of this database's templates, or
+ *  make a new template (a row of this database marked as one). */
+function NewFromTemplateButton({ databaseId }: { databaseId: string }) {
+  const ws = useWorkspaceId();
+  const templates = (useTemplates(ws).data ?? []).filter((t) => t.database_id === databaseId);
+  const startFrom = useNewPageFromTemplate();
+  const create = useCreatePage();
+  const setTemplate = useSetTemplate();
+  const navigate = useNavigate();
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const close = () => setAnchor(null);
+  const spec: MenuSpec = {
+    title: "Templates",
+    footer: templates.length
+      ? "A row started from a template gets a copy of its content, icon and properties."
+      : "No templates in this database yet.",
+    rows: [
+      ...templates.map<MenuRow>((t) => ({
+        kind: "row",
+        label: t.title?.trim() || "Untitled",
+        icon: "M5 4h14v5H5zM5 13h6v7H5zM15 13h4M15 17h4",
+        onPick: () => {
+          close();
+          void startFrom(t.id);
+        },
+      })),
+      ...(templates.length ? [{ kind: "sep" as const }] : []),
+      {
+        kind: "row",
+        label: "New template",
+        icon: "M12 5v14M5 12h14",
+        onPick: async () => {
+          close();
+          const row = await create.mutateAsync({ seedProps: {}, parentId: databaseId, title: "", quiet: true });
+          await setTemplate.mutateAsync({ pageId: row.id, title: "", on: true, quiet: true });
+          await navigate({ to: "/p/$pageId", params: { pageId: row.id } });
+        },
+      },
+    ],
+  };
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="New from a template"
+        title="New from a template"
+        aria-haspopup="menu"
+        aria-expanded={!!anchor}
+        onClick={(e) => setAnchor(e.currentTarget)}
+        className="grid place-items-center"
+        style={{ width: 26, borderLeft: "1px solid rgba(255,255,255,.18)" }}
+      >
+        <svg viewBox="0 0 24 24" width={11} height={11} aria-hidden>
+          <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" />
+        </svg>
+      </button>
+      <RowMenu spec={anchor ? spec : null} anchor={anchor} onClose={close} />
+    </>
   );
 }
 

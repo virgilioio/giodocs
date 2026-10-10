@@ -291,12 +291,19 @@ export function useWorkspaceShell(ws: string | undefined) {
   return { pages, views, members, propDefs, workspace };
 }
 
-export type TemplateRow = { id: string; title: string; icon: string | null; edited_at: string };
+export type TemplateRow = {
+  id: string;
+  title: string;
+  icon: string | null;
+  edited_at: string;
+  /** The database the template is a row of; null for a plain-page template. */
+  database_id: string | null;
+};
 
 async function fetchTemplates(ws: string): Promise<TemplateRow[]> {
   const { data, error } = await supabase
     .from("pages")
-    .select("id, title, icon, edited_at")
+    .select("id, title, icon, edited_at, database_id")
     .eq("workspace_id", ws)
     .is("deleted_at", null)
     .is("archived_at", null)

@@ -51,12 +51,20 @@ export function TemplateBanner({ pageId, title }: { pageId: string; title: strin
 
 const SHOWN = 6;
 
-export function TemplatePicker({ onPick }: { onPick: (templateId: string) => Promise<void> }) {
+/** A blank page's templates: a row is offered its own database's
+ *  templates, a plain page the plain-page ones. */
+export function TemplatePicker({
+  databaseId,
+  onPick,
+}: {
+  databaseId: string | null;
+  onPick: (templateId: string) => Promise<void>;
+}) {
   const ws = useWorkspaceId();
   const q = useTemplates(ws);
   const [all, setAll] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const rows = q.data ?? [];
+  const rows = (q.data ?? []).filter((t) => (t.database_id ?? null) === databaseId);
   if (rows.length === 0) return null;
   const shown = all ? rows : rows.slice(0, SHOWN);
   return (

@@ -1,3 +1,4 @@
+import { assignmentsOf } from "@/lib/assignments";
 import {
   useEffect,
   useMemo,
@@ -790,27 +791,22 @@ function PeoplePane({
   const removeMember = useRemoveMember();
   const createView = useCreateView();
   const navigate = useNavigate();
-  // "Owner" lives in one database (the Pages database, after the 2026-10-10
-  // migration); a saved view of someone's pages is a view of that database.
-  const ownerDatabaseId = useMemo(() => {
-    const defs = (shell.propDefs.data ?? []) as Array<{ key: string; database_id: string }>;
-    return defs.find((d) => d.key === "owner")?.database_id ?? null;
-  }, [shell.propDefs.data]);
+  // What each person is assigned to, across every database: any person
+  // property of a row's own database counts (src/lib/assignments.ts).
+  const defsForPeople = shell.propDefs.data;
+  const membersData = shell.members.data;
+  const assigned = useMemo(() => {
+    const defs = (defsForPeople ?? []) as Parameters<typeof assignmentsOf>[1];
+    const ids = ((membersData ?? []) as Array<{ user_id: string }>).map((m) => m.user_id);
+    return new Map(ids.map((id) => [id, assignmentsOf(pages, defs, id)]));
+  }, [pages, membersData, defsForPeople]);
 
-  const ownedBy = useMemo(() => {
-    const m = new Map<string, PageListItem[]>();
-    for (const p of pages) {
-      const o = propsOf(p)["owner"];
-      if (typeof o === "string") {
-        const arr = m.get(o) ?? [];
-        arr.push(p);
-        m.set(o, arr);
-      }
-    }
-    return m;
-  }, [pages]);
-
-  const withOwner = pages.filter((p) => typeof propsOf(p)["owner"] === "string").length;
+  const withOwner = useMemo(() => {
+    const ids = new Set<string>();
+    for (const a of assigned.values()) for (const p of a.pages) ids.add(p.id);
+    return ids.size;
+  }, [assigned]);
+  const rowCount = pages.filter((p) => p.database_id && !p.is_database).length;
 
   // Guests derived from access rows on individual pages (page_access table
   // is fetched per page, so at workspace scope we can only surface what is
@@ -832,7 +828,7 @@ function PeoplePane({
     <div>
       <PaneHeader
         title="People"
-        sub={`Who is in ${workspace?.name ?? "this workspace"}, what they own, and what they can do.`}
+        sub={`Who is in ${workspace?.name ?? "this workspace"}, what they are assigned to, and what they can do.`}
       />
       <div style={{ padding: "0 30px 30px" }}>
         {/* Stat cards */}
@@ -840,8 +836,8 @@ function PeoplePane({
           <StatCard label={membersLabel} value={members.length} />
           <StatCard label="Guests" value={guestEmails.size} />
           <StatCard
-            label="Pages with an owner"
-            value={`${withOwner} of ${pages.length}`}
+            label="Rows assigned to someone"
+            value={`${withOwner} of ${rowCount}`}
           />
         </div>
 
@@ -932,13 +928,14 @@ function PeoplePane({
               }}
             >
               <div>PERSON</div>
-              <div>OWNS</div>
+              <div>ASSIGNED</div>
               <div>STALE</div>
               <div>ROLE</div>
               <div></div>
             </div>
             {members.map((m, i) => {
-              const owned = ownedBy.get(m.user_id) ?? [];
+              const mine = assigned.get(m.user_id);
+              const owned = mine?.pages ?? [];
               const staleCount = owned.filter(
                 (p) => new Date(p.verified_at).getTime() < staleThreshold,
               ).length;
@@ -966,13 +963,15 @@ function PeoplePane({
                       <button
                         type="button"
                         onClick={() => {
-                          if (!ownerDatabaseId) return;
+                          // A view in the database holding most of their rows.
+                          const top = mine?.byDb[0];
+                          if (!top) return;
                           const first = (name.split(/\s+/)[0] || name);
                           createView.mutate(
                             {
-                              databaseId: ownerDatabaseId,
+                              databaseId: top.databaseId,
                               name: `${first}'s pages`,
-                              filter: [{ op: "eq", prop: "owner", value: m.user_id }],
+                              filter: [{ op: "eq", prop: top.key, value: m.user_id }],
                               sort: { prop: "edited", dir: "desc" },
                               layout: "table",
                             },
@@ -992,7 +991,7 @@ function PeoplePane({
                         className="text-body hover:text-noir tnum"
                         style={{ textDecoration: "underline dotted", fontSize: 13.5 }}
                       >
-                        {owned.length} pages
+                        {owned.length} {owned.length === 1 ? "page" : "pages"}
                       </button>
                     )
                   }
@@ -1796,10 +1795,7 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
   const navigate = useNavigate();
   const createView = useCreateView();
   const qc = useQueryClient();
-  const ownerDatabaseId = useMemo(() => {
-    const defs = (shell.propDefs.data ?? []) as Array<{ key: string; database_id: string }>;
-    return defs.find((d) => d.key === "owner")?.database_id ?? null;
-  }, [shell.propDefs.data]);
+  const defsForMe = shell.propDefs.data;
 
   const myId = user?.id ?? "";
   const myRow = members.find((m) => m.user_id === myId);
@@ -1989,25 +1985,32 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
   // ── §5 stats ──
   const stateDays = workspace?.stale_days ?? 90;
   const staleThreshold = Date.now() - stateDays * 24 * 60 * 60 * 1000;
-  const ownedPages = useMemo(
-    () => pages.filter((p) => propsOf(p)["owner"] === myId),
-    [pages, myId],
+  const mine = useMemo(
+    () => assignmentsOf(pages, (defsForMe ?? []) as Parameters<typeof assignmentsOf>[1], myId),
+    [pages, defsForMe, myId],
   );
+  const ownedPages = mine.pages;
   const staleOwned = ownedPages.filter(
     (p) => new Date(p.verified_at).getTime() < staleThreshold,
   ).length;
   const verifiedByMe = pages.filter((p) => p.verified_by === myId).length;
 
   function openView(name: string, filter: unknown, sort: unknown) {
-    if (!ownerDatabaseId) {
-      toast.push("No database has an Owner property yet.");
+    // The database holding most of what you're assigned to; the filter
+    // names its person property.
+    const top = mine.byDb[0];
+    if (!top) {
+      toast.push("Nothing is assigned to you yet.");
       return;
     }
+    const named = (filter as Array<Record<string, unknown>>).map((f) =>
+      f.prop === "@assignee" ? { ...f, prop: top.key } : f,
+    );
     createView.mutate(
       {
-        databaseId: ownerDatabaseId,
+        databaseId: top.databaseId,
         name,
-        filter: filter as never,
+        filter: named as never,
         sort: sort as never,
         layout: "table",
       },
@@ -2027,7 +2030,7 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
   async function onLeave() {
     if (ownedCount > 0) {
       toast.push(
-        `Reassign your ${ownedCount} page${ownedCount === 1 ? "" : "s"} first — set a new owner on each`,
+        `Reassign your ${ownedCount} page${ownedCount === 1 ? "" : "s"} first: assign each one to someone else`,
       );
       return;
     }
@@ -2267,11 +2270,11 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
           <ProfileStatCard
             interactive
             n={ownedCount}
-            label="pages you own"
+            label="pages assigned to you"
             onClick={() =>
               openView(
-                "Owned by me",
-                [{ op: "is_me", prop: "owner" }],
+                "Assigned to me",
+                [{ op: "is_me", prop: "@assignee" }],
                 { prop: "edited", dir: "desc" },
               )
             }
@@ -2284,7 +2287,7 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
             onClick={() =>
               openView(
                 "Mine, needs review",
-                [{ op: "is_me", prop: "owner" }, { op: "stale" }],
+                [{ op: "is_me", prop: "@assignee" }, { op: "stale" }],
                 { prop: "verified", dir: "asc" },
               )
             }
@@ -2304,8 +2307,8 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
         <div className="flex" style={{ gap: 12, alignItems: "flex-start" }}>
           <p className="flex-1 text-secondary" style={{ fontSize: 13.5, lineHeight: 1.55 }}>
             {ownedCount > 0
-              ? `You own ${ownedCount} page${ownedCount === 1 ? "" : "s"}. Reassign them before you go — no page is left without an owner.`
-              : "You own nothing here, so nothing is left behind. An owner has to invite you back."}
+              ? `You're assigned to ${ownedCount} page${ownedCount === 1 ? "" : "s"}. Reassign them before you go, so nothing is left without someone.`
+              : "Nothing here is assigned to you, so nothing is left behind. An owner has to invite you back."}
           </p>
           <button
             type="button"

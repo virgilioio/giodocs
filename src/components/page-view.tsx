@@ -2031,7 +2031,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
           // Floats under the first line of a blank page: it goes the moment
           // you type, and nothing moves when it does.
           <div style={{ position: "absolute", top: 50, left: 0, width: 360, zIndex: 2 }}>
-            <TemplatePicker onPick={pickTemplate} />
+            <TemplatePicker databaseId={page.database_id ?? null} onPick={pickTemplate} />
           </div>
         ) : null}
         <EditableBody
