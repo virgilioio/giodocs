@@ -15,6 +15,28 @@ import { useNavigate } from "@tanstack/react-router";
 import { primaryMod } from "@/lib/platform";
 import { nanoid } from "nanoid";
 import { toClipboard } from "@/lib/clipboard";
+import {
+  CELLS_MIME,
+  cellSel,
+  clearRect,
+  colSel,
+  extendSel,
+  inRect,
+  moveSel,
+  parseTsv,
+  pasteGrid,
+  rangeSel,
+  readCellsJson,
+  rectSize,
+  rectSources,
+  rowSel,
+  selRect,
+  toggleMarkInRect,
+  toTsv,
+  type CellMark,
+  type CellPos,
+  type TableSel,
+} from "@/lib/table-selection";
 import { createPortal } from "react-dom";
 import {
   moveBlock,
@@ -5372,8 +5394,10 @@ export function TableBlock({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  type Sel = { kind: "row" | "col"; index: number } | null;
-  const [sel, setSel] = useState<Sel>(null);
+  // Selection: one rectangle of cells (src/lib/table-selection.ts). A row
+  // or column picked by its handle is the full-width / full-height one.
+  const [sel, setSel] = useState<TableSel | null>(null);
+  const rect = sel ? selRect(sel, nRows, nCols) : null;
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [menuSpec, setMenuSpec] = useState<MenuSpec | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -5431,6 +5455,7 @@ export function TableBlock({
   // time). A fade stuck on with nothing to reveal is worse than no fade.
   const [showFadeL, setShowFadeL] = useState(false);
   const [showFadeR, setShowFadeR] = useState(false);
+  const [scrollX, setScrollX] = useState(0);
   const updateFades = useCallback(() => {
     const el = scrollRef.current;
     if (!el) {
@@ -5439,6 +5464,7 @@ export function TableBlock({
       return;
     }
     setShowFadeL(el.scrollLeft > 0);
+    setScrollX(el.scrollLeft);
     setShowFadeR(el.scrollLeft < el.scrollWidth - el.clientWidth - 1);
   }, []);
   useEffect(() => {
@@ -5538,13 +5564,10 @@ export function TableBlock({
   // a spreadsheet lands as cells; columns join with newlines (one value per
   // line). The mono hint on the menu row says "⌘C" — this handler is what
   // makes that hint honest.
-  const copySelection = useCallback(() => {
-    if (!sel) return;
-    let text = "";
-    if (sel.kind === "row") text = rows[sel.index].join("\t");
-    else text = rows.map((r) => r[sel.index] ?? "").join("\n");
-    toClipboard(text);
-  }, [sel, rows]);
+  const copySelection = () => {
+    if (!rect) return;
+    toClipboard(toTsv(rectSources(rows, rect)));
+  };
 
   // Escape is layered: an open menu closes first, then a second Escape
   // deselects. This effect stays attached whenever either is present so the
@@ -5562,37 +5585,6 @@ export function TableBlock({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [menuSpec, sel, closeMenu]);
-
-  // Delete/Backspace clears; ⌘C copies. Bound only while a row/column is
-  // selected — cell typing must never trigger these.
-  useEffect(() => {
-    if (!sel) return;
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      // Cells are contenteditable now — identify them by their data attr
-      // rather than by tag name, or every keystroke in a cell would reach
-      // the clear/copy handlers below.
-      const inCell = !!(
-        t &&
-        rootRef.current?.contains(t) &&
-        t.closest("[data-table-cell]")
-      );
-      if (primaryMod(e) && (e.key === "c" || e.key === "C")) {
-        if (inCell) return;
-        e.preventDefault();
-        copySelection();
-        return;
-      }
-      if (e.key === "Delete" || e.key === "Backspace") {
-        if (inCell) return;
-        e.preventDefault();
-        if (sel.kind === "row") commit(clearRow(rows, sel.index));
-        else commit(clearColumn(rows, sel.index));
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [sel, rows, commit, copySelection]);
 
   function setCell(r: number, c: number, v: string) {
     const next = rows.map((row) => row.slice());
@@ -5638,6 +5630,30 @@ export function TableBlock({
     if (locked) return;
     const plain = e.clipboardData?.getData("text/plain") ?? "";
     const el = e.currentTarget as HTMLElement;
+    // Cells copied from a Gio table, or tab-separated text from a
+    // spreadsheet, land as a block of cells starting here.
+    const cells = readCellsJson(e.clipboardData?.getData(CELLS_MIME) ?? "");
+    const grid =
+      cells && (cells.length > 1 || cells[0].length > 1)
+        ? cells
+        : !cells && plain.includes("\t")
+          ? parseTsv(plain)
+          : null;
+    if (grid) {
+      e.preventDefault();
+      e.stopPropagation();
+      applyPaste({ r, c }, grid);
+      return;
+    }
+    if (cells) {
+      // One copied cell keeps its formatting.
+      e.preventDefault();
+      const src0 = readEditableSource(el);
+      const at = readCaret(el, src0) ?? { start: src0.length, end: src0.length };
+      const v = cells[0][0];
+      commitSourceToEditable(el, src0.slice(0, at.start) + v + src0.slice(at.end), at.start + v.length);
+      return;
+    }
     // Cells render through Editable (contenteditable), but the helper also
     // handles a text input, so the right source is read either way.
     const src = readEditableSource(el);
@@ -5646,6 +5662,227 @@ export function TableBlock({
     if (!lp) return;
     e.preventDefault();
     commitSourceToEditable(el, lp.text, lp.caret);
+  }
+
+  /** Select cells and put focus on the table itself, so the keys below
+   *  act on the selection instead of on a cell's text. */
+  const selectAndFocus = (next: TableSel) => {
+    setSel(next);
+    try {
+      window.getSelection()?.removeAllRanges();
+    } catch {
+      /* noop */
+    }
+    rootRef.current?.focus({ preventScroll: true });
+  };
+
+  /** The cell being edited, if focus is in one of this table's cells. */
+  const editingCell = (): CellPos | null => {
+    const el = (document.activeElement as HTMLElement | null)?.closest?.("[data-table-cell]");
+    if (!el || !rootRef.current?.contains(el)) return null;
+    const [r, c] = (el.getAttribute("data-table-cell") ?? "").split(",").map(Number);
+    return Number.isFinite(r) && Number.isFinite(c) ? { r, c } : null;
+  };
+
+  const cellAtPoint = (x: number, y: number): CellPos | null => {
+    const el = document.elementFromPoint(x, y)?.closest?.("[data-table-cell]");
+    if (!el || !rootRef.current?.contains(el)) return null;
+    const [r, c] = (el.getAttribute("data-table-cell") ?? "").split(",").map(Number);
+    return Number.isFinite(r) && Number.isFinite(c) ? { r, c } : null;
+  };
+
+  /** Write a pasted grid with its top-left at `at`, growing the table as
+   *  needed; one Undo step. The pasted block ends up selected. */
+  function applyPaste(at: CellPos, grid: string[][], fill?: ReturnType<typeof selRect>) {
+    const res = pasteGrid(rows, at, grid, fill);
+    const nc = res.rows[0]?.length ?? nCols;
+    const grew = nc !== nCols;
+    commit(
+      res.rows,
+      grew ? normalizeAlign(align, nc) : undefined,
+      grew && widths ? normalizeWidths(widths, nc) : undefined,
+    );
+    selectAndFocus(rangeSel({ r: res.rect.r0, c: res.rect.c0 }, { r: res.rect.r1, c: res.rect.c1 }));
+  }
+
+  // Drag across cells selects the rectangle between them; out and back
+  // selects the start cell. Shift+click grows from the anchor (the
+  // selection's, or the cell being edited).
+  const [dragSelecting, setDragSelecting] = useState(false);
+  const dragSelRef = useRef<{ start: CellPos; left: boolean } | null>(null);
+  function onCellPointerDown(e: React.PointerEvent<HTMLElement>, r: number, c: number) {
+    if (locked || e.button !== 0) return;
+    if (e.shiftKey) {
+      const anchor = sel ? sel.anchor : editingCell();
+      if (anchor) {
+        e.preventDefault();
+        selectAndFocus(rangeSel(anchor, { r, c }));
+        return;
+      }
+    }
+    dragSelRef.current = { start: { r, c }, left: false };
+    const move = (ev: PointerEvent) => {
+      const d = dragSelRef.current;
+      if (!d) return;
+      const at = cellAtPoint(ev.clientX, ev.clientY);
+      if (!at) return;
+      if (!d.left && at.r === d.start.r && at.c === d.start.c) return;
+      if (!d.left) {
+        d.left = true;
+        setDragSelecting(true);
+      }
+      try {
+        window.getSelection()?.removeAllRanges();
+      } catch {
+        /* noop */
+      }
+      setSel(rangeSel(d.start, at));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      const d = dragSelRef.current;
+      dragSelRef.current = null;
+      if (d?.left) {
+        setDragSelecting(false);
+        try {
+          window.getSelection()?.removeAllRanges();
+        } catch {
+          /* noop */
+        }
+        rootRef.current?.focus({ preventScroll: true });
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  }
+
+  // A press anywhere outside the table (menus aside) ends the selection.
+  useEffect(() => {
+    if (!sel) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t || rootRef.current?.contains(t) || t.closest?.('[role="menu"]')) return;
+      setSel(null);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, [sel]);
+
+  /** Keys on a selection. Only when focus is on the table itself or a
+   *  handle: inside a cell, keys edit text as before; in a menu (a portal),
+   *  they belong to the menu. */
+  function onRootKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (locked || !sel || !rect) return;
+    const t = e.target as HTMLElement;
+    const root = rootRef.current;
+    if (!root || !root.contains(t)) return;
+    if (t !== root && !t.closest("[data-table-handle]")) return;
+    const meta = primaryMod(e);
+    const k = e.key;
+    const stop = () => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    if (k === "Escape") {
+      if (menuSpec) return;
+      stop();
+      setSel(null);
+      return;
+    }
+    const arrows: Record<string, [number, number]> = {
+      ArrowUp: [-1, 0],
+      ArrowDown: [1, 0],
+      ArrowLeft: [0, -1],
+      ArrowRight: [0, 1],
+    };
+    if (arrows[k] && !meta && !e.altKey) {
+      stop();
+      const [dr, dc] = arrows[k];
+      setSel(e.shiftKey ? extendSel(sel, dr, dc, nRows, nCols) : moveSel(sel, dr, dc, nRows, nCols));
+      if (t !== root) root.focus({ preventScroll: true });
+      return;
+    }
+    if (k === "Tab" && !meta) {
+      stop();
+      setSel(moveSel(sel, 0, e.shiftKey ? -1 : 1, nRows, nCols));
+      return;
+    }
+    if (k === "Enter" && !meta) {
+      stop();
+      const f = sel.kind === "cells" ? sel.focus : { r: rect.r0, c: rect.c0 };
+      setSel(null);
+      focusCell(f.r, f.c, "end");
+      return;
+    }
+    if (k === "Backspace" || k === "Delete") {
+      stop();
+      commit(clearRect(rows, rect));
+      return;
+    }
+    if (meta && !e.altKey) {
+      const lower = k.toLowerCase();
+      if (lower === "a" && !e.shiftKey) {
+        stop();
+        setSel(rangeSel({ r: 0, c: 0 }, { r: nRows - 1, c: nCols - 1 }));
+        return;
+      }
+      const mark: CellMark | null = !e.shiftKey
+        ? lower === "b"
+          ? "bold"
+          : lower === "i"
+            ? "italic"
+            : lower === "u"
+              ? "underline"
+              : lower === "e"
+                ? "code"
+                : null
+        : lower === "s" || lower === "x"
+          ? "strike"
+          : lower === "h"
+            ? "highlight"
+            : null;
+      if (mark) {
+        stop();
+        commit(toggleMarkInRect(rows, rect, mark));
+      }
+      return;
+    }
+    // Typing on a selection starts editing its first cell, replacing it.
+    if (k.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      stop();
+      const f = sel.kind === "cells" ? sel.anchor : { r: rect.r0, c: rect.c0 };
+      setSel(null);
+      setCell(f.r, f.c, k);
+      focusCell(f.r, f.c, "end");
+    }
+  }
+
+  function onRootCopy(e: React.ClipboardEvent<HTMLDivElement>, cut: boolean) {
+    if (!rect) return;
+    const t = e.target as HTMLElement | null;
+    if (t?.closest?.("[data-table-cell]") && !sel) return;
+    if (document.activeElement?.closest?.("[data-table-cell]")) return;
+    const grid = rectSources(rows, rect);
+    e.preventDefault();
+    e.stopPropagation();
+    e.clipboardData.setData("text/plain", toTsv(grid));
+    e.clipboardData.setData(CELLS_MIME, JSON.stringify(grid));
+    if (cut && !locked) commit(clearRect(rows, rect));
+  }
+
+  function onRootPaste(e: React.ClipboardEvent<HTMLDivElement>) {
+    if (locked || !rect) return;
+    if (document.activeElement?.closest?.("[data-table-cell]")) return;
+    const cells = readCellsJson(e.clipboardData.getData(CELLS_MIME));
+    const plain = e.clipboardData.getData("text/plain");
+    const grid = cells ?? (plain ? parseTsv(plain) : null);
+    if (!grid) return;
+    e.preventDefault();
+    e.stopPropagation();
+    applyPaste({ r: rect.r0, c: rect.c0 }, grid, rect);
   }
 
   // Cell keys: Tab / Shift-Tab walk the grid (and grow it from the last
@@ -5661,9 +5898,11 @@ export function TableBlock({
     if (locked) return;
     const meta = primaryMod(e);
     if (e.key === "Escape") {
+      // Esc leaves the text and selects the cell (Notion's way); Esc
+      // again clears the selection.
       e.preventDefault();
       e.stopPropagation();
-      (e.currentTarget as HTMLElement).blur();
+      selectAndFocus(cellSel(r, c));
       return;
     }
     if (e.key === "Tab") {
@@ -5775,7 +6014,7 @@ export function TableBlock({
           icon: "plus",
           onPick: () => {
             commit(addColumn(rows, index), addAlign(align, index), addWidth(widths, index));
-            setSel({ kind: "col", index });
+            setSel(colSel(index, nRows));
             closeMenu();
           },
         },
@@ -5785,7 +6024,7 @@ export function TableBlock({
           icon: "plus",
           onPick: () => {
             commit(addColumn(rows, index + 1), addAlign(align, index + 1), addWidth(widths, index + 1));
-            setSel({ kind: "col", index: index + 1 });
+            setSel(colSel(index + 1, nRows));
             closeMenu();
           },
         },
@@ -5796,7 +6035,7 @@ export function TableBlock({
           hint: { text: "with values" },
           onPick: () => {
             commit(duplicateColumn(rows, index), duplicateAlign(align, index), duplicateWidth(widths, index));
-            setSel({ kind: "col", index: index + 1 });
+            setSel(colSel(index + 1, nRows));
             closeMenu();
           },
         },
@@ -5809,7 +6048,7 @@ export function TableBlock({
           onPick: () => {
             if (isFirst) return;
             commit(moveColumn(rows, index, index - 1), moveAlign(align, index, index - 1), moveWidth(widths, index, index - 1));
-            setSel({ kind: "col", index: index - 1 });
+            setSel(colSel(index - 1, nRows));
             closeMenu();
           },
         },
@@ -5821,7 +6060,7 @@ export function TableBlock({
           onPick: () => {
             if (isLast) return;
             commit(moveColumn(rows, index, index + 1), moveAlign(align, index, index + 1), moveWidth(widths, index, index + 1));
-            setSel({ kind: "col", index: index + 1 });
+            setSel(colSel(index + 1, nRows));
             closeMenu();
           },
         },
@@ -5912,7 +6151,7 @@ export function TableBlock({
           icon: "plus",
           onPick: () => {
             commit(addRow(rows, index));
-            setSel({ kind: "row", index });
+            setSel(rowSel(index, nCols));
             closeMenu();
           },
         },
@@ -5922,7 +6161,7 @@ export function TableBlock({
           icon: "plus",
           onPick: () => {
             commit(addRow(rows, index + 1));
-            setSel({ kind: "row", index: index + 1 });
+            setSel(rowSel(index + 1, nCols));
             closeMenu();
           },
         },
@@ -5933,7 +6172,7 @@ export function TableBlock({
           hint: { text: "with values" },
           onPick: () => {
             commit(duplicateRow(rows, index));
-            setSel({ kind: "row", index: index + 1 });
+            setSel(rowSel(index + 1, nCols));
             closeMenu();
           },
         },
@@ -5954,7 +6193,7 @@ export function TableBlock({
                 onPick: () => {
                   if (isFirst) return;
                   commit(moveRow(rows, index, index - 1));
-                  setSel({ kind: "row", index: index - 1 });
+                  setSel(rowSel(index - 1, nCols));
                   closeMenu();
                 },
               },
@@ -5970,7 +6209,7 @@ export function TableBlock({
                 onPick: () => {
                   if (isLast) return;
                   commit(moveRow(rows, index, index + 1));
-                  setSel({ kind: "row", index: index + 1 });
+                  setSel(rowSel(index + 1, nCols));
                   closeMenu();
                 },
               },
@@ -6145,14 +6384,20 @@ export function TableBlock({
   function onColumnHandleClick(e: React.MouseEvent<HTMLButtonElement>, index: number) {
     e.stopPropagation();
     if (locked) return;
-    setSel({ kind: "col", index });
+    // Keys now belong to the table (Esc, Backspace, ⌘C on the row or
+    // column), not to whatever text block had focus before.
+    e.currentTarget.focus({ preventScroll: true });
+    setSel(colSel(index, nRows));
     openColumnMenu(e.currentTarget, index);
   }
 
   function onRowHandleClick(e: React.MouseEvent<HTMLButtonElement>, index: number) {
     e.stopPropagation();
     if (locked) return;
-    setSel({ kind: "row", index });
+    // Keys now belong to the table (Esc, Backspace, ⌘C on the row or
+    // column), not to whatever text block had focus before.
+    e.currentTarget.focus({ preventScroll: true });
+    setSel(rowSel(index, nCols));
     openRowMenu(e.currentTarget, index);
 
   }
@@ -6391,14 +6636,14 @@ export function TableBlock({
       if (drop.to === drop.from) return;
       if (drop.axis === "row") {
         commit(moveRow(rows, drop.from, drop.to));
-        setSel({ kind: "row", index: drop.to });
+        setSel(rowSel(drop.to, nCols));
       } else {
         commit(
           moveColumn(rows, drop.from, drop.to),
           moveAlign(align, drop.from, drop.to),
           moveWidth(widths, drop.from, drop.to),
         );
-        setSel({ kind: "col", index: drop.to });
+        setSel(colSel(drop.to, nRows));
       }
     },
     makeGhost,
@@ -6427,7 +6672,20 @@ export function TableBlock({
 
 
   return (
-    <div ref={rootRef} className="group/table relative" onContextMenu={onTableContextMenu}>
+    <div
+      ref={rootRef}
+      className="group/table relative outline-none"
+      tabIndex={-1}
+      data-table-root
+      onContextMenu={onTableContextMenu}
+      onKeyDown={onRootKeyDown}
+      onCopy={(e) => onRootCopy(e, false)}
+      onCut={(e) => onRootCopy(e, true)}
+      onPaste={onRootPaste}
+      // The 23px handle margin sits outside the text column, so the grid's
+      // borders line up with the paragraphs around it (Notion's look).
+      style={{ margin: "0 -23px", ...(dragSelecting ? { userSelect: "none" } : null) }}
+    >
       <div
         ref={scrollRef}
         style={{ overflowX: "auto", overflowY: "hidden" }}
@@ -6445,7 +6703,7 @@ export function TableBlock({
         >
           <table
             ref={tableRef}
-            className={"border-collapse text-meta " + (fit ? "w-full" : "")}
+            className={"border-collapse text-ui " + (fit ? "w-full" : "")}
             style={{
               tableLayout: "fixed",
               ...(contentWidth != null ? { width: contentWidth } : {}),
@@ -6468,9 +6726,7 @@ export function TableBlock({
                     const isHead =
                       (headerRow && ri === 0) || (headerCol && ci === 0);
                     const Tag: "th" | "td" = isHead ? "th" : "td";
-                    const selected =
-                      (sel?.kind === "row" && sel.index === ri) ||
-                      (sel?.kind === "col" && sel.index === ci);
+                    const selected = !!rect && inRect(rect, ri, ci);
                     // In-flight tint: the SOURCE row/column stays
                     // identifiable while the insertion line is far from it.
                     // Same tint as selection — a drag is a selection that
@@ -6484,17 +6740,19 @@ export function TableBlock({
                       <Tag
                         key={ci}
                         data-col={ci}
+                        onPointerDown={(e) => onCellPointerDown(e, ri, ci)}
                         className={
-                          "relative border border-line p-0 " +
-                          (isHead
-                            ? "text-label uppercase text-secondary"
-                            : "text-body")
+                          "relative border border-line p-0 align-top font-normal text-body " +
+                          (isHead ? "bg-canvas" : "")
                         }
-                        style={
-                          selected || inFlight
-                            ? { background: "var(--color-blueTint)" }
-                            : undefined
-                        }
+                        style={{
+                          // Header cells sit on a warm tint (Notion's look);
+                          // a selection or an in-flight drag tints over it.
+                          textAlign: align[ci] ?? "left",
+                          ...(inFlight || (selected && (rectSize(rect!) > 1 || sel?.kind !== "cells"))
+                            ? { background: "color-mix(in srgb, var(--color-blueTint) 70%, transparent)" }
+                            : null),
+                        }}
                       >
                         {/* Cells are contenteditable so inline markdown
                             renders in place, exactly like prose blocks.
@@ -6510,7 +6768,7 @@ export function TableBlock({
                           onBlur={onBlur}
                           ariaLabel={`Row ${ri + 1} column ${ci + 1}`}
                           dataAttrs={{ "data-table-cell": `${ri},${ci}` }}
-                          className="w-full px-2 py-1 outline-none"
+                          className="w-full px-2.5 py-1.5 outline-none"
                         />
                         {ri === 0 && !locked && !(fit && ci === nCols - 1) && (
                           // Resize grip on the right border of each
@@ -6548,6 +6806,31 @@ export function TableBlock({
               ))}
             </tbody>
           </table>
+
+          {/* Selected cells: one blue outline around the rectangle. */}
+          {rect &&
+            metrics &&
+            metrics.cols[rect.c1] &&
+            metrics.rows[rect.r1] &&
+            !reorder && (
+              <div
+                aria-hidden
+                data-table-selection
+                style={{
+                  position: "absolute",
+                  left: 23 + metrics.cols[rect.c0].left - 1,
+                  top: 23 + metrics.rows[rect.r0].top - 1,
+                  width:
+                    metrics.cols[rect.c1].left + metrics.cols[rect.c1].width - metrics.cols[rect.c0].left + 2,
+                  height:
+                    metrics.rows[rect.r1].top + metrics.rows[rect.r1].height - metrics.rows[rect.r0].top + 2,
+                  border: "2px solid var(--color-blue)",
+                  borderRadius: 2,
+                  pointerEvents: "none",
+                  zIndex: 2,
+                }}
+              />
+            )}
 
           {/* Drop indicator — a 2px accent insertion line at the boundary
               where the dragged row/column will land, spanning the table.
@@ -6626,7 +6909,7 @@ export function TableBlock({
                   style={{ position: "relative", width: "100%", height: "100%" }}
                 >
                   {Array.from({ length: nCols }, (_, ci) => {
-                    const active = sel?.kind === "col" && sel.index === ci;
+                    const active = sel?.kind === "col" && !!rect && ci >= rect.c0 && ci <= rect.c1;
                     // MEASURED geometry, never an equal share: columns can
                     // have different widths, and a handle that doesn't sit
                     // over its own column means the menu you open — and the
@@ -6670,7 +6953,7 @@ export function TableBlock({
                   style={{ position: "relative", width: "100%", height: "100%" }}
                 >
                   {rows.map((_, ri) => {
-                    const active = sel?.kind === "row" && sel.index === ri;
+                    const active = sel?.kind === "row" && !!rect && ri >= rect.r0 && ri <= rect.r1;
                     const m = metrics?.rows[ri];
                     const box = m
                       ? { top: m.top, height: m.height }
@@ -6758,6 +7041,57 @@ export function TableBlock({
         </div>
       </div>
 
+      {/* Bar over a selection of more than one cell. On the root, not in
+          the scroller, so it isn't clipped above the first row. */}
+      {!locked && sel && rect && rectSize(rect) > 1 && !dragSelecting && metrics?.rows[rect.r0] && metrics.cols[rect.c0] && (
+        <div
+          role="toolbar"
+          aria-label="Selected cells"
+          data-table-selbar
+          onMouseDown={(e) => e.preventDefault()}
+          className="absolute flex items-center rounded-lg"
+          style={{
+            left: Math.max(0, 23 + metrics.cols[rect.c0].left - scrollX),
+            top: 23 + metrics.rows[rect.r0].top - 40,
+            height: 32,
+            padding: "0 4px",
+            gap: 2,
+            background: "var(--color-btn)",
+            color: "var(--color-btnFg)",
+            boxShadow: "0 8px 24px rgba(13,13,9,.22)",
+            zIndex: 6,
+            animation: "var(--animate-popIn)",
+            transformOrigin: "bottom left",
+          }}
+        >
+          <span className="px-2 text-caption opacity-70">
+            {rectSize(rect)} cells
+          </span>
+          <button
+            type="button"
+            className="bar-btn rounded-md px-2 text-caption"
+            style={{ height: 24 }}
+            onClick={() => {
+              toClipboard(toTsv(rectSources(rows, rect)));
+              rootRef.current?.focus({ preventScroll: true });
+            }}
+          >
+            Copy
+          </button>
+          <button
+            type="button"
+            className="bar-btn rounded-md px-2 text-caption"
+            style={{ height: 24 }}
+            onClick={() => {
+              commit(clearRect(rows, rect));
+              rootRef.current?.focus({ preventScroll: true });
+            }}
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       {/* Horizontal-overflow fades. Pinned to the OUTER root so they sit
           on top of the scrolling content, not inside it — otherwise they
           would scroll off with the table. Only rendered when there is
@@ -6770,7 +7104,7 @@ export function TableBlock({
             width: 40,
             zIndex: 3,
             background:
-              "linear-gradient(to right, var(--color-canvas), transparent)",
+              "linear-gradient(to right, var(--color-surface), transparent)",
           }}
         />
       )}
@@ -6782,7 +7116,7 @@ export function TableBlock({
             width: 40,
             zIndex: 3,
             background:
-              "linear-gradient(to left, var(--color-canvas), transparent)",
+              "linear-gradient(to left, var(--color-surface), transparent)",
           }}
         />
       )}

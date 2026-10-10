@@ -231,6 +231,15 @@ provider Virgilio already has; don't build them until asked.
   `widths` as proportions; a resize then moves the border between two
   columns. A table without `widths` already fits; one with `widths` and no
   `fit` keeps exact widths. Exports follow the same rule.
+- Cells are selected as one rectangle (src/lib/table-selection.ts): Esc in
+  a cell selects it, drag or Shift+click/arrows grow it, a handle selects
+  a whole row or column. On a selection: ⌘B/⌘I/⌘U/⌘E/⌘⇧S (a mark goes on
+  every filled cell, or comes off when all have it), Backspace clears,
+  ⌘C copies tab-separated text plus the cell sources
+  (application/x-gio-cells), ⌘V pastes a grid from the top-left and grows
+  the table, typing replaces the first cell. Inside a cell, keys edit text.
+- The grid looks like Notion's: borders in line with the text column,
+  header cells on `canvas` in normal case, body-size text.
 
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
