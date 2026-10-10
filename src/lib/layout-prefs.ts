@@ -10,7 +10,7 @@
  * `src/lib/view-drafts.ts`); callers that already fold drafts into the
  * "current" view just pass that current object in — `layoutOf(current)`.
  */
-export type LayoutKind = "table" | "board" | "list";
+export type LayoutKind = "table" | "board" | "list" | "calendar";
 
 type LayoutBearer = { layout?: string | null } | null | undefined;
 

@@ -238,7 +238,7 @@ type ViewFull = {
   owner_id: string;
   name: string;
   scope: "personal" | "team";
-  layout: "table" | "board" | "list";
+  layout: "table" | "board" | "list" | "calendar";
   position: number;
   filter: unknown;
   sort: unknown;
@@ -258,7 +258,7 @@ export function useCreateView() {
       icon?: string | null;
       filter?: Filter[];
       sort?: SortSpec;
-      layout?: "table" | "board" | "list";
+      layout?: "table" | "board" | "list" | "calendar";
       groupBy?: string | null;
       _tempId?: string;
     }) => {
@@ -396,7 +396,7 @@ export function useForkView() {
       name: string;
       filter: Filter[];
       sort: SortSpec;
-      layout: "table" | "board" | "list";
+      layout: "table" | "board" | "list" | "calendar";
       groupBy?: string | null;
       _tempId?: string;
     }) => {

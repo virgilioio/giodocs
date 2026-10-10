@@ -1,6 +1,6 @@
 import type { Filter, SortSpec } from "./run-view";
 
-export type ViewLayout = "table" | "board" | "list";
+export type ViewLayout = "table" | "board" | "list" | "calendar";
 export type ViewScope = "personal" | "team" | "area";
 
 export type ViewBase = {

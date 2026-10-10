@@ -26,24 +26,18 @@ alter table public.property_defs
   add column if not exists archived_at timestamptz;
 
 -- 3. Row level security: members create and edit, owners remove.
-drop policy if exists propdefs_write on public.property_defs;
-drop policy if exists propdefs_insert on public.property_defs;
-drop policy if exists propdefs_update on public.property_defs;
-drop policy if exists propdefs_delete on public.property_defs;
-
-create policy propdefs_insert on public.property_defs for insert
+--    The existing permissive propdefs_write (members, all commands) stays;
+--    these RESTRICTIVE policies narrow it, so no policy is dropped.
+create policy propdefs_insert_rules on public.property_defs
+  as restrictive for insert
   with check (
-    public.is_member(workspace_id)
-    and is_system = false
+    is_system = false
     and archived_at is null
     and created_by = (select auth.uid())
   );
 
-create policy propdefs_update on public.property_defs for update
-  using (public.is_member(workspace_id))
-  with check (public.is_member(workspace_id));
-
-create policy propdefs_delete on public.property_defs for delete
+create policy propdefs_delete_owners on public.property_defs
+  as restrictive for delete
   using (public.is_owner(workspace_id) and is_system = false);
 
 -- 4. The rules a policy can't express.
@@ -116,7 +110,6 @@ end $$;
 
 revoke all on function public.guard_property_def() from public, anon, authenticated;
 
-drop trigger if exists property_defs_guard on public.property_defs;
 create trigger property_defs_guard
   before update or delete on public.property_defs
   for each row execute function public.guard_property_def();

@@ -9,8 +9,11 @@
 -- 'restricted' = only the people listed in page_access. "Private" is simply
 -- 'restricted' with the creator as the only entry.
 
--- 1. New pages default to restricted.
-alter table public.pages alter column access_type set default 'restricted';
+-- 1. The app creates new pages as 'restricted'. The column default stays
+--    'workspace' for now: the published app (until it's republished from
+--    Lovable) still creates pages with insert...returning, which RLS would
+--    reject for a restricted page whose creator row is added after the
+--    insert. Flip the default in a later migration once the new app is live.
 
 -- 2. Whoever creates a restricted page can edit it. SECURITY DEFINER because
 --    page_access's insert policy (can_manage_page_access) can't pass for a
@@ -34,7 +37,6 @@ end $$;
 
 revoke all on function public.grant_creator_page_access() from public, anon, authenticated;
 
-drop trigger if exists pages_grant_creator_access on public.pages;
 create trigger pages_grant_creator_access
   after insert on public.pages
   for each row execute function public.grant_creator_page_access();

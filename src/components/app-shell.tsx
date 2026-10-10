@@ -608,7 +608,7 @@ type ViewRow = {
   id: string;
   name: string;
   scope: "personal" | "team";
-  layout: "table" | "board" | "list";
+  layout: "table" | "board" | "list" | "calendar";
   position: number;
   filter: unknown;
   sort: unknown;
@@ -2287,7 +2287,7 @@ function SectionHeader({
   );
 }
 
-function LayoutGlyph({ layout }: { layout: "table" | "board" | "list" }) {
+function LayoutGlyph({ layout }: { layout: "table" | "board" | "list" | "calendar" }) {
   const path =
     layout === "board"
       ? "M4 5v14M10 5v14M16 5v14"

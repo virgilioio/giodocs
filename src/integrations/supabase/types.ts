@@ -346,6 +346,9 @@ export type Database = {
       }
       property_defs: {
         Row: {
+          archived_at: string | null
+          created_at: string
+          created_by: string | null
           id: string
           is_system: boolean
           key: string
@@ -357,6 +360,9 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
           id?: string
           is_system?: boolean
           key: string
@@ -368,6 +374,9 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
           id?: string
           is_system?: boolean
           key?: string
@@ -379,6 +388,13 @@ export type Database = {
           workspace_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "property_defs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "property_defs_workspace_id_fkey"
             columns: ["workspace_id"]
@@ -897,7 +913,10 @@ export type Database = {
         | "checkbox"
         | "status"
         | "links"
-      view_layout: "table" | "board" | "list"
+        | "url"
+        | "email"
+        | "phone"
+      view_layout: "table" | "board" | "list" | "calendar"
       view_scope: "personal" | "team"
     }
     CompositeTypes: {
@@ -1037,8 +1056,11 @@ export const Constants = {
         "checkbox",
         "status",
         "links",
+        "url",
+        "email",
+        "phone",
       ],
-      view_layout: ["table", "board", "list"],
+      view_layout: ["table", "board", "list", "calendar"],
       view_scope: ["personal", "team"],
     },
   },

@@ -69,7 +69,7 @@ import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
 import { isTypingTarget } from "@/lib/is-typing";
 
-type Layout = "table" | "board" | "list";
+type Layout = "table" | "board" | "list" | "calendar";
 
 
 
