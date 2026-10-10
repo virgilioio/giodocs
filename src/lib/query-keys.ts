@@ -16,4 +16,6 @@ export const qk = {
   pageVersionPreview: (id: string) => ["pageVersionPreview", id] as const,
   /** The pages that mention, link to or embed a page ("Linked from"). */
   backlinks: (id: string) => ["backlinks", id] as const,
+  /** This person's notifications, newest first. */
+  inbox: (userId: string) => ["inbox", userId] as const,
 };

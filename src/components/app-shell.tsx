@@ -21,7 +21,10 @@ import { PageBreadcrumb } from "./page-breadcrumb";
 import { SidebarTree, TREE_ASIDE } from "./sidebar-tree";
 import { useEmojiSet } from "@/hooks/use-custom-emoji";
 import { setInlineEmojiSet } from "@/lib/emoji-registry";
-import { setMentionDirectory } from "@/lib/mention-directory";
+import { mentionPage, setMentionDirectory } from "@/lib/mention-directory";
+import { InboxButton } from "./inbox";
+import { useInboxRealtime } from "@/hooks/use-inbox";
+import { describeNotification } from "@/lib/inbox-text";
 import { resolvePageIdParam } from "@/lib/slug";
 
 import {
@@ -156,6 +159,26 @@ export function AppShell() {
     setMentionDirectory({ users, pages });
   }, [shell.members.data, shell.pages.data]);
   useRealtimeWorkspace(workspaceId);
+  // A mention arrives live: the inbox updates and a toast offers to open it.
+  const { user: me } = useAuth();
+  const inboxToast = useToast();
+  const inboxNavigate = useNavigate();
+  useInboxRealtime(me?.id, (n) => {
+    if (!mentionPage(n.page_id)) return; // a page they can't open
+    const d = describeNotification(n);
+    inboxToast.push({
+      message: `${d.who} ${d.what} ${d.page}`,
+      action: {
+        label: "Open",
+        onClick: () =>
+          void inboxNavigate({
+            to: "/p/$pageId",
+            params: { pageId: n.page_id },
+            hash: n.block_id ? `block-${n.block_id}` : undefined,
+          }),
+      },
+    });
+  });
   const rawSelection = useSelection();
   const pagesForResolve = (shell.pages.data ?? []) as PageListItem[];
   const selection = useMemo<Selection>(() => {
@@ -878,6 +901,7 @@ function SidebarBody({
             ⌘K
           </span>
         </button>
+        <InboxButton />
 
         {loading ? (
           <SkeletonList />
