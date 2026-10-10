@@ -149,6 +149,36 @@ export type Database = {
           },
         ]
       }
+      home_prefs: {
+        Row: {
+          emoji: string | null
+          hidden: string[]
+          nickname: string | null
+          pinned_views: string[]
+          start_page: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          emoji?: string | null
+          hidden?: string[]
+          nickname?: string | null
+          pinned_views?: string[]
+          start_page?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          emoji?: string | null
+          hidden?: string[]
+          nickname?: string | null
+          pinned_views?: string[]
+          start_page?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           actor_id: string | null
@@ -349,6 +379,42 @@ export type Database = {
           },
         ]
       }
+      page_visits: {
+        Row: {
+          page_id: string
+          user_id: string
+          visited_at: string
+          workspace_id: string
+        }
+        Insert: {
+          page_id: string
+          user_id: string
+          visited_at?: string
+          workspace_id: string
+        }
+        Update: {
+          page_id?: string
+          user_id?: string
+          visited_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "page_visits_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "page_visits_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pages: {
         Row: {
           access_type: string
@@ -367,6 +433,7 @@ export type Database = {
           position: number | null
           props: Json
           search_tsv: unknown
+          task_config: Json | null
           template_at: string | null
           title: string
           verified_at: string
@@ -391,6 +458,7 @@ export type Database = {
           position?: number | null
           props?: Json
           search_tsv?: unknown
+          task_config?: Json | null
           template_at?: string | null
           title?: string
           verified_at?: string
@@ -415,6 +483,7 @@ export type Database = {
           position?: number | null
           props?: Json
           search_tsv?: unknown
+          task_config?: Json | null
           template_at?: string | null
           title?: string
           verified_at?: string
@@ -1043,6 +1112,7 @@ export type Database = {
         }
         Returns: Json
       }
+      record_page_visit: { Args: { p_page: string }; Returns: undefined }
       restore_page: { Args: { p_page: string }; Returns: undefined }
       restore_page_from_version: { Args: { p_version: string }; Returns: string }
       restore_page_version: { Args: { p_version: string }; Returns: undefined }
