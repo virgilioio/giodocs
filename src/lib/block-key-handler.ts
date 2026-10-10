@@ -63,6 +63,9 @@ export type Op =
   | { kind: "select-prev" }
   /** Forward Delete at the end → pull the next block's text up. */
   | { kind: "merge-next" }
+  /** Forward Delete in an empty text block → remove it; the caret goes to
+   *  the start of the block below (which keeps its own type). */
+  | { kind: "remove-empty-forward" }
   /** ⇧↑ at the start / ⇧↓ at the end of a block: the selection can't grow
    *  inside the text any more, so it becomes a block selection of this
    *  block and its neighbour. */
@@ -103,6 +106,12 @@ export type Op =
   | { kind: "wrap"; open: string; close: string };
 
 const LIST_TYPES = new Set(["bullet", "numbered", "todo"]);
+
+/** No words in it. A block emptied in the browser can hold a lone line
+ *  break the browser leaves behind; that's still empty. */
+export function isBlankText(text: string | undefined): boolean {
+  return /^\n*$/.test(text ?? "");
+}
 const INDENTABLE = new Set(["bullet", "numbered", "todo", "text"]);
 
 export function resolveKey(
@@ -197,10 +206,11 @@ export function resolveKey(
     if (b.type !== "text") return { kind: "convert-to-text" };
     // Never merge into (or hide text behind) a block that shows no text.
     const prev = index > 0 ? list[index - 1] : undefined;
-    if (prev && !isTextBearing(prev) && (b.text ?? "") !== "") {
+    const blank = isBlankText(b.text);
+    if (prev && !isTextBearing(prev) && !blank) {
       return prev.type === "divider" ? { kind: "remove-prev" } : { kind: "select-prev" };
     }
-    if ((b.text ?? "") === "") {
+    if (blank) {
       if (scope === "column" && index === 0) {
         // Only block of its column, and empty: offer the dissolve. The
         // parent decides — with content anywhere else this is still a no-op.
@@ -215,7 +225,14 @@ export function resolveKey(
 
   // Forward Delete at the very end pulls the next block up.
   if (key === "Delete" && collapsed && selStart === valueLength && !meta) {
-    if (index < list.length - 1) return { kind: "merge-next" };
+    if (index < list.length - 1) {
+      // An empty plain block just goes, like Backspace; the block below
+      // keeps its type instead of turning into this one's.
+      if (b && b.type === "text" && isBlankText(b.text) && !((b as { indent?: number }).indent ?? 0)) {
+        return { kind: "remove-empty-forward" };
+      }
+      return { kind: "merge-next" };
+    }
     return { kind: "none" };
   }
 

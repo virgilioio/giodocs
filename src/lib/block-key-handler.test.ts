@@ -271,3 +271,23 @@ describe("resolveKey — table-driven parity", () => {
     }
   }
 });
+
+describe("resolveKey — empty blocks go away (Notion)", () => {
+  const list = [b("text", "First", "a"), b("text", "\n", "x"), b("h2", "Head", "h")];
+  it("treats a block holding only the browser's line break as empty", () => {
+    expect(resolveKey("page", list, 1, ef({ key: "Backspace", value: "" }))).toEqual({ kind: "remove-empty" });
+  });
+  it("removes an empty block after a divider instead of the divider", () => {
+    const l = [b("text", "x", "a"), b("divider", "", "d"), b("text", "\n", "x")];
+    expect(resolveKey("page", l, 2, ef({ key: "Backspace", value: "" }))).toEqual({ kind: "remove-empty" });
+  });
+  it("removes an empty first block", () => {
+    expect(resolveKey("page", [b("text", "", "x"), b("text", "Below", "y")], 0, ef({ key: "Backspace", value: "" }))).toEqual({
+      kind: "remove-empty",
+    });
+  });
+  it("forward Delete removes an empty block and leaves the next one's type alone", () => {
+    expect(resolveKey("page", list, 1, ef({ key: "Delete", value: "" }))).toEqual({ kind: "remove-empty-forward" });
+    expect(resolveKey("page", list, 0, ef({ key: "Delete", value: "First", selStart: 5 }))).toEqual({ kind: "merge-next" });
+  });
+});

@@ -136,6 +136,7 @@ import {
   inlinePaste,
   mergeNextInto as opsMergeNext,
   cloneWithFreshIds,
+  isTextBearing,
   indentBlock as opsIndent,
   reclampIndents,
 } from "@/lib/block-ops";
@@ -3439,10 +3440,47 @@ export function EditableBody({
                 e.preventDefault();
                 convertToText(b.id);
                 return;
-              case "remove-empty":
+              case "remove-empty": {
                 e.preventDefault();
+                const i = blocks.findIndex((x) => x.id === b.id);
+                const prev = i > 0 ? blocks[i - 1] : undefined;
+                if (i === 0 && blocks.length > 1) {
+                  // The first block: it goes, and the caret moves up to
+                  // the title, as in Notion.
+                  applyOp({ next: blocks.slice(1) });
+                  focusTitle();
+                  return;
+                }
+                if (prev && !isTextBearing(prev)) {
+                  // After an image, divider, table…: the empty line goes and
+                  // that block is selected, so a second Backspace removes it.
+                  applyOp({ next: blocks.filter((x) => x.id !== b.id) });
+                  el.blur();
+                  setSelScope(null);
+                  anchorId.current = prev.id;
+                  setSelectedIds(new Set([prev.id]));
+                  return;
+                }
                 removeBlock(b.id);
                 return;
+              }
+              case "remove-empty-forward": {
+                e.preventDefault();
+                const i = blocks.findIndex((x) => x.id === b.id);
+                const nextBlock = blocks[i + 1];
+                if (!nextBlock) return;
+                const rest = blocks.filter((x) => x.id !== b.id);
+                if (isTextBearing(nextBlock)) {
+                  applyOp({ next: rest, focus: { id: nextBlock.id, caret: "start" } });
+                } else {
+                  applyOp({ next: rest });
+                  el.blur();
+                  setSelScope(null);
+                  anchorId.current = nextBlock.id;
+                  setSelectedIds(new Set([nextBlock.id]));
+                }
+                return;
+              }
               case "merge-prev":
                 e.preventDefault();
                 mergeIntoPrev(b.id);
@@ -4976,10 +5014,32 @@ function ColumnStack({
                 e.preventDefault();
                 applyOp(opsConvert(blocks, b.id));
                 return;
-              case "remove-empty":
+              case "remove-empty": {
                 e.preventDefault();
+                const i = blocks.findIndex((x) => x.id === b.id);
+                const prev = i > 0 ? blocks[i - 1] : undefined;
+                if (prev && !isTextBearing(prev)) {
+                  // Nothing to put the caret in above: start of the next
+                  // block in the column if there is one.
+                  const rest = blocks.filter((x) => x.id !== b.id);
+                  const after = rest[i];
+                  applyOp({ next: rest, focus: after && isTextBearing(after) ? { id: after.id, caret: "start" } : undefined });
+                  return;
+                }
                 applyOp(opsRemove(blocks, b.id, { ensureOne: true }));
                 return;
+              }
+              case "remove-empty-forward": {
+                e.preventDefault();
+                const i = blocks.findIndex((x) => x.id === b.id);
+                const nextBlock = blocks[i + 1];
+                if (!nextBlock) return;
+                applyOp({
+                  next: blocks.filter((x) => x.id !== b.id),
+                  focus: isTextBearing(nextBlock) ? { id: nextBlock.id, caret: "start" } : undefined,
+                });
+                return;
+              }
               case "merge-prev":
                 e.preventDefault();
                 applyOp(opsMerge(blocks, b.id));

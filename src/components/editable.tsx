@@ -272,7 +272,11 @@ export const Editable = forwardRef<HTMLDivElement, EditableProps>(
       const el = elRef.current;
       if (!el) return;
       if (composingRef.current) return;
-      const nextSource = htmlToInlineMarkdown(el);
+      // Emptying a block makes the browser leave a lone <br> behind, which
+      // reads as a line break. That block is empty: treating it as text
+      // stopped Backspace from removing it and left stray line breaks.
+      const raw = htmlToInlineMarkdown(el);
+      const nextSource = raw === "\n" ? "" : raw;
       const caret = readCaretSource(el, nextSource);
       const newHtml = inlineToHtml(nextSource);
       if (newHtml !== el.innerHTML) {
