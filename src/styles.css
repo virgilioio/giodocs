@@ -611,12 +611,16 @@ button:is([class~="bg-btn"], [class~="border-line"][class~="bg-surface"], .gio-p
 
   /* Set pieces. */
   .gio-page-body [data-block-type="quote"],
-  .gio-page-body [data-block-type="callout"],
   .gio-page-body [data-block-type="code"],
   .gio-page-body [data-block-type="table"],
   .gio-page-body [data-block-type="columns"] {
     margin-top: var(--gio-block-y);
   }
+
+  /* A callout keeps the ordinary text rhythm (Notion's): it's a paragraph
+     with a background, not a set piece. After a heading the heading's own
+     spacing wins (below). */
+  .gio-page-body [data-block-type="callout"] { margin-top: var(--gio-block-gap); }
 
   /* A caption belongs to the thing above it — almost touching. */
   .gio-page-body [data-block-type="caption"] { margin-top: 3px; }

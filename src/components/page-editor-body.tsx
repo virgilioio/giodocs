@@ -4268,9 +4268,11 @@ function BlockContent({
       : null;
     return (
       <div
-        className="group flex items-start gap-2 p-3"
+        // Notion's callout: 16px all round, 4px corners, 12px between the
+        // icon and the text, full width of its column.
+        className="group flex items-start gap-3 p-4"
         style={{
-          borderRadius: 9,
+          borderRadius: 4,
           // Colour comes from a token resolved by name — never a stored hex.
           // Tint + 1px ring: at ~95% lightness several tints are nearly
           // white on the page, and without an edge a callout stops reading

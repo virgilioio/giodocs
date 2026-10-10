@@ -1021,7 +1021,7 @@ const HTML_CSS = `
   figure img { max-width: 100%; }
   figcaption { margin-top: 7px; text-align: center; font-size: 12.5px; color: ${muted}; }
   blockquote { margin: 10px 0; padding: 4px 14px; border-left: 3px solid ${lineStrong}; color: ${muted}; font-style: italic; }
-  aside, .callout { display: flex; gap: 10px; align-items: flex-start; margin: 10px 0; padding: 12px 14px; background: ${sunken}; border-radius: 10px; }
+  aside, .callout { display: flex; gap: 12px; align-items: flex-start; margin: 10px 0; padding: 16px; background: ${sunken}; border-radius: 4px; }
   aside .ico { flex: none; font-size: 18px; line-height: 1.3; }
   /* A multi-child callout wraps its children in this div. Without a basis
      it is a shrink-to-fit flex item next to the icon and collapses to a
