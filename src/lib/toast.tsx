@@ -1,4 +1,13 @@
-import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 export type ToastAction = { label: string; onClick: () => void };
 export type Toast = {
@@ -13,36 +22,164 @@ const ToastCtx = createContext<{ push: (input: ToastInput) => void } | null>(nul
 
 let seq = 1;
 
-export function ToastProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<Toast[]>([]);
+const MAX_VISIBLE = 3;
+const EXIT_MS = 200;
+const MOVE_MS = 240;
+const EASE_OUT = "cubic-bezier(0.23, 1, 0.32, 1)";
 
-  const push = useCallback((input: ToastInput) => {
-    const id = seq++;
-    const t: Toast =
-      typeof input === "string"
-        ? { id, message: input }
-        : { id, message: input.message, action: input.action };
-    const durationMs =
-      typeof input === "string"
-        ? 3500
-        : (input.durationMs ?? (input.action ? 10_000 : 3500));
-    setItems((prev) => [...prev, t].slice(-3));
-    window.setTimeout(() => {
-      setItems((prev) => prev.filter((x) => x.id !== id));
-    }, durationMs);
+type Item = Toast & { leaving?: boolean };
+type Timer = { remaining: number; start: number; handle: number | null };
+
+function reducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+/**
+ * Toasts rise in at the bottom centre, leave the way they came, and pause
+ * while the pointer is over them or the tab is hidden. When one leaves, the
+ * others glide into place instead of jumping.
+ */
+export function ToastProvider({ children }: { children: ReactNode }) {
+  const [items, setItems] = useState<Item[]>([]);
+  const timers = useRef(new Map<number, Timer>());
+  const paused = useRef(false);
+  const hovered = useRef(false);
+  const nodes = useRef(new Map<number, HTMLDivElement>());
+  const lastTops = useRef(new Map<number, number>());
+
+  const remove = useCallback((id: number) => {
+    timers.current.delete(id);
+    setItems((prev) => prev.filter((x) => x.id !== id));
   }, []);
 
-  const dismiss = (id: number) =>
-    setItems((prev) => prev.filter((t) => t.id !== id));
+  const leave = useCallback(
+    (id: number) => {
+      const t = timers.current.get(id);
+      if (t?.handle != null) window.clearTimeout(t.handle);
+      timers.current.delete(id);
+      setItems((prev) =>
+        prev.map((x) => (x.id === id && !x.leaving ? { ...x, leaving: true } : x)),
+      );
+      window.setTimeout(() => remove(id), reducedMotion() ? 0 : EXIT_MS);
+    },
+    [remove],
+  );
+
+  const run = useCallback(
+    (id: number, t: Timer) => {
+      t.start = Date.now();
+      t.handle = window.setTimeout(() => leave(id), t.remaining);
+    },
+    [leave],
+  );
+
+  const setPaused = useCallback(
+    (next: boolean) => {
+      if (paused.current === next) return;
+      paused.current = next;
+      for (const [id, t] of timers.current) {
+        if (next) {
+          if (t.handle != null) window.clearTimeout(t.handle);
+          t.handle = null;
+          t.remaining = Math.max(0, t.remaining - (Date.now() - t.start));
+        } else {
+          run(id, t);
+        }
+      }
+    },
+    [run],
+  );
+
+  useEffect(() => {
+    const onVis = () => setPaused(document.hidden || hovered.current);
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [setPaused]);
+
+  const push = useCallback(
+    (input: ToastInput) => {
+      const id = seq++;
+      const t: Toast =
+        typeof input === "string"
+          ? { id, message: input }
+          : { id, message: input.message, action: input.action };
+      const durationMs =
+        typeof input === "string"
+          ? 3500
+          : (input.durationMs ?? (input.action ? 10_000 : 3500));
+      setItems((prev) => {
+        const live = prev.filter((x) => !x.leaving);
+        const overflow = live.length - (MAX_VISIBLE - 1);
+        if (overflow > 0) {
+          const drop = new Set(live.slice(0, overflow).map((x) => x.id));
+          queueMicrotask(() => drop.forEach((d) => leave(d)));
+        }
+        return [...prev, t];
+      });
+      const timer: Timer = { remaining: durationMs, start: Date.now(), handle: null };
+      timers.current.set(id, timer);
+      if (!paused.current) run(id, timer);
+    },
+    [leave, run],
+  );
+
+  // FLIP: toasts that moved because another arrived or left glide over.
+  useLayoutEffect(() => {
+    const reduce = reducedMotion();
+    const next = new Map<number, number>();
+    for (const [id, el] of nodes.current) {
+      if (!el.isConnected) continue;
+      const top = el.offsetTop;
+      next.set(id, top);
+      const before = lastTops.current.get(id);
+      if (reduce || before === undefined || before === top) continue;
+      el.animate(
+        [{ transform: `translateY(${before - top}px)` }, { transform: "none" }],
+        { duration: MOVE_MS, easing: EASE_OUT, composite: "add" },
+      );
+    }
+    lastTops.current = next;
+  }, [items]);
 
   return (
     <ToastCtx.Provider value={{ push }}>
       {children}
-      <div className="pointer-events-none fixed inset-x-0 bottom-6 z-[var(--z-toast)] flex flex-col items-center gap-2">
+      <div
+        role="status"
+        aria-live="polite"
+        className="pointer-events-none fixed inset-x-0 bottom-6 z-[var(--z-toast)] flex flex-col items-center gap-2"
+      >
         {items.map((t) => (
           <div
             key={t.id}
+            ref={(el) => {
+              if (el) nodes.current.set(t.id, el);
+              else nodes.current.delete(t.id);
+            }}
+            onMouseEnter={() => {
+              hovered.current = true;
+              setPaused(true);
+            }}
+            onMouseLeave={() => {
+              hovered.current = false;
+              setPaused(document.hidden);
+            }}
+            aria-hidden={t.leaving ? true : undefined}
             className="pointer-events-auto flex max-w-md items-center gap-3 rounded-lg bg-btn px-4 py-2 text-meta text-btnFg shadow-toast animate-toastUp"
+            style={
+              t.leaving
+                ? {
+                    opacity: 0,
+                    transform: reducedMotion() ? undefined : "translateY(12px)",
+                    transition: `opacity ${EXIT_MS}ms ${EASE_OUT}, transform ${EXIT_MS}ms ${EASE_OUT}`,
+                    pointerEvents: "none",
+                  }
+                : undefined
+            }
           >
             <span>{t.message}</span>
             {t.action ? (
@@ -50,7 +187,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 type="button"
                 onClick={() => {
                   t.action!.onClick();
-                  dismiss(t.id);
+                  leave(t.id);
+                  // The toast under the pointer is going away; don't stay paused.
+                  hovered.current = false;
+                  setPaused(document.hidden);
                 }}
                 className="rounded-md px-2 py-0.5 text-meta font-bold text-btnFg hover:bg-white/10"
               >
