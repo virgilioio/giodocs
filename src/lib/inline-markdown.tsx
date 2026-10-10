@@ -42,6 +42,8 @@ import type { ReactNode } from "react";
 import { Fragment } from "react";
 import {
   EMOJI_ATTR,
+  MENTION_ATTR,
+  MENTION_LABEL_ATTR,
   inlineEmojiNames,
   safeUrl,
   tokenizeInline,
@@ -49,6 +51,7 @@ import {
   type InlineToken,
 } from "./inline-tokens";
 import { getInlineEmojiSet } from "./emoji-registry";
+import { mentionPage, mentionUserName } from "./mention-directory";
 
 /* Rendering options. `emoji` is the SAME set the offset map is handed —
  * both default to the module registry, never to an empty set. `emojiAs`
@@ -107,6 +110,28 @@ const EMOJI_SR: React.CSSProperties = {
   overflow: "hidden",
 };
 
+/* What a mention shows, from the mention directory: a person's current
+ * name, or a page's current title. A person who left keeps the name the
+ * mention was written with; a page this person can't open (or that was
+ * deleted) reads "Private page" and never shows a title. `label` is what
+ * the chip writes back into the source (data-label), so editing a block
+ * refreshes a person's stored name. */
+export function mentionView(t: { mention: "user" | "page"; id: string; label: string }): {
+  text: string;
+  label: string;
+  missing: boolean;
+} {
+  if (t.mention === "user") {
+    const name = mentionUserName(t.id);
+    const shown = name ?? (t.label || "Someone");
+    return { text: `@${shown}`, label: name ?? t.label, missing: !name };
+  }
+  const page = mentionPage(t.id);
+  return page
+    ? { text: page.title || "Untitled", label: "", missing: false }
+    : { text: "Private page", label: "", missing: true };
+}
+
 // Re-exported for existing callers (floating-toolbar, tests) so the
 // import surface of this module is unchanged.
 export { safeUrl };
@@ -162,6 +187,24 @@ function renderChildren(
           }}
         >
           <span style={EMOJI_SR}>{`:${t.name}:`}</span>
+        </span>,
+      );
+      continue;
+    }
+    if (t.kind === "mention") {
+      const v = mentionView(t);
+      out.push(
+        <span
+          key={ctx.keyCounter++}
+          data-o={withOffsets ? t.sourceStart : undefined}
+          {...{
+            [MENTION_ATTR]: `${t.mention}:${t.id}`,
+            [MENTION_LABEL_ATTR]: encodeURIComponent(v.label),
+          }}
+          data-missing={v.missing ? "true" : undefined}
+          className="gio-mention"
+        >
+          {v.text}
         </span>,
       );
       continue;
@@ -359,6 +402,16 @@ function tokensToHtml(
       }"><span style="display:inline-block;width:0;height:0;overflow:hidden">${escHtml(
         sc,
       )}</span></span>`;
+      continue;
+    }
+    if (t.kind === "mention") {
+      // Attribute values are a kind:uuid and an encodeURIComponent string,
+      // so they need no escaping and match the browser's own serialisation
+      // byte for byte (the editor compares innerHTML on every keystroke).
+      const v = mentionView(t);
+      out += `<span ${MENTION_ATTR}="${t.mention}:${t.id}" ${MENTION_LABEL_ATTR}="${encodeURIComponent(
+        v.label,
+      )}"${v.missing ? ' data-missing="true"' : ""} contenteditable="false" class="gio-mention">${escText(v.text)}</span>`;
       continue;
     }
     if (t.kind === "code") {

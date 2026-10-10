@@ -16,7 +16,7 @@ import { numberedOrdinals } from "./blocks";
 import { columnsGridTemplatePlain, normalizeColumnWidths } from "./column-widths";
 import { peekSignedUrl } from "./image-url-cache";
 import { readAlign, readCols, readPaths, readW } from "./image-ops";
-import { EMOJI_NAME_OK, inlineToHtml } from "./inline-markdown";
+import { EMOJI_NAME_OK, inlineToHtml, mentionView } from "./inline-markdown";
 import { calloutBg, calloutRing } from "./callout-color";
 // Logo is inlined as a data URI so the exported HTML file is self-contained
 // (zero network requests). Vite `?raw` reads the file at build time; vitest
@@ -436,13 +436,25 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
  * format. This stays on the documented-loss list alongside caption and
  * columns. Do not "fix" it. */
 
+const MENTION_GLOBAL =
+  /@\[([^\]\n]{0,120})\]\((user|page):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/g;
+
+/** "@[Sam](user:…)" → "@Sam"; a page mention → its title. */
+export function plainMentions(text: string): string {
+  return text.replace(MENTION_GLOBAL, (_m, label: string, kind: "user" | "page", id: string) =>
+    mentionView({ mention: kind, id, label }).text,
+  );
+}
+
 export function toMarkdown(ctx: ExportContext): string {
   const includeDetails = ctx.includeDetails !== false;
   const ords = numberedOrdinals(ctx.blocks);
   const bodies = ctx.blocks.map((b) =>
     blockToMarkdown(b, (b.id && ords.get(b.id)) || 1),
   );
-  const body = bodies.map((s) => s + "\n").join("\n");
+  // A file leaves the app: mentions become the name or title they show.
+  // (The clipboard keeps them, via blockToMarkdown, so they paste back.)
+  const body = plainMentions(bodies.map((s) => s + "\n").join("\n"));
 
   if (!includeDetails) {
     // No front matter. Title becomes an H1 at the top so the file still

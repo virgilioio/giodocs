@@ -28,7 +28,7 @@ export function splitInlineSource(
         if (t.sourceEnd - t.sourceStart > 1) cut = t.sourceEnd;
         return;
       }
-      if (t.kind === "emoji") {
+      if (t.kind === "emoji" || t.kind === "mention") {
         cut = t.sourceEnd;
         return;
       }

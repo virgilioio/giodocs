@@ -171,6 +171,43 @@ button:is([class~="bg-btn"], [class~="border-line"][class~="bg-surface"], .gio-p
 
 /* A label that turns bold when active keeps its width: the box is sized by
    an invisible bold copy, so neighbouring options never shift. */
+/* @mentions (src/lib/inline-markdown.tsx). A person reads "@Name" in the
+   accent colour; a page reads as its title after a small page glyph and
+   opens on click. A page this person can't open reads "Private page". */
+.gio-mention {
+  color: var(--color-accent);
+  border-radius: 4px;
+  padding: 0 2px;
+  margin: 0 1px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  user-select: all;
+}
+.gio-mention[data-gio-mention^="page:"] {
+  color: var(--color-body);
+  text-decoration: underline;
+  text-decoration-color: var(--color-rule);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.gio-mention[data-gio-mention^="page:"]::before {
+  content: "";
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  margin-right: 3px;
+  vertical-align: -0.08em;
+  background: currentColor;
+  opacity: 0.55;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z'/%3E%3Cpath d='M14 3v5h5M9 13h6M9 17h4'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z'/%3E%3Cpath d='M14 3v5h5M9 13h6M9 17h4'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+@media (hover: hover) and (pointer: fine) {
+  .gio-mention[data-gio-mention^="page:"]:hover { text-decoration-color: currentColor; }
+}
+.gio-mention[data-missing="true"] { color: var(--color-muted); cursor: default; text-decoration: none; }
+.gio-mention::selection { background: var(--color-accentWash); }
+
 .gio-stable-bold { display: inline-grid; }
 .gio-stable-bold::after {
   content: attr(data-label); font-weight: 700;

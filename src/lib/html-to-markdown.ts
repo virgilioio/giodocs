@@ -316,6 +316,20 @@ function renderInlineNode(n: Node): string {
     if (!isSafeHref(href)) return label;
     return `[${label}](${href.trim()})`;
   }
+  // An @mention chip copied from a Gio Docs page pastes back as a mention.
+  const mt = n.attrs["data-gio-mention"];
+  if (mt) {
+    const m = /^(user|page):([0-9a-f-]{36})$/.exec(mt);
+    if (m) {
+      let label = "";
+      try {
+        label = decodeURIComponent(n.attrs["data-label"] ?? "");
+      } catch {
+        label = "";
+      }
+      return mentionSource(m[1] as "user" | "page", m[2], label);
+    }
+  }
   if (t === "img") {
     // Alt text only — we don't ingest images in this pass.
     return n.attrs.alt ?? "";
@@ -472,6 +486,7 @@ export function htmlToMarkdown(html: string): string {
  * accepts these shapes.
  */
 
+import { mentionSource } from "./inline-tokens";
 import { nanoid } from "nanoid";
 import { parseMarkdown, type Blk } from "./markdown-import";
 import { MAX_COLS, MIN_COLS } from "./columns";

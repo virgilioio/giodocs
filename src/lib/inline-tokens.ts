@@ -48,6 +48,25 @@ const SHORTCODE_RE = /^:([a-z0-9][a-z0-9-]{0,23}):/;
  * shortcode text node contributes ZERO rendered characters. */
 export const EMOJI_ATTR = "data-gio-emoji";
 
+/** The attribute an @mention chip carries: "user:<id>" or "page:<id>".
+ * htmlToInlineMarkdown rebuilds the source from it (and data-label), and
+ * ce-offsets skips the chip, which, like an emoji, is zero rendered
+ * characters: the caret steps over it as one atom. */
+export const MENTION_ATTR = "data-gio-mention";
+export const MENTION_LABEL_ATTR = "data-label";
+
+/** "@[label](user:<uuid>)" or "@[](page:<uuid>)". The label is the name
+ * when it was written (search and plain-text fallbacks); page mentions keep
+ * it empty so a private page's title never sits in another page's text. */
+const MENTION_RE =
+  /^@\[([^\]\n]{0,120})\]\((user|page):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/;
+
+/** The source for a mention. Brackets and line breaks leave the label. */
+export function mentionSource(kind: "user" | "page", id: string, label: string): string {
+  const clean = kind === "page" ? "" : label.replace(/[[\]\n\r]+/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, 120);
+  return `@[${clean}](${kind}:${id})`;
+}
+
 export function safeUrl(url: string): string | null {
   const trimmed = url.trim();
   if (!trimmed) return null;
@@ -110,8 +129,17 @@ export type InlineEmojiToken = {
   sourceEnd: number;
   name: string;
 };
+export type InlineMentionToken = {
+  kind: "mention";
+  sourceStart: number;
+  sourceEnd: number;
+  mention: "user" | "page";
+  id: string;
+  label: string;
+};
 export type InlineToken =
   | InlineEmojiToken
+  | InlineMentionToken
   | InlineTextToken
   | InlineCodeToken
   | InlineContainerToken
@@ -174,6 +202,25 @@ function tokenizeRange(
           sourceStart: i,
           sourceEnd: i + m[0].length,
           name: m[1],
+        });
+        i += m[0].length;
+        continue;
+      }
+    }
+
+    // @mention @[label](user:<id>) / @[](page:<id>) — before links, which
+    // would otherwise take the "[label](…)" part. Never nests; zero
+    // rendered length, like an emoji.
+    if (c === "@" && src[i + 1] === "[") {
+      const m = MENTION_RE.exec(src.slice(i, Math.min(to, i + 200)));
+      if (m) {
+        out.push({
+          kind: "mention",
+          sourceStart: i,
+          sourceEnd: i + m[0].length,
+          mention: m[2] as "user" | "page",
+          id: m[3],
+          label: m[1],
         });
         i += m[0].length;
         continue;
@@ -363,6 +410,22 @@ function walkNode(node: Node): string {
   // node is NOT walked — that is what keeps rendered length at zero.
   const sc = el.getAttribute ? el.getAttribute(EMOJI_ATTR) : null;
   if (sc) return ":" + sc + ":";
+  // A mention chip round-trips to its source; its visible name is not walked.
+  const mt = el.getAttribute ? el.getAttribute(MENTION_ATTR) : null;
+  if (mt) {
+    const colon = mt.indexOf(":");
+    const kind = mt.slice(0, colon);
+    const id = mt.slice(colon + 1);
+    if ((kind === "user" || kind === "page") && /^[0-9a-f-]{36}$/.test(id)) {
+      let label = "";
+      try {
+        label = decodeURIComponent(el.getAttribute(MENTION_LABEL_ATTR) ?? "");
+      } catch {
+        label = "";
+      }
+      return mentionSource(kind, id, label);
+    }
+  }
   const tag = el.tagName ? el.tagName.toLowerCase() : "";
   if (tag === "script" || tag === "style") return "";
   if (tag === "br") return "\n";

@@ -15,12 +15,14 @@
 
 import {
   EMOJI_ATTR,
+  MENTION_ATTR,
   tokenizeInline,
   type InlineOpts,
   type InlineToken,
 } from "./inline-tokens";
 
-/* Text inside an inline-emoji span is a screen-reader / copy-paste
+/* An @mention chip is an atom the same way (its name is display, not
+ * source). Text inside an inline-emoji span is a screen-reader / copy-paste
  * affordance, not content: it must contribute ZERO rendered characters
  * or the DOM caret and the offset map disagree by the length of the
  * shortcode. Every DOM traversal in this file skips those subtrees. */
@@ -29,7 +31,7 @@ function isEmojiEl(n: Node | null): n is Element {
     !!n &&
     n.nodeType === 1 &&
     typeof (n as Element).hasAttribute === "function" &&
-    (n as Element).hasAttribute(EMOJI_ATTR)
+    ((n as Element).hasAttribute(EMOJI_ATTR) || (n as Element).hasAttribute(MENTION_ATTR))
   );
 }
 
@@ -150,7 +152,7 @@ function scan(source: string, opts?: InlineOpts): {
         continue;
       }
 
-      if (t.kind === "emoji") {
+      if (t.kind === "emoji" || t.kind === "mention") {
         // Zero rendered characters, exactly like a delimiter run: every
         // source position inside ":name:" clamps to the same rendered
         // slot, so the caret steps over the token as one atom.
