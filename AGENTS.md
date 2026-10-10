@@ -75,8 +75,12 @@ once. The decisions below replace it wherever an older section disagrees.
   config), never lists of page ids, and view filtering happens in EXACTLY
   one place: src/lib/run-view.ts.
 - A database inside a page: a "view" block names a database_id. "/table"
-  in a page makes a new child database and places it inline; "/view"
-  places a linked view of an existing database.
+  makes the simple grid (Notion's way); "Table view" makes a new child
+  database and places it inline; "Linked view" places a view of an
+  existing database. A grid's "Turn into database" makes a database from
+  it (first column = title, the others text properties named by the
+  header) and replaces the grid with its view; Undo brings the grid back
+  and deletes the database.
 - Moving a page (sidebar drag, Placed in) goes through move_page only: it
   needs edit access on the page and on where it goes, keeps the cycle
   guard, and sets the order among siblings (pages.position; unordered

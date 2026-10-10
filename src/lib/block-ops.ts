@@ -171,6 +171,10 @@ export const FRESH_PAGE_BLOCKS = new Set<string>();
 /** Ids of view blocks inserted in THIS session, likewise. */
 export const FRESH_VIEW_BLOCKS = new Set<string>();
 
+/** View blocks inserted as "Table view": they make a new database inside
+ *  the page straight away instead of asking where rows come from. */
+export const FRESH_NEW_DATABASES = new Set<string>();
+
 export function newBlock(type: BlockType = "text", text = ""): Blk {
   const base: Blk = { id: nanoid(10), type, text };
   if (type === "todo") base.checked = false;

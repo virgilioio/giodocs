@@ -16,6 +16,9 @@ import { primaryMod } from "@/lib/platform";
 import { nanoid } from "nanoid";
 import { toClipboard } from "@/lib/clipboard";
 import { bulletOnSpace, newLine, unlistOnBackspace } from "@/lib/cell-lines";
+import { planGridToDatabase } from "@/lib/table-to-database";
+import { useGridToDatabase } from "@/hooks/use-grid-to-database";
+import { defaultInlineView } from "@/lib/inline-view";
 import {
   CELLS_MIME,
   cellSel,
@@ -178,6 +181,8 @@ import {
   isTextBearing,
   indentBlock as opsIndent,
   reclampIndents,
+  FRESH_VIEW_BLOCKS,
+  FRESH_NEW_DATABASES,
 } from "@/lib/block-ops";
 import { resolveKey, type Op as KeyOp } from "@/lib/block-key-handler";
 import { slashTrigger, stripSlash } from "@/lib/slash";
@@ -383,12 +388,23 @@ const BLOCK_MENU: MenuItem[] = [
     kw: "page subpage child inside nest place placement",
   },
   {
+    // A new database inside this page (Notion's "Table view"). `lang`
+    // carries the variant through the same path code blocks use.
     type: "view",
-    name: "View",
-    desc: "A live table, board or list of pages, with its own filters.",
+    name: "Table view",
+    desc: "A new database inside this page, shown as a table.",
     icon: "\u25A4",
     ic: "bView",
-    kw: "view table board list linked query pages inline",
+    kw: "database table view inline new rows properties",
+    lang: "new",
+  },
+  {
+    type: "view",
+    name: "Linked view",
+    desc: "A table, board or list of an existing database.",
+    icon: "\u25A4",
+    ic: "bView",
+    kw: "view linked database board list query pages existing",
   },
 ];
 
@@ -2276,6 +2292,10 @@ export function EditableBody({
           FRESH_DIAGRAMS.add(blockId);
           if (!nb.text) nb.text = MERMAID_STARTER;
         }
+      }
+      if (type === "view") {
+        FRESH_VIEW_BLOCKS.add(blockId);
+        if (lang === "new") FRESH_NEW_DATABASES.add(blockId);
       }
       if (type === "todo" && nb.checked == null) nb.checked = false;
       if (type === "toggle" && nb.open == null) nb.open = false;
@@ -6499,8 +6519,79 @@ export function TableBlock({
             }
           },
         },
+        ...(hostPageId && gridToDb
+          ? ([
+              { kind: "sep" },
+              {
+                kind: "row",
+                label: converting ? "Turning into a database…" : "Turn into database",
+                icon: "bView",
+                hint: { text: `${Math.max(0, nRows - (o.headerRow ? 1 : 0))} rows` },
+                onPick: () => void turnIntoDatabase(),
+              },
+            ] as MenuRow[])
+          : []),
       ],
     };
+  }
+
+  // Turn into database (Notion's): the first column becomes each row's
+  // title, the others text properties named by the header, every other row
+  // a page; the grid is replaced by a view of the new database. Undo puts
+  // the grid back and removes the database.
+  const hostPageId = useContext(PageImageCtx)?.pageId ?? null;
+  const gridToDb = useGridToDatabase();
+  const tableToast = useToast();
+  const [converting, setConverting] = useState(false);
+  async function turnIntoDatabase() {
+    if (!hostPageId || !gridToDb || converting || locked) return;
+    closeMenu();
+    setConverting(true);
+    const before: Partial<Blk> = {
+      type: "table",
+      rows: block.rows,
+      align: block.align,
+      widths: block.widths,
+      headerRow: block.headerRow,
+      headerCol: block.headerCol,
+      fit: block.fit,
+      colors: block.colors,
+      view: undefined,
+    };
+    try {
+      const plan = planGridToDatabase(rows, headerRow);
+      const { databaseId, keys } = await gridToDb.run(hostPageId, plan);
+      onChange({
+        type: "view",
+        view: {
+          ...defaultInlineView(databaseId),
+          sort: { prop: "@created", dir: "asc" },
+          config: { props: keys },
+        },
+        rows: undefined,
+        align: undefined,
+        widths: undefined,
+        headerRow: undefined,
+        headerCol: undefined,
+        fit: undefined,
+        colors: undefined,
+      } as Partial<Blk>);
+      const n = plan.records.length;
+      tableToast.push({
+        message: `Turned into a database: ${n} ${n === 1 ? "row" : "rows"}, ${keys.length + 1} ${keys.length === 0 ? "property" : "properties"}.`,
+        action: {
+          label: "Undo",
+          onClick: () => {
+            onChange(before);
+            gridToDb.remove(databaseId);
+          },
+        },
+      });
+    } catch {
+      tableToast.push("Couldn't turn this table into a database. The table is unchanged.");
+    } finally {
+      setConverting(false);
+    }
   }
 
   function openOptionsMenu(anchor: HTMLElement) {

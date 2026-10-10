@@ -1,6 +1,6 @@
-import { useContext, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { FRESH_VIEW_BLOCKS, type Blk } from "@/lib/block-ops";
+import { FRESH_NEW_DATABASES, FRESH_VIEW_BLOCKS, type Blk } from "@/lib/block-ops";
 import { PageImageCtx } from "@/components/image-block";
 import {
   defaultInlineView,
@@ -67,8 +67,10 @@ export function ViewBlock({
     return locked ? null : (
       <StartFrom
         autoFocus={FRESH_VIEW_BLOCKS.has(block.id)}
+        autoNew={FRESH_NEW_DATABASES.has(block.id)}
         onPick={(v) => {
           FRESH_VIEW_BLOCKS.delete(block.id);
+          FRESH_NEW_DATABASES.delete(block.id);
           onChange({ view: v });
         }}
         onCancel={onDelete}
@@ -82,10 +84,13 @@ export function ViewBlock({
  * rows, or a copy of one of its saved views. */
 function StartFrom({
   autoFocus,
+  autoNew,
   onPick,
   onCancel,
 }: {
   autoFocus: boolean;
+  /** "Table view": make the new database at once. */
+  autoNew?: boolean;
   onPick: (v: InlineView) => void;
   onCancel: () => void;
 }) {
@@ -118,6 +123,16 @@ function StartFrom({
       setBusy(false);
     }
   };
+  // "Table view" from the slash menu: no question, the database is made
+  // here. Once per block (the ref survives re-renders while it's made).
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (!autoNew || autoRan.current || !hostPageId) return;
+    autoRan.current = true;
+    void newDatabaseHere();
+    // newDatabaseHere is recreated each render; running it once is the point.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoNew, hostPageId]);
   const row = (label: string, onClick: () => void, key: string, first = false, hint?: string) => (
     <button
       key={key}

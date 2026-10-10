@@ -65,6 +65,7 @@ import { seedFor, useNewPropertyFlow } from "./new-property-flow";
 import { formatTimestamp } from "@/lib/format";
 
 import { EditableBody, EditableTitle } from "./page-editor-body";
+import { GridToDatabaseProvider } from "./grid-to-database-provider";
 import { createBlocksSaver } from "@/lib/blocks-saver";
 import { jsonEqual } from "@/lib/json-equal";
 import { anyUnsaved, setSaveStatus } from "@/lib/save-status";
@@ -2034,6 +2035,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
             <TemplatePicker databaseId={page.database_id ?? null} onPick={pickTemplate} />
           </div>
         ) : null}
+        <GridToDatabaseProvider>
         <EditableBody
           key={editorKey}
           pageId={page.id}
@@ -2044,6 +2046,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
           editedRel={page.edited_at ? relTime(page.edited_at) : null}
           editorFirstName={editorName}
         />
+        </GridToDatabaseProvider>
         {conflict ? (
           // After the last block, sticky to the bottom of the window: on a
           // long page it floats at the bottom edge where you can reach it;
