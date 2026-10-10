@@ -82,6 +82,15 @@ provider Virgilio already has; don't build them until asked.
   when no page has a value for it. Keys never change; a type changes only
   while no page has a value. Built-in properties can't be archived or
   retyped. Enforced in the database (guard_property_def, RLS).
+- Options change one at a time through add_property_option /
+  rename_property_option (row-locked). Never write a whole options list
+  from the browser. An option value pages use can't be removed; renaming
+  keeps the value. Members can't change built-in option lists.
+- validate_page_props checks only the properties an update changes, so a
+  stale value never locks the rest of a page.
+- views.group_by is "the property the layout is organised by": a select or
+  status for a board, a date for a calendar. Each layout falls back to one
+  that fits; copying a view keeps it.
 - New pages are private to their creator (access_type 'restricted' with the
   creator as the only editor). Sharing with more people or with everyone in
   the workspace is a separate, explicit step. Existing pages keep their
