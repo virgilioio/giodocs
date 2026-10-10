@@ -158,6 +158,7 @@ export type Database = {
         Row: {
           blocks: Json
           created_at: string
+          edited_at: string | null
           edited_by: string | null
           icon: string | null
           id: string
@@ -169,6 +170,7 @@ export type Database = {
         Insert: {
           blocks: Json
           created_at?: string
+          edited_at?: string | null
           edited_by?: string | null
           icon?: string | null
           id?: string
@@ -180,6 +182,7 @@ export type Database = {
         Update: {
           blocks?: Json
           created_at?: string
+          edited_at?: string | null
           edited_by?: string | null
           icon?: string | null
           id?: string
@@ -827,6 +830,7 @@ export type Database = {
         Returns: undefined
       }
       restore_page: { Args: { p_page: string }; Returns: undefined }
+      restore_page_from_version: { Args: { p_version: string }; Returns: string }
       restore_page_version: { Args: { p_version: string }; Returns: undefined }
       safe_uuid: { Args: { t: string }; Returns: string }
       search_pages: {
