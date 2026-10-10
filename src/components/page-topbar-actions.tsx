@@ -17,6 +17,7 @@ import { pageUrl } from "@/lib/slug";
 import { getPageOrigin } from "@/lib/page-origin";
 import { PageActionsMenu, PageMoreButton } from "./page-actions-menu";
 import { openPermissionsPopover } from "./permissions-popover";
+import { openPageHistory } from "@/lib/page-history-store";
 import { usePageAppearance } from "@/lib/page-appearance";
 import {
   useArchivePage,
@@ -441,6 +442,7 @@ export function PageTopbarActions({
             onCopyLink: () => { void doCopyLink(); },
             onExport: () => setExportOpen(true),
             onDuplicate: () => { void doDuplicate(); },
+            onOpenHistory: () => openPageHistory(page.id),
             onArchive: () => archive.mutate({ pageId: page.id, archived: true }),
             onUnarchive: () => archive.mutate({ pageId: page.id, archived: false }),
             onDelete: doDelete,

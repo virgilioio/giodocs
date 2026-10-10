@@ -40,6 +40,7 @@ const P = {
   small: "M4 17V7M4 7h7M14 17v-6M14 11h5",
   wide: "m8 8-4 4 4 4M16 8l4 4-4 4M4 12h16",
   lock: "M5 11h14v9H5zM8 11V7a4 4 0 0 1 8 0v4",
+  history: "M3.5 12a8.5 8.5 0 1 0 2.5-6M3.5 4v4h4M12 7.5V12l3 2",
 };
 
 /* ────────────── The trigger button ────────────── */
@@ -324,6 +325,7 @@ export type PageActionsHandlers = {
   onCopyLink: () => void;
   onExport: () => void;
   onDuplicate: () => void;
+  onOpenHistory: () => void;
   onArchive: () => void;
   onUnarchive: () => void;
   onDelete: () => void;
@@ -507,6 +509,11 @@ export function PageActionsMenu({
                 icon={P.copy} label="Duplicate"
                 hint="⌘D" hintKind="shortcut"
                 onClick={() => { onClose(); handlers.onDuplicate(); }}
+              />
+              <ActionRow
+                icon={P.history} label="Page history"
+                hint="restore a version" hintKind="value"
+                onClick={() => { onClose(); handlers.onOpenHistory(); }}
               />
               <ActionRow
                 icon={P.box}

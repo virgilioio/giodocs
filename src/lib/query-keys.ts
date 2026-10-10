@@ -10,4 +10,8 @@ export const qk = {
   page: (id: string) => ["page", id] as const,
   customEmoji: (ws: string) => ["customEmoji", ws] as const,
   pageAccess: (id: string) => ["pageAccess", id] as const,
+  /** A page's saved versions, newest first (no blocks). */
+  pageVersions: (id: string) => ["pageVersions", id] as const,
+  /** One version ready to preview: its blocks rendered to a document. */
+  pageVersionPreview: (id: string) => ["pageVersionPreview", id] as const,
 };

@@ -52,6 +52,9 @@ export type ExportContext = {
    * clipboard path via blocksHtmlFragment, so all fetching happens before
    * the call, never inside it. */
   emoji?: ReadonlyMap<string, string>;
+  /** When false, leave out the Gio Docs masthead (the page history preview
+   * shows the page itself, not a document about it). Default: true. */
+  masthead?: boolean;
 };
 
 /* ─────────────────────────── Logo (inlined) ─────────────────────────── */
@@ -1129,13 +1132,30 @@ ${wsName ? `<span class="ws">${esc(wsName)}</span>` : ""}
 <style>${HTML_CSS}${emojiCss(ctx.emoji)}</style>
 </head>
 <body>
-${mastheadHtml}
+${ctx.masthead === false ? "" : mastheadHtml}
 ${headerHtml}
 <main>
 ${body}
 </main>
 </body>
 </html>`;
+}
+
+/* ─────────────────────────── Preview ─────────────────────────── */
+
+/**
+ * The page history preview: the page as a document, without the masthead
+ * or the properties, in the app's own fonts (`fontCss`, the app's
+ * @font-face rules) on a transparent background, so it sits on the
+ * dialog's surface.
+ */
+export function toPreviewHtml(ctx: ExportContext, fontCss: string): string {
+  const html = toHtml({ ...ctx, includeDetails: false, masthead: false });
+  const extra = `${fontCss}
+  html, body { background: transparent; }
+  @media screen { body { padding: 30px 44px 64px; } }
+  </style>`;
+  return html.replace("</style>", () => extra);
 }
 
 /* ─────────────────────────── printPdf ─────────────────────────── */

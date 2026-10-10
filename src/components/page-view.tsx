@@ -58,6 +58,9 @@ import {
   openPermissionsPopover,
 } from "./permissions-popover";
 import { RowMenu, type MenuRow, type MenuSpec } from "./row-menu";
+import { PageHistoryHost } from "./page-history";
+import type { RestoredPage } from "@/hooks/use-page-history";
+import { clearUndoStore } from "@/lib/undo-store";
 import { normAccess, panelCopy } from "@/lib/share-panel";
 import type { Block, PageAccessRow, PageFull, PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
@@ -1537,6 +1540,66 @@ export function PageEditor({ pageId }: { pageId: string }) {
     setEditorKey((k) => k + 1);
   }, [conflict, page, queryClient]);
 
+  /* Page history (page-history.tsx). Before a restore: send what's still
+   * waiting, so the database saves it as a version and Undo brings it back.
+   * After: load the restored content the same way "Load their version" does. */
+  const prepareRestore = useCallback(async (): Promise<string | null> => {
+    if (conflict) {
+      return "This page has an edit conflict. Choose Keep mine or Load their version first.";
+    }
+    if (titleTimerRef.current) window.clearTimeout(titleTimerRef.current);
+    titleTimerRef.current = null;
+    const pendingTitle = pendingTitleRef.current;
+    pendingTitleRef.current = null;
+    if (pendingTitle) {
+      try {
+        await renameRef.current.mutateAsync(pendingTitle);
+      } catch {
+        return "Your title change hasn't saved yet. Try again once the page says Saved.";
+      }
+    }
+    const saver = saverRef.current;
+    if (saver) {
+      await saver.flush();
+      if (saver.hasUnsaved()) {
+        return "Your latest edits haven't saved yet, so restoring now would lose them. Try again once the page says Saved.";
+      }
+    }
+    return null;
+  }, [conflict]);
+
+  const adoptRestored = useCallback(
+    (row: RestoredPage) => {
+      if (!page) return;
+      queryClient.setQueryData<PageFull | null>(qk.page(page.id), (prev) =>
+        prev
+          ? {
+              ...prev,
+              title: row.title,
+              icon: row.icon ?? prev.icon,
+              blocks: row.blocks as unknown as PageFull["blocks"],
+              edited_at: row.edited_at,
+              edited_by: row.edited_by,
+            }
+          : prev,
+      );
+      // Mutate, don't replace: the saver holds this object.
+      const known = knownRef.current;
+      known.editedAt = row.edited_at;
+      known.base = row.blocks;
+      known.attempts = [];
+      known.force = false;
+      setConfirmedServerState(page.id, row.edited_at, row.blocks);
+      saverRef.current?.reset(row.blocks);
+      // The editor's undo steps belong to the content that was replaced.
+      clearUndoStore(page.id);
+      setTitleDraft(null);
+      setConflict(null);
+      setEditorKey((k) => k + 1);
+    },
+    [page, queryClient],
+  );
+
   const onBlocksChange = useCallback(
     (blocks: Block[]) => {
       if (locked) return;
@@ -1752,6 +1815,18 @@ export function PageEditor({ pageId }: { pageId: string }) {
           </div>
         ) : null}
       </div>
+      <PageHistoryHost
+        page={page}
+        members={members}
+        meId={meId}
+        canEdit={
+          page.access_type === "workspace"
+            ? page.ws_role !== "view"
+            : access.some((a) => a.user_id === meId && a.capability === "write")
+        }
+        prepare={prepareRestore}
+        adopt={adoptRestored}
+      />
       <PermissionsPopoverHost
         page={page}
         workspaceName={workspaceName}
