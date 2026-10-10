@@ -63,10 +63,29 @@ before proceeding.
 - Only workspace owners publish team views — enforced by views_update
   RLS and publish_view(). Members fork to personal copies instead.
 
-## Scope (v1 exclusions — do not build)
-Folder trees, nested pages, comments, mentions, notifications,
-templates, AI features, public sharing, real-time
+## Scope (exclusions — do not build)
+Folder trees, AI features, public sharing on the open web, real-time
 co-editing cursors, dark mode, multi-workspace UI.
+
+Lifted by Allan on 2026-10-09: @mentions (people and pages), comments,
+in-app notifications (an inbox) and templates are now in scope. Email
+notifications come later, through a Supabase Edge Function and the email
+provider Virgilio already has; don't build them until asked.
+
+## Decisions (Allan, 2026-10-09)
+- Properties: any member can create a property and edit its label and
+  options; only workspace owners remove one, and removing is an ARCHIVE
+  (hidden, values kept, restorable). A property is deleted outright only
+  when no page has a value for it. Keys never change; a type changes only
+  while no page has a value. Built-in properties can't be archived or
+  retyped. Enforced in the database (guard_property_def, RLS).
+- New pages are private to their creator (access_type 'restricted' with the
+  creator as the only editor). Sharing with more people or with everyone in
+  the workspace is a separate, explicit step. Existing pages keep their
+  access. Enforced by the database default and the
+  pages_grant_creator_access trigger. Create pages with a client-generated
+  id and no RETURNING (insert, then select): the creator's access row is
+  added after the insert, so an insert...select would fail RLS.
 
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
