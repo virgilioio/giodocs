@@ -20,4 +20,6 @@ export const qk = {
   inbox: (userId: string) => ["inbox", userId] as const,
   /** A page's comments, oldest first. */
   comments: (pageId: string) => ["comments", pageId] as const,
+  /** Pages marked as templates. */
+  templates: (ws: string) => ["templates", ws] as const,
 };

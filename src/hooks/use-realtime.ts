@@ -68,7 +68,12 @@ export function useRealtimeWorkspace(workspaceId: string | undefined) {
           // Ignore our own edits — optimistic patch is authoritative.
           if (myId && newRow.edited_by === myId) return;
 
-          const hidden = newRow.deleted_at != null || newRow.archived_at != null;
+          const hidden =
+            newRow.deleted_at != null || newRow.archived_at != null || newRow.template_at != null;
+          // A template changed: the template list may have too.
+          if (newRow.template_at != null) {
+            void qc.invalidateQueries({ queryKey: qk.templates(workspaceId) });
+          }
           const id = newRow.id as string;
 
           qc.setQueryData<PageListItem[]>(key, (prev) => {

@@ -476,6 +476,8 @@ export function useCreatePage() {
        *  — the column, never a prop. */
       parentId?: string | null;
       title?: string;
+      /** The page icon; a new page from a template takes the template's. */
+      icon?: string;
       _tempId?: string;
     }) => {
       // New pages are private to their creator: the database adds the
@@ -489,7 +491,7 @@ export function useCreatePage() {
         created_by: user!.id,
         edited_by: user!.id,
         verified_by: user!.id,
-        icon: "📄",
+        icon: v.icon || "📄",
         title: v.title ?? "",
         parent_id: v.parentId ?? null,
         props: v.seedProps as never,
@@ -517,7 +519,7 @@ export function useCreatePage() {
       const optimistic: PageListItem = {
         id: tempId,
         title: v.title ?? "",
-        icon: "📄",
+        icon: v.icon || "📄",
         parent_id: v.parentId ?? null,
         props: v.seedProps as PageListItem["props"],
         verified_at: nowIso,
@@ -1094,7 +1096,7 @@ export function useCreatePageAndOpen() {
   const create = useCreatePage();
   const navigate = useNavigate();
   return useCallback(
-    async (v: { seedProps: Record<string, unknown>; blocks?: unknown[] }) => {
+    async (v: { seedProps: Record<string, unknown>; blocks?: unknown[]; title?: string; icon?: string }) => {
       const created = await create.mutateAsync(v);
       try {
         sessionStorage.setItem("gio.focus-title", created.id);

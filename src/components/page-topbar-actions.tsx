@@ -18,6 +18,7 @@ import { getPageOrigin } from "@/lib/page-origin";
 import { PageActionsMenu, PageMoreButton } from "./page-actions-menu";
 import { openPermissionsPopover } from "./permissions-popover";
 import { openPageHistory } from "@/lib/page-history-store";
+import { useSetTemplate } from "@/hooks/use-templates";
 import { openComments, toggleComments, useCommentsPanel } from "@/lib/comments-store";
 import { toThreads, useComments } from "@/hooks/use-comments";
 import { usePageAppearance } from "@/lib/page-appearance";
@@ -324,6 +325,7 @@ export function PageTopbarActions({
   const setProp = useSetPageProperty();
   const dup = useDuplicatePage();
   const archive = useArchivePage();
+  const setTemplate = useSetTemplate();
   const del = useDeletePage();
   const restore = useRestorePage();
 
@@ -492,6 +494,8 @@ export function PageTopbarActions({
             onExport: () => setExportOpen(true),
             onDuplicate: () => { void doDuplicate(); },
             onOpenHistory: () => openPageHistory(page.id),
+            onToggleTemplate: () =>
+              setTemplate.mutate({ pageId: page.id, title: page.title ?? "", on: !page.template_at }),
             onArchive: () => archive.mutate({ pageId: page.id, archived: true }),
             onUnarchive: () => archive.mutate({ pageId: page.id, archived: false }),
             onDelete: doDelete,

@@ -8,18 +8,20 @@ const PAGE_LIST_COLUMNS =
   "id, title, icon, props, verified_at, verified_by, edited_at, edited_by, access_type, archived_at, parent_id";
 
 const PAGE_FULL_COLUMNS =
-  "id, workspace_id, title, icon, props, blocks, access_type, ws_role, verified_at, verified_by, edited_at, edited_by, created_by, created_at, deleted_at, archived_at, parent_id";
+  "id, workspace_id, title, icon, props, blocks, access_type, ws_role, verified_at, verified_by, edited_at, edited_by, created_by, created_at, deleted_at, archived_at, template_at, parent_id";
 
 async function fetchPages(ws: string): Promise<PageListItem[]> {
-  // Archived pages leave every view, area list, and sidebar count. They stay
-  // reachable by direct URL and by search_pages (⌘K), which is the
-  // "stays searchable" promise.
+  // Archived pages and templates leave every view, area list, and sidebar
+  // count. They stay reachable by direct URL and by search_pages (⌘K),
+  // which is the "stays searchable" promise; templates are also offered
+  // when starting a new page (useTemplates).
   const { data, error } = await supabase
     .from("pages")
     .select(PAGE_LIST_COLUMNS)
     .eq("workspace_id", ws)
     .is("deleted_at", null)
     .is("archived_at", null)
+    .is("template_at", null)
     .order("edited_at", { ascending: false })
     .limit(2000);
   if (error) throw error;
@@ -268,4 +270,30 @@ export function useWorkspaceShell(ws: string | undefined) {
   });
   const [pages, views, members, propDefs, workspace] = results;
   return { pages, views, members, propDefs, workspace };
+}
+
+export type TemplateRow = { id: string; title: string; icon: string | null; edited_at: string };
+
+async function fetchTemplates(ws: string): Promise<TemplateRow[]> {
+  const { data, error } = await supabase
+    .from("pages")
+    .select("id, title, icon, edited_at")
+    .eq("workspace_id", ws)
+    .is("deleted_at", null)
+    .is("archived_at", null)
+    .not("template_at", "is", null)
+    .order("title", { ascending: true })
+    .limit(200);
+  if (error) throw error;
+  return (data ?? []) as TemplateRow[];
+}
+
+/** The templates this person can open, A–Z. */
+export function useTemplates(ws: string | undefined) {
+  return useQuery({
+    queryKey: ws ? qk.templates(ws) : ["templates", "none"],
+    queryFn: () => fetchTemplates(ws!),
+    enabled: !!ws,
+    staleTime: 60_000,
+  });
 }

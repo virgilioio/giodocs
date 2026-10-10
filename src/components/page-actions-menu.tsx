@@ -41,6 +41,7 @@ const P = {
   wide: "m8 8-4 4 4 4M16 8l4 4-4 4M4 12h16",
   lock: "M5 11h14v9H5zM8 11V7a4 4 0 0 1 8 0v4",
   history: "M3.5 12a8.5 8.5 0 1 0 2.5-6M3.5 4v4h4M12 7.5V12l3 2",
+  template: "M5 4h14v5H5zM5 13h6v7H5zM15 13h4M15 17h4",
 };
 
 /* ────────────── The trigger button ────────────── */
@@ -326,6 +327,7 @@ export type PageActionsHandlers = {
   onExport: () => void;
   onDuplicate: () => void;
   onOpenHistory: () => void;
+  onToggleTemplate: () => void;
   onArchive: () => void;
   onUnarchive: () => void;
   onDelete: () => void;
@@ -514,6 +516,12 @@ export function PageActionsMenu({
                 icon={P.history} label="Page history"
                 hint="restore a version" hintKind="value"
                 onClick={() => { onClose(); handlers.onOpenHistory(); }}
+              />
+              <ActionRow
+                icon={P.template}
+                label={page.template_at ? "Stop using as template" : "Use as template"}
+                hint={page.template_at ? "back to a page" : "start pages from it"} hintKind="value"
+                onClick={() => { onClose(); handlers.onToggleTemplate(); }}
               />
               <ActionRow
                 icon={P.box}

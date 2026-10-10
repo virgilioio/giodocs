@@ -60,6 +60,9 @@ import {
 import { RowMenu, type MenuRow, type MenuSpec } from "./row-menu";
 import { PageHistoryHost } from "./page-history";
 import { LinkedFrom } from "./linked-from";
+import { TemplateBanner, TemplatePicker } from "./templates-ui";
+import { applyTemplate } from "@/hooks/use-templates";
+import { isBlankPage } from "@/lib/template-copy";
 import { CommentMarkers, CommentsHost } from "./comments-panel";
 import { useCommentsLive } from "@/hooks/use-comments";
 import { closeComments, getCommentsPanel } from "@/lib/comments-store";
@@ -1607,6 +1610,9 @@ export function PageEditor({ pageId }: { pageId: string }) {
   const onBlocksChange = useCallback(
     (blocks: Block[]) => {
       if (locked) return;
+      // Any edit at all (a keystroke, an Enter) hides the template list.
+      void blocks;
+      setWroteSomething(true);
       saverRef.current?.set(blocks);
     },
     [locked],
@@ -1624,6 +1630,36 @@ export function PageEditor({ pageId }: { pageId: string }) {
     }
     return [...s].sort();
   }, [shell.pages.data]);
+
+  /* A blank page offers templates. Typing anything (title or body) hides
+   * the list at once, without waiting for the save. */
+  const [wroteSomething, setWroteSomething] = useState(false);
+  useEffect(() => setWroteSomething(false), [pageId]);
+  const canEditPage = !!page && (page.access_type === "workspace"
+    ? page.ws_role !== "view"
+    : access.some((a) => a.user_id === meId && a.capability === "write"));
+  const showTemplatePicker =
+    !!page && !page.template_at && canEditPage && !app.locked && !wroteSomething &&
+    !(titleDraft ?? "").trim() && isBlankPage(page.title, page.blocks);
+  const pickTemplate = useCallback(
+    async (templateId: string) => {
+      if (!page) return;
+      const problem = await prepareRestore();
+      if (problem) {
+        toast.push(problem);
+        return;
+      }
+      try {
+        const row = await applyTemplate(page.id, templateId, { title: page.title ?? "", props: page.props });
+        queryClient.setQueryData<PageFull | null>(qk.page(page.id), (prev) => (prev ? { ...prev, props: row.props } : prev));
+        adoptRestored(row);
+        void queryClient.invalidateQueries({ queryKey: qk.pages(ws) });
+      } catch {
+        toast.push("Couldn't apply that template. Try again.");
+      }
+    },
+    [page, prepareRestore, adoptRestored, queryClient, toast, ws],
+  );
 
   // Comments stay live while the page is open; the panel closes on leaving.
   useCommentsLive(pageId);
@@ -1766,6 +1802,9 @@ export function PageEditor({ pageId }: { pageId: string }) {
         </div>
       ) : null}
 
+      {/* 4b. Template banner. */}
+      {page.template_at ? <TemplateBanner pageId={page.id} title={page.title ?? ""} /> : null}
+
       {/* 4. Properties strip — the Verified control lives inside it now.
        * The strip owns its own top hairline; margin-top absorbs the old
        * banner's job (18px instead of 22px). */}
@@ -1803,6 +1842,13 @@ export function PageEditor({ pageId }: { pageId: string }) {
       >
 
         <CommentMarkers pageId={page.id} />
+        {showTemplatePicker ? (
+          // Floats under the first line of a blank page: it goes the moment
+          // you type, and nothing moves when it does.
+          <div style={{ position: "absolute", top: 50, left: 0, width: 360, zIndex: 2 }}>
+            <TemplatePicker onPick={pickTemplate} />
+          </div>
+        ) : null}
         <EditableBody
           key={editorKey}
           pageId={page.id}
