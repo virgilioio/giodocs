@@ -22,6 +22,15 @@
  * `deleteRow(rows, 0)` promotes what was row 1 into the header slot with no
  * metadata to migrate.
  */
+import {
+  deleteMap,
+  insertMap,
+  moveMap,
+  remapCols,
+  remapRows,
+  type TableColors,
+} from "./table-colors";
+
 export type TableRows = string[][];
 export type Align = "left" | "center" | "right";
 export type AlignList = Align[];
@@ -392,4 +401,85 @@ export function clearColumn(rows: TableRows, index: number): TableRows {
     next[index] = "";
     return next;
   });
+}
+
+/* ── One structural op over every shadow array ───────────────────────────
+ * Rows, align, widths and colours change together, so no op can forget
+ * one of them and offset every column (or leave a colour behind). */
+
+export type TableState = {
+  rows: TableRows;
+  align: AlignList;
+  widths?: WidthList;
+  colors?: TableColors;
+};
+export type TableOp =
+  | { op: "addRow"; at: number }
+  | { op: "deleteRow"; index: number }
+  | { op: "duplicateRow"; index: number }
+  | { op: "moveRow"; from: number; to: number }
+  | { op: "addCol"; at: number }
+  | { op: "deleteCol"; index: number }
+  | { op: "duplicateCol"; index: number }
+  | { op: "moveCol"; from: number; to: number };
+
+export function applyTableOp(s: TableState, o: TableOp): TableState {
+  const nRows = s.rows.length;
+  const nCols = width(normalizeTable(s.rows));
+  switch (o.op) {
+    case "addRow": {
+      const at = Math.max(0, Math.min(o.at, nRows));
+      return { ...s, rows: addRow(s.rows, at), colors: remapRows(s.colors, insertMap(at)) };
+    }
+    case "deleteRow":
+      if (nRows <= 1 || o.index < 0 || o.index >= nRows) return s;
+      return { ...s, rows: deleteRow(s.rows, o.index), colors: remapRows(s.colors, deleteMap(o.index)) };
+    case "duplicateRow":
+      if (o.index < 0 || o.index >= nRows) return s;
+      return {
+        ...s,
+        rows: duplicateRow(s.rows, o.index),
+        colors: remapRows(s.colors, insertMap(o.index + 1), [o.index, o.index + 1]),
+      };
+    case "moveRow": {
+      const to = Math.max(0, Math.min(o.to, nRows - 1));
+      if (o.from < 0 || o.from >= nRows || to === o.from) return s;
+      return { ...s, rows: moveRow(s.rows, o.from, to), colors: remapRows(s.colors, moveMap(o.from, to)) };
+    }
+    case "addCol": {
+      const at = Math.max(0, Math.min(o.at, nCols));
+      return {
+        rows: addColumn(s.rows, at),
+        align: addAlign(s.align, at),
+        widths: addWidth(s.widths, at),
+        colors: remapCols(s.colors, insertMap(at)),
+      };
+    }
+    case "deleteCol":
+      if (nCols <= 1 || o.index < 0 || o.index >= nCols) return s;
+      return {
+        rows: deleteColumn(s.rows, o.index),
+        align: deleteAlign(s.align, o.index),
+        widths: deleteWidth(s.widths, o.index),
+        colors: remapCols(s.colors, deleteMap(o.index)),
+      };
+    case "duplicateCol":
+      if (o.index < 0 || o.index >= nCols) return s;
+      return {
+        rows: duplicateColumn(s.rows, o.index),
+        align: duplicateAlign(s.align, o.index),
+        widths: duplicateWidth(s.widths, o.index),
+        colors: remapCols(s.colors, insertMap(o.index + 1), [o.index, o.index + 1]),
+      };
+    case "moveCol": {
+      const to = Math.max(0, Math.min(o.to, nCols - 1));
+      if (o.from < 0 || o.from >= nCols || to === o.from) return s;
+      return {
+        rows: moveColumn(s.rows, o.from, to),
+        align: moveAlign(s.align, o.from, to),
+        widths: moveWidth(s.widths, o.from, to),
+        colors: remapCols(s.colors, moveMap(o.from, to)),
+      };
+    }
+  }
 }

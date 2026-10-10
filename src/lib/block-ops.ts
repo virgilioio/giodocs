@@ -20,6 +20,7 @@ import { htmlToMarkdown, htmlToBlocks } from "@/lib/html-to-markdown";
 import { emptyColumns } from "@/lib/columns";
 import { clampIndent } from "@/lib/blocks";
 import type { CalloutColor } from "@/lib/callout-color";
+import type { TableColors } from "@/lib/table-colors";
 
 /** Block types that participate in list indentation. Headings, quotes,
  *  callouts, code, tables, dividers, columns, captions, and toggles do
@@ -95,6 +96,9 @@ export type Blk = {
    *  the page and `widths` act as proportions. A table without `widths`
    *  already fits; one with `widths` and no `fit` keeps exact widths. */
   fit?: boolean;
+  /** Only meaningful when type === "table": text and background colours
+   *  by name, on cells, rows and columns (src/lib/table-colors.ts). */
+  colors?: TableColors;
   /** Only meaningful when type === "code": the fence language
    *  ("```mermaid"). "mermaid" renders the block as a diagram. */
   lang?: string;

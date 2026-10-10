@@ -698,6 +698,16 @@ describe("table export wrapping and widths", () => {
     expect(fit).toContain('<table style="table-layout:fixed;width:100%">');
   });
 
+  it("carries cell, row and column colours, the cell's own first", () => {
+    const html = toHtml({
+      title: "T",
+      blocks: [tblock({ colors: { rows: { "1": { bg: "yellow" } }, cells: { "1,0": { fg: "red", bg: "blue" } } } })],
+    });
+    expect(html).toContain("color:var(--color-danger);background:var(--color-blueTint)");
+    expect(html).toContain("background:var(--color-yellowTint)");
+    expect(html).toMatch(/--color-danger: \S+;/);
+  });
+
   it("without widths emits no colgroup and no inline table-layout", () => {
     const html = toHtml({ title: "T", blocks: [tblock()] });
     expect(html).not.toContain("<colgroup>");

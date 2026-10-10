@@ -135,7 +135,20 @@ import {
   WIDTH_DEFAULT,
   fitPercents,
   resizeFitted,
+  applyTableOp,
+  type TableOp,
 } from "@/lib/table-ops";
+import {
+  TABLE_COLOR_NAMES,
+  bgToken,
+  colorAt,
+  colorLabel,
+  fgToken,
+  normalizeColors,
+  setColor,
+  type ColorTarget,
+  type TableColorName,
+} from "@/lib/table-colors";
 // The shared block-editor primitives — ONE implementation used by both
 // EditableBody (top-level) and ColumnStack (per-column). See:
 //   src/lib/block-ops.ts          — pure list ops + factories + shortcuts + paste
@@ -5374,6 +5387,10 @@ export function TableBlock({
   // table without widths already fits (equal shares); one with widths and
   // no `fit` keeps its exact pixel widths.
   const fit = block.fit === true || !widths;
+  const colors = useMemo(
+    () => normalizeColors(block.colors, nRows, nCols),
+    [block.colors, nRows, nCols],
+  );
   useEffect(() => {
     const rowsChanged =
       block.rows && JSON.stringify(block.rows) !== JSON.stringify(rows);
@@ -5554,6 +5571,20 @@ export function TableBlock({
   );
 
   const [optionsOpen, setOptionsOpen] = useState(false);
+  /** Every structural op (insert, delete, duplicate, move) goes through
+   *  applyTableOp, so align, widths and colours follow their rows and
+   *  columns. One onChange: one Undo step. */
+  const structural = (o: TableOp) => {
+    const s = applyTableOp({ rows, align, widths, colors }, o);
+    if (s.rows === rows) return;
+    // Row ops leave the column arrays alone, so they stay out of the patch.
+    const patch: Partial<Blk> = { rows: s.rows };
+    if (s.align !== align) patch.align = s.align;
+    if (s.widths !== widths && s.widths) patch.widths = s.widths;
+    if (s.colors !== colors) patch.colors = s.colors;
+    onChange(patch);
+  };
+
   const closeMenu = useCallback(() => {
     setMenuAnchor(null);
     setMenuSpec(null);
@@ -5711,7 +5742,13 @@ export function TableBlock({
   const [dragSelecting, setDragSelecting] = useState(false);
   const dragSelRef = useRef<{ start: CellPos; left: boolean } | null>(null);
   function onCellPointerDown(e: React.PointerEvent<HTMLElement>, r: number, c: number) {
-    if (locked || e.button !== 0) return;
+    if (locked) return;
+    // A right-click inside the selection keeps it (for Color on many cells).
+    if (e.button === 2 && rect && inRect(rect, r, c)) {
+      e.preventDefault();
+      return;
+    }
+    if (e.button !== 0) return;
     if (e.shiftKey) {
       const anchor = sel ? sel.anchor : editingCell();
       if (anchor) {
@@ -5921,7 +5958,7 @@ export function TableBlock({
         focusCell(r + 1, 0);
         return;
       }
-      commit(addRow(rows, nRows));
+      structural({ op: "addRow", at: nRows });
       focusCell(nRows, 0);
       return;
     }
@@ -5936,7 +5973,7 @@ export function TableBlock({
         focusCell(r + 1, c);
         return;
       }
-      commit(addRow(rows, nRows));
+      structural({ op: "addRow", at: nRows });
       focusCell(nRows, c);
       return;
     }
@@ -6013,7 +6050,7 @@ export function TableBlock({
           label: "Insert left",
           icon: "plus",
           onPick: () => {
-            commit(addColumn(rows, index), addAlign(align, index), addWidth(widths, index));
+            structural({ op: "addCol", at: index });
             setSel(colSel(index, nRows));
             closeMenu();
           },
@@ -6023,7 +6060,7 @@ export function TableBlock({
           label: "Insert right",
           icon: "plus",
           onPick: () => {
-            commit(addColumn(rows, index + 1), addAlign(align, index + 1), addWidth(widths, index + 1));
+            structural({ op: "addCol", at: index + 1 });
             setSel(colSel(index + 1, nRows));
             closeMenu();
           },
@@ -6034,7 +6071,7 @@ export function TableBlock({
           icon: "dup",
           hint: { text: "with values" },
           onPick: () => {
-            commit(duplicateColumn(rows, index), duplicateAlign(align, index), duplicateWidth(widths, index));
+            structural({ op: "duplicateCol", index: index });
             setSel(colSel(index + 1, nRows));
             closeMenu();
           },
@@ -6047,7 +6084,7 @@ export function TableBlock({
           hint: isFirst ? { text: "at start" } : undefined,
           onPick: () => {
             if (isFirst) return;
-            commit(moveColumn(rows, index, index - 1), moveAlign(align, index, index - 1), moveWidth(widths, index, index - 1));
+            structural({ op: "moveCol", from: index, to: index - 1 });
             setSel(colSel(index - 1, nRows));
             closeMenu();
           },
@@ -6059,7 +6096,7 @@ export function TableBlock({
           hint: isLast ? { text: "at end" } : undefined,
           onPick: () => {
             if (isLast) return;
-            commit(moveColumn(rows, index, index + 1), moveAlign(align, index, index + 1), moveWidth(widths, index, index + 1));
+            structural({ op: "moveCol", from: index, to: index + 1 });
             setSel(colSel(index + 1, nRows));
             closeMenu();
           },
@@ -6089,6 +6126,13 @@ export function TableBlock({
           : []),
         {
           kind: "row",
+          label: "Color",
+          icon: "droplet",
+          hint: { text: "›" },
+          onPick: () => setMenuSpec(buildColorSpec({ kind: "col", c: index }, buildColumnSpec(index))),
+        },
+        {
+          kind: "row",
           label: "Clear contents",
           icon: "clear",
           hint: { text: `${colCells} cell${colCells === 1 ? "" : "s"}` },
@@ -6116,7 +6160,7 @@ export function TableBlock({
           hint: isOnlyCol ? { text: "last column" } : undefined,
           onPick: () => {
             if (isOnlyCol) return;
-            commit(deleteColumn(rows, index), deleteAlign(align, index), deleteWidth(widths, index));
+            structural({ op: "deleteCol", index: index });
             setSel(null);
             closeMenu();
           },
@@ -6150,7 +6194,7 @@ export function TableBlock({
           label: "Insert above",
           icon: "plus",
           onPick: () => {
-            commit(addRow(rows, index));
+            structural({ op: "addRow", at: index });
             setSel(rowSel(index, nCols));
             closeMenu();
           },
@@ -6160,7 +6204,7 @@ export function TableBlock({
           label: "Insert below",
           icon: "plus",
           onPick: () => {
-            commit(addRow(rows, index + 1));
+            structural({ op: "addRow", at: index + 1 });
             setSel(rowSel(index + 1, nCols));
             closeMenu();
           },
@@ -6171,7 +6215,7 @@ export function TableBlock({
           icon: "dup",
           hint: { text: "with values" },
           onPick: () => {
-            commit(duplicateRow(rows, index));
+            structural({ op: "duplicateRow", index: index });
             setSel(rowSel(index + 1, nCols));
             closeMenu();
           },
@@ -6192,7 +6236,7 @@ export function TableBlock({
                 hint: isFirst ? { text: "at top" } : undefined,
                 onPick: () => {
                   if (isFirst) return;
-                  commit(moveRow(rows, index, index - 1));
+                  structural({ op: "moveRow", from: index, to: index - 1 });
                   setSel(rowSel(index - 1, nCols));
                   closeMenu();
                 },
@@ -6208,7 +6252,7 @@ export function TableBlock({
                 hint: isLast ? { text: "at end" } : undefined,
                 onPick: () => {
                   if (isLast) return;
-                  commit(moveRow(rows, index, index + 1));
+                  structural({ op: "moveRow", from: index, to: index + 1 });
                   setSel(rowSel(index + 1, nCols));
                   closeMenu();
                 },
@@ -6230,6 +6274,13 @@ export function TableBlock({
               { kind: "sep" as const },
             ] as MenuRow[])
           : []),
+        {
+          kind: "row",
+          label: "Color",
+          icon: "droplet",
+          hint: { text: "›" },
+          onPick: () => setMenuSpec(buildColorSpec({ kind: "row", r: index }, buildRowSpec(index))),
+        },
         {
           kind: "row",
           label: "Clear contents",
@@ -6272,14 +6323,14 @@ export function TableBlock({
                   cta: "Delete row",
                   danger: true,
                   onConfirm: () => {
-                    commit(deleteRow(rows, index));
+                    structural({ op: "deleteRow", index: index });
                     setSel(null);
                   },
                 },
               });
               return;
             }
-            commit(deleteRow(rows, index));
+            structural({ op: "deleteRow", index: index });
             setSel(null);
             closeMenu();
           },
@@ -6293,6 +6344,79 @@ export function TableBlock({
     setMenuAnchor(anchor);
     suppressHint();
   }
+
+  // Colour: text and background, from the callout palette, stored by
+  // name. Applies to a row, a column or the selected cells.
+  function buildColorSpec(target: ColorTarget, back?: MenuSpec): MenuSpec {
+    const own =
+      target.kind === "row"
+        ? colors?.rows?.[String(target.r)]
+        : target.kind === "col"
+          ? colors?.cols?.[String(target.c)]
+          : colors?.cells?.[`${target.r0},${target.c0}`];
+    const pick = (patch: { fg?: TableColorName | null; bg?: TableColorName | null }) => {
+      onChange({ colors: setColor(colors, target, patch) });
+      closeMenu();
+    };
+    const textRows: MenuRow[] = [
+      { kind: "row", label: "Default text", icon: "letterA", checked: !own?.fg, onPick: () => pick({ fg: null }) },
+      ...TABLE_COLOR_NAMES.map(
+        (n): MenuRow => ({
+          kind: "row",
+          label: `${colorLabel(n)} text`,
+          dot: fgToken(n),
+          checked: own?.fg === n,
+          onPick: () => pick({ fg: n }),
+        }),
+      ),
+    ];
+    const bgRows: MenuRow[] = [
+      {
+        kind: "row",
+        label: "Default background",
+        hasSwatch: true,
+        swBg: "var(--color-surface)",
+        swRing: "var(--color-line)",
+        checked: !own?.bg,
+        onPick: () => pick({ bg: null }),
+      },
+      ...TABLE_COLOR_NAMES.map(
+        (n): MenuRow => ({
+          kind: "row",
+          label: `${colorLabel(n)} background`,
+          hasSwatch: true,
+          swBg: bgToken(n),
+          swRing: "var(--color-line)",
+          checked: own?.bg === n,
+          onPick: () => pick({ bg: n }),
+        }),
+      ),
+    ];
+    const what =
+      target.kind === "row"
+        ? `Row ${target.r + 1}`
+        : target.kind === "col"
+          ? `Column ${target.c + 1}`
+          : (() => {
+              const n = (target.r1 - target.r0 + 1) * (target.c1 - target.c0 + 1);
+              return n === 1 ? "1 cell" : `${n} cells`;
+            })();
+    return {
+      title: "Color",
+      footer: what,
+      onBack: back ? () => setMenuSpec(back) : undefined,
+      rows: [...textRows, { kind: "sep" }, ...bgRows],
+    };
+  }
+
+  /** What a colour applies to for the current selection: its row or
+   *  column when a handle picked it, otherwise the cells. */
+  const selColorTarget = (): ColorTarget | null => {
+    if (!sel || !rect) return null;
+    if (sel.kind === "row" && rect.r0 === rect.r1) return { kind: "row", r: rect.r0 };
+    if (sel.kind === "col" && rect.c0 === rect.c1) return { kind: "col", c: rect.c0 };
+    return { kind: "cells", ...rect };
+  };
 
   // The table's own ⋯ (top-right corner): the switches that belong to the
   // whole table. The menu stays open and redraws after each switch, so
@@ -6372,6 +6496,22 @@ export function TableBlock({
           icon: "board",
           hint: { text: "›" },
           onPick: () => setMenuSpec(buildColumnSpec(colIndex)),
+        },
+        {
+          kind: "row",
+          label: "Color",
+          icon: "droplet",
+          hint: { text: "›" },
+          onPick: () => {
+            // The selection when the cell is in it, otherwise this cell.
+            const inSel = rect && inRect(rect, rowIndex, colIndex) ? selColorTarget() : null;
+            setMenuSpec(
+              buildColorSpec(
+                inSel ?? { kind: "cells", r0: rowIndex, c0: colIndex, r1: rowIndex, c1: colIndex },
+                buildChooserSpec(rowIndex, colIndex),
+              ),
+            );
+          },
         },
       ],
     };
@@ -6635,14 +6775,10 @@ export function TableBlock({
     commit: (drop) => {
       if (drop.to === drop.from) return;
       if (drop.axis === "row") {
-        commit(moveRow(rows, drop.from, drop.to));
+        structural({ op: "moveRow", from: drop.from, to: drop.to });
         setSel(rowSel(drop.to, nCols));
       } else {
-        commit(
-          moveColumn(rows, drop.from, drop.to),
-          moveAlign(align, drop.from, drop.to),
-          moveWidth(widths, drop.from, drop.to),
-        );
+        structural({ op: "moveCol", from: drop.from, to: drop.to });
         setSel(colSel(drop.to, nRows));
       }
     },
@@ -6725,6 +6861,7 @@ export function TableBlock({
                     // off) decide which cells render as <th>.
                     const isHead =
                       (headerRow && ri === 0) || (headerCol && ci === 0);
+                    const paint = colorAt(colors, ri, ci);
                     const Tag: "th" | "td" = isHead ? "th" : "td";
                     const selected = !!rect && inRect(rect, ri, ci);
                     // In-flight tint: the SOURCE row/column stays
@@ -6747,8 +6884,11 @@ export function TableBlock({
                         }
                         style={{
                           // Header cells sit on a warm tint (Notion's look);
-                          // a selection or an in-flight drag tints over it.
+                          // a colour set on the cell, row or column wins,
+                          // and a selection or an in-flight drag tints over.
                           textAlign: align[ci] ?? "left",
+                          ...(paint.fg ? { color: fgToken(paint.fg) } : null),
+                          ...(paint.bg ? { background: bgToken(paint.bg) } : null),
                           ...(inFlight || (selected && (rectSize(rect!) > 1 || sel?.kind !== "cells"))
                             ? { background: "color-mix(in srgb, var(--color-blueTint) 70%, transparent)" }
                             : null),
@@ -7023,7 +7163,7 @@ export function TableBlock({
               <AddPill
                 axis="col"
                 onClick={() => {
-                  commit(addColumn(rows, nCols), addAlign(align, nCols), addWidth(widths, nCols));
+                  structural({ op: "addCol", at: nCols });
                   focusCell(0, nCols);
                 }}
               />
@@ -7032,7 +7172,7 @@ export function TableBlock({
               <AddPill
                 axis="row"
                 onClick={() => {
-                  commit(addRow(rows, nRows));
+                  structural({ op: "addRow", at: nRows });
                   focusCell(nRows, 0);
                 }}
               />
@@ -7043,7 +7183,7 @@ export function TableBlock({
 
       {/* Bar over a selection of more than one cell. On the root, not in
           the scroller, so it isn't clipped above the first row. */}
-      {!locked && sel && rect && rectSize(rect) > 1 && !dragSelecting && metrics?.rows[rect.r0] && metrics.cols[rect.c0] && (
+      {!locked && sel?.kind === "cells" && rect && rectSize(rect) > 1 && !dragSelecting && metrics?.rows[rect.r0] && metrics.cols[rect.c0] && (
         <div
           role="toolbar"
           aria-label="Selected cells"
@@ -7067,6 +7207,20 @@ export function TableBlock({
           <span className="px-2 text-caption opacity-70">
             {rectSize(rect)} cells
           </span>
+          <button
+            type="button"
+            className="bar-btn rounded-md px-2 text-caption"
+            style={{ height: 24 }}
+            aria-haspopup="menu"
+            onClick={(e) => {
+              const target = selColorTarget();
+              if (!target) return;
+              setMenuSpec(buildColorSpec(target));
+              setMenuAnchor(e.currentTarget);
+            }}
+          >
+            Color
+          </button>
           <button
             type="button"
             className="bar-btn rounded-md px-2 text-caption"

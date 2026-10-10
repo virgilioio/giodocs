@@ -19,6 +19,7 @@ import { peekSignedUrl } from "./image-url-cache";
 import { readAlign, readCols, readPaths, readW } from "./image-ops";
 import { EMOJI_NAME_OK, inlineToHtml, mentionView } from "./inline-markdown";
 import { calloutBg, calloutRing } from "./callout-color";
+import { bgToken, colorAt, fgToken, normalizeColors } from "./table-colors";
 // Logo is inlined as a data URI so the exported HTML file is self-contained
 // (zero network requests). Vite `?raw` reads the file at build time; vitest
 // resolves the same way, so tests see the same string as the browser.
@@ -702,7 +703,15 @@ function blockHtml(b: Block, ordinal = 1): string {
         const a = alignArr[i];
         return a === "center" || a === "right" ? String(a) : "left";
       };
-      const styleFor = (i: number) => ` style="text-align:${alignAt(i)}"`;
+      // Colours follow the editor's rule (cell over row over column) and
+      // print through the same tokens, declared in HTML_CSS below.
+      const colors = normalizeColors((b as { colors?: unknown }).colors, rows.length, width);
+      const styleFor = (i: number, r = -1) => {
+        const p = r >= 0 ? colorAt(colors, r, i) : {};
+        const extra =
+          (p.fg ? `;color:${fgToken(p.fg)}` : "") + (p.bg ? `;background:${bgToken(p.bg)}` : "");
+        return ` style="text-align:${alignAt(i)}${extra}"`;
+      };
       // Per-column widths survive to HTML/PDF via <colgroup>, but as
       // PERCENTAGES of their own sum: the stored pixels are a screen
       // measurement (780px body) and meaningless against a printable
@@ -745,20 +754,22 @@ function blockHtml(b: Block, ordinal = 1): string {
       const headerCol = (b as { headerCol?: unknown }).headerCol === true;
       // Cells carry inline markdown now, so they go through `inline`
       // (which escapes first, then inserts tags) — never raw `esc`.
-      const th = (c: string, i: number, scope: "col" | "row") =>
-        `<th scope="${scope}"${styleFor(i)}>${inline(c)}</th>`;
-      const td = (c: string, i: number) => `<td${styleFor(i)}>${inline(c)}</td>`;
-      const bodyRow = (r: string[]) =>
-        `${trOpen(pad(r))}${pad(r)
-          .map((c, i) => (headerCol && i === 0 ? th(c, i, "row") : td(c, i)))
+      const th = (c: string, i: number, scope: "col" | "row", r: number) =>
+        `<th scope="${scope}"${styleFor(i, r)}>${inline(c)}</th>`;
+      const td = (c: string, i: number, r: number) => `<td${styleFor(i, r)}>${inline(c)}</td>`;
+      const bodyRow = (row: string[], r: number) =>
+        `${trOpen(pad(row))}${pad(row)
+          .map((c, i) => (headerCol && i === 0 ? th(c, i, "row", r) : td(c, i, r)))
           .join("")}</tr>`;
       const thead = headerRow
         ? `<thead>${trOpen(pad(rows[0]))}${pad(rows[0])
-            .map((c, i) => th(c, i, "col"))
+            .map((c, i) => th(c, i, "col", 0))
             .join("")}</tr></thead>`
         : "";
 
-      const body = (headerRow ? rows.slice(1) : rows).map(bodyRow).join("");
+      const body = (headerRow ? rows.slice(1) : rows)
+        .map((row, k) => bodyRow(row, headerRow ? k + 1 : k))
+        .join("");
       return `<table${tableAttrs}>${colgroup}${thead}<tbody>${body}</tbody></table>`;
     }
     case "sheet": {
@@ -968,7 +979,9 @@ const HTML_CSS = `
     --color-yellowTint: #FAF4C4; --color-yellowInk: #7A6A10;
     --color-blueTint: #DBEAFE;   --color-blueInk: #1D4ED8;
     --color-purpleTint: #EDE4FF; --color-purple: #5B21B6;
-    --color-pinkTint: #FBE0EE;   --color-pink: #BE185D;
+    --color-pinkTint: #FBE0EE;   --color-pink: #BE185D;   --color-pinkInk: #BE185D;
+    --color-sunken: ${sunken};   --color-muted: ${muted};
+    --color-accent: #0B7A57;     --color-amber: #B45309;  --color-danger: #B91C1C;
   }
   /* Real per-page margins. Applies to every sheet, not just the first —
      that was the fixed-footer / body-padding trap. printPdf appends its

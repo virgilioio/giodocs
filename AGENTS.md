@@ -238,6 +238,13 @@ provider Virgilio already has; don't build them until asked.
   ⌘C copies tab-separated text plus the cell sources
   (application/x-gio-cells), ⌘V pastes a grid from the top-left and grows
   the table, typing replaces the first cell. Inside a cell, keys edit text.
+- Colours (text and background) live on the block as `colors: {cells:
+  {"r,c"}, rows: {r}, cols: {c}}`, by palette NAME (src/lib/table-colors.ts,
+  the callout palette plus gray), never hex. Cell beats row beats column,
+  per property; colouring a row or column lifts that property off its
+  cells. Every structural op goes through applyTableOp (table-ops.ts), so
+  align, widths and colours follow their rows and columns. HTML/PDF carry
+  colours; Markdown drops them.
 - The grid looks like Notion's: borders in line with the text column,
   header cells on `canvas` in normal case, body-size text.
 
