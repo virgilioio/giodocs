@@ -183,6 +183,7 @@ import {
 import type { IconKey } from "@/lib/menu-icons";
 import { exitRef } from "@/lib/exit-motion";
 import { MermaidBlock, MERMAID_STARTER } from "@/components/mermaid-block";
+import { CodeLangPicker } from "@/components/code-lang-picker";
 import { isDiagramBlock } from "@/lib/diagram";
 
 
@@ -295,15 +296,13 @@ const BLOCK_MENU: MenuItem[] = [
     ic: "bCallout",
   },
   { type: "divider", name: "Divider", desc: "A visual breath.", icon: "—", ic: "bDivider" },
-  { type: "code", name: "Code", desc: "Monospace, verbatim.", icon: "<>", ic: "bCode" },
   {
     type: "code",
-    lang: "mermaid",
-    name: "Diagram",
-    desc: "A flowchart, sequence or timeline, drawn from Mermaid text.",
-    icon: "\u25C7",
+    name: "Code",
+    desc: "Monospace, verbatim. Pick Mermaid for a diagram.",
+    icon: "<>",
     ic: "bCode",
-    kw: "diagram mermaid flowchart flow chart graph sequence gantt timeline mindmap",
+    kw: "code snippet mermaid diagram flowchart",
   },
   { type: "table", name: "Table", desc: "Simple rows and columns.", icon: "▦", ic: "bTable" },
   {
@@ -4137,6 +4136,24 @@ function BlockContent({
     );
   }
 
+  // The code block's language, picked from its corner (Notion's way).
+  // Mermaid draws it as a diagram; picking it on an empty block starts one.
+  const codeLangPicker =
+    t === "code" ? (
+      <CodeLangPicker
+        value={isDiagram(block) ? "mermaid" : typeof block.lang === "string" ? block.lang : ""}
+        disabled={locked}
+        onPick={(lang) => {
+          const patch: Partial<Blk> = { lang };
+          if (lang === "mermaid") {
+            FRESH_DIAGRAMS.add(block.id);
+            if (!(block.text ?? "").trim()) patch.text = MERMAID_STARTER;
+          }
+          onChange(patch);
+        }}
+      />
+    ) : null;
+
   if (t === "code" && isDiagram(block)) {
     // A diagram: a code block in Mermaid, drawn as a picture. The source
     // stays the same literal textarea as any code block.
@@ -4145,6 +4162,7 @@ function BlockContent({
         source={block.text ?? ""}
         locked={locked}
         startOpen={FRESH_DIAGRAMS.has(block.id)}
+        picker={codeLangPicker}
         editor={
           <GrowText
             {...textareaProps}
@@ -4160,7 +4178,8 @@ function BlockContent({
     // inline grammar applies, and the shim keeps caret access
     // uniform with contenteditable neighbours.
     return (
-      <div className="rounded-md bg-sunken p-3">
+      <div className="rounded-md bg-sunken px-3 pb-3 pt-1">
+        <div className="-ml-1.5 mb-1 flex items-center">{codeLangPicker}</div>
         <GrowText
           {...textareaProps}
           className="w-full resize-none border-0 bg-transparent p-0 font-mono text-meta text-body outline-none"

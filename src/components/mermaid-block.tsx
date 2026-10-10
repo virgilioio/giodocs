@@ -77,6 +77,7 @@ export function MermaidBlock({
   locked,
   editor,
   startOpen,
+  picker,
 }: {
   source: string;
   locked: boolean;
@@ -84,6 +85,8 @@ export function MermaidBlock({
    *  like every other block. */
   editor: ReactNode;
   startOpen?: boolean;
+  /** The code block's language picker, in the top-left corner. */
+  picker?: ReactNode;
 }) {
   const baseId = "mmd-" + useId().replace(/[^a-zA-Z0-9]/g, "");
   const { drawn, busy } = useMermaid(source, baseId);
@@ -100,7 +103,7 @@ export function MermaidBlock({
         if (!locked && (e.target as HTMLElement).tagName === "TEXTAREA") setOpen(true);
       }}
     >
-      <div className="flex min-h-12 items-center justify-center overflow-x-auto p-4" aria-busy={busy}>
+      <div className="flex min-h-12 items-center justify-center overflow-x-auto px-4 pb-4 pt-10" aria-busy={busy}>
         {drawn && "svg" in drawn ? (
           <div
             role="img"
@@ -120,6 +123,8 @@ export function MermaidBlock({
           </div>
         )}
       </div>
+
+      {picker ? <div className="absolute left-2 top-2">{picker}</div> : null}
 
       {!locked ? (
         <button
