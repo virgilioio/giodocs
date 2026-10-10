@@ -546,6 +546,7 @@ export type Database = {
       }
       views: {
         Row: {
+          config: Json
           created_at: string
           filter: Json
           group_by: string | null
@@ -560,6 +561,7 @@ export type Database = {
           workspace_id: string
         }
         Insert: {
+          config?: Json
           created_at?: string
           filter?: Json
           group_by?: string | null
@@ -574,6 +576,7 @@ export type Database = {
           workspace_id: string
         }
         Update: {
+          config?: Json
           created_at?: string
           filter?: Json
           group_by?: string | null
