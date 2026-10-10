@@ -37,6 +37,76 @@ export type Database = {
           },
         ]
       }
+      comments: {
+        Row: {
+          author_id: string
+          block_id: string | null
+          body: string
+          created_at: string
+          edited_at: string | null
+          id: string
+          page_id: string
+          quote: string | null
+          removed_at: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          thread_id: string | null
+          workspace_id: string
+        }
+        Insert: {
+          author_id: string
+          block_id?: string | null
+          body: string
+          created_at?: string
+          edited_at?: string | null
+          id?: string
+          page_id: string
+          quote?: string | null
+          removed_at?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          thread_id?: string | null
+          workspace_id: string
+        }
+        Update: {
+          author_id?: string
+          block_id?: string | null
+          body?: string
+          created_at?: string
+          edited_at?: string | null
+          id?: string
+          page_id?: string
+          quote?: string | null
+          removed_at?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          thread_id?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comments_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comments_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "comments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comments_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       custom_emoji: {
         Row: {
           created_at: string
@@ -83,6 +153,7 @@ export type Database = {
         Row: {
           actor_id: string | null
           block_id: string | null
+          comment_id: string | null
           created_at: string
           excerpt: string
           id: string
@@ -95,6 +166,7 @@ export type Database = {
         Insert: {
           actor_id?: string | null
           block_id?: string | null
+          comment_id?: string | null
           created_at?: string
           excerpt?: string
           id?: string
@@ -107,6 +179,7 @@ export type Database = {
         Update: {
           actor_id?: string | null
           block_id?: string | null
+          comment_id?: string | null
           created_at?: string
           excerpt?: string
           id?: string
@@ -117,6 +190,13 @@ export type Database = {
           workspace_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "notifications_comment_id_fkey"
+            columns: ["comment_id"]
+            isOneToOne: false
+            referencedRelation: "comments"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "notifications_page_id_fkey"
             columns: ["page_id"]
@@ -745,6 +825,16 @@ export type Database = {
     }
     Functions: {
       accept_workspace_invite: { Args: { p_token: string }; Returns: string }
+      add_comment: {
+        Args: {
+          p_block?: string
+          p_body: string
+          p_page: string
+          p_quote?: string
+          p_thread?: string
+        }
+        Returns: string
+      }
       add_property_option: {
         Args: { p_def: string; p_label: string }
         Returns: string
@@ -759,6 +849,7 @@ export type Database = {
       }
       can_manage_page_access: { Args: { p_page: string }; Returns: boolean }
       can_read_page: { Args: { p_page: string }; Returns: boolean }
+      comment_thread_open: { Args: { p_thread: string }; Returns: boolean }
       create_workspace_invite: {
         Args: {
           p_email: string
@@ -796,6 +887,10 @@ export type Database = {
       }
       delete_page: { Args: { p_page: string }; Returns: undefined }
       domain_status: { Args: { p_email: string }; Returns: string }
+      edit_comment: {
+        Args: { p_body: string; p_comment: string }
+        Returns: undefined
+      }
       fork_view: {
         Args: {
           p_filter: Json
@@ -901,6 +996,10 @@ export type Database = {
         Args: { p_def: string; p_label: string; p_value: string }
         Returns: undefined
       }
+      resolve_comment_thread: {
+        Args: { p_resolved: boolean; p_thread: string }
+        Returns: undefined
+      }
       restore_page: { Args: { p_page: string }; Returns: undefined }
       restore_page_from_version: { Args: { p_version: string }; Returns: string }
       restore_page_version: { Args: { p_version: string }; Returns: undefined }
@@ -915,6 +1014,10 @@ export type Database = {
           snippets: Json
           title: string
         }[]
+      }
+      set_comment_removed: {
+        Args: { p_comment: string; p_removed: boolean }
+        Returns: undefined
       }
       set_page_access: {
         Args: {
@@ -954,6 +1057,11 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      text_mentions: { Args: { p_text: string }; Returns: string[] }
+      user_can_read_page: {
+        Args: { p_page: string; p_user: string }
+        Returns: boolean
       }
       verify_page: {
         Args: { p_page: string }
