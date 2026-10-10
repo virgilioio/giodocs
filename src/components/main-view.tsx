@@ -285,7 +285,7 @@ function ViewHeader({
 
 type PersonForLabel = { id: string; full_name: string | null };
 
-function QueryToolbar({
+export function QueryToolbar({
   filters,
   sort,
   groupBy,
@@ -2850,7 +2850,7 @@ function buildViewToolbarSpec(
 
 /* ─────────────────────────── Board body ─────────────────────────── */
 
-function BoardBody({
+export function BoardBody({
   rows,
   groupBy,
   propDefs,
@@ -3082,7 +3082,7 @@ function BoardBody({
 
 /* ─────────────────────────── List body ─────────────────────────── */
 
-function ListBody({
+export function ListBody({
   rows,
   members,
   propDefs,

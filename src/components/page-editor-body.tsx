@@ -149,6 +149,7 @@ import { commitSourceToEditable, readEditableSource } from "@/lib/link-commit";
 import { ImageBlock, ImageRowBlock, PageImageCtx } from "@/components/image-block";
 import { FileBlock } from "@/components/file-block";
 import { PageBlock } from "@/components/page-block";
+import { ViewBlock } from "@/components/view-block";
 import { SheetBlockView } from "@/components/sheet-block";
 import { droppedImagePaths, rejectReason } from "@/lib/image-ops";
 import { uploadImage } from "@/lib/images";
@@ -319,6 +320,14 @@ const BLOCK_MENU: MenuItem[] = [
     icon: "\u2398",
     ic: "bPage",
     kw: "page subpage child inside nest place placement",
+  },
+  {
+    type: "view",
+    name: "View",
+    desc: "A live table, board or list of pages, with its own filters.",
+    icon: "\u25A4",
+    ic: "bView",
+    kw: "view table board list linked query pages inline",
   },
 ];
 
@@ -2644,7 +2653,8 @@ export function EditableBody({
       const curLevel = (target as { level?: unknown } | undefined)?.level;
 
       const turnIntoSub: MenuRow[] = [
-        ...BLOCK_MENU.map((m) => ({
+        // A view is made from the slash menu, never turned into.
+        ...BLOCK_MENU.filter((m) => m.type !== "view").map((m) => ({
           kind: "row" as const,
           label: m.name,
           // Icon comes from the block DEFINITION — one place, three menus.
@@ -3797,7 +3807,8 @@ function BlockRowImpl({
     block.type === "imagerow" ||
     block.type === "sheet" ||
     block.type === "file" ||
-    block.type === "page";
+    block.type === "page" ||
+    block.type === "view";
   // Gutter (+ / drag handle) must centre vertically on the block's FIRST
   // line box, not the row centre. We publish the block's own line-height
   // as a pixel value on the row via `--gio-block-lh`; the gutter consumes
@@ -4048,6 +4059,11 @@ function BlockContent({
         onDelete={onDelete}
       />
     );
+  }
+
+  // A view inside the page: its own component, mounted here.
+  if (t === "view") {
+    return <ViewBlock block={block} locked={locked} onChange={onChange} onDelete={onDelete} />;
   }
 
   if (t === "imagerow") {
@@ -4613,9 +4629,10 @@ function ColumnStack({
     // Inside a callout, Pass A forbids nested callouts at the model —
     // suppress the entry so the menu never offers what the ops layer
     // will refuse. Columns are already absent (BLOCK_MENU excludes them).
-    const base = isCallout
-      ? BLOCK_MENU.filter((m) => m.type !== "callout")
-      : BLOCK_MENU;
+    // A view needs the page's width, so it isn't offered inside a column.
+    const base = BLOCK_MENU.filter(
+      (m) => m.type !== "view" && !(isCallout && m.type === "callout"),
+    );
     const q = (slash?.query ?? "").toLowerCase().trim();
     if (!q) return base;
     return base.filter(
@@ -4764,7 +4781,8 @@ function ColumnStack({
       const atEnd = idx >= blocks.length - 1;
       const curLevel = (target as { level?: unknown } | undefined)?.level;
       const turnIntoSub: MenuRow[] = [
-        ...BLOCK_MENU.map((m) => ({
+        // A view is made from the slash menu, never turned into.
+        ...BLOCK_MENU.filter((m) => m.type !== "view").map((m) => ({
           kind: "row" as const,
           label: m.name,
           icon: m.ic,

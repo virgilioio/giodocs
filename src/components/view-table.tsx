@@ -593,6 +593,7 @@ const TableRow = memo(function TableRow({
   getMenu,
   autoEdit,
   onEditDone,
+  selectable,
 }: {
   p: PageListItem;
   shown: string[];
@@ -604,15 +605,18 @@ const TableRow = memo(function TableRow({
   getMenu: (p: PageListItem) => MenuBuild;
   autoEdit: boolean;
   onEditDone: () => void;
+  selectable: boolean;
 }) {
   return (
     <div className="contents group" role="row">
       <div data-page-id={p.id} className={cellClass(selected, true)}>
-        <RowCheckbox
-          checked={selected}
-          alwaysVisible={anySelection}
-          onClick={(shift) => onCheckboxClick(p.id, shift)}
-        />
+        {selectable ? (
+          <RowCheckbox
+            checked={selected}
+            alwaysVisible={anySelection}
+            onClick={(shift) => onCheckboxClick(p.id, shift)}
+          />
+        ) : null}
       </div>
       <div data-page-id={p.id} role="cell" className={cellClass(selected)}>
         <PageTitleCell
@@ -1269,6 +1273,9 @@ export function ViewTable({
   groupKey,
   onNewRow,
   relations,
+  selectable = true,
+  rowLimit,
+  onShowAll,
 }: {
   rows: PageListItem[];
   pages: PageListItem[];
@@ -1296,6 +1303,11 @@ export function ViewTable({
   onNewRow?: (groupValue: string | null | undefined) => Promise<string | null>;
   /** Relations and rollups: their pages, figures and edits. */
   relations?: TableRelations;
+  /** False hides the selection boxes (a view inside a page). */
+  selectable?: boolean;
+  /** Show at most this many rows (per group), then "Show all". */
+  rowLimit?: number;
+  onShowAll?: () => void;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -1595,9 +1607,15 @@ export function ViewTable({
         getMenu={getPageMenuBuild}
         autoEdit={editId === p.id}
         onEditDone={clearEdit}
+        selectable={selectable}
       />
     );
   };
+  // A view inside a page shows its first rows, then "Show all".
+  const limited = (list: PageListItem[]) =>
+    rowLimit && list.length > rowLimit ? list.slice(0, rowLimit) : list;
+  const cutOff =
+    !!rowLimit && (groups ? groups.some((g) => g.pages.length > rowLimit) : rows.length > rowLimit);
 
   const calcRow = (forPages: PageListItem[]) => (
     <CalcRow
@@ -1657,11 +1675,13 @@ export function ViewTable({
       >
         <div className="contents" role="row">
           <div className={HEAD_CLASS + " justify-center"} style={HEAD_STYLE}>
-            <HeaderSelectAll
-              state={selectAllState}
-              count={rows.length}
-              onClick={onHeaderCheckboxClick}
-            />
+            {selectable ? (
+              <HeaderSelectAll
+                state={selectAllState}
+                count={rows.length}
+                onClick={onHeaderCheckboxClick}
+              />
+            ) : null}
           </div>
           {heading(TITLE_KEY)}
           {shown.map(heading)}
@@ -1710,7 +1730,7 @@ export function ViewTable({
                 >
                   {open ? (
                     <>
-                      {g.pages.map(renderRow)}
+                      {limited(g.pages).map(renderRow)}
                       {onNewRow ? <NewRowButton onAdd={() => addRow(g.value)} /> : null}
                       {calcRow(g.pages)}
                     </>
@@ -1718,7 +1738,7 @@ export function ViewTable({
                 </GroupBlock>
               );
             })
-          : rows.map(renderRow)}
+          : limited(rows).map(renderRow)}
         {rows.length === 0 ? (
           <div className="contents" role="row">
             <div
@@ -1732,6 +1752,20 @@ export function ViewTable({
         ) : null}
         {!groups && onNewRow ? <NewRowButton onAdd={() => addRow(undefined)} /> : null}
         {!groups ? calcRow(rows) : null}
+        {cutOff && onShowAll ? (
+          <div className="contents" role="row">
+            <div style={{ gridColumn: "1 / -1" }}>
+              <button
+                type="button"
+                onClick={onShowAll}
+                className="w-full text-left text-meta text-muted hover:bg-sunken hover:text-strong"
+                style={{ padding: "7px 11px 7px 27px" }}
+              >
+                Show all {rows.length} pages
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
       {drag ? (
         <div

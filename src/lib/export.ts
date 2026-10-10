@@ -321,6 +321,9 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
       if (!imgs) return "";
       return cap ? `${imgs}\n*${cap}*` : imgs;
     }
+    // A view inside a page is live: an export has no pages to show for it.
+    case "view":
+      return "";
     case "divider":
       return "---";
     case "code": {
@@ -668,6 +671,8 @@ function blockHtml(b: Block, ordinal = 1): string {
         cap ? `<figcaption>${esc(cap)}</figcaption>` : ""
       }</figure>`;
     }
+    case "view":
+      return "";
     case "divider":
       return `<hr/>`;
     case "code": {

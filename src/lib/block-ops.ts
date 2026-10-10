@@ -45,7 +45,8 @@ export type BlockType =
   | "image"
   | "imagerow"
   | "file"
-  | "page";
+  | "page"
+  | "view";
 
 /** Optional heading level for `toggle` blocks. Absent = plain toggle (today's
  *  rendering). Present = the summary renders at the given heading level, and
@@ -129,6 +130,10 @@ export type Blk = {
    *  placement lives on the child (pages.parent_id), so the child can move or
    *  be deleted without this block knowing, and a stored copy would lie. */
   pid?: string;
+  /** Only meaningful when type === "view". A view placed inside the page:
+   *  its own query and settings (src/lib/inline-view.ts), never a list of
+   *  page ids. Absent until someone picks where it starts from. */
+  view?: unknown;
 };
 
 export type FocusReq = { id: string; caret?: number | "start" | "end" };
@@ -152,6 +157,9 @@ export function newSheetGrid(): { cells: null[][]; cw: number[] } {
  *  for these and never for a block that was already on the page. */
 export const FRESH_PAGE_BLOCKS = new Set<string>();
 
+/** Ids of view blocks inserted in THIS session, likewise. */
+export const FRESH_VIEW_BLOCKS = new Set<string>();
+
 export function newBlock(type: BlockType = "text", text = ""): Blk {
   const base: Blk = { id: nanoid(10), type, text };
   if (type === "todo") base.checked = false;
@@ -171,6 +179,7 @@ export function newBlock(type: BlockType = "text", text = ""): Blk {
     base.pid = "";
     FRESH_PAGE_BLOCKS.add(base.id);
   }
+  if (type === "view") FRESH_VIEW_BLOCKS.add(base.id);
   if (type === "imagerow")
     Object.assign(base, { cols: 2, paths: [null, null] } as Record<string, unknown>);
   return base;
