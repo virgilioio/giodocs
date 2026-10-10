@@ -993,16 +993,16 @@ const HTML_CSS = `
   html, body { margin: 0; padding: 0; background: ${canvas}; }
   body {
     font-family: Lato, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    font-size: 17px; line-height: 1.6; color: ${ink};
+    font-size: 16px; line-height: 1.6; color: ${ink};
     max-width: 780px; margin: 0 auto;
   }
   /* Screen-only inset — on paper the @page margin does this job. */
   @media screen { body { padding: 56px 44px; } }
   h1, h2, h3, h4 { font-family: Poppins, -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: -0.02em; color: ${noir}; }
-  h1.title { font-size: 34px; margin: 0 0 4px; letter-spacing: -0.035em; }
-  h1 { font-size: 26px; margin: 28px 0 8px; }
-  h2 { font-size: 20px; margin: 22px 0 6px; }
-  h3 { font-size: 17px; margin: 18px 0 4px; font-weight: 600; }
+  h1.title { font-size: 40px; margin: 0 0 4px; letter-spacing: -0.035em; }
+  h1 { font-size: 30px; margin: 28px 0 8px; }
+  h2 { font-size: 24px; margin: 22px 0 6px; }
+  h3 { font-size: 20px; margin: 18px 0 4px; font-weight: 600; }
   h4 { font-size: 17px; margin: 18px 0 4px; font-weight: 600; }
   p { margin: 0 0 10px; orphans: 3; widows: 3; }
   p.caption { font-size: 12.5px; color: ${muted}; margin: 4px 0 10px; }

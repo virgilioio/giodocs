@@ -3909,12 +3909,12 @@ function BlockRowImpl({
   // typography and blow up the +/⋮⋮ glyphs.)
   const blockLineHeight = ((): string => {
     switch (block.type) {
-      case "h1": return "43.7px";        // text-title 38 × 1.15
-      case "h2": return "26.875px";      // text-heading 21.5 × 1.25
-      case "h3": return "22.1px";        // text-subhead 17 × 1.30
-      case "caption": return "17.5px";   // text-caption 12.5 × 1.40
-      case "quote": return "30px";       // text-quote 20 × 1.50
-      default: return "27.2px";          // text-prose 17 × 1.60
+      case "h1": return "36px";          // text-h1 30 × 1.20
+      case "h2": return "30px";          // text-h2 24 × 1.25
+      case "h3": return "26px";          // text-h3 20 × 1.30
+      case "caption": return "16.8px";   // text-caption 12 × 1.40
+      case "quote": return "27px";       // text-quote 18 × 1.50
+      default: return "25.6px";          // text-prose 16 × 1.60
     }
   })();
   return (
@@ -4304,11 +4304,11 @@ function BlockContent({
     const level = (block as { level?: string }).level;
     const summaryCls =
       level === "h1"
-        ? "w-full font-display text-title text-noir"
+        ? "w-full font-display text-h1 text-noir"
         : level === "h2"
-          ? "w-full font-display text-heading text-noir"
+          ? "w-full font-display text-h2 text-noir"
           : level === "h3"
-            ? "w-full font-display text-subhead text-noir"
+            ? "w-full font-display text-h3 text-noir"
             : "w-full text-prose text-body";
     return (
       <div className="text-prose text-body">
@@ -4420,21 +4420,21 @@ function BlockContent({
 
   if (t === "h1") {
     return renderProse(
-      "w-full font-display text-title text-noir",
+      "w-full font-display text-h1 text-noir",
       { placeholder: "Heading 1", ariaLabel: "Heading 1" },
     );
   }
 
   if (t === "h2") {
     return renderProse(
-      "w-full font-display text-heading text-noir",
+      "w-full font-display text-h2 text-noir",
       { placeholder: "Heading 2", ariaLabel: "Heading 2" },
     );
   }
 
   if (t === "h3") {
     return renderProse(
-      "w-full font-display text-subhead text-noir",
+      "w-full font-display text-h3 text-noir",
       { placeholder: "Heading 3", ariaLabel: "Heading 3" },
     );
   }

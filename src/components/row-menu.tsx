@@ -403,7 +403,7 @@ function SpecRow({ row }: { row: Extract<MenuRow, { kind: "row" }> }) {
 
       <span
         className="truncate"
-        style={{ flex: 1, minWidth: 0, fontSize: 14.5 }}
+        style={{ flex: 1, minWidth: 0, fontSize: 14 }}
       >
         {row.label}
       </span>
@@ -993,7 +993,7 @@ function RowMenuRow({ item }: { item: Exclude<RowMenuItem, { kind: "divider" }> 
       )}
       <span
         className="truncate"
-        style={{ flex: 1, minWidth: 0, fontSize: 14.5 }}
+        style={{ flex: 1, minWidth: 0, fontSize: 14 }}
       >
         {item.label}
       </span>

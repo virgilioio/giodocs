@@ -258,6 +258,15 @@ provider Virgilio already has; don't build them until asked.
 - The grid looks like Notion's: borders in line with the text column,
   header cells on `canvas` in normal case, body-size text.
 
+## Decisions (Allan, 2026-10-10: type scale)
+- Notion's scale. Page: title 40, H1 30, H2 24, H3 20, body 16 (Small
+  text: 32 / 26 / 21 / 18 / 14). Interface: sidebar and menus 14, labels
+  and table headers 12, captions 12. Tokens in styles.css (text-h1/h2/h3
+  for heading blocks, text-display for the title, text-prose for body).
+  Exports use the same sizes.
+- `.gio-line` (the shared editable metrics) lives in the base layer so a
+  block's size class wins over its inherits.
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.

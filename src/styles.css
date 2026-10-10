@@ -40,7 +40,10 @@
   --font-mono: "Spline Sans Mono", ui-monospace, monospace;
 
 
-  --text-display: 38px;
+  /* Type scale (Allan, 2026-10-10): Notion's. Page: title 40, H1 30, H2 24,
+     H3 20, body 16; Small text 32 / 26 / 21 / 18 / 14. Interface: sidebar
+     and menus 14, labels and table headers 12, captions 12. */
+  --text-display: 40px;
   --text-display--line-height: 1.10;
   --text-display--letter-spacing: -0.06em;
   --text-display--font-weight: 700;
@@ -57,15 +60,28 @@
   --text-subhead--line-height: 1.30;
   --text-subhead--letter-spacing: -0.02em;
   --text-subhead--font-weight: 600;
-  --text-quote: 20px;
+  /* Heading blocks on a page (H1–H3). */
+  --text-h1: 30px;
+  --text-h1--line-height: 1.20;
+  --text-h1--letter-spacing: -0.035em;
+  --text-h1--font-weight: 700;
+  --text-h2: 24px;
+  --text-h2--line-height: 1.25;
+  --text-h2--letter-spacing: -0.03em;
+  --text-h2--font-weight: 700;
+  --text-h3: 20px;
+  --text-h3--line-height: 1.30;
+  --text-h3--letter-spacing: -0.02em;
+  --text-h3--font-weight: 600;
+  --text-quote: 18px;
   --text-quote--line-height: 1.50;
   --text-quote--font-style: italic;
-  --text-prose: 17px;       --text-prose--line-height: 1.60;
-  --text-ui: 15px;         --text-ui--line-height: 1.45;
-  --text-row: 14.5px;      --text-row--line-height: 1.30;
-  --text-meta: 13.5px;     --text-meta--line-height: 1.40;
-  --text-caption: 12.5px;  --text-caption--line-height: 1.40;
-  --text-label: 11.5px;
+  --text-prose: 16px;       --text-prose--line-height: 1.60;
+  --text-ui: 14px;         --text-ui--line-height: 1.45;
+  --text-row: 14px;        --text-row--line-height: 1.30;
+  --text-meta: 13px;       --text-meta--line-height: 1.40;
+  --text-caption: 12px;    --text-caption--line-height: 1.40;
+  --text-label: 12px;
   --text-label--line-height: 1.20;
   --text-label--letter-spacing: 0.085em;
   --text-label--font-weight: 700;
@@ -410,15 +426,16 @@ button:is([class~="bg-btn"], [class~="border-line"][class~="bg-surface"], .gio-p
      tailwind text-* classes, so target those classes directly. */
   .gio-page[data-small="1"] .gio-page-body,
   .gio-page[data-small="1"] .gio-page-body .text-body,
-  .gio-page[data-small="1"] .gio-page-body .text-prose { font-size: 15px !important; line-height: 1.55; }
-  .gio-page[data-small="1"] .gio-page-body :where(h1) { font-size: 25px !important; }
-  .gio-page[data-small="1"] .gio-page-body :where(h2) { font-size: 19.5px !important; }
-  .gio-page[data-small="1"] .gio-page-body :where(h3) { font-size: 17px !important; }
+  .gio-page[data-small="1"] .gio-page-body .text-prose { font-size: 14px !important; line-height: 1.55; }
+  .gio-page[data-small="1"] .gio-page-body :where(h1),
+  .gio-page[data-small="1"] .gio-page-body .text-h1 { font-size: 26px !important; }
+  .gio-page[data-small="1"] .gio-page-body :where(h2),
+  .gio-page[data-small="1"] .gio-page-body .text-h2 { font-size: 21px !important; }
+  .gio-page[data-small="1"] .gio-page-body :where(h3),
+  .gio-page[data-small="1"] .gio-page-body .text-h3 { font-size: 18px !important; }
   .gio-page[data-small="1"] .gio-page-body :where(blockquote),
-  .gio-page[data-small="1"] .gio-page-body .text-quote { font-size: 18px !important; }
-  .gio-page[data-small="1"] .gio-page-body .text-title { font-size: 25px !important; }
-  .gio-page[data-small="1"] .gio-page-body .text-heading { font-size: 19.5px !important; }
-  .gio-page[data-small="1"] :where(.gio-title, h1.gio-title) { font-size: 34px !important; }
+  .gio-page[data-small="1"] .gio-page-body .text-quote { font-size: 16px !important; }
+  .gio-page[data-small="1"] :where(.gio-title, h1.gio-title) { font-size: 32px !important; }
   .gio-page[data-locked="1"] .gio-block-gutter { opacity: 0.4; pointer-events: none; }
 }
 
@@ -667,20 +684,25 @@ button:is([class~="bg-btn"], [class~="border-line"][class~="bg-surface"], .gio-p
    Both branches carry the same `gio-line` class. This rule forces
    the shared metrics from a single place so the two elements
    CANNOT drift as class strings evolve. */
-.gio-line {
-  box-sizing: border-box;
-  border: 0 !important;
-  padding: 0 !important;
-  margin: 0;
-  font: inherit;
-  font-family: inherit;
-  font-size: inherit;
-  font-weight: inherit;
-  line-height: inherit;
-  letter-spacing: inherit;
-  color: inherit;
-  background: transparent;
-  vertical-align: baseline;
+/* In the base layer, so a block's own size class (text-h1, text-quote…)
+   wins over these inherits: unlayered, this rule silently held every
+   heading at body size. */
+@layer base {
+  .gio-line {
+    box-sizing: border-box;
+    border: 0 !important;
+    padding: 0 !important;
+    margin: 0;
+    font: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+    background: transparent;
+    vertical-align: baseline;
+  }
 }
 textarea.gio-line {
   overflow: hidden;
