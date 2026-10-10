@@ -614,6 +614,8 @@ type ViewRow = {
   sort: unknown;
   icon: string | null;
   owner_id: string;
+  /** What a board groups by / a calendar places by. */
+  group_by?: string | null;
 };
 
 type SectionKey = "my" | "team" | "areas" | "pages";
@@ -1075,6 +1077,7 @@ const LAYOUT_ROWS: Array<{ layout: ViewLayout; label: string; sub: string; icon:
   { layout: "table", label: "Table", sub: "rows + properties", icon: "layout" },
   { layout: "board", label: "Board", sub: "grouped by select", icon: "board" },
   { layout: "list",  label: "List",  sub: "title + sub-line", icon: "list" },
+  { layout: "calendar", label: "Calendar", sub: "by a date", icon: "M5 5h14v15H5zM5 10h14M9 3v4M15 3v4" },
 ];
 
 function buildLayoutSubmenu(
@@ -1204,6 +1207,7 @@ function MyViewRow({
             filter: filters,
             sort,
             layout: v.layout,
+            groupBy: v.group_by ?? null,
           });
           mctx.close();
         },
@@ -1449,6 +1453,7 @@ function TeamViewRow({
             filter: filters,
             sort,
             layout: v.layout,
+            groupBy: v.group_by ?? null,
           });
           mctx.close();
         },
@@ -2293,7 +2298,9 @@ function LayoutGlyph({ layout }: { layout: "table" | "board" | "list" | "calenda
       ? "M4 5v14M10 5v14M16 5v14"
       : layout === "list"
         ? "M4 6h16M4 12h16M4 18h16"
-        : "M3 6h18M3 12h18M3 18h18M9 6v12M15 6v12";
+        : layout === "calendar"
+          ? "M5 5h14v15H5zM5 10h14M9 3v4M15 3v4"
+          : "M3 6h18M3 12h18M3 18h18M9 6v12M15 6v12";
   return <Glyph path={path} className="h-3.5 w-3.5 shrink-0 text-muted" />;
 }
 
@@ -2474,6 +2481,7 @@ function NewPersonalViewPopover({
         filter: seedFilter,
         sort: seedSort,
         layout: seedLayout,
+        groupBy: (currentView as { group_by?: string | null } | null | undefined)?.group_by ?? null,
       });
       onClose();
       navigate({ to: "/v/$viewId", params: { viewId: created.id } });

@@ -456,7 +456,9 @@ function PaletteRow({
         ? "M4 5v14M10 5v14M16 5v14"
         : v.layout === "list"
           ? "M4 6h16M4 12h16M4 18h16"
-          : "M3 6h18M3 12h18M3 18h18M9 6v12M15 6v12";
+          : v.layout === "calendar"
+            ? "M5 5h14v15H5zM5 10h14M9 3v4M15 3v4"
+            : "M3 6h18M3 12h18M3 18h18M9 6v12M15 6v12";
     return (
       <button type="button" className={cls} onMouseEnter={onEnter} onClick={onSelect}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}

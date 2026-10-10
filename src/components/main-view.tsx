@@ -63,6 +63,7 @@ import {
   useArchivePage,
 } from "@/hooks/use-page-mutations";
 import { BulkBar } from "./bulk-bar";
+import { CalendarViewBody } from "./calendar-view";
 import { ExportViewDialog } from "./export-view-dialog";
 import { useDelayedPending } from "./sk";
 import { ViewSkeleton, BoardSkeleton } from "./skeletons";
@@ -130,7 +131,9 @@ function LayoutGlyph({ layout }: { layout: string }) {
       ? "M4 4h5v16H4zM10 4h5v10h-5zM16 4h4v16h-4z"
       : layout === "list"
         ? "M4 6h16M4 12h16M4 18h16"
-        : "M4 5h16v14H4zM4 10h16M9 5v14";
+        : layout === "calendar"
+          ? "M5 5h14v15H5zM5 10h14M9 3v4M15 3v4"
+          : "M4 5h16v14H4zM4 10h16M9 5v14";
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4">
       <path d={path} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
@@ -232,7 +235,7 @@ function ViewHeader({
           className="flex items-center overflow-hidden rounded-lg border border-line"
           style={{ height: 30 }}
         >
-          {(["table", "board", "list"] as const).map((l, i) => {
+          {(["table", "board", "list", "calendar"] as const).map((l, i) => {
             const active = l === layout;
             return (
               <button
@@ -326,6 +329,7 @@ function QueryToolbar({
   const groupableDefs = propDefs.filter(
     (d) => d.type === "select" || d.type === "status",
   );
+  const dateDefs = propDefs.filter((d) => d.type === "date");
 
   return (
     <div
@@ -402,6 +406,16 @@ function QueryToolbar({
           groupBy={groupBy}
           defs={groupableDefs}
           onChange={onChangeGroupBy}
+        />
+      )}
+      {layout === "calendar" && (
+        <GroupControl
+          groupBy={groupBy}
+          defs={dateDefs}
+          onChange={onChangeGroupBy}
+          title="Show by"
+          iconPath="M5 5h14v15H5zM5 10h14M9 3v4M15 3v4"
+          emptyText="Add a date property to place pages on the calendar."
         />
       )}
 
@@ -1027,10 +1041,16 @@ function GroupControl({
   groupBy,
   defs,
   onChange,
+  title = "Group by",
+  iconPath = "M6 4v16 M12 4v16 M18 4v16",
+  emptyText = "Add a select property to group.",
 }: {
   groupBy: string;
   defs: PropDef[];
   onChange: (key: string) => void;
+  title?: string;
+  iconPath?: string;
+  emptyText?: string;
 }) {
   const current = defs.find((d) => d.key === groupBy) ?? defs[0] ?? null;
   return (
@@ -1040,19 +1060,19 @@ function GroupControl({
         <ToolbarBorderlessButton
           innerRef={ref}
           onClick={onClick}
-          iconPath="M6 4v16 M12 4v16 M18 4v16"
-          label={current ? current.label : "Status"}
+          iconPath={iconPath}
+          label={current ? current.label : defs.length ? "Status" : "No date property"}
         />
       )}
     >
       {(close) => (
         <div style={{ padding: "2px 0" }}>
-          <StepTitle>Group by</StepTitle>
+          <StepTitle>{title}</StepTitle>
           {defs.length === 0 && (
             <div
               style={{ padding: 10, fontSize: 13, color: "var(--color-muted)" }}
             >
-              Add a select property to group.
+              {emptyText}
             </div>
           )}
           {defs.map((d) => (
@@ -1620,7 +1640,10 @@ export function MainView({ selection }: { selection: Selection }) {
   const filters: Filter[] = current?.filter ?? [];
   const sort: SortSpec = current?.sort ?? { prop: "edited", dir: "desc" };
   const layout: Layout = (current?.layout as Layout) ?? "table";
-  const groupBy: string = current?.group_by ?? "status";
+  // views.group_by is "the property the layout is organised by": a select
+  // for a board, a date for a calendar. Each layout falls back to a
+  // sensible property when the stored one doesn't fit it.
+  const storedGroupBy: string = current?.group_by ?? "status";
   const fixedFilterIndex = selection.kind === "area" ? 0 : undefined;
 
   const patchDraft = (id: string, patch: ViewDraft) => {
@@ -1756,6 +1779,16 @@ export function MainView({ selection }: { selection: Selection }) {
   const groupableDefs = propDefs.filter(
     (d) => d.type === "select" || d.type === "status",
   );
+  const dateDefs = propDefs.filter((d) => d.type === "date");
+  const groupBy: string =
+    layout === "calendar"
+      ? dateDefs.some((d) => d.key === storedGroupBy)
+        ? storedGroupBy
+        : (dateDefs.find((d) => d.key === "due") ?? dateDefs[0])?.key ?? ""
+      : groupableDefs.some((d) => d.key === storedGroupBy)
+        ? storedGroupBy
+        : (groupableDefs.find((d) => d.key === "status") ?? groupableDefs[0])?.key ?? "status";
+  const groupByDef = propDefs.find((d) => d.key === groupBy);
 
   const onNewPage = () => {
     const seed: Record<string, unknown> = {};
@@ -1787,7 +1820,7 @@ export function MainView({ selection }: { selection: Selection }) {
         filter: filters,
         sort,
         layout,
-        groupBy: layout === "board" ? groupBy : null,
+        groupBy: layout === "board" || layout === "calendar" ? groupBy || null : null,
       },
       {
         onSuccess: (row) => {
@@ -1840,6 +1873,8 @@ export function MainView({ selection }: { selection: Selection }) {
         filter: (view.filter ?? []) as Filter[],
         sort: (view.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
         layout: view.layout as Layout,
+        // Keep what a board groups by / a calendar places by.
+        groupBy: view.group_by ?? null,
       },
       {
         onSuccess: (row) =>
@@ -1856,6 +1891,8 @@ export function MainView({ selection }: { selection: Selection }) {
         filter: (view.filter ?? []) as Filter[],
         sort: (view.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
         layout: view.layout as Layout,
+        // Keep what a board groups by / a calendar places by.
+        groupBy: view.group_by ?? null,
       },
       {
         onSuccess: (row) =>
@@ -2033,6 +2070,15 @@ export function MainView({ selection }: { selection: Selection }) {
 
   let body: ReactNode;
   if (rows.length === 0) body = emptyBody;
+  else if (layout === "calendar")
+    body = (
+      <CalendarViewBody
+        rows={rows}
+        dateKey={groupBy || null}
+        dateLabel={groupByDef?.label ?? "Date"}
+        onMove={(pageId, date) => setProp.mutate({ pageId, key: groupBy, value: date })}
+      />
+    );
   else if (layout === "board")
     body = (
       <BoardBody
@@ -2498,10 +2544,10 @@ function buildViewToolbarSpec(
 
   const layoutSubmenu = (): MenuSpec => ({
     title: "Change layout",
-    rows: (["table", "board", "list"] as const).map((l) => ({
+    rows: (["table", "board", "list", "calendar"] as const).map((l) => ({
       kind: "row" as const,
-      label: l === "table" ? "Table" : l === "board" ? "Board" : "List",
-      icon: l === "table" ? "layout" : l === "board" ? "board" : "list",
+      label: l === "table" ? "Table" : l === "board" ? "Board" : l === "list" ? "List" : "Calendar",
+      icon: l === "table" ? "layout" : l === "board" ? "board" : l === "list" ? "list" : "M5 5h14v15H5zM5 10h14M9 3v4M15 3v4",
       checked: l === layout,
       onPick: () => {
         args.onChangeLayout(l);
