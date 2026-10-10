@@ -301,7 +301,8 @@ export function valueWords(opts: {
     const d = opts.defs.get(key);
     switch (d?.type) {
       case "select":
-      case "status": {
+      case "status":
+      case "multi_select": {
         const options = Array.isArray(d.options)
           ? (d.options as Array<{ value?: unknown; label?: unknown }>)
           : [];

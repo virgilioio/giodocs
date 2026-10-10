@@ -820,11 +820,32 @@ export function useDuplicatePage() {
     mutationFn: async (pageId: string) => {
       const { data: src, error: e1 } = await supabase
         .from("pages")
-        .select("title, icon, props, blocks, access_type")
+        .select("title, icon, props, blocks, access_type, parent_id, database_id, is_database")
         .eq("id", pageId)
         .maybeSingle();
       if (e1) throw e1;
       if (!src) throw new Error("Original page not found");
+
+      // A database is copied whole (properties, views, rows) in the
+      // database: duplicate_database.
+      if (src.is_database) {
+        const { data: newId, error: e0 } = await supabase.rpc("duplicate_database", {
+          p_database: pageId,
+        });
+        if (e0) throw e0;
+        void qc.invalidateQueries({ queryKey: qk.pages(ws) });
+        void qc.invalidateQueries({ queryKey: qk.views(ws) });
+        void qc.invalidateQueries({ queryKey: qk.propDefs(ws) });
+        const { data: dbRow, error: e2 } = await supabase
+          .from("pages")
+          .select(
+            "id, title, icon, props, verified_at, verified_by, edited_at, edited_by, access_type, archived_at, parent_id, database_id, is_database",
+          )
+          .eq("id", newId as string)
+          .single();
+        if (e2) throw e2;
+        return dbRow as PageListItem;
+      }
 
       // Fresh block ids on every block. Any non-object entries are kept as-is.
       const rawBlocks = Array.isArray(src.blocks) ? (src.blocks as unknown[]) : [];
@@ -855,7 +876,10 @@ export function useDuplicatePage() {
         verified_by: user!.id,
         icon: src.icon ?? "📄",
         title: suffixed,
-        props: (src.props ?? {}) as never,
+        // Beside the original: a row stays a row of its database (with its
+        // values), a page inside a page stays inside it.
+        parent_id: src.parent_id ?? null,
+        props: (src.database_id ? (src.props ?? {}) : {}) as never,
         blocks: cloned as never,
         access_type: "restricted",
       });
@@ -863,7 +887,7 @@ export function useDuplicatePage() {
       const { data, error } = await supabase
         .from("pages")
         .select(
-          "id, title, icon, props, verified_at, verified_by, edited_at, edited_by, access_type, archived_at",
+          "id, title, icon, props, verified_at, verified_by, edited_at, edited_by, access_type, archived_at, parent_id, database_id, is_database",
         )
         .eq("id", id)
         .single();

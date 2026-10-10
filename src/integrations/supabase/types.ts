@@ -919,6 +919,8 @@ export type Database = {
       }
       delete_page: { Args: { p_page: string }; Returns: undefined }
       domain_status: { Args: { p_email: string }; Returns: string }
+      dup_view_json: { Args: { j: Json; m: Json }; Returns: Json }
+      duplicate_database: { Args: { p_database: string }; Returns: string }
       edit_comment: {
         Args: { p_body: string; p_comment: string }
         Returns: undefined

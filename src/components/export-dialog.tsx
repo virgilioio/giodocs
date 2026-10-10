@@ -475,7 +475,7 @@ function DetailsRow({
             lineHeight: 1.4,
           }}
         >
-          Area, owner, status, tags and last-verified
+          Properties and last-verified
         </div>
       </div>
       <button

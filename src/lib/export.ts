@@ -31,10 +31,9 @@ import { normalizeSheet, type Cell as SheetCell, type SheetBlock as SheetBlockDa
 
 export type ExportContext = {
   title: string;
-  area?: string | null;
-  status?: string | null;
-  ownerName?: string | null;
-  tags?: readonly string[];
+  /** The page's properties as its database names them, in order, in words
+   *  ([label, value]); a plain page has none. */
+  properties?: ReadonlyArray<readonly [string, string]>;
   verifiedAt?: string | null;
   blocks: readonly Block[];
   /** When false, omit YAML front matter (Markdown) and the properties/header
@@ -469,11 +468,20 @@ export function toMarkdown(ctx: ExportContext): string {
 
   const front: string[] = ["---"];
   front.push(`title: ${yamlString(ctx.title || "Untitled")}`);
-  if (ctx.area) front.push(`area: ${yamlString(ctx.area)}`);
-  if (ctx.status) front.push(`status: ${yamlString(ctx.status)}`);
-  if (ctx.ownerName) front.push(`owner: ${yamlString(ctx.ownerName)}`);
-  if (ctx.tags && ctx.tags.length) {
-    front.push(`tags: [${ctx.tags.map((t) => yamlString(t)).join(", ")}]`);
+  const usedKeys = new Set(["title", "verified"]);
+  for (const [label, value] of ctx.properties ?? []) {
+    if (!value) continue;
+    // A YAML key from the label: lowercase words joined by "_", unique.
+    let key =
+      label
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "") || "property";
+    for (let n = 2; usedKeys.has(key); n++) key = `${key.replace(/_\d+$/, "")}_${n}`;
+    usedKeys.add(key);
+    front.push(`${key}: ${yamlString(value)}`);
   }
   const vd = verifiedDate(ctx.verifiedAt);
   if (vd) front.push(`verified: ${vd}`);
@@ -1097,10 +1105,7 @@ export function toHtml(ctx: ExportContext): string {
 
   const props: Array<[string, string]> = [];
   if (includeDetails) {
-    if (ctx.area) props.push(["Area", ctx.area]);
-    if (ctx.status) props.push(["Status", ctx.status]);
-    if (ctx.ownerName) props.push(["Owner", ctx.ownerName]);
-    if (ctx.tags && ctx.tags.length) props.push(["Tags", ctx.tags.join(", ")]);
+    for (const [label, value] of ctx.properties ?? []) if (value) props.push([label, value]);
     const vd = verifiedDate(ctx.verifiedAt);
     if (vd) props.push(["Verified", vd]);
   }
@@ -1335,39 +1340,18 @@ function raceTimeout(p: Promise<unknown>, ms: number): Promise<void> {
  * columns whose checkboxes are ticked, in the order they appear on screen.
  */
 
-export type ExportViewColumnKey =
-  | "title"
-  | "area"
-  | "owner"
-  | "status"
-  | "tags"
-  | "verified"
-  | "edited";
+/** One column of a view export: the view's own columns (the page title,
+ *  then the properties the view shows), whatever the database calls them.
+ *  `date` columns hold an ISO timestamp: CSV writes the day, Markdown the
+ *  full timestamp. */
+export type ExportViewColumn = { key: string; label: string; date?: boolean };
 
-export type ExportViewRow = {
-  title: string | null;
-  area: string | null;
-  ownerId: string | null;
-  status: string | null;
-  tags: readonly string[];
-  verifiedAt: string | null;
-  editedAt: string | null;
-};
+/** One row: the text of each column, by key (already in words: option
+ *  labels, people's names, page titles). */
+export type ExportViewRow = Readonly<Record<string, string>>;
 
 export type ExportViewOptions = {
-  columns: readonly ExportViewColumnKey[];
-  /** Resolve a member id to a display name. Called only for owner columns. */
-  resolveOwner: (id: string | null) => string;
-};
-
-const VIEW_COLUMN_LABEL: Record<ExportViewColumnKey, string> = {
-  title: "Page",
-  area: "Area",
-  owner: "Owner",
-  status: "Status",
-  tags: "Tags",
-  verified: "Verified",
-  edited: "Edited",
+  columns: readonly ExportViewColumn[];
 };
 
 function dateOnly(iso: string | null | undefined): string {
@@ -1382,28 +1366,12 @@ function rawIso(iso: string | null | undefined): string {
 
 function cellFor(
   row: ExportViewRow,
-  key: ExportViewColumnKey,
-  resolveOwner: (id: string | null) => string,
+  col: ExportViewColumn,
   dateFmt: (iso: string | null | undefined) => string,
 ): string {
-  switch (key) {
-    case "title": {
-      const t = (row.title ?? "").trim();
-      return t || "Untitled";
-    }
-    case "area":
-      return row.area ?? "";
-    case "owner":
-      return resolveOwner(row.ownerId);
-    case "status":
-      return row.status ?? "";
-    case "tags":
-      return row.tags.join("; ");
-    case "verified":
-      return dateFmt(row.verifiedAt);
-    case "edited":
-      return dateFmt(row.editedAt);
-  }
+  const v = row[col.key] ?? "";
+  if (col.key === "title") return v.trim() || "Untitled";
+  return col.date ? dateFmt(v) : v;
 }
 
 /* ─────────── CSV (RFC-4180, CRLF, ISO date-only) ─────────── */
@@ -1418,14 +1386,10 @@ export function toCsv(
   opts: ExportViewOptions,
 ): string {
   const CRLF = "\r\n";
-  const header = opts.columns.map((k) => csvField(VIEW_COLUMN_LABEL[k])).join(",");
+  const header = opts.columns.map((c) => csvField(c.label)).join(",");
   if (rows.length === 0) return header + CRLF;
   const body = rows
-    .map((r) =>
-      opts.columns
-        .map((k) => csvField(cellFor(r, k, opts.resolveOwner, dateOnly)))
-        .join(","),
-    )
+    .map((r) => opts.columns.map((c) => csvField(cellFor(r, c, dateOnly))).join(","))
     .join(CRLF);
   return header + CRLF + body + CRLF;
 }
@@ -1441,16 +1405,14 @@ export function toMarkdownTable(
   opts: ExportViewOptions,
 ): string {
   const header =
-    "| " + opts.columns.map((k) => mdCell(VIEW_COLUMN_LABEL[k])).join(" | ") + " |";
+    "| " + opts.columns.map((c) => mdCell(c.label)).join(" | ") + " |";
   const sep = "| " + opts.columns.map(() => "---").join(" | ") + " |";
   if (rows.length === 0) return header + "\n" + sep + "\n";
   const body = rows
     .map(
       (r) =>
         "| " +
-        opts.columns
-          .map((k) => mdCell(cellFor(r, k, opts.resolveOwner, rawIso)))
-          .join(" | ") +
+        opts.columns.map((c) => mdCell(cellFor(r, c, rawIso).replace(/\n/g, " "))).join(" | ") +
         " |",
     )
     .join("\n");

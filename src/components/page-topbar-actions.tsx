@@ -1,3 +1,4 @@
+import { relationConfig, valueWords } from "@/lib/relations";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { primaryMod } from "@/lib/platform";
 import { toClipboard } from "@/lib/clipboard";
@@ -404,15 +405,31 @@ export function PageTopbarActions({
 
   const exportCtx: ExportContext | null = useMemo(() => {
     if (!page) return null;
+    // The page's properties as its database names them, in its order, in
+    // words — none for a plain page.
     const props = propsOf(page);
-    const areaV = typeof props.area === "string" ? (props.area as string) : null;
-    const statusV = typeof props.status === "string" ? (props.status as string) : null;
-    const tagsV = Array.isArray(props.tags)
-      ? (props.tags as unknown[]).filter((v): v is string => typeof v === "string")
-      : [];
-    const ownerMember = members.find((m) => m.user_id === page.edited_by);
-    const ownerName =
-      ownerMember?.profiles?.full_name || ownerMember?.profiles?.email || null;
+    const defs = ((shell.propDefs.data ?? []) as Array<{
+      key: string;
+      label: string;
+      type: string;
+      options: unknown;
+      position: number | null;
+      archived_at: string | null;
+      database_id: string | null;
+    }>)
+      .filter((d) => page.database_id && d.database_id === page.database_id && !d.archived_at)
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+    const words = valueWords({
+      defs: new Map(defs.map((d) => [d.key, d])),
+      nameOf: (id) => {
+        const m = members.find((x) => x.user_id === id);
+        return m?.profiles?.full_name || m?.profiles?.email || "Someone";
+      },
+      titleOf: (id) => pages.find((p) => p.id === id)?.title || "Untitled",
+    });
+    const properties = defs
+      .filter((d) => d.type !== "rollup" && !(d.type === "relation" && relationConfig(d).of))
+      .map((d) => [d.label, words(props[d.key], d.key).join(", ")] as const);
     const blocks: Block[] = Array.isArray(page.blocks)
       ? (page.blocks as unknown[]).filter(
           (b): b is Block => !!b && typeof b === "object",
@@ -420,17 +437,14 @@ export function PageTopbarActions({
       : [];
     return {
       title: page.title || "Untitled",
-      area: areaV,
-      status: statusV,
-      ownerName,
-      tags: tagsV,
+      properties,
       verifiedAt: page.verified_at,
       blocks,
       // The page's own icon travels with the export; the dialog resolves a
       // custom-emoji shortcode to an embedded image before serialising.
       icon: typeof page.icon === "string" ? page.icon : null,
     };
-  }, [page, members]);
+  }, [page, members, shell.propDefs.data, pages]);
 
   if (!listRow) return null;
 

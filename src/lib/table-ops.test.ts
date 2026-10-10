@@ -174,10 +174,6 @@ describe("export round-trip after column ops", () => {
   const htmlOf = (rows: string[][]) =>
     toHtml({
       title: "T",
-      area: null,
-      status: null,
-      ownerName: null,
-      tags: [],
       verifiedAt: null,
       blocks: [{ id: "t", type: "table", rows } as never],
     });
@@ -356,10 +352,6 @@ describe("markdown alignment round-trip", () => {
   it("HTML export writes text-align per th/td", () => {
     const html = toHtml({
       title: "T",
-      area: null,
-      status: null,
-      ownerName: null,
-      tags: [],
       verifiedAt: null,
       blocks: [
         {
@@ -459,10 +451,6 @@ describe("colgroup in HTML export", () => {
   it("emits <colgroup> with per-col widths when block.widths is present", () => {
     const html = toHtml({
       title: "T",
-      area: null,
-      status: null,
-      ownerName: null,
-      tags: [],
       verifiedAt: null,
       blocks: [
         {
@@ -488,10 +476,6 @@ describe("colgroup in HTML export", () => {
   it("omits <colgroup> when block.widths is absent (auto layout unchanged)", () => {
     const html = toHtml({
       title: "T",
-      area: null,
-      status: null,
-      ownerName: null,
-      tags: [],
       verifiedAt: null,
       blocks: [
         {

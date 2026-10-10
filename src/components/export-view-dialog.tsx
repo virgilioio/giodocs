@@ -14,7 +14,7 @@ import {
   slugOf,
   toCsv,
   toMarkdownTable,
-  type ExportViewColumnKey,
+  type ExportViewColumn,
   type ExportViewRow,
 } from "@/lib/export";
 
@@ -34,31 +34,22 @@ function readSavedFormat(): ExportViewFormat {
   return "CSV";
 }
 
-const ALL_COLUMNS: ReadonlyArray<{ key: ExportViewColumnKey; label: string }> = [
-  { key: "title", label: "Page" },
-  { key: "area", label: "Area" },
-  { key: "owner", label: "Owner" },
-  { key: "status", label: "Status" },
-  { key: "tags", label: "Tags" },
-  { key: "verified", label: "Verified" },
-  { key: "edited", label: "Edited" },
-];
-
 export function ExportViewDialog({
   name,
+  columns: allColumns,
   rows,
-  resolveOwner,
   onClose,
 }: {
-  /** View name or area name — used for the subtitle and filename. */
+  /** The view's name — used for the subtitle and filename. */
   name: string;
+  /** The columns the view shows, in its order (the title first). */
+  columns: readonly ExportViewColumn[];
   rows: readonly ExportViewRow[];
-  resolveOwner: (id: string | null) => string;
   onClose: () => void;
 }) {
   const [fmt, setFmt] = useState<ExportViewFormat>(() => readSavedFormat());
-  const [selected, setSelected] = useState<Set<ExportViewColumnKey>>(
-    () => new Set(ALL_COLUMNS.map((c) => c.key)),
+  const [selected, setSelected] = useState<Set<string>>(
+    () => new Set(allColumns.map((c) => c.key)),
   );
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(false);
@@ -90,9 +81,9 @@ export function ExportViewDialog({
     [name, fmt],
   );
 
-  const columns = useMemo<ExportViewColumnKey[]>(
-    () => ALL_COLUMNS.filter((c) => selected.has(c.key)).map((c) => c.key),
-    [selected],
+  const columns = useMemo<ExportViewColumn[]>(
+    () => allColumns.filter((c) => selected.has(c.key)),
+    [selected, allColumns],
   );
 
   const fmtBtn = useRef<HTMLButtonElement>(null);
@@ -118,7 +109,7 @@ export function ExportViewDialog({
     );
   };
 
-  const toggleCol = (k: ExportViewColumnKey) =>
+  const toggleCol = (k: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(k)) next.delete(k);
@@ -134,8 +125,8 @@ export function ExportViewDialog({
     try {
       const text =
         fmt === "CSV"
-          ? toCsv(rows, { columns, resolveOwner })
-          : toMarkdownTable(rows, { columns, resolveOwner });
+          ? toCsv(rows, { columns })
+          : toMarkdownTable(rows, { columns });
       const mime =
         fmt === "CSV"
           ? "text/csv;charset=utf-8"
@@ -237,7 +228,7 @@ export function ExportViewDialog({
               padding: "4px 0 2px",
             }}
           >
-            {ALL_COLUMNS.map((c) => (
+            {allColumns.map((c) => (
               <label
                 key={c.key}
                 style={{

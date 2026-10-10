@@ -215,14 +215,6 @@ export function PlacedInRow({
   const createPage = useCreatePage();
   const pages = (shell.pages.data ?? []) as PageBlockItem[];
   const me = pages.find((p) => p.id === pageId);
-  const myArea = (() => {
-    const props =
-      me?.props && typeof me.props === "object" && !Array.isArray(me.props)
-        ? (me.props as Record<string, unknown>)
-        : {};
-    const a = props["area"];
-    return typeof a === "string" ? a : "";
-  })();
 
   return (
     <PlacedInRowView
@@ -253,10 +245,10 @@ export function PlacedInRow({
         });
       }}
       onCreate={async (title) => {
-        // A new parent created from here inherits this page's area.
+        // A new parent made from here is a plain page: no properties.
         try {
           const row = await createPage.mutateAsync({
-            seedProps: myArea ? { area: myArea } : {},
+            seedProps: {},
             title: title.trim(),
           });
           setParent.mutate({

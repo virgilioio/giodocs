@@ -6,7 +6,7 @@ import { usePrefs } from "@/lib/preferences";
 import { useAuth } from "@/lib/auth-context";
 import { usePage, usePageAccess } from "@/hooks/use-workspace-data";
 import { runView, sortsOf, type Filter, type SortSpec } from "@/lib/run-view";
-import { readConfig, type ViewConfig } from "@/lib/view-config";
+import { labelOfProp, readConfig, shownProps, type ViewConfig } from "@/lib/view-config";
 import { sortLabel as sortLabelOf } from "@/lib/sort-label";
 import { seedForGroup, seedFromFilters } from "@/lib/view-seed";
 import { ViewTable } from "./view-table";
@@ -60,7 +60,7 @@ import {
   Glyph,
   setDateModeForMainView,
 } from "./main-view";
-import type { ExportViewRow } from "@/lib/export";
+import type { ExportViewColumn, ExportViewRow } from "@/lib/export";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
 import { isTypingTarget } from "@/lib/is-typing";
@@ -638,7 +638,6 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
       ? viewConfig.group
       : null;
 
-  const statusDef = propDefs.find((d) => d.key === "status");
   const groupableDefs = propDefs.filter((d) => !d.archived_at && (d.type === "select" || d.type === "status"));
   const dateDefs = propDefs.filter((d) => !d.archived_at && d.type === "date");
   const groupBy: string =
@@ -963,6 +962,46 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
       />
     );
 
+  // Exporting a view writes the columns the view shows, in its order, in
+  // words (option labels, names, titles), whatever the database calls them.
+  const exportKeys = useMemo(() => {
+    const used = new Set<string>();
+    for (const p of pages) for (const k of Object.keys(propsOf(p))) used.add(k);
+    return shownProps(viewConfig, propDefs, used);
+  }, [pages, propDefs, viewConfig]);
+  const exportColumns = useMemo<ExportViewColumn[]>(
+    () => [
+      { key: "title", label: "Page" },
+      ...exportKeys.map((k) => ({
+        key: k,
+        label: labelOfProp(k, propDefs),
+        date: k === "@created" || k === "@edited" || k === "@verified",
+      })),
+    ],
+    [exportKeys, propDefs],
+  );
+  const exportRow = (p: PageListItem): ExportViewRow => {
+    const out: Record<string, string> = { title: p.title ?? "" };
+    for (const k of exportKeys) {
+      if (k === "@created") out[k] = p.created_at ?? "";
+      else if (k === "@edited") out[k] = p.edited_at ?? "";
+      else if (k === "@verified") out[k] = p.verified_at ?? "";
+      else {
+        const v = k.startsWith("@")
+          ? k === "@created_by"
+            ? p.created_by
+            : p.edited_by
+          : tableRelations.readValue(p, k);
+        const def = propDefs.find((d) => d.key === k);
+        out[k] =
+          def?.type === "date" && typeof v === "string"
+            ? v.replace("/", " – ")
+            : tableRelations.words(v, k).join("; ");
+      }
+    }
+    return out;
+  };
+
   const { prefs } = usePrefs();
   useEffect(() => {
     setDateModeForMainView(prefs.dateFormat);
@@ -1107,32 +1146,8 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
         {exportOpen && (
           <ExportViewDialog
             name={view?.name ?? database.title ?? "view"}
-            rows={rows.map<ExportViewRow>((p) => {
-              const pp = propsOf(p);
-              const area = typeof pp.area === "string" ? pp.area : null;
-              const ownerId = typeof pp.owner === "string" ? pp.owner : null;
-              const statusVal = typeof pp.status === "string" ? pp.status : null;
-              const statusOpts =
-                (statusDef?.options as unknown as Array<{ value: string; label: string }>) ?? [];
-              const status = statusOpts.find((o) => o.value === statusVal)?.label ?? statusVal;
-              const tags = Array.isArray(pp.tags)
-                ? (pp.tags as unknown[]).filter((t): t is string => typeof t === "string")
-                : [];
-              return {
-                title: p.title ?? null,
-                area,
-                ownerId,
-                status,
-                tags,
-                verifiedAt: p.verified_at ?? null,
-                editedAt: p.edited_at ?? null,
-              };
-            })}
-            resolveOwner={(id) => {
-              if (!id) return "";
-              const m = members.find((mm) => mm.user_id === id);
-              return m?.profiles?.full_name || m?.profiles?.email || "";
-            }}
+            columns={exportColumns}
+            rows={rows.map<ExportViewRow>((p) => exportRow(p))}
             onClose={() => setExportOpen(false)}
           />
         )}

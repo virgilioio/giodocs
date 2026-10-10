@@ -572,8 +572,6 @@ export function PageBlock({
 
   const pages = (shell.pages.data ?? []) as PageBlockItem[];
   const members = (shell.members.data ?? []) as unknown as MemberLike[];
-  const me = pages.find((p) => p.id === thisPageId);
-  const myArea = propsOf(me ?? { id: "" })["area"];
 
   return (
     <PageBlockView
@@ -606,10 +604,9 @@ export function PageBlock({
         }
       }}
       onCreate={async (title) => {
-        // A page filed inside a Hiring page IS a Hiring page — inherit the
-        // parent's area rather than making someone set it twice.
-        const seedProps: Record<string, unknown> =
-          typeof myArea === "string" && myArea ? { area: myArea } : {};
+        // A page inside a page is a plain page: no properties (a row of a
+        // database gets its database's, by being made inside it).
+        const seedProps: Record<string, unknown> = {};
         try {
           const row = await createPage.mutateAsync({
             seedProps,

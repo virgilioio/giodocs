@@ -104,6 +104,13 @@ once. The decisions below replace it wherever an older section disagrees.
   storage path. Access goes through can_read_page, so image permissions
   can never drift from page permissions. Never store a signed URL,
   base64 or a blob in the blocks column.
+- Duplicating a database goes through duplicate_database: the copy gets
+  its live properties under new keys, the views the caller can see (keys
+  rewritten), and the rows the caller can read. A relation inside the
+  database is rebuilt between the copies; one to another database is
+  copied one way. Duplicating a row keeps it in its database; a page
+  inside a page stays inside it. Exporting a view writes the columns the
+  view shows, in words; a page export lists its database's properties.
 - Relations point at a database (config.database_id), both sides live in
   their own databases; rollups roll over a relation. Templates are rows
   of a database with template_at set.

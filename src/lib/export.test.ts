@@ -6,7 +6,6 @@ import {
   toHtml,
   toMarkdown,
   toMarkdownTable,
-  type ExportViewRow,
 } from "./export";
 import type { Block } from "./types";
 
@@ -38,17 +37,21 @@ describe("toMarkdown", () => {
   it("emits YAML front matter for provided properties", () => {
     const md = toMarkdown({
       title: "Kickoff",
-      area: "Ops",
-      status: "In progress",
-      ownerName: "Dana Ruiz",
-      tags: ["urgent", "q3"],
+      properties: [
+        ["Area", "Ops"],
+        ["Stage", "In progress"],
+        ["Assignee", "Dana Ruiz"],
+        ["Tags", "urgent, q3"],
+        ["Due date", ""],
+      ],
       verifiedAt: "2026-07-25T12:34:56Z",
       blocks: [],
     });
     expect(md).toMatch(/^---\ntitle: Kickoff\narea: Ops\n/);
-    expect(md).toMatch(/status: In progress/);
-    expect(md).toMatch(/owner: Dana Ruiz/);
-    expect(md).toMatch(/tags: \[urgent, q3\]/);
+    expect(md).toMatch(/stage: In progress/);
+    expect(md).toMatch(/assignee: Dana Ruiz/);
+    expect(md).toMatch(/tags: (urgent, q3|"urgent, q3")/);
+    expect(md).not.toMatch(/due_date/);
     expect(md).toMatch(/verified: 2026-07-25/);
   });
 
@@ -119,10 +122,7 @@ describe("toMarkdown", () => {
     ];
     const ctx = {
       title: "Real page",
-      area: "Ops",
-      status: null,
-      ownerName: null, // owner id not present in members → no name resolved
-      tags: [], // empty tags array
+      properties: [["Area", "Ops"]] as Array<[string, string]>,
       verifiedAt: null, // verified_by null → verifiedAt null
       blocks,
     };
@@ -373,103 +373,60 @@ describe("h3, caption, and toggle-heading serialisation", () => {
 
 /* ─────────────────────────── View exports ─────────────────────────── */
 
-const mkRow = (over: Partial<ExportViewRow> = {}): ExportViewRow => ({
-  title: "Sample",
-  area: null,
-  ownerId: null,
-  status: null,
-  tags: [],
-  verifiedAt: null,
-  editedAt: null,
-  ...over,
-});
-
-const resolveOwner = (id: string | null) =>
-  id === "u1" ? "Dana Ruiz" : id === "u2" ? "Sam Lee" : "";
+const COLS = [
+  { key: "title", label: "Page" },
+  { key: "stage", label: "Stage" },
+  { key: "assignee", label: "Assignee" },
+  { key: "labels", label: "Labels" },
+  { key: "@verified", label: "Verified", date: true },
+  { key: "@edited", label: "Edited", date: true },
+];
 
 describe("toCsv", () => {
-  it("quotes fields with commas and doubles embedded quotes; uses CRLF", () => {
+  it("names columns after the view's properties; quotes and CRLF", () => {
     const csv = toCsv(
       [
-        mkRow({
+        {
           title: 'Kickoff, part "1"',
-          area: "Ops",
-          ownerId: "u1",
-          status: "In progress",
-          tags: ["urgent", "q3"],
-          verifiedAt: "2026-07-25T12:34:56Z",
-          editedAt: "2026-07-27T01:00:00Z",
-        }),
+          stage: "In progress",
+          assignee: "Dana Ruiz",
+          labels: "urgent; q3",
+          "@verified": "2026-07-25T12:34:56Z",
+          "@edited": "2026-07-27T01:00:00Z",
+        },
       ],
-      {
-        columns: ["title", "area", "owner", "status", "tags", "verified", "edited"],
-        resolveOwner,
-      },
+      { columns: COLS },
     );
-    // CRLF line endings, one header + one row
     expect(csv.endsWith("\r\n")).toBe(true);
     const lines = csv.split("\r\n").filter((l) => l.length > 0);
-    expect(lines.length).toBe(2);
-    // Header
-    expect(lines[0]).toBe("Page,Area,Owner,Status,Tags,Verified,Edited");
-    // Title contains both a comma and an embedded quote — must be quoted with "" for the quote
+    expect(lines[0]).toBe("Page,Stage,Assignee,Labels,Verified,Edited");
     expect(lines[1]).toContain('"Kickoff, part ""1"""');
-    // Tags joined with "; "
     expect(lines[1]).toContain("urgent; q3");
-    // Owner resolved via callback
     expect(lines[1]).toContain("Dana Ruiz");
-    // Dates as ISO 8601 calendar date (YYYY-MM-DD)
     expect(lines[1]).toContain("2026-07-25");
-    expect(lines[1]).toContain("2026-07-27");
+    expect(lines[1]).not.toContain("T12:34");
   });
 
-  it("Untitled fallback + column selection (omits unchecked columns entirely)", () => {
-    const csv = toCsv(
-      [mkRow({ title: "   ", ownerId: "u2", tags: ["a"] })],
-      { columns: ["title", "owner"], resolveOwner },
-    );
-    // Only two columns in header and body
-    expect(csv.split("\r\n")[0]).toBe("Page,Owner");
+  it("Untitled fallback, and only the chosen columns", () => {
+    const csv = toCsv([{ title: "   ", assignee: "Sam Lee", labels: "a" }], {
+      columns: [COLS[0], COLS[2]],
+    });
+    expect(csv.split("\r\n")[0]).toBe("Page,Assignee");
     expect(csv.split("\r\n")[1]).toBe("Untitled,Sam Lee");
-    // Tags column omitted
-    expect(csv).not.toContain("Tags");
   });
 });
 
 describe("toMarkdownTable", () => {
-  it("emits GFM header + separator, escapes pipes in cells, keeps raw ISO dates", () => {
+  it("GFM header and separator, escaped pipes, full timestamps", () => {
     const md = toMarkdownTable(
-      [
-        mkRow({
-          title: "a | b",
-          ownerId: "u1",
-          verifiedAt: "2026-07-25T12:34:56Z",
-          editedAt: "2026-07-27T01:00:00Z",
-        }),
-      ],
-      {
-        columns: ["title", "owner", "verified", "edited"],
-        resolveOwner,
-      },
+      [{ title: "a | b", assignee: "Dana Ruiz", "@verified": "2026-07-25T12:34:56Z" }],
+      { columns: [COLS[0], COLS[2], COLS[4]] },
     );
     const lines = md.split("\n");
-    expect(lines[0]).toBe("| Page | Owner | Verified | Edited |");
-    expect(lines[1]).toBe("| --- | --- | --- | --- |");
-    // Escaped pipe in title
+    expect(lines[0]).toBe("| Page | Assignee | Verified |");
+    expect(lines[1]).toBe("| --- | --- | --- |");
     expect(lines[2]).toContain("a \\| b");
-    // Dates stay ISO (full timestamp), not date-only
     expect(lines[2]).toContain("2026-07-25T12:34:56.000Z");
-    expect(lines[2]).toContain("2026-07-27T01:00:00.000Z");
-  });
-
-  it("respects column selection — unchecked columns don't appear anywhere", () => {
-    const md = toMarkdownTable(
-      [mkRow({ title: "hi", tags: ["skip-me"], area: "Ops" })],
-      { columns: ["title", "area"], resolveOwner },
-    );
-    expect(md).toContain("| Page | Area |");
-    expect(md).not.toContain("Tags");
-    expect(md).not.toContain("skip-me");
   });
 });
 
@@ -504,10 +461,12 @@ describe("unknown block types (graceful fallback)", () => {
 describe("includeDetails toggle", () => {
   const richCtx = {
     title: "My Page",
-    area: "Engineering",
-    status: "Active",
-    ownerName: "Ada Lovelace",
-    tags: ["alpha", "beta"],
+    properties: [
+      ["Area", "Engineering"],
+      ["Status", "Active"],
+      ["Owner", "Ada Lovelace"],
+      ["Tags", "alpha, beta"],
+    ] as Array<[string, string]>,
     verifiedAt: "2024-06-01T10:00:00Z",
     blocks: [{ type: "paragraph", text: "body" } as unknown as Block],
   };
