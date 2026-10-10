@@ -1635,9 +1635,15 @@ export function PageEditor({ pageId }: { pageId: string }) {
    * the list at once, without waiting for the save. */
   const [wroteSomething, setWroteSomething] = useState(false);
   useEffect(() => setWroteSomething(false), [pageId]);
-  const canEditPage = !!page && (page.access_type === "workspace"
-    ? page.ws_role !== "view"
-    : access.some((a) => a.user_id === meId && a.capability === "write"));
+  // The database's rule (can_edit_page_row): a member on a workspace page
+  // shared to edit, a workspace owner, or anyone given edit access.
+  const isWorkspaceOwner = members.some((m) => m.user_id === meId && m.role === "owner");
+  const canEditPage = !!page && (
+    (page.access_type === "workspace" && (page.ws_role !== "view" || isWorkspaceOwner)) ||
+    access.some((a) => a.user_id === meId && a.capability === "write"));
+  // Only call a page view-only once its access list has loaded, so a page
+  // you can edit never flashes read-only.
+  const viewOnly = !!page && !accessQ.isPending && !canEditPage;
   const showTemplatePicker =
     !!page && !page.template_at && canEditPage && !app.locked && !wroteSomething &&
     !(titleDraft ?? "").trim() && isBlankPage(page.title, page.blocks);
@@ -1730,7 +1736,8 @@ export function PageEditor({ pageId }: { pageId: string }) {
             <button
               ref={ref}
               type="button"
-              onClick={onClick}
+              onClick={viewOnly ? undefined : onClick}
+              disabled={viewOnly}
               aria-label="Change page icon"
               aria-expanded={open}
               className="grid select-none place-items-center rounded-md hover:bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -1757,7 +1764,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
             onEnter={focusFirstBlock}
             autoFocus={titleAutoFocus}
             topMarginClass=""
-            readOnly={app.locked}
+            readOnly={app.locked || viewOnly}
           />
         </div>
       </div>
@@ -1774,6 +1781,17 @@ export function PageEditor({ pageId }: { pageId: string }) {
         <span className="text-meta text-muted">
           Edited {relTime(page.edited_at)} · {editorName}
         </span>
+        {viewOnly ? (
+          <>
+            <span className="text-rule">·</span>
+            <span
+              className="rounded-md bg-sunken px-1.5 text-caption text-secondary"
+              title="You can view this page but not edit it. Someone who can edit it can share it with you."
+            >
+              View only
+            </span>
+          </>
+        ) : null}
       </div>
 
       {/* 4a. Archived banner — shows on the page's own route only. */}
@@ -1819,6 +1837,10 @@ export function PageEditor({ pageId }: { pageId: string }) {
         onVerify={onVerify}
         justVerified={justVerified}
         onSet={(key, value) => {
+          if (viewOnly) {
+            toast.push("You can view this page but not edit it.");
+            return;
+          }
           if (key === "icon") {
             if (typeof value === "string" && value)
               setPageIcon.mutate({ pageId: page.id, icon: value });
@@ -1855,7 +1877,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
           initialBlocks={blocks}
           onChange={onBlocksChange}
           onBlur={onBodyBlur}
-          locked={app.locked}
+          locked={app.locked || viewOnly}
           editedRel={page.edited_at ? relTime(page.edited_at) : null}
           editorFirstName={editorName}
         />
@@ -1897,11 +1919,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
         page={page}
         members={members}
         meId={meId}
-        canEdit={
-          page.access_type === "workspace"
-            ? page.ws_role !== "view"
-            : access.some((a) => a.user_id === meId && a.capability === "write")
-        }
+        canEdit={canEditPage}
         prepare={prepareRestore}
         adopt={adoptRestored}
       />
