@@ -38,6 +38,7 @@ import {
   CheckboxToggle,
 } from "./property-pickers";
 import { isPropSet, isTerminalStatus } from "@/lib/due-date";
+import { summarizeProp } from "@/lib/prop-summary";
 import { formatTimestamp } from "@/lib/format";
 
 import { EditableBody, EditableTitle } from "./page-editor-body";
@@ -115,13 +116,16 @@ function Glyph({
   path,
   className,
   strokeWidth,
+  style,
 }: {
   path: string;
   className?: string;
   strokeWidth?: number;
+  style?: React.CSSProperties;
 }) {
   return (
     <svg
+      style={style}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -770,6 +774,28 @@ function PropertyStrip({
 
   const isStale = daysBetween(page.verified_at) > staleDays;
 
+  /* Collapsible. Remembered per device for every page (a UI preference, not
+   * data). Collapsed, the strip is one line: the filled values in order, and
+   * the stale warning, which never hides — freshness is first-class. */
+  const [collapsed, setCollapsed] = usePropsCollapsed();
+  const [moving, setMoving] = useState(false);
+  const bodyId = `props-${page.id}`;
+  const summary = useMemo(() => {
+    const nameOf = (id: string) => {
+      const m = members.find((x) => x.user_id === id);
+      return m ? firstName(m.profiles?.full_name, m.profiles?.email) : null;
+    };
+    const out: string[] = [];
+    for (const r of rows) {
+      const def = propDefs.find((d) => d.key === r.key);
+      const text = summarizeProp(propsRec[r.key], def, labelFor(r.key, propDefs), nameOf);
+      if (text) out.push(text);
+    }
+    return out.join(" · ");
+    // rows/propsRec derive from page + propDefs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page.props, propDefs, members, added]);
+
   /* Rhythm rule: rows ABUT (no gap between them) and each row is its own
    * min-height 32 box. The strip absorbs the old freshness banner's job,
    * so its top margin drops from 22 → 18. */
@@ -778,9 +804,83 @@ function PropertyStrip({
       style={{
         marginTop: 18,
         borderTop: "1px solid var(--color-line)",
-        paddingTop: 8,
+        paddingTop: 6,
       }}
     >
+      <div className="flex items-center" style={{ minHeight: 30, gap: 8, padding: "0 6px" }}>
+        <button
+          type="button"
+          aria-expanded={!collapsed}
+          aria-controls={bodyId}
+          onClick={() => {
+            // Clip while the height moves; a timer backs up transitionend
+            // (which never fires under reduced motion).
+            setMoving(true);
+            window.setTimeout(() => setMoving(false), 400);
+            setCollapsed(!collapsed);
+          }}
+          className="flex shrink-0 items-center rounded-md text-faint hover:text-secondary"
+          style={{ gap: 5, fontSize: 13, height: 26, padding: "0 4px", marginLeft: -4 }}
+        >
+          <Glyph
+            path="M9 6l6 6-6 6"
+            className="gio-props-chevron h-[11px] w-[11px]"
+            strokeWidth={2.4}
+            style={{ transform: collapsed ? "none" : "rotate(90deg)" }}
+          />
+          <span>{collapsed ? "Properties" : "Hide properties"}</span>
+        </button>
+        {collapsed ? (
+          <span
+            className="min-w-0 flex-1 truncate"
+            style={{ fontSize: 13.5, color: "var(--color-secondary)" }}
+            title={summary || undefined}
+          >
+            {summary || <span style={{ color: "var(--color-faint)" }}>No values yet</span>}
+          </span>
+        ) : null}
+        {collapsed && isStale && !justVerified ? (
+          <span className="flex shrink-0 items-center" style={{ gap: 8 }}>
+            <Glyph
+              path="M12 3l10 18H2L12 3zM12 10v5M12 18h.01"
+              className="h-[13px] w-[13px] text-amberDot"
+              strokeWidth={2}
+            />
+            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--color-amberInk)" }}>
+              May be stale
+            </span>
+            <button
+              type="button"
+              onClick={onVerify}
+              style={{
+                border: "1px solid var(--color-amberRing)",
+                background: "var(--color-amberTint)",
+                color: "var(--color-amberInk)",
+                borderRadius: 7,
+                padding: "2px 8px",
+                fontSize: 12.5,
+                fontWeight: 700,
+              }}
+            >
+              Still accurate ✓
+            </button>
+          </span>
+        ) : null}
+      </div>
+
+      {/* Height animates to the real content (grid rows 0fr → 1fr); the
+          content is clipped only while closed or moving, so focus rings and
+          the value cells' negative margins are never cut off at rest. */}
+      <div
+        id={bodyId}
+        className="gio-expand"
+        data-open={collapsed ? "false" : "true"}
+        inert={collapsed}
+        onTransitionEnd={(e) => {
+          if (e.target === e.currentTarget) setMoving(false);
+        }}
+      >
+      <div style={{ minHeight: 0, overflow: collapsed || moving ? "hidden" : "visible" }}>
       {rows.map((r) => {
         const def = propDefs.find((d) => d.key === r.key);
         const removable =
@@ -1001,8 +1101,37 @@ function PropertyStrip({
           onSet(key, seed);
         }}
       />
+      </div>
+      </div>
     </div>
   );
+}
+
+const PROPS_COLLAPSED_KEY = "gio.props.collapsed";
+let propsCollapsedMemo: boolean | null = null;
+
+/** Whether the property strip is collapsed — one choice for every page on
+ *  this device. Storage can be missing or throw; then it's just this tab. */
+function usePropsCollapsed(): [boolean, (v: boolean) => void] {
+  const [v, setV] = useState<boolean>(() => {
+    if (propsCollapsedMemo !== null) return propsCollapsedMemo;
+    try {
+      propsCollapsedMemo = localStorage.getItem(PROPS_COLLAPSED_KEY) === "1";
+    } catch {
+      propsCollapsedMemo = false;
+    }
+    return propsCollapsedMemo;
+  });
+  const set = useCallback((next: boolean) => {
+    propsCollapsedMemo = next;
+    setV(next);
+    try {
+      localStorage.setItem(PROPS_COLLAPSED_KEY, next ? "1" : "0");
+    } catch {
+      /* private mode: keep it for this tab */
+    }
+  }, []);
+  return [v, set];
 }
 
 /* Read-only body renderer, its useFlashOnHash hook, and warnOnce lived

@@ -196,6 +196,21 @@ button:is([class~="bg-btn"], [class~="border-line"][class~="bg-surface"], .gio-p
 .gio-tooltip[data-instant="true"] { transition: none; }
 @media (prefers-reduced-motion: reduce) { .gio-tooltip { transform: none; } }
 
+/* Disclosure: height follows the real content (grid rows 0fr -> 1fr),
+   never the max-height trick; content fades in just after it opens. */
+.gio-expand {
+  display: grid; grid-template-rows: 1fr;
+  transition: grid-template-rows var(--dur-expand) var(--ease-in-out);
+}
+.gio-expand[data-open="false"] { grid-template-rows: 0fr; }
+.gio-expand > * { transition: opacity 180ms var(--ease-out) 60ms; }
+.gio-expand[data-open="false"] > * { opacity: 0; transition: opacity 120ms var(--ease-out); }
+.gio-props-chevron { transition: transform var(--dur-expand) var(--ease-in-out); }
+@media (prefers-reduced-motion: reduce) {
+  .gio-expand { transition: none; }
+  .gio-props-chevron { transition: none; }
+}
+
 /* Block drag: the drop line glides between gaps instead of jumping, and a
    multi-block ghost carries a count. */
 .gio-drop-line { transition: transform 90ms cubic-bezier(.23,1,.32,1); }
