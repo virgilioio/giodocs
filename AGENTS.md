@@ -94,10 +94,9 @@ provider Virgilio already has; don't build them until asked.
 - New pages are private to their creator (access_type 'restricted' with the
   creator as the only editor). Sharing with more people or with everyone in
   the workspace is a separate, explicit step. Existing pages keep their
-  access. The app sends access_type 'restricted' and the
-  pages_grant_creator_access trigger makes the creator an editor. The
-  column default is still 'workspace' until the new app is published from
-  Lovable; then a migration flips it. Create pages with a client-generated
+  access. The app sends access_type 'restricted', the column default is
+  'restricted' too (since 2026-10-10), and the pages_grant_creator_access
+  trigger makes the creator an editor. Create pages with a client-generated
   id and no RETURNING (insert, then select): the creator's access row is
   added after the insert, so an insert...select would fail RLS.
 
