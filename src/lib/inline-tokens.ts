@@ -145,6 +145,16 @@ export type InlineToken =
   | InlineContainerToken
   | InlineLinkToken;
 
+/** An odd number of unescaped "*" in src[from, to). */
+function oddStars(src: string, from: number, to: number): boolean {
+  let n = 0;
+  for (let k = from; k < to; k++) {
+    if (src[k] === "\\") k++;
+    else if (src[k] === "*") n++;
+  }
+  return n % 2 === 1;
+}
+
 export function tokenizeInline(
   source: string,
   opts?: InlineOpts,
@@ -229,7 +239,11 @@ function tokenizeRange(
 
     // Bold **…**
     if (c === "*" && src[i + 1] === "*") {
-      const end = src.indexOf("**", i + 2);
+      let end = src.indexOf("**", i + 2);
+      // Bold around italic ("***x***", "**a *b***"): when the content
+      // holds an unclosed single "*" and a third "*" follows the close,
+      // that "*" closes the italic, so the bold closes one further on.
+      if (end > i + 1 && end + 3 <= to && src[end + 2] === "*" && oddStars(src, i + 2, end)) end++;
       if (end > i + 1 && end + 2 <= to) {
         out.push({
           kind: "bold",
@@ -288,7 +302,7 @@ function tokenizeRange(
           continue;
         }
         if (src[j] === "*") {
-          if (src[j + 1] === "*") {
+          if (j + 1 < to && src[j + 1] === "*") {
             j = -1;
             break;
           }
