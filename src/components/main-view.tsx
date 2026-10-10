@@ -19,15 +19,9 @@ import {
 import { readConfig, type ViewConfig } from "@/lib/view-config";
 import { sortLabel as sortLabelOf } from "@/lib/sort-label";
 import { seedForGroup, seedFromFilters } from "@/lib/view-seed";
-import { ViewTable, RowCheckbox, type TableRelations } from "./view-table";
-import {
-  buildRelationIndex,
-  readValueWith,
-  relationCandidates,
-  relationConfig,
-  rollupKind,
-  valueWords,
-} from "@/lib/relations";
+import { ViewTable, RowCheckbox } from "./view-table";
+import { relationConfig, rollupKind } from "@/lib/relations";
+import { useViewRuntime } from "@/hooks/use-view-runtime";
 import { relList } from "@/lib/related-links";
 import { applyFilterReplacement, filterLabel } from "@/lib/filter-label";
 import { PageOriginContext, useSetPageOrigin } from "@/lib/page-origin";
@@ -1630,7 +1624,20 @@ function CheckIcon() {
 export function MainView({ selection }: { selection: Selection }) {
   const ws = useWorkspaceId();
   const { user } = useAuth();
-  const shell = useWorkspaceShell(ws);
+  const {
+    shell,
+    pages,
+    views,
+    members: tableMembers,
+    propDefs,
+    workspace,
+    staleDays,
+    runCtx,
+    tableRelations,
+    areas,
+    people,
+  } = useViewRuntime();
+  const members = tableMembers as unknown as MemberRow[];
   const pagesPending = shell.pages.isPending && !shell.pages.data;
   const showSkeleton = useDelayedPending(pagesPending);
   const navigate = useNavigate();
@@ -1645,19 +1652,6 @@ export function MainView({ selection }: { selection: Selection }) {
   const publishView = usePublishView();
   const deleteView = useDeleteView();
 
-  const pagesData = shell.pages.data;
-  const pages = useMemo(() => (pagesData ?? []) as PageListItem[], [pagesData]);
-  const viewsData = shell.views.data;
-  const views = useMemo(() => (viewsData ?? []) as ViewRow[], [viewsData]);
-  const membersData = shell.members.data;
-  const members = useMemo(
-    () => (membersData ?? []) as unknown as MemberRow[],
-    [membersData],
-  );
-  const propDefsData = shell.propDefs.data;
-  const propDefs = useMemo(() => (propDefsData ?? []) as PropDef[], [propDefsData]);
-  const workspace = shell.workspace.data;
-  const staleDays = workspace?.stale_days ?? 30;
   const memberCount = members.length;
 
   const view = selection.kind === "view" ? views.find((v) => v.id === selection.id) ?? null : null;
@@ -1733,55 +1727,6 @@ export function MainView({ selection }: { selection: Selection }) {
   const clearDraft = (id: string) => storeClearDraft(id);
 
 
-  // What sorting needs to know: each property's type and option order, and
-  // people's names (so Owner sorts by name, not by id).
-  const relIdx = useMemo(() => buildRelationIndex(pages, propDefs), [pages, propDefs]);
-  const runCtx = useMemo(() => {
-    const props = new Map<string, PropInfo>(
-      propDefs.map((d) => [
-        d.key,
-        { type: d.type, options: (d.options as unknown as SelectOption[] | null) ?? [] },
-      ]),
-    );
-    const names = new Map(
-      members.map((m) => [m.user_id, m.profiles?.full_name || m.profiles?.email || ""]),
-    );
-    const nameOf = (id: string) => names.get(id) || id;
-    const titleOf = (id: string) => {
-      const p = relIdx.byId.get(id);
-      return p ? p.title || "Untitled" : "Private page";
-    };
-    return {
-      me: user?.id ?? "",
-      staleDays,
-      props,
-      nameOf,
-      titleOf,
-      // Relations (both sides) and rollups are worked out from the pages.
-      readValue: readValueWith(relIdx, valueWords({ defs: relIdx.defs, nameOf, titleOf })),
-    };
-  }, [propDefs, members, user?.id, staleDays, relIdx]);
-
-  // What tables need to show and edit relations and rollups.
-  const tableRelations = useMemo<TableRelations>(() => {
-    const words = valueWords({
-      defs: relIdx.defs,
-      nameOf: runCtx.nameOf,
-      titleOf: runCtx.titleOf,
-    });
-    const viewName = (id: string | null) => views.find((v) => v.id === id)?.name;
-    return {
-      idx: relIdx,
-      words,
-      readValue: runCtx.readValue,
-      candidates: (def, page) => relationCandidates(def, page, relIdx, views, runCtx),
-      scopeNote: (def) => {
-        const name = viewName(relationConfig(def).viewId);
-        return name ? `Pages in ${name}` : undefined;
-      },
-    };
-  }, [relIdx, runCtx, views]);
-
   const rows = useMemo(
     () => runView(pages, { filter: filters, sort }, runCtx),
     [pages, filters, sort, runCtx],
@@ -1842,15 +1787,6 @@ export function MainView({ selection }: { selection: Selection }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anySelection]);
 
-  const areas = useMemo(() => {
-    const s = new Set<string>();
-    for (const p of pages) {
-      const a = propsOf(p)["area"];
-      if (typeof a === "string" && a) s.add(a);
-    }
-    return [...s].sort();
-  }, [pages]);
-
   const tagsWs = useMemo(() => {
     const s = new Set<string>();
     for (const p of pages) {
@@ -1859,15 +1795,6 @@ export function MainView({ selection }: { selection: Selection }) {
     }
     return [...s].sort();
   }, [pages]);
-
-  const people = useMemo(
-    () =>
-      members.map((m) => ({
-        id: m.user_id,
-        full_name: m.profiles?.full_name ?? null,
-      })),
-    [members],
-  );
 
   const unfilteredCount = useMemo(
     () => pages.filter((p) => !p.archived_at).length,
