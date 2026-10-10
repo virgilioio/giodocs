@@ -364,6 +364,7 @@ export type Database = {
           id: string
           is_database: boolean
           parent_id: string | null
+          position: number | null
           props: Json
           search_tsv: unknown
           template_at: string | null
@@ -387,6 +388,7 @@ export type Database = {
           id?: string
           is_database?: boolean
           parent_id?: string | null
+          position?: number | null
           props?: Json
           search_tsv?: unknown
           template_at?: string | null
@@ -410,6 +412,7 @@ export type Database = {
           id?: string
           is_database?: boolean
           parent_id?: string | null
+          position?: number | null
           props?: Json
           search_tsv?: unknown
           template_at?: string | null
@@ -1028,6 +1031,15 @@ export type Database = {
       resolve_comment_thread: {
         Args: { p_resolved: boolean; p_thread: string }
         Returns: undefined
+      }
+      move_page: {
+        Args: {
+          p_before?: string | null
+          p_page: string
+          p_parent: string | null
+          p_props?: Json | null
+        }
+        Returns: Json
       }
       restore_page: { Args: { p_page: string }; Returns: undefined }
       restore_page_from_version: { Args: { p_version: string }; Returns: string }
