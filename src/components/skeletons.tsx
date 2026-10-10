@@ -19,20 +19,20 @@ const SR = <span className="sr-only">Loading…</span>;
 
 const SK_ROWS: Array<{
   w: string;
-  area: number;
+  first: number;
   status: number;
   tags: number;
   ver: number;
   edited: number;
 }> = [
-  { w: "64%", area: 58, status: 72, tags: 92, ver: 42, edited: 52 },
-  { w: "46%", area: 64, status: 64, tags: 74, ver: 46, edited: 44 },
-  { w: "78%", area: 52, status: 78, tags: 108, ver: 40, edited: 56 },
-  { w: "54%", area: 60, status: 68, tags: 62, ver: 44, edited: 48 },
-  { w: "69%", area: 56, status: 74, tags: 82, ver: 48, edited: 52 },
-  { w: "41%", area: 62, status: 60, tags: 70, ver: 38, edited: 46 },
-  { w: "73%", area: 54, status: 80, tags: 96, ver: 42, edited: 54 },
-  { w: "58%", area: 58, status: 66, tags: 84, ver: 44, edited: 50 },
+  { w: "64%", first: 58, status: 72, tags: 92, ver: 42, edited: 52 },
+  { w: "46%", first: 64, status: 64, tags: 74, ver: 46, edited: 44 },
+  { w: "78%", first: 52, status: 78, tags: 108, ver: 40, edited: 56 },
+  { w: "54%", first: 60, status: 68, tags: 62, ver: 44, edited: 48 },
+  { w: "69%", first: 56, status: 74, tags: 82, ver: 48, edited: 52 },
+  { w: "41%", first: 62, status: 60, tags: 70, ver: 38, edited: 46 },
+  { w: "73%", first: 54, status: 80, tags: 96, ver: 42, edited: 54 },
+  { w: "58%", first: 58, status: 66, tags: 84, ver: 44, edited: 50 },
 ];
 
 /* Property strip: 5 rows at min-height 32, label track 132px, ZERO gap
@@ -126,7 +126,7 @@ export function ViewSkeleton({ layout = "table" }: { layout?: "table" | "list" }
               <Sk h={11} w={r.w} r={5} />
             </div>
             <div className="gio-cell-pad flex items-center border-b border-lineSoft px-[11px]">
-              <Sk tone="soft" h={11} w={r.area} r={5} />
+              <Sk tone="soft" h={11} w={r.first} r={5} />
             </div>
             <div className="gio-cell-pad flex items-center border-b border-lineSoft px-[11px]">
               <Sk w={21} h={21} r={999} />

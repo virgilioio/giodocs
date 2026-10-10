@@ -13,7 +13,7 @@
  *    drops. The rest of the footer still renders.
  *
  * Pure string builder: caller supplies pre-formatted relative strings so
- * this file has no time or locale dependency. Mirrors `areaMenuFooter` and
+ * this file has no time or locale dependency. Mirrors
  * `personalViewFooter`.
  */
 

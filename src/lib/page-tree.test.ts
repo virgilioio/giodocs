@@ -155,11 +155,12 @@ describe("placementRows", () => {
     expect(byId.get("notes")).toBe("Roadmap");
   });
 
-  it("filters on area too", () => {
-    const ids = placementRows("product", pages, "me").flatMap((r) =>
+  it("filters on the page a page sits in too", () => {
+    const ids = placementRows("roadmap", pages, "me").flatMap((r) =>
       r.kind === "page" ? [r.page.id] : [],
     );
-    expect(ids).toEqual(["roadmap"]);
+    expect(ids[0]).toBe("roadmap");
+    expect(ids.length).toBeGreaterThan(1);
   });
 });
 

@@ -334,22 +334,12 @@ export function PermissionsPopoverHost({
     [page, access, memberInfo],
   );
 
-  const areaLabel = useMemo(() => {
-    const p = page.props as Record<string, unknown> | null;
-    const v = p && typeof p === "object" ? (p as Record<string, unknown>)["area"] : null;
-    return typeof v === "string" && v.trim() ? v : null;
-  }, [page.props]);
-
-  const pageOwnerId = useMemo(() => {
-    const p = page.props as Record<string, unknown> | null;
-    const v = p && typeof p === "object" ? p["owner"] : null;
-    if (typeof v === "string" && v) return v;
-    return page.created_by ?? null;
-  }, [page.props, page.created_by]);
+  // Whoever made the page: listed first and marked as its maker.
+  const pageOwnerId = page.created_by ?? null;
 
   const copy = useMemo(
-    () => panelCopy(norm, workspaceName, members.length, areaLabel),
-    [norm, workspaceName, members.length, areaLabel],
+    () => panelCopy(norm, workspaceName, members.length),
+    [norm, workspaceName, members.length],
   );
 
   const { panelRef, pos } = usePosition(open, anchor);

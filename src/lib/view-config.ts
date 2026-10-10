@@ -71,7 +71,6 @@ const TYPE_WIDTHS: Record<string, number> = {
 
 export function defaultWidth(key: string, type: string | undefined): number {
   if (key === TITLE_KEY) return 300;
-  if (key === "area") return 140;
   return TYPE_WIDTHS[type ?? "text"] ?? 160;
 }
 
@@ -149,8 +148,9 @@ export function readConfig(raw: unknown): ViewConfig {
   return out;
 }
 
-/* Which properties a table shows when the view hasn't chosen: the built-in
- * set it always had (Area, Owner, Status, Tags, Verified, Edited), then
+/* Which properties a table shows when the view hasn't chosen: the "Pages"
+ * database's original four (their keys exist only there) and Verified,
+ * Edited, then
  * date, number, text and checkbox properties, then newer kinds once a page
  * uses them, so a table doesn't fill with empty columns as a team adds
  * properties. */

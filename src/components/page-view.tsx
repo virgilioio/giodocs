@@ -28,7 +28,6 @@ import { usePageAppearance } from "@/lib/page-appearance";
 import { Popover } from "./popover";
 import { EmojiPicker } from "./emoji-picker";
 import {
-  AreaPicker,
   OwnerPicker,
   SelectPicker,
   TagsPicker,
@@ -200,18 +199,13 @@ function PermissionsChip({
       })),
     [members],
   );
-  const areaLabel = useMemo(() => {
-    const p = page.props as Record<string, unknown> | null;
-    const v = p && typeof p === "object" ? (p as Record<string, unknown>)["area"] : null;
-    return typeof v === "string" && v.trim() ? v : null;
-  }, [page.props]);
   const norm = useMemo(
     () => normAccess(page as never, access, memberInfo),
     [page, access, memberInfo],
   );
   const label = useMemo(
-    () => panelCopy(norm, workspaceName, members.length, areaLabel).chipLabel,
-    [norm, workspaceName, members.length, areaLabel],
+    () => panelCopy(norm, workspaceName, members.length).chipLabel,
+    [norm, workspaceName, members.length],
   );
 
   const path = isWorkspace
@@ -259,7 +253,6 @@ function staleLabel(iso: string): string {
 
 /* ────────────── Property strip (read-only, × removes non-system props) ────────────── */
 
-const PROPS_ORDER_TOP = ["area", "owner", "status"];
 
 function labelFor(key: string, defs: PropDef[]): string {
   const d = defs.find((x) => x.key === key);
@@ -357,7 +350,6 @@ function EditableValue({
   def,
   members,
   pages,
-  areas,
   onSet,
   onOpenChange,
   relations,
@@ -367,7 +359,6 @@ function EditableValue({
   def: PropDef | undefined;
   members: MemberRow[];
   pages: PageListItem[];
-  areas: string[];
   onSet: (value: unknown) => void;
   onOpenChange: (open: boolean) => void;
   relations: StripRelations;
@@ -386,38 +377,8 @@ function EditableValue({
     return [...s].sort();
   }, [pages, propKey, def?.type]);
 
-  /* ── Area ── */
-  if (propKey === "area") {
-    const hasArea = typeof raw === "string" && raw;
-    return (
-      <AreaPicker
-        value={typeof raw === "string" ? raw : null}
-        areas={areas}
-        onPick={onSet}
-        onOpenChange={onOpenChange}
-        trigger={({ onClick, ref }) => (
-          <button
-            ref={ref}
-            type="button"
-            onClick={onClick}
-            className={VALUE_CELL_CLASS}
-            style={VALUE_CELL_STYLE}
-          >
-            {hasArea ? (
-              <span style={{ fontSize: 14, color: "var(--color-strong)" }}>
-                {raw as string}
-              </span>
-            ) : (
-              empty
-            )}
-          </button>
-        )}
-      />
-    );
-  }
-
   /* ── Owner / Person ── */
-  if (propKey === "owner" || def?.type === "person") {
+  if (def?.type === "person") {
     const m = members.find((x) => x.user_id === raw);
     return (
       <OwnerPicker
@@ -893,7 +854,6 @@ function PropertyStrip({
   members,
   meId,
   pages,
-  areas,
   staleDays,
   onVerify,
   justVerified,
@@ -907,7 +867,6 @@ function PropertyStrip({
   members: MemberRow[];
   meId: string;
   pages: PageListItem[];
-  areas: string[];
   staleDays: number;
   onVerify: () => void;
   justVerified: boolean;
@@ -989,14 +948,15 @@ function PropertyStrip({
   const shown = new Set(present);
   added.forEach((k) => shown.add(k));
 
-  const rest = byPos
-    .filter((d) => !PROPS_ORDER_TOP.includes(d.key))
-    .filter((d) => shown.has(d.key));
+  // A row always shows its database's first three properties (set or
+  // not), then any other property that has a value, in database order.
+  const top = byPos
+    .filter((d) => !d.archived_at && d.type !== "rollup")
+    .slice(0, 3)
+    .map((d) => d.key);
+  const rest = byPos.filter((d) => !top.includes(d.key)).filter((d) => shown.has(d.key));
 
-  const rows = [
-    ...PROPS_ORDER_TOP.filter((k) => propDefs.some((d) => d.key === k)).map((k) => ({ key: k })),
-    ...rest.map((d) => ({ key: d.key })),
-  ];
+  const rows = [...top.map((k) => ({ key: k })), ...rest.map((d) => ({ key: d.key }))];
 
   const [hoverKey, setHoverKey] = useState<string | null>(null);
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -1193,7 +1153,6 @@ function PropertyStrip({
                 members={members}
                 pages={pages}
                     relations={relations}
-                areas={areas}
                 onSet={(v) => onSet(r.key, v)}
                 onOpenChange={(open) =>
                   setOpenKey((prev) =>
@@ -1781,14 +1740,6 @@ export function PageEditor({ pageId }: { pageId: string }) {
     void saverRef.current?.flush();
   }, []);
 
-  const areasList = useMemo(() => {
-    const s = new Set<string>();
-    for (const p of (shell.pages.data ?? []) as PageListItem[]) {
-      const a = propsOf(p)["area"];
-      if (typeof a === "string" && a) s.add(a);
-    }
-    return [...s].sort();
-  }, [shell.pages.data]);
 
   /* A blank page offers templates. Typing anything (title or body) hides
    * the list at once, without waiting for the save. */
@@ -1996,7 +1947,6 @@ export function PageEditor({ pageId }: { pageId: string }) {
         meId={meId}
         pages={(shell.pages.data ?? []) as PageListItem[]}
         onSetPage={(pageId, key, value) => setProp.mutate({ pageId, key, value })}
-        areas={areasList}
         staleDays={staleDays}
         onVerify={onVerify}
         justVerified={justVerified}

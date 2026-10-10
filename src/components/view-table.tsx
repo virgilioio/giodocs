@@ -53,7 +53,6 @@ import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { RelatedLinks } from "./related-links";
 import {
-  AreaPicker,
   CheckboxToggle,
   DatePicker,
   MiniAvatar,
@@ -241,33 +240,6 @@ function PersonCell({
   );
 }
 
-function AreaCell({
-  value,
-  areas,
-  onPick,
-}: {
-  value: unknown;
-  areas: string[];
-  onPick: (v: string | null) => void;
-}) {
-  return (
-    <AreaPicker
-      value={typeof value === "string" ? value : null}
-      areas={areas}
-      onPick={onPick}
-      trigger={({ onClick, ref }) => (
-        <button
-          ref={ref}
-          type="button"
-          onClick={onClick}
-          className="min-w-0 flex-1 truncate text-left text-meta"
-        >
-          {typeof value === "string" && value ? value : EMPTY}
-        </button>
-      )}
-    />
-  );
-}
 
 function OptionCell({
   def,
@@ -425,7 +397,6 @@ export type TableRelations = {
 type CellCtx = {
   defs: ReadonlyMap<string, PropDef>;
   members: TableMember[];
-  areas: string[];
   multiOptions: ReadonlyMap<string, string[]>;
   linkPages: PageListItem[];
   isStale: boolean;
@@ -503,8 +474,6 @@ function ValueCell({ page, k, ctx }: { page: PageListItem; k: string; ctx: CellC
       return <PersonView member={ctx.members.find((m) => m.user_id === page.created_by)} />;
     case "@edited_by":
       return <PersonView member={ctx.members.find((m) => m.user_id === page.edited_by)} />;
-    case "area":
-      return <AreaCell value={propsOf(page).area} areas={ctx.areas} onPick={set} />;
   }
   const def = ctx.defs.get(k);
   if (!def) return EMPTY;
@@ -557,7 +526,7 @@ function ValueCell({ page, k, ctx }: { page: PageListItem; k: string; ctx: CellC
           value={raw}
           onSet={set}
           variant="cell"
-          terminal={isTerminalStatus(propsOf(page).status)}
+          terminal={isTerminalStatus(firstStatusValue(page, ctx.defs))}
           triggerClassName="min-w-0 text-left"
         />
       );
@@ -573,6 +542,13 @@ function ValueCell({ page, k, ctx }: { page: PageListItem; k: string; ctx: CellC
       />
     );
   return <TextEditor value={raw} onSet={set} variant="cell" triggerClassName="text-left" />;
+}
+
+/** The row's value of its database's first status property: a date stops
+ *  reading as overdue once that status is a finished one. */
+function firstStatusValue(page: PageListItem, defs: ReadonlyMap<string, PropDef>): unknown {
+  for (const d of defs.values()) if (d.type === "status" && !d.archived_at) return propsOf(page)[d.key];
+  return undefined;
 }
 
 /* ─────────────────────────── Row ─────────────────────────── */
@@ -1319,7 +1295,6 @@ export function ViewTable({
   rows,
   pages,
   members,
-  areas,
   propDefs,
   staleThreshold,
   rename,
@@ -1346,7 +1321,6 @@ export function ViewTable({
   rows: PageListItem[];
   pages: PageListItem[];
   members: TableMember[];
-  areas: string[];
   propDefs: PropDef[];
   staleThreshold: number;
   rename: ReturnType<typeof useRenamePage>;
@@ -1431,7 +1405,6 @@ export function ViewTable({
     useMemo(() => new Map(multiNow), [multiNow]),
     JSON.stringify(multiNow),
   );
-  const stableAreas = useStable(areas, areas.join("\u0000"));
   const hasLinks = shown.some((k) => defs.get(k)?.type === "links");
   const linkPages = hasLinks ? pages : EMPTY_PAGES;
   const setPropMutate = setProp.mutate;
@@ -1447,13 +1420,12 @@ export function ViewTable({
     () => ({
       defs,
       members,
-      areas: stableAreas,
       multiOptions,
       linkPages,
       setProp: setPropMutate,
       relations: rel,
     }),
-    [defs, members, stableAreas, multiOptions, linkPages, setPropMutate, rel],
+    [defs, members, multiOptions, linkPages, setPropMutate, rel],
   );
   // One ctx object per staleness, so memoised rows keep their props.
   const ctxStale = useMemo(() => ({ ...ctxFresh, isStale: true }), [ctxFresh]);

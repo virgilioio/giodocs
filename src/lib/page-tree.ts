@@ -37,14 +37,6 @@ export function bySiblingOrder<P extends TreePage>(a: P, b: P): number {
 }
 const byEditedDesc = bySiblingOrder;
 
-function areaOf(p: TreePage): string {
-  const props =
-    p.props && typeof p.props === "object" && !Array.isArray(p.props)
-      ? (p.props as Record<string, unknown>)
-      : {};
-  const a = props["area"];
-  return typeof a === "string" ? a : "";
-}
 
 function indexById<P extends TreePage>(pages: readonly P[]): Map<string, P> {
   const m = new Map<string, P>();
@@ -175,7 +167,9 @@ export function placementRows<P extends TreePage>(
     .filter((p) => {
       if (!q) return true;
       const t = String(p.title ?? "").toLowerCase();
-      return t.includes(q) || areaOf(p).toLowerCase().includes(q);
+      // Its own title, or the page it sits in ("Roadmap" finds its rows).
+      const parent = p.parent_id ? map.get(p.parent_id) : undefined;
+      return t.includes(q) || String(parent?.title ?? "").toLowerCase().includes(q);
     })
     .sort(byEditedDesc)
     .slice(0, limit);

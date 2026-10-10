@@ -26,14 +26,6 @@ import {
 
 export type RelPageItem = RelPage & { props?: unknown; edited_at?: string | null };
 
-function areaOf(p: RelPageItem): string {
-  const props = p.props;
-  if (props && typeof props === "object") {
-    const a = (props as Record<string, unknown>)["area"];
-    if (typeof a === "string" && a) return a;
-  }
-  return "";
-}
 
 const BADGE_STYLE: React.CSSProperties = {
   display: "inline-flex",
@@ -253,10 +245,7 @@ function RelatedPicker({
       .filter((p) => p.id !== currentPageId && !linked.has(p.id))
       .filter((p) => {
         if (!ql) return true;
-        return (
-          (p.title ?? "").toLowerCase().includes(ql) ||
-          areaOf(p).toLowerCase().includes(ql)
-        );
+        return (p.title ?? "").toLowerCase().includes(ql);
       })
       .slice()
       .sort((a, b) => (b.edited_at ?? "").localeCompare(a.edited_at ?? ""))
@@ -330,7 +319,6 @@ function RelatedPicker({
           key={p.id}
           icon={p.icon}
           label={p.title?.trim() || "Untitled"}
-          hint={areaOf(p)}
           onPick={() => onAdd(p.id)}
         />
       ))}

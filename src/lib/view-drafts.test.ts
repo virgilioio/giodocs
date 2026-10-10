@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { areaBaseView, currentView, type ViewBase, type ViewDraft } from "./view-drafts";
+import { currentView, type ViewBase, type ViewDraft } from "./view-drafts";
 
 const teamBase: ViewBase = {
   id: "v1",
@@ -46,28 +46,6 @@ describe("currentView", () => {
   });
 });
 
-describe("areaBaseView", () => {
-  it("synthesises a base whose filter is a single area eq", () => {
-    const b = areaBaseView("Engineering");
-    expect(b.scope).toBe("area");
-    expect(b.layout).toBe("table");
-    expect(b.filter).toEqual([{ op: "eq", prop: "area", value: "Engineering" }]);
-    expect(b.id).toBe("area:Engineering");
-    expect(b.name).toBe("Engineering");
-    expect(b.sort).toEqual({ prop: "edited", dir: "desc" });
-  });
-
-  it("participates in currentView + drafts identically to a team view", () => {
-    const b = areaBaseView("Ops");
-    const cv = currentView(b, {
-      "area:Ops": { sort: { prop: "title", dir: "asc" } },
-    });
-    expect(cv._modified).toBe(true);
-    expect(cv.sort).toEqual({ prop: "title", dir: "asc" });
-    // Area filter is still present at index 0
-    expect(cv.filter[0]).toEqual({ op: "eq", prop: "area", value: "Ops" });
-  });
-});
 
 describe("currentView and table settings", () => {
   it("a draft that only resizes properties isn't a change to the view", () => {

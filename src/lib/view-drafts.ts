@@ -2,7 +2,7 @@ import type { Filter, SortSpec } from "./run-view";
 import { sameIgnoringWidths, type ViewConfig } from "./view-config";
 
 export type ViewLayout = "table" | "board" | "list" | "calendar";
-export type ViewScope = "personal" | "team" | "area";
+export type ViewScope = "personal" | "team";
 
 export type ViewBase = {
   id: string;
@@ -37,18 +37,6 @@ export function currentView(
   return { ...base, ...(d ?? {}), _base: base, _modified: modified };
 }
 
-export function areaBaseView(area: string): ViewBase {
-  return {
-    id: `area:${area}`,
-    name: area,
-    scope: "area",
-    layout: "table",
-    filter: [{ op: "eq", prop: "area", value: area }],
-    sort: { prop: "edited", dir: "desc" },
-    group_by: null,
-    config: {},
-  };
-}
 
 /**
  * The single accessor for a view's effective layout. Reads from a draft

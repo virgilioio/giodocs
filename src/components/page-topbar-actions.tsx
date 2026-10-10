@@ -425,7 +425,8 @@ export function PageTopbarActions({
         const m = members.find((x) => x.user_id === id);
         return m?.profiles?.full_name || m?.profiles?.email || "Someone";
       },
-      titleOf: (id) => pages.find((p) => p.id === id)?.title || "Untitled",
+      titleOf: (id) =>
+        ((shell.pages.data ?? []) as PageListItem[]).find((p) => p.id === id)?.title || "Untitled",
     });
     const properties = defs
       .filter((d) => d.type !== "rollup" && !(d.type === "relation" && relationConfig(d).of))
@@ -444,7 +445,7 @@ export function PageTopbarActions({
       // custom-emoji shortcode to an embedded image before serialising.
       icon: typeof page.icon === "string" ? page.icon : null,
     };
-  }, [page, members, shell.propDefs.data, pages]);
+  }, [page, members, shell.propDefs.data, shell.pages.data]);
 
   if (!listRow) return null;
 

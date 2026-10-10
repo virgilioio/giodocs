@@ -507,7 +507,7 @@ function PreferencesPane() {
         <Row label="Explain the query above every view" help="Show a plain-language filter sentence.">
           <Toggle value={prefs.explainQuery} onChange={(v) => set("explainQuery", v)} />
         </Row>
-        <Row label="Show counts in the sidebar" help="Numbers next to views and areas.">
+        <Row label="Show counts in the sidebar" help="Numbers next to databases and views.">
           <Toggle value={prefs.showSidebarCounts} onChange={(v) => set("showSidebarCounts", v)} />
         </Row>
       </div>
@@ -549,14 +549,7 @@ function GeneralPane() {
     return pages.filter((p) => new Date(p.verified_at).getTime() < threshold).length;
   }, [pages, sliderDays]);
 
-  const areaCount = useMemo(() => {
-    const s = new Set<string>();
-    for (const p of pages) {
-      const a = propsOf(p)["area"];
-      if (typeof a === "string" && a) s.add(a);
-    }
-    return s.size;
-  }, [pages]);
+  const databaseCount = useMemo(() => pages.filter((p) => p.is_database).length, [pages]);
 
   const [newDomain, setNewDomain] = useState("");
 
@@ -707,12 +700,11 @@ function GeneralPane() {
           </div>
         </Row>
 
-        <Row label="Structure" help="A page lives wherever its properties say.">
+        <Row label="Structure" help="Pages inside pages; a database holds its rows, properties and views.">
           <div className="flex flex-wrap gap-2" style={{ maxWidth: 460 }}>
             <StatChip>{pages.length} pages</StatChip>
-            <StatChip>{areaCount} areas</StatChip>
+            <StatChip>{databaseCount} databases</StatChip>
             <StatChip>{views.length} saved views</StatChip>
-            <StatChip bold>0 folders</StatChip>
           </div>
         </Row>
       </div>
@@ -1092,7 +1084,7 @@ function PeoplePane({
 
         <p className="mt-3" style={{ fontSize: 13, color: "var(--color-secondary)" }}>
           {tab === "members"
-            ? "Owners can publish team views and change these settings. Members can do everything else. Click a page count to save that person's pages as a view."
+            ? "Owners change these settings and can change anyone's views. Members can do everything else. Click a page count to save that person's pages as a view."
             : `Guests are invited page by page — there is no guest role to manage here, only the pages that name them.`}
         </p>
       </div>
@@ -2258,8 +2250,8 @@ function MyProfilePane({ onClose }: { onClose: () => void }) {
           </span>
           <p className="text-secondary" style={{ fontSize: 13.5, lineHeight: 1.55 }}>
             {role === "owner"
-              ? "You can publish team views, invite people, and change workspace settings. "
-              : "You can read and edit every open page, create views, and verify pages. Publishing a team view and changing workspace settings are owner-only. "}
+              ? "You can invite people, change workspace settings, and change anyone's views. "
+              : "You can read and edit every open page, create and share views of databases you can edit, and verify pages. Inviting people and changing workspace settings are owner-only. "}
             Only an owner can change this, in People.
           </p>
         </div>

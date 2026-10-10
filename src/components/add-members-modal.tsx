@@ -443,14 +443,14 @@ export function AddMembersModal({
               onClick={() => setRole("Member")}
               icon={ICON_MEMBER}
               label="Member"
-              description="Can read and edit every page, create views, and verify pages. Cannot publish team views or change workspace settings."
+              description="Can read and edit every open page, create and share views, and verify pages. Cannot invite people or change workspace settings."
             />
             <RoleCard
               selected={role === "Owner"}
               onClick={() => setRole("Owner")}
               icon={ICON_OWNER}
               label="Owner"
-              description="Everything a member can do, plus publishing team views, inviting people, and changing workspace settings."
+              description="Everything a member can do, plus inviting people, changing workspace settings, and changing anyone's views."
             />
           </div>
         </div>

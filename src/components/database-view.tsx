@@ -66,7 +66,7 @@ import type { Database } from "@/integrations/supabase/types";
 import { isTypingTarget } from "@/lib/is-typing";
 
 /* The database page: its title, its views as tabs, and the chosen view
- * over its rows. Replaces the old MainView (views and areas over one pool
+ * over its rows. Replaces the old MainView (views over one pool
  * of pages). Everything a view needs comes from useViewRuntime(databaseId),
  * shared with views placed inside pages. */
 
@@ -582,22 +582,6 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [anySelection]);
 
-  const tagsWs = useMemo(() => {
-    const s = new Set<string>();
-    for (const p of pages) {
-      const t = propsOf(p)["tags"];
-      if (Array.isArray(t)) for (const x of t) if (typeof x === "string" && x) s.add(x);
-    }
-    return [...s].sort();
-  }, [pages]);
-  const areas = useMemo(() => {
-    const s = new Set<string>();
-    for (const p of pages) {
-      const a = propsOf(p)["area"];
-      if (typeof a === "string" && a) s.add(a);
-    }
-    return [...s].sort();
-  }, [pages]);
 
   const unfilteredCount = useMemo(() => pages.filter((p) => !p.archived_at).length, [pages]);
   const staleThreshold = Date.now() - staleDays * 24 * 60 * 60 * 1000;
@@ -939,7 +923,6 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
         rows={rows}
         pages={pages}
         members={members}
-        areas={areas}
         staleThreshold={staleThreshold}
         rename={rename}
         setProp={setProp}

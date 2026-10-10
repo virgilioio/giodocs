@@ -97,7 +97,6 @@ describe("panelCopy — §6.4 (members and guests are never summed)", () => {
       },
       "Acme",
       10,
-      "Engineering",
     );
     expect(copy.warnings[0]).toContain("1 person at Acme");
     expect(copy.warnings[0]).toContain("2 guests outside it");
@@ -118,7 +117,6 @@ describe("panelCopy — §6.4 (members and guests are never summed)", () => {
       },
       "Acme",
       10,
-      null,
     );
     expect(c1.warnings[0]).toContain("2 people");
     expect(c1.warnings[0]).toContain("1 guest outside it");
@@ -137,7 +135,6 @@ describe("panelCopy — §6.4 (members and guests are never summed)", () => {
       },
       "Acme",
       10,
-      "Design",
     );
     expect(restricted.warnings).toHaveLength(2);
     expect(restricted.warnings[1]).toContain(
@@ -156,11 +153,10 @@ describe("panelCopy — §6.4 (members and guests are never summed)", () => {
       },
       "Acme",
       10,
-      "Design",
     );
     expect(workspace.warnings).toHaveLength(1);
     expect(workspace.warnings[0]).toContain("1 person outside Acme");
-    expect(workspace.warnings[0]).toContain("The rest of Design has no guests.");
+    expect(workspace.warnings[0]).not.toContain("area");
   });
 
   it("no warnings when workspace mode with no guests", () => {
@@ -168,7 +164,6 @@ describe("panelCopy — §6.4 (members and guests are never summed)", () => {
       { type: "workspace", wsRole: "edit", people: [], guests: [] },
       "Acme",
       5,
-      "Design",
     );
     expect(c.warnings).toHaveLength(0);
     expect(c.chipLabel).toBe("Everyone at Acme");

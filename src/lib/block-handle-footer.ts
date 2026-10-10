@@ -1,7 +1,7 @@
 /**
  * Footer text for the block-handle menu — the page's edited stamp,
- * attributed to the person who last edited it. Mirrors `pageRowFooter`
- * and `areaMenuFooter`; a pure string builder with no time/locale dep.
+ * attributed to the person who last edited it. Mirrors `pageRowFooter`:
+ * a pure string builder with no time/locale dep.
  *
  * Format (spec):
  *   "Edited {rel} by {firstName}"

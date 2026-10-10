@@ -264,15 +264,6 @@ function InlineViewBody({
     [rt.pages, view.filter, sort, rt.runCtx],
   );
   const staleThreshold = Date.now() - rt.staleDays * 24 * 60 * 60 * 1000;
-  const areas = useMemo(() => {
-    const s = new Set<string>();
-    for (const p of rt.pages) {
-      const props = p.props as Record<string, unknown> | null;
-      const a = props?.area;
-      if (typeof a === "string" && a) s.add(a);
-    }
-    return [...s].sort();
-  }, [rt.pages]);
   const groupable = rt.propDefs.filter((d) => d.type === "select" || d.type === "status");
   const boardGroup =
     view.group_by && groupable.some((d) => d.key === view.group_by)
@@ -389,7 +380,6 @@ function InlineViewBody({
         rows={rows}
         pages={rt.pages}
         members={rt.members}
-        areas={areas}
         staleThreshold={staleThreshold}
         rename={rename}
         setProp={setProp}

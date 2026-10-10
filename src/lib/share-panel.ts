@@ -109,7 +109,6 @@ export function panelCopy(
   norm: NormAccess,
   workspaceName: string,
   memberTotal: number,
-  areaLabel: string | null,
 ): PanelCopy {
   const ws = workspaceName || "this workspace";
   const nPeople = norm.people.length;
@@ -139,11 +138,10 @@ export function panelCopy(
   const warnings: string[] = [];
 
   if (norm.type === "restricted") {
-    const area = areaLabel ? areaLabel : "this area";
     const guestBit =
       nGuests > 0 ? `, plus ${plural(nGuests, "guest", "guests")} outside it` : "";
     warnings.push(
-      `Most of ${area} is open to everyone at ${ws} — this page is visible to only ${plural(
+      `This page is visible to only ${plural(
         Math.max(1, nPeople),
         "person",
         "people",
@@ -156,9 +154,7 @@ export function panelCopy(
     const suffix =
       norm.type === "restricted"
         ? " Removing them does not change who at " + ws + " can open it."
-        : areaLabel
-          ? ` The rest of ${areaLabel} has no guests.`
-          : " The rest of this area has no guests.";
+        : "";
     warnings.push(
       `${plural(nGuests, "person", "people")} outside ${ws} can see this page.${suffix}`,
     );
