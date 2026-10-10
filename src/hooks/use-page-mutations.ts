@@ -494,6 +494,7 @@ export function useCreatePage() {
         parent_id: v.parentId ?? null,
         props: v.seedProps as never,
         blocks: (v.blocks ?? []) as never,
+        access_type: "restricted",
       });
       if (insertError) throw insertError;
       const { data, error } = await supabase
