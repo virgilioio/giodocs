@@ -392,7 +392,7 @@ function Segmented<T extends string>({
               borderLeft: i === 0 ? "none" : "1px solid var(--color-line)",
             }}
           >
-            {o.label}
+            <span className="gio-stable-bold" data-label={o.label}>{o.label}</span>
           </button>
         );
       })}
@@ -877,7 +877,9 @@ function PeoplePane({
                   fontWeight: active ? 700 : 400,
                 }}
               >
-                {t === "members" ? "Members" : "Guests"}{" "}
+                <span className="gio-stable-bold" data-label={t === "members" ? "Members" : "Guests"}>
+                  {t === "members" ? "Members" : "Guests"}
+                </span>{" "}
                 <span className="text-whisper tnum">{count}</span>
               </button>
             );

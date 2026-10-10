@@ -15,6 +15,7 @@ import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
 import type { Filter, SortSpec } from "@/lib/run-view";
 import { runView } from "@/lib/run-view";
+import { exitOnly } from "@/lib/exit-motion";
 
 type PropDef = Database["public"]["Tables"]["property_defs"]["Row"];
 type ViewRow = Database["public"]["Tables"]["views"]["Row"];
@@ -467,14 +468,21 @@ export function BulkBar(props: {
 
   return (
     <>
+      {/* A zero-height sticky slot: the bar floats over the top of the list
+          instead of pushing every row down when the first box is ticked. */}
+      <div
+        ref={exitOnly("fade")}
+        style={{ position: "sticky", top: 6, zIndex: 40, height: 0 }}
+      >
       <div
         role="toolbar"
         aria-label="Selection"
-        className="animate-fadeIn"
+        className="animate-cardIn"
         style={{
-          position: "sticky",
-          top: 6,
-          zIndex: 40,
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
           display: "flex",
           alignItems: "center",
           gap: 10,
@@ -483,7 +491,6 @@ export function BulkBar(props: {
           borderRadius: 9,
           padding: "7px 8px 7px 13px",
           boxShadow: "0 8px 24px rgba(13,13,9,.22)",
-          marginBottom: 10,
         }}
       >
         <span style={{ fontSize: 13.5, fontWeight: 700 }}>
@@ -567,6 +574,7 @@ export function BulkBar(props: {
             />
           </svg>
         </button>
+      </div>
       </div>
       <RowMenu spec={spec} anchor={anchor} onClose={closeMenu} />
     </>

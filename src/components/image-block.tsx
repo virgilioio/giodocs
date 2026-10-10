@@ -282,6 +282,37 @@ function useUploader(onDone: (path: string, slot: number) => void) {
 
 /* ────────────── Resolved <img> ────────────── */
 
+/* Remember each image's shape so its block holds that height while the
+   signed URL resolves and the file decodes, instead of growing from zero
+   and pushing the page down. Per-device cache only; nothing is written to
+   the block. */
+const RATIO_KEY = "gio.image.ratios";
+const RATIO_MAX = 400;
+let ratios: Map<string, number> | null = null;
+function ratioCache(): Map<string, number> {
+  if (ratios) return ratios;
+  ratios = new Map();
+  try {
+    const raw = localStorage.getItem(RATIO_KEY);
+    if (raw) for (const [k, v] of JSON.parse(raw) as [string, number][]) ratios.set(k, v);
+  } catch {
+    /* private mode or bad data: start empty */
+  }
+  return ratios;
+}
+function rememberRatio(path: string, ratio: number) {
+  const m = ratioCache();
+  if (m.get(path) === ratio) return;
+  m.delete(path);
+  m.set(path, ratio);
+  while (m.size > RATIO_MAX) m.delete(m.keys().next().value as string);
+  try {
+    localStorage.setItem(RATIO_KEY, JSON.stringify([...m]));
+  } catch {
+    /* quota or private mode */
+  }
+}
+
 function StoredImage({
   path,
   preview,
@@ -295,17 +326,49 @@ function StoredImage({
 }) {
   const q = useSignedImageUrl(path);
   const src = q.data ?? preview ?? "";
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
+  const loaded = !!src && loadedSrc === src;
   useEffect(() => {
     if (q.data && preview && onLoaded) onLoaded();
   }, [q.data, preview, onLoaded]);
-  if (!src) return null;
+  const known = path ? ratioCache().get(path) : undefined;
+  const onImg = (img: HTMLImageElement) => {
+    if (path && img.naturalWidth && img.naturalHeight) {
+      rememberRatio(path, img.naturalWidth / img.naturalHeight);
+    }
+    setLoadedSrc(src);
+  };
   return (
-    <img
-      src={src}
-      alt={alt}
-      draggable={false}
-      style={{ display: "block", width: "100%", height: "auto", borderRadius: "inherit" }}
-    />
+    <div
+      style={{
+        position: "relative",
+        borderRadius: "inherit",
+        // Until the file is in, hold the remembered shape (or 16:9).
+        aspectRatio: loaded ? undefined : String(known ?? 16 / 9),
+        background: loaded ? undefined : "var(--color-sunken)",
+      }}
+    >
+      {src ? (
+        <img
+          ref={(el) => {
+            // A cached image can finish before React attaches onLoad.
+            if (el?.complete && el.naturalWidth) onImg(el);
+          }}
+          src={src}
+          alt={alt}
+          draggable={false}
+          onLoad={(e) => onImg(e.currentTarget)}
+          style={{
+            display: "block",
+            width: "100%",
+            height: "auto",
+            borderRadius: "inherit",
+            opacity: loaded ? 1 : 0,
+            transition: "opacity 200ms cubic-bezier(0.23, 1, 0.32, 1)",
+          }}
+        />
+      ) : null}
+    </div>
   );
 }
 

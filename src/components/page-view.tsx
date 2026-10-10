@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
@@ -1274,6 +1274,27 @@ export function PageEditor({ pageId }: { pageId: string }) {
     };
   }, [flushTitle]);
 
+  // The conflict banner floats at the bottom edge. If it lands on the line
+  // you're typing in, scroll that line up above it.
+  const conflictRef = useRef<HTMLDivElement | null>(null);
+  const hasConflict = !!conflict;
+  useLayoutEffect(() => {
+    const banner = conflictRef.current;
+    if (!hasConflict || !banner) return;
+    const sel = window.getSelection();
+    const caretRect =
+      sel && sel.rangeCount > 0 ? sel.getRangeAt(0).getBoundingClientRect() : null;
+    const at = caretRect && caretRect.height > 0
+      ? caretRect
+      : (document.activeElement as HTMLElement | null)?.getBoundingClientRect();
+    if (!at) return;
+    const overlap = at.bottom + 12 - banner.getBoundingClientRect().top;
+    if (overlap <= 0) return;
+    let sc: HTMLElement | null = banner.parentElement;
+    while (sc && !/(auto|scroll)/.test(getComputedStyle(sc).overflowY)) sc = sc.parentElement;
+    (sc ?? document.scrollingElement)?.scrollBy({ top: overlap });
+  }, [hasConflict]);
+
   const keepMine = useCallback(() => {
     if (!conflict) return;
     knownRef.current.force = true;
@@ -1476,10 +1497,25 @@ export function PageEditor({ pageId }: { pageId: string }) {
         }}
       >
 
+        <EditableBody
+          key={editorKey}
+          pageId={page.id}
+          initialBlocks={blocks}
+          onChange={onBlocksChange}
+          onBlur={onBodyBlur}
+          locked={app.locked}
+          editedRel={page.edited_at ? relTime(page.edited_at) : null}
+          editorFirstName={editorName}
+        />
         {conflict ? (
+          // After the last block, sticky to the bottom of the window: on a
+          // long page it floats at the bottom edge where you can reach it;
+          // on a short one it sits under the last line. Nothing above moves.
           <div
+            ref={conflictRef}
             role="alert"
-            className="mb-3 mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-amberRing bg-amberTint px-3 py-2 text-row text-amberInk"
+            className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-amberRing bg-amberTint px-3 py-2 text-row text-amberInk shadow-toast animate-cardIn"
+            style={{ position: "sticky", bottom: 16, zIndex: 30 }}
           >
             <span className="min-w-0 flex-1">
               Someone else changed this page while you were editing. Your latest edits aren't saved yet.
@@ -1502,16 +1538,6 @@ export function PageEditor({ pageId }: { pageId: string }) {
             </button>
           </div>
         ) : null}
-        <EditableBody
-          key={editorKey}
-          pageId={page.id}
-          initialBlocks={blocks}
-          onChange={onBlocksChange}
-          onBlur={onBodyBlur}
-          locked={app.locked}
-          editedRel={page.edited_at ? relTime(page.edited_at) : null}
-          editorFirstName={editorName}
-        />
       </div>
       <PermissionsPopoverHost
         page={page}

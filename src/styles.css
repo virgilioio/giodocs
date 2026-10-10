@@ -152,6 +152,14 @@
   .animate-skShimmer { animation: none }
 }
 
+/* A label that turns bold when active keeps its width: the box is sized by
+   an invisible bold copy, so neighbouring options never shift. */
+.gio-stable-bold { display: inline-grid; }
+.gio-stable-bold::after {
+  content: attr(data-label); font-weight: 700;
+  height: 0; overflow: hidden; visibility: hidden; user-select: none; pointer-events: none;
+}
+
 /* Tooltips (src/lib/tooltips.ts): every `title` on a control, and on text
    only while it is cut off. 400ms delay; neighbours open instantly. */
 .gio-tooltip {
