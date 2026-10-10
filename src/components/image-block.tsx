@@ -326,17 +326,26 @@ function StoredImage({
 }) {
   const q = useSignedImageUrl(path);
   const src = q.data ?? preview ?? "";
-  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
-  const loaded = !!src && loadedSrc === src;
+  // Once any source has shown, keep showing: the switch from the upload
+  // preview to the signed URL, or a refreshed signed URL, must not blink
+  // back to the placeholder.
+  const [loaded, setLoaded] = useState(false);
+  const ratioRef = useRef<number | null>(null);
+  useEffect(() => {
+    // The preview loads before the upload has a path; remember its shape
+    // once the path arrives.
+    if (path && ratioRef.current) rememberRatio(path, ratioRef.current);
+  }, [path]);
   useEffect(() => {
     if (q.data && preview && onLoaded) onLoaded();
   }, [q.data, preview, onLoaded]);
   const known = path ? ratioCache().get(path) : undefined;
   const onImg = (img: HTMLImageElement) => {
-    if (path && img.naturalWidth && img.naturalHeight) {
-      rememberRatio(path, img.naturalWidth / img.naturalHeight);
+    if (img.naturalWidth && img.naturalHeight) {
+      ratioRef.current = img.naturalWidth / img.naturalHeight;
+      if (path) rememberRatio(path, ratioRef.current);
     }
-    setLoadedSrc(src);
+    setLoaded(true);
   };
   return (
     <div
