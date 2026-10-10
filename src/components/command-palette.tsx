@@ -449,7 +449,7 @@ function PaletteRow({
     const filters = (v.filter ?? []) as Filter[];
     const people = Array.from(memberBy, ([id, full_name]) => ({ id, full_name }));
     const desc = filters.length
-      ? filters.map((f) => filterLabel(f, { people, staleDays })).join(" · ")
+      ? filters.map((f) => filterLabel(f, { people, staleDays, defs: propDefs })).join(" · ")
       : "all pages";
     const glyph =
       v.layout === "board"

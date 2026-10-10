@@ -15,25 +15,48 @@ export type ProfileForFilterLabel = {
   full_name: string | null;
 };
 
+/** Enough of a property definition to name it and its options. */
+export type DefForFilterLabel = {
+  key: string;
+  label: string;
+  type: string;
+  options?: unknown;
+};
+
 export type FilterLabelCtx = {
   people: ProfileForFilterLabel[];
   staleDays: number;
+  /** When given, properties read by their name and options by their
+   *  label ("hiring manager is Ana", "priority is “High”"). */
+  defs?: DefForFilterLabel[];
 };
 
+function optionLabel(def: DefForFilterLabel | undefined, v: unknown): string {
+  const opts = Array.isArray(def?.options)
+    ? (def!.options as Array<{ value?: unknown; label?: unknown }>)
+    : [];
+  const hit = opts.find((o) => o && o.value === v);
+  return typeof hit?.label === "string" && hit.label ? hit.label : String(v);
+}
+
 export function filterLabel(f: Filter, ctx: FilterLabelCtx): string {
+  const def = ctx.defs?.find((d) => d.key === f.prop);
+  const name = def ? def.label.toLowerCase() : (f.prop ?? "");
+  const person = (id: unknown) =>
+    ctx.people.find((p) => p.id === id)?.full_name ?? "someone";
   switch (f.op) {
     case "eq":
-      return f.prop === "owner"
-        ? `owner is ${
-            ctx.people.find((p) => p.id === f.value)?.full_name ?? "someone"
-          }`
-        : `${f.prop} is \u201C${f.value}\u201D`;
+      if (f.prop === "owner") return `owner is ${person(f.value)}`;
+      if (def?.type === "person") return `${name} is ${person(f.value)}`;
+      if (def?.type === "checkbox") return String(f.value) === "true" ? `${name} is checked` : `${name} is not checked`;
+      return `${def ? name : f.prop} is \u201C${def ? optionLabel(def, f.value) : f.value}\u201D`;
     case "includes":
-      return `tagged \u201C${f.value}\u201D`;
+      if (f.prop === "tags" || !def) return `tagged \u201C${f.value}\u201D`;
+      return `${name} includes \u201C${f.value}\u201D`;
     case "is_me":
-      return "owner is you";
+      return f.prop === "owner" || !def ? "owner is you" : `${name} is you`;
     case "not_empty":
-      return `has a ${f.prop}`;
+      return `has a ${def ? name : f.prop}`;
     case "stale":
       return `not verified in ${ctx.staleDays}+ days`;
     case "edited_within":

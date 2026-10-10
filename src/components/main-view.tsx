@@ -30,10 +30,13 @@ import {
   DatePicker,
   NumberEditor,
   TextEditor,
+  TypedValueEditor,
   CheckboxToggle,
   MiniAvatar,
   type SelectOption,
 } from "./property-pickers";
+import { isTypedString } from "@/lib/property-kinds";
+import { useAddPropertyOption } from "@/hooks/use-property-mutations";
 import { isTerminalStatus } from "@/lib/due-date";
 import {
   SpecMenuTrigger,
@@ -340,7 +343,7 @@ function QueryToolbar({
             return (
               <FilterChip
                 key={i}
-                label={filterLabel(f, { people, staleDays })}
+                label={filterLabel(f, { people, staleDays, defs: propDefs })}
                 clickable={clickable}
                 removable={clickable}
                 onRemove={() =>
@@ -633,10 +636,16 @@ function FilterBuilderContent({
     __freshness: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7.5V12l3.2 1.9",
   };
   const rootItems: Array<{ key: string; label: string }> = [];
-  for (const k of ["area", "owner", "status", "stage", "priority", "tags"]) {
+  const FIRST = ["area", "owner", "status", "stage", "priority", "tags"];
+  for (const k of FIRST) {
     const def = propDefs.find((d) => d.key === k);
     if (!def) continue;
     rootItems.push({ key: k, label: k === "tags" ? "Tag" : def.label });
+  }
+  // Then every other live property, in workspace order.
+  for (const def of [...propDefs].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))) {
+    if (FIRST.includes(def.key)) continue;
+    rootItems.push({ key: def.key, label: def.label });
   }
   rootItems.push({ key: "__freshness", label: "Freshness" });
 
@@ -757,11 +766,11 @@ function FilterBuilderContent({
     return (
       <div style={{ padding: "2px 0" }}>
         <StepTitle onBack={back}>{def.label}</StepTitle>
-        {key === "stage" && (
+        {key !== "status" && (
           <BuilderRow
-            onClick={() => onPick({ op: "not_empty", prop: "stage" })}
+            onClick={() => onPick({ op: "not_empty", prop: def.key })}
           >
-            Has any stage
+            Has any {def.label.toLowerCase()}
           </BuilderRow>
         )}
         {opts.map((o) => (
@@ -811,7 +820,70 @@ function FilterBuilderContent({
     );
   }
 
-  return <EmptyValues />;
+  /* Every other property the team made. */
+  if (def.type === "person") {
+    return (
+      <div style={{ padding: "2px 0" }}>
+        <StepTitle onBack={back}>{def.label}</StepTitle>
+        <BuilderRow onClick={() => onPick({ op: "is_me", prop: def.key })}>Me</BuilderRow>
+        <BuilderRow onClick={() => onPick({ op: "not_empty", prop: def.key })}>
+          Anyone
+        </BuilderRow>
+        {people.map((p) => (
+          <BuilderRow
+            key={p.id}
+            onClick={() => onPick({ op: "eq", prop: def.key, value: p.id })}
+          >
+            {p.full_name ?? "Someone"}
+          </BuilderRow>
+        ))}
+      </div>
+    );
+  }
+
+  if (def.type === "multi_select") {
+    const vals = new Set<string>();
+    for (const p of pages) {
+      const t = propsOf(p)[def.key];
+      if (Array.isArray(t)) t.forEach((x) => vals.add(String(x)));
+    }
+    const list = [...vals].sort();
+    return (
+      <div style={{ padding: "2px 0" }}>
+        <StepTitle onBack={back}>{def.label}</StepTitle>
+        {list.length === 0 && <EmptyValues />}
+        {list.map((t) => (
+          <BuilderRow
+            key={t}
+            onClick={() => onPick({ op: "includes", prop: def.key, value: t })}
+          >
+            {t}
+          </BuilderRow>
+        ))}
+      </div>
+    );
+  }
+
+  if (def.type === "checkbox") {
+    return (
+      <div style={{ padding: "2px 0" }}>
+        <StepTitle onBack={back}>{def.label}</StepTitle>
+        <BuilderRow onClick={() => onPick({ op: "eq", prop: def.key, value: "true" })}>
+          Checked
+        </BuilderRow>
+      </div>
+    );
+  }
+
+  // Text, number, date, link, email, phone, related pages: present or not.
+  return (
+    <div style={{ padding: "2px 0" }}>
+      <StepTitle onBack={back}>{def.label}</StepTitle>
+      <BuilderRow onClick={() => onPick({ op: "not_empty", prop: def.key })}>
+        Has a value
+      </BuilderRow>
+    </div>
+  );
 }
 
 function EmptyValues() {
@@ -1337,17 +1409,37 @@ function TagsCell({
 }
 
 
-/* Extra property columns — the four value types that are not one of the
- * fixed table columns. They render through the SAME shared editors the
- * page properties strip uses, so a Due date behaves identically in both
- * places. Selects, people and tags already have their own dedicated
- * columns, so they are deliberately not repeated here. */
-const EXTRA_CELL_TYPES = new Set(["date", "number", "text", "checkbox"]);
+/* Extra property columns — value types that are not one of the fixed table
+ * columns. They render through the SAME shared editors the page properties
+ * strip uses, so a Due date behaves identically in both places. The
+ * built-in selects, people and tags already have their own dedicated
+ * columns, so they are deliberately not repeated here; selects and statuses
+ * a team creates get a column of their own. */
+const EXTRA_CELL_TYPES = new Set(["date", "number", "text", "checkbox", "url", "email", "phone"]);
 const FIXED_KEYS = new Set(["area", "owner", "status", "tags"]);
 
-export function extraColumnDefs(propDefs: PropDef[]): PropDef[] {
+/** A property gets a column once any page in the workspace has a value for
+ *  it, so tables don't fill with empty columns as the team adds
+ *  properties. `pages` is the whole workspace list, so columns stay put
+ *  while filters change. */
+export function extraColumnDefs(propDefs: PropDef[], pages?: PageListItem[]): PropDef[] {
+  const used = pages
+    ? new Set(
+        pages.flatMap((p) =>
+          Object.entries(propsOf(p))
+            .filter(([, v]) => v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0))
+            .map(([k]) => k),
+        ),
+      )
+    : null;
   return [...propDefs]
-    .filter((d) => EXTRA_CELL_TYPES.has(d.type) && !FIXED_KEYS.has(d.key))
+    .filter(
+      (d) =>
+        !FIXED_KEYS.has(d.key) &&
+        (EXTRA_CELL_TYPES.has(d.type) ||
+          (!d.is_system && (d.type === "select" || d.type === "status"))) &&
+        (!used || used.has(d.key)),
+    )
     .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
 }
 
@@ -1389,12 +1481,63 @@ function PropCell({
         triggerClassName="min-w-0 text-left"
       />
     );
+  if (isTypedString(def.type))
+    return (
+      <TypedValueEditor
+        type={def.type}
+        value={raw}
+        onSet={onSet}
+        variant="cell"
+        triggerClassName="text-left"
+      />
+    );
+  if (def.type === "select" || def.type === "status")
+    return <OptionCell page={page} def={def} onSet={onSet} />;
   return (
     <TextEditor
       value={raw}
       onSet={onSet}
       variant="cell"
       triggerClassName="text-left"
+    />
+  );
+}
+
+/** A team-made select or status in a table cell: pick, or add an option. */
+function OptionCell({
+  page,
+  def,
+  onSet,
+}: {
+  page: PageListItem;
+  def: PropDef;
+  onSet: (value: unknown) => void;
+}) {
+  const addOption = useAddPropertyOption();
+  const opts = (def.options as unknown as SelectOption[]) ?? [];
+  const v = propsOf(page)[def.key];
+  const cur = opts.find((o) => o.value === v);
+  return (
+    <SelectPicker
+      value={typeof v === "string" ? v : null}
+      options={opts}
+      onPick={onSet}
+      onCreate={async (label) => {
+        try {
+          return (await addOption.mutateAsync({ id: def.id, label })).value;
+        } catch {
+          return null;
+        }
+      }}
+      trigger={({ onClick, ref }) => (
+        <button ref={ref} type="button" onClick={onClick} className="min-w-0 text-left">
+          {cur ? (
+            <StatusChip label={cur.label} tint={cur.tint} ink={cur.ink} />
+          ) : (
+            <span className="text-faint">—</span>
+          )}
+        </button>
+      )}
     />
   );
 }
@@ -2699,7 +2842,16 @@ function TableBody({
   getPageMenuBuild: (p: PageListItem) => (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
   propDefs: PropDef[];
 }) {
-  const extraDefs = useMemo(() => extraColumnDefs(propDefs), [propDefs]);
+  // Keyed on WHICH columns show, so a value edit (a new pages array) doesn't
+  // hand every memoised row a new extraDefs array.
+  const extraKeys = extraColumnDefs(propDefs, pages)
+    .map((d) => d.key)
+    .join(",");
+  const extraDefs = useMemo(
+    () => extraColumnDefs(propDefs, pages),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [propDefs, extraKeys],
+  );
   // Stable tag options: recompute from pages, but keep the same array ref
   // when contents are unchanged so memoized rows don't re-render.
   const tagsRaw = useMemo(() => {
