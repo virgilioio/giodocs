@@ -181,7 +181,6 @@ button:is([class~="bg-btn"], [class~="border-line"][class~="bg-surface"], .gio-p
   margin: 0 1px;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
-  user-select: all;
 }
 .gio-mention[data-gio-mention^="page:"] {
   color: var(--color-body);

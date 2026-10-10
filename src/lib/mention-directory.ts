@@ -18,6 +18,7 @@ export type MentionPage = { title: string; icon: string | null };
 
 let users: ReadonlyMap<string, string> = new Map();
 let pages: ReadonlyMap<string, MentionPage> = new Map();
+let ready = false;
 let version = 0;
 const listeners = new Set<() => void>();
 
@@ -37,11 +38,18 @@ export function setMentionDirectory(next: {
 }): void {
   const sameUsers = sameMap(users, next.users, (x, y) => x === y);
   const samePages = sameMap(pages, next.pages, (x, y) => x.title === y.title && x.icon === y.icon);
-  if (sameUsers && samePages) return;
+  if (sameUsers && samePages && ready) return;
+  ready = true;
   users = next.users;
   pages = next.pages;
   version += 1;
   for (const l of listeners) l();
+}
+
+/** False until the first fill: a page that isn't known yet may just not
+ *  be loaded, so it isn't called private. */
+export function mentionDirectoryReady(): boolean {
+  return ready;
 }
 
 export function mentionUserName(id: string): string | undefined {
@@ -82,5 +90,6 @@ export function useMentionDirectoryVersion(): number {
 export function __resetMentionDirectory(): void {
   users = new Map();
   pages = new Map();
+  ready = false;
   version += 1;
 }

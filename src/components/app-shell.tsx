@@ -21,6 +21,7 @@ import { PageBreadcrumb } from "./page-breadcrumb";
 import { SidebarTree, TREE_ASIDE } from "./sidebar-tree";
 import { useEmojiSet } from "@/hooks/use-custom-emoji";
 import { setInlineEmojiSet } from "@/lib/emoji-registry";
+import { setMentionDirectory } from "@/lib/mention-directory";
 import { resolvePageIdParam } from "@/lib/slug";
 
 import {
@@ -135,6 +136,25 @@ export function AppShell() {
     setInlineEmojiSet(emojiSet);
   }, [emojiSet]);
   const shell = useWorkspaceShell(workspaceId);
+  // @mentions show live names and titles from one module directory; this
+  // is its single writer (src/lib/mention-directory.ts).
+  useEffect(() => {
+    if (!shell.members.data || !shell.pages.data) return;
+    const members = shell.members.data as unknown as Array<{
+      user_id: string;
+      profiles: { full_name: string | null; email: string | null } | null;
+    }>;
+    const users = new Map<string, string>();
+    for (const m of members) {
+      const name = m.profiles?.full_name?.trim() || m.profiles?.email?.split("@")[0] || "";
+      if (name) users.set(m.user_id, name);
+    }
+    const pages = new Map<string, { title: string; icon: string | null }>();
+    for (const p of shell.pages.data as PageListItem[]) {
+      pages.set(p.id, { title: p.title ?? "", icon: p.icon ?? null });
+    }
+    setMentionDirectory({ users, pages });
+  }, [shell.members.data, shell.pages.data]);
   useRealtimeWorkspace(workspaceId);
   const rawSelection = useSelection();
   const pagesForResolve = (shell.pages.data ?? []) as PageListItem[];

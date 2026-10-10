@@ -3152,6 +3152,17 @@ export function EditableBody({
         if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
         if (e.button !== 0) return;
         const t = e.target as HTMLElement | null;
+        // A page mention opens its page here, like a link to a Gio page. A
+        // person mention, and a page this person can't open, do nothing.
+        const chip = t?.closest?.('[data-gio-mention^="page:"]') as HTMLElement | null;
+        if (chip && chip.closest("[data-gio-page-body]")) {
+          if (window.getSelection()?.isCollapsed === false) return;
+          if (chip.getAttribute("data-missing") === "true") return;
+          e.preventDefault();
+          const id = (chip.getAttribute("data-gio-mention") ?? "").slice(5);
+          void navigate({ to: "/p/$pageId", params: { pageId: id } });
+          return;
+        }
         const a = t?.closest?.("a[href]") as HTMLAnchorElement | null;
         if (!a) return;
         const host = a.closest("[data-gio-page-body]");

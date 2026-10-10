@@ -47,6 +47,18 @@ import { readCaretSource, writeCaretSource } from "@/lib/ce-offsets";
 import { searchEmoji, shouldOpenEmojiTrigger, type Emoji } from "@/lib/emoji-data";
 import { useInlineEmojiSet, type InlineEmoji } from "@/lib/emoji-registry";
 import { EmojiGrid } from "./emoji-picker";
+import { MentionMenu } from "./mention-menu";
+import { mentionSource } from "@/lib/inline-tokens";
+import {
+  mentionPages,
+  mentionUsers,
+  useMentionDirectoryVersion,
+} from "@/lib/mention-directory";
+import {
+  mentionCandidates,
+  shouldOpenMentionTrigger,
+  type MentionCandidate,
+} from "@/lib/mention-trigger";
 import { exitOnly } from "@/lib/exit-motion";
 
 /* The ":" trigger lists the workspace's CUSTOM emoji first — they are
@@ -90,6 +102,14 @@ export type EditableProps = {
   inlineEmojiTrigger?: boolean;
 };
 
+type MentionState = {
+  at: number; // source offset of the "@"
+  query: string;
+  caret: number;
+  rect: { top: number; left: number; bottom: number };
+  highlight: number;
+};
+
 type TriggerState = {
   colon: number; // source offset of the ":" that opened this popup
   query: string;
@@ -122,6 +142,8 @@ export const Editable = forwardRef<HTMLDivElement, EditableProps>(
     const elRef = useRef<HTMLDivElement | null>(null);
     const lastWrittenSourceRef = useRef<string | null>(null);
     const [trigger, setTrigger] = useState<TriggerState | null>(null);
+    const [mention, setMention] = useState<MentionState | null>(null);
+    const directoryVersion = useMentionDirectoryVersion();
 
     useImperativeHandle(forwardedRef, () => elRef.current as HTMLDivElement, []);
 
@@ -150,9 +172,10 @@ export const Editable = forwardRef<HTMLDivElement, EditableProps>(
       el.contentEditable = locked ? "false" : "true";
     }, [locked]);
 
-    // The custom-emoji set arrives asynchronously. A block rendered
-    // before it lands painted ":brand:" as literal text; repaint once
-    // the set changes, but never while the caret is inside.
+    // The custom-emoji set (and the names and titles @mentions show)
+    // arrive asynchronously. A block rendered before they land painted
+    // ":brand:" as literal text; repaint once they change, but never while
+    // the caret is inside.
     useEffect(() => {
       const el = elRef.current;
       if (!el) return;
@@ -163,7 +186,7 @@ export const Editable = forwardRef<HTMLDivElement, EditableProps>(
         lastWrittenSourceRef.current = source;
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [emojiSet]);
+    }, [emojiSet, directoryVersion]);
 
     const caretRect = (): { top: number; left: number; bottom: number } | null => {
       const win = elRef.current?.ownerDocument?.defaultView;
@@ -187,14 +210,17 @@ export const Editable = forwardRef<HTMLDivElement, EditableProps>(
       const caret = readCaretSource(el, nextSource);
       if (!caret) {
         setTrigger(null);
+        setMention(null);
         return;
       }
       const before = nextSource.slice(0, caret.start);
       const res = shouldOpenEmojiTrigger(before);
       if (!res.open) {
         setTrigger(null);
+        evaluateMention(before, caret.start);
         return;
       }
+      setMention(null);
       const found = [
         ...matchCustom(emojiSetRef.current, res.query),
         ...searchEmoji(res.query, 24),
@@ -214,6 +240,27 @@ export const Editable = forwardRef<HTMLDivElement, EditableProps>(
         caret: caret.start,
         rect,
         highlight: prev && prev.query === res.query ? prev.highlight : 0,
+      }));
+    };
+
+    const evaluateMention = (before: string, caretAt: number) => {
+      const m = shouldOpenMentionTrigger(before);
+      if (!m.open) {
+        setMention(null);
+        return;
+      }
+      const rect = caretRect();
+      if (!rect) {
+        setMention(null);
+        return;
+      }
+      setMention((prev) => ({
+        at: m.at,
+        query: m.query,
+        caret: caretAt,
+        // Keep the menu where it opened while you type.
+        rect: prev && prev.at === m.at ? prev.rect : rect,
+        highlight: prev && prev.query === m.query ? prev.highlight : 0,
       }));
     };
 
@@ -264,6 +311,48 @@ export const Editable = forwardRef<HTMLDivElement, EditableProps>(
       return () => doc.removeEventListener("selectionchange", onSel);
     }, [trigger, source]);
 
+    useEffect(() => {
+      if (!mention) return;
+      const doc = elRef.current?.ownerDocument;
+      if (!doc) return;
+      const onSel = () => {
+        const el = elRef.current;
+        if (!el) return;
+        const c = readCaretSource(el, source);
+        if (!c || c.start <= mention.at || c.start > mention.at + 1 + 30) {
+          setMention(null);
+          return;
+        }
+        if (!shouldOpenMentionTrigger(source.slice(0, c.start)).open) setMention(null);
+      };
+      doc.addEventListener("selectionchange", onSel);
+      return () => doc.removeEventListener("selectionchange", onSel);
+    }, [mention, source]);
+
+    const mentionItems = useMemo<MentionCandidate[]>(
+      () => (mention ? mentionCandidates(mention.query, mentionUsers(), mentionPages()) : []),
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [mention?.query, mention !== null, directoryVersion],
+    );
+
+    const insertMention = (c: MentionCandidate) => {
+      if (!mention) return;
+      const el = elRef.current;
+      if (!el) return;
+      const before = source.slice(0, mention.at);
+      const after = source.slice(mention.caret);
+      const chip = c.kind === "user" ? mentionSource("user", c.id, c.name) : mentionSource("page", c.id, "");
+      // Always a space after, so the caret has somewhere to sit and you can
+      // keep typing.
+      const glue = /^\s/.test(after) ? "" : " ";
+      const next = before + chip + glue + after;
+      el.innerHTML = inlineToHtml(next);
+      lastWrittenSourceRef.current = next;
+      writeCaretSource(el, next, before.length + chip.length + 1);
+      setMention(null);
+      onSourceChange(next);
+    };
+
     // Custom first, then unicode — ONE flat array so keyboard highlight
     // indexes stay simple, plus the split for the section labels.
     const split = useMemo(() => {
@@ -295,6 +384,31 @@ export const Editable = forwardRef<HTMLDivElement, EditableProps>(
 
     const onKeyDownInternal = (e: KeyboardEvent<HTMLDivElement>) => {
       if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+      if (mention) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          setMention(null);
+          return;
+        }
+        if (mentionItems.length > 0) {
+          if (e.key === "Enter" || e.key === "Tab") {
+            e.preventDefault();
+            e.stopPropagation();
+            const pick = mentionItems[mention.highlight] ?? mentionItems[0];
+            if (pick) insertMention(pick);
+            return;
+          }
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            e.stopPropagation();
+            const d = e.key === "ArrowDown" ? 1 : -1;
+            const n = mentionItems.length;
+            setMention({ ...mention, highlight: (mention.highlight + d + n) % n });
+            return;
+          }
+        }
+      }
       if (trigger && results.length > 0) {
         if (e.key === "Escape") {
           e.preventDefault();
@@ -356,9 +470,15 @@ export const Editable = forwardRef<HTMLDivElement, EditableProps>(
           onKeyDown={onKeyDownInternal}
           onPaste={onPaste}
           onFocus={onFocus}
+          aria-activedescendant={
+            mention && mentionItems.length > 0 ? `mention-opt-${mention.highlight}` : undefined
+          }
           onBlur={(e) => {
             // Defer closing so a click on the popup can insert first.
-            setTimeout(() => setTrigger(null), 120);
+            setTimeout(() => {
+              setTrigger(null);
+              setMention(null);
+            }, 120);
             onBlur?.(e);
           }}
           {...(dataAttrs ?? {})}
@@ -374,6 +494,19 @@ export const Editable = forwardRef<HTMLDivElement, EditableProps>(
                 onHover={(i) =>
                   setTrigger((t) => (t ? { ...t, highlight: i } : t))
                 }
+              />,
+              document.body,
+            )
+          : null}
+        {mention && (mentionItems.length > 0 || mention.query.length > 0) && typeof document !== "undefined"
+          ? createPortal(
+              <MentionMenu
+                rect={mention.rect}
+                items={mentionItems}
+                highlight={mention.highlight}
+                query={mention.query}
+                onPick={insertMention}
+                onHover={(i) => setMention((m) => (m ? { ...m, highlight: i } : m))}
               />,
               document.body,
             )

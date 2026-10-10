@@ -51,7 +51,7 @@ import {
   type InlineToken,
 } from "./inline-tokens";
 import { getInlineEmojiSet } from "./emoji-registry";
-import { mentionPage, mentionUserName } from "./mention-directory";
+import { mentionDirectoryReady, mentionPage, mentionUserName } from "./mention-directory";
 
 /* Rendering options. `emoji` is the SAME set the offset map is handed —
  * both default to the module registry, never to an empty set. `emojiAs`
@@ -127,6 +127,7 @@ export function mentionView(t: { mention: "user" | "page"; id: string; label: st
     return { text: `@${shown}`, label: name ?? t.label, missing: !name };
   }
   const page = mentionPage(t.id);
+  if (!page && !mentionDirectoryReady()) return { text: "Page", label: "", missing: false };
   return page
     ? { text: page.title || "Untitled", label: "", missing: false }
     : { text: "Private page", label: "", missing: true };
