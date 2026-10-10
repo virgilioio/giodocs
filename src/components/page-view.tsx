@@ -48,6 +48,7 @@ import {
   relatedPages,
   relationCandidates,
   relationConfig,
+  relationUsable,
   relationWrite,
   rollupConfig,
   rollupKind,
@@ -584,6 +585,8 @@ function EditableValue({
   /* ── Relation ── both sides; on the far side a change is written to the
    * other page's near side. */
   if (def?.type === "relation") {
+    // A far side whose near side was archived has nothing to show or change.
+    if (!relationUsable(def, relations.idx.defs)) return empty;
     const self = page as unknown as PageListItem;
     const linked = relatedPages(self, def.key, relations.idx);
     const write = (otherId: string, add: boolean) => {
@@ -787,11 +790,14 @@ function AddPropertyPopover({
   // null = the root list; otherwise a submenu swapped in place.
   const [sub, setSub] = useState<MenuSpec | null>(null);
   const createProperty = useCreateProperty();
+  const defsByKey = new Map(propDefs.map((d) => [d.key, d]));
   const candidates = propDefs
     .filter((d) => !present.has(d.key))
     .filter((d) => d.key !== "area" && d.key !== "owner")
-    // A rollup shows by itself once its relation links somewhere.
-    .filter((d) => d.type !== "rollup");
+    // A rollup shows by itself once its relation links somewhere; a far
+    // side whose near side was archived has nothing to add.
+    .filter((d) => d.type !== "rollup")
+    .filter((d) => d.type !== "relation" || relationUsable(d, defsByKey));
 
   const seedFor = (t: string): unknown => {
     switch (t) {
@@ -1083,6 +1089,8 @@ function PropertyStrip({
   views: Array<{ id: string; name: string; filter: unknown }>;
 }) {
   const propsRec = propsOf(page);
+  const setRef = useRef({ onSet, onSetPage });
+  setRef.current = { onSet, onSetPage };
   const relIdx = useMemo(() => buildRelationIndex(pages, propDefs), [pages, propDefs]);
   const relations = useMemo<StripRelations>(() => {
     const names = new Map(
@@ -1098,11 +1106,13 @@ function PropertyStrip({
         const v = views.find((x) => x.id === relationConfig(def).viewId);
         return v ? `Pages in ${v.name}` : undefined;
       },
+      // Through refs: the latest handlers (and the page's current edit
+      // access) apply, whatever render built this.
       onWrite: (w) =>
-        w.pageId === page.id ? onSet(w.key, w.value) : onSetPage(w.pageId, w.key, w.value),
+        w.pageId === page.id
+          ? setRef.current.onSet(w.key, w.value)
+          : setRef.current.onSetPage(w.pageId, w.key, w.value),
     };
-    // onSet/onSetPage are fresh closures each render; they only call through.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [relIdx, members, views, meId, staleDays, page.id]);
   // null-is-absent: set_page_property stores an explicit null when a value
   // is cleared rather than dropping the key, so a cleared property must not
@@ -1493,8 +1503,11 @@ function PropertyStrip({
         views={views}
         onAdd={(key, seed) => {
           setAdded((prev) => new Set(prev).add(key));
-          // Worked-out properties hold nothing to seed; the row just opens.
-          if (!isComputedDef(propDefs.find((d) => d.key === key))) onSet(key, seed);
+          // Worked-out properties hold nothing to seed, and a stored value
+          // (links to pages this reader can't open) is never overwritten:
+          // the row just opens.
+          if (!isComputedDef(propDefs.find((d) => d.key === key)) && !isPropSet(propsRec[key]))
+            onSet(key, seed);
         }}
       />
       </div>

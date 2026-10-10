@@ -11,6 +11,7 @@ import { relList, relResolve } from "@/lib/related-links";
 import {
   relatedPages,
   relationSummary,
+  relationUsable,
   relationWrite,
   rollupKind,
   rollupText,
@@ -505,7 +506,7 @@ function ValueCell({ page, k, ctx }: { page: PageListItem; k: string; ctx: CellC
   const def = ctx.defs.get(k);
   if (!def) return EMPTY;
   if (def.type === "relation")
-    return ctx.relations ? (
+    return ctx.relations && relationUsable(def, ctx.relations.idx.defs) ? (
       <RelationCell page={page} def={def} rel={ctx.relations} setProp={ctx.setProp} />
     ) : (
       EMPTY

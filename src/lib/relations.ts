@@ -58,6 +58,16 @@ export function rollupConfig(def: RelDefLike | undefined): RollupConfig | null {
   return { relation, target, calc: calc as RollupCalc };
 }
 
+/** A relation that can be shown and changed: a near side, or a far side
+ *  whose near side is still there (not archived, still a relation). */
+export function relationUsable(def: RelDefLike | undefined, defs: ReadonlyMap<string, RelDefLike>): boolean {
+  if (def?.type !== "relation") return false;
+  const { of } = relationConfig(def);
+  if (!of) return true;
+  const near = defs.get(of);
+  return near?.type === "relation" && !relationConfig(near).of;
+}
+
 export function isBackRelation(def: RelDefLike | undefined): boolean {
   return def?.type === "relation" && !!relationConfig(def).of;
 }
@@ -231,7 +241,7 @@ export function relationWrite(
   const { of } = relationConfig(def);
   if (of) {
     const other = idx.byId.get(otherId);
-    if (!other) return null;
+    if (!other || !relationUsable(def, idx.defs)) return null;
     return { pageId: otherId, key: of, value: nextRelationValue(propsOf(other)[of], page.id, add) };
   }
   return {

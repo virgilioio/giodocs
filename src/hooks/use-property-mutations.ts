@@ -97,7 +97,9 @@ export function useCreateProperty() {
           return made.find((d) => d.key === key) ?? made[0];
         }
         if ((error as { code?: string }).code !== "23505") throw error;
+        // Either side's key may be the one taken.
         taken.push(key);
+        if (backKey) taken.push(backKey);
       }
       throw new Error("Someone just made a property with that name. Try again.");
     },
@@ -253,10 +255,30 @@ export function useSetPropertyArchived() {
   const toast = useToast();
   const m = useMutation({
     mutationFn: async (v: { id: string; label: string; archived: boolean }) => {
-      const { error } = await supabase
+      // A two-way relation's sides are archived and restored together:
+      // one side alone would show links that can't be changed.
+      const { data: row, error: e1 } = await supabase
         .from("property_defs")
-        .update({ archived_at: v.archived ? new Date().toISOString() : null })
-        .eq("id", v.id);
+        .select("key, type, config")
+        .eq("id", v.id)
+        .maybeSingle();
+      if (e1) throw e1;
+      const cfg = (row?.config ?? {}) as Record<string, unknown>;
+      const partner =
+        row?.type === "relation"
+          ? typeof cfg.of === "string"
+            ? cfg.of
+            : typeof cfg.back === "string"
+              ? cfg.back
+              : null
+          : null;
+      const keys = [row?.key, partner].filter((k): k is string => !!k);
+      const write = supabase
+        .from("property_defs")
+        .update({ archived_at: v.archived ? new Date().toISOString() : null });
+      const { error } = await (keys.length
+        ? write.eq("workspace_id", ws).in("key", keys)
+        : write.eq("id", v.id));
       if (error) throw error;
       return v;
     },

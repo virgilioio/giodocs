@@ -118,7 +118,17 @@ export function useSetPageProperty() {
       if (ctx?.snapshot) qc.setQueryData(qk.pages(ws), ctx.snapshot);
       if (ctx?.pageSnap !== undefined)
         qc.setQueryData(qk.page(v.pageId), ctx.pageSnap);
-      toast.push(`Couldn't save: ${(err as Error).message}`);
+      // A link made from the far side of a relation changes the OTHER page,
+      // which the person may only be able to read.
+      const msg = (err as Error).message ?? "";
+      if (/permission|row-level security|42501|view.only|can.t change/i.test(msg)) {
+        const title =
+          qc.getQueryData<PageListItem[]>(qk.pages(ws))?.find((p) => p.id === v.pageId)?.title ||
+          "that page";
+        toast.push(`You can't change \u201C${title}\u201D, so that change wasn't saved.`);
+        return;
+      }
+      toast.push(`Couldn't save: ${msg}`);
     },
     onSuccess: (_data, v, ctx) => {
       if (!ctx) return;
