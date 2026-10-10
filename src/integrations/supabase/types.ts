@@ -784,6 +784,15 @@ export type Database = {
           page_count: number
         }[]
       }
+      page_backlinks: {
+        Args: { p_page: string }
+        Returns: {
+          edited_at: string
+          icon: string
+          id: string
+          title: string
+        }[]
+      }
       page_images_gc: {
         Args: { p_page: string; p_paths: string[] }
         Returns: number
