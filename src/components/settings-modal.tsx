@@ -44,8 +44,9 @@ import {
   useUpdateCustomEmoji,
 } from "@/hooks/use-custom-emoji";
 import { exitOnly } from "@/lib/exit-motion";
+import { PropertiesPaneBody } from "./properties-pane";
 
-export type SettingsPane = "profile" | "preferences" | "general" | "people" | "emoji";
+export type SettingsPane = "profile" | "preferences" | "general" | "people" | "properties" | "emoji";
 
 type MemberRow = {
   user_id: string;
@@ -108,6 +109,7 @@ const ICON_PERSON =
   "M12 3.4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 20.6v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2";
 const ICON_CLOSE = "M6 6l12 12M18 6L6 18";
 const ICON_PLUS = "M12 5v14M5 12h14";
+const ICON_PROPERTIES = "M4 7h3M10 7h10M4 12h3M10 12h10M4 17h3M10 17h10";
 
 /* ─────────────────────────── Modal shell ─────────────────────────── */
 
@@ -192,6 +194,15 @@ export function SettingsModal({
               onTabChange={onMembersTabChange}
             />
           )}
+          {pane === "properties" && (
+            <div>
+              <PaneHeader
+                title="Properties"
+                sub="What every page can carry. Anyone can add a property or an option; only owners archive one, and its values stay on the pages."
+              />
+              <PropertiesPaneBody />
+            </div>
+          )}
           {pane === "emoji" && <EmojiPane />}
         </div>
       </div>
@@ -213,6 +224,7 @@ function SettingsNav({ pane, onPick }: { pane: SettingsPane; onPick: (p: Setting
     { key: "preferences", label: "Preferences", path: ICON_SLIDERS, group: "ACCOUNT" },
     { key: "general", label: "General", path: ICON_GEAR, group: "WORKSPACE" },
     { key: "people", label: "People", path: ICON_PEOPLE, group: "WORKSPACE" },
+    { key: "properties", label: "Properties", path: ICON_PROPERTIES, group: "WORKSPACE" },
     { key: "emoji", label: "Custom emoji", path: ICON_SMILEY, group: "WORKSPACE" },
   ];
 
