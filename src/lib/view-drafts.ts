@@ -10,7 +10,8 @@ export type ViewBase = {
   scope: ViewScope;
   layout: ViewLayout;
   filter: Filter[];
-  sort: SortSpec;
+  /** One sort, or several (the first wins, the next breaks ties). */
+  sort: SortSpec | SortSpec[];
   group_by: string | null;
   /** How the view shows its pages: properties, widths, calculations. */
   config: ViewConfig;

@@ -8,8 +8,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useAllPropDefs, useWorkspaceShell, pageQuery } from "@/hooks/use-workspace-data";
-import { runView, sortsOf, type Filter, type SortSpec } from "@/lib/run-view";
+import { runView, sortsOf, type Filter, type FilterOp, type SortSpec } from "@/lib/run-view";
 import { readConfig, type ViewConfig } from "@/lib/view-config";
+import { sortLabel as sortLabelOf } from "@/lib/sort-label";
+import { seedForGroup, seedFromFilters } from "@/lib/view-seed";
 import { ViewTable, RowCheckbox } from "./view-table";
 import { applyFilterReplacement, filterLabel } from "@/lib/filter-label";
 import { PageOriginContext, useSetPageOrigin } from "@/lib/page-origin";
@@ -281,6 +283,9 @@ function QueryToolbar({
   onChangeFilters,
   onChangeSort,
   onChangeGroupBy,
+  tableGroup,
+  tableGroupChoices,
+  onChangeTableGroup,
   propDefs,
   people,
   staleDays,
@@ -292,12 +297,15 @@ function QueryToolbar({
   menuSpec,
 }: {
   filters: Filter[];
-  sort: SortSpec;
+  sort: SortSpec | SortSpec[];
   groupBy: string;
   layout: Layout;
   onChangeFilters: (next: Filter[]) => void;
-  onChangeSort: (s: SortSpec) => void;
+  onChangeSort: (s: SortSpec | SortSpec[]) => void;
   onChangeGroupBy: (g: string) => void;
+  tableGroup: string | null;
+  tableGroupChoices: Array<{ key: string; label: string }>;
+  onChangeTableGroup: (g: string | null) => void;
   propDefs: PropDef[];
   people: PersonForLabel[];
   staleDays: number;
@@ -348,7 +356,7 @@ function QueryToolbar({
                           pages={pages}
                           people={people}
                           staleDays={staleDays}
-                          startAt={{ prop: f.prop, op: f.op }}
+                          startAt={{ prop: f.prop, op: f.op, value: f.value }}
                           onPick={(picked) => {
                             pickFilter(picked);
                             close();
@@ -386,8 +394,15 @@ function QueryToolbar({
         style={{ width: 1, height: 16 }}
       />
 
-      <SortControl sort={sort} onChange={onChangeSort} />
+      <SortControl sort={sort} defs={propDefs} onChange={onChangeSort} />
 
+      {layout === "table" && editable && (
+        <TableGroupControl
+          value={tableGroup}
+          choices={tableGroupChoices}
+          onChange={onChangeTableGroup}
+        />
+      )}
       {layout === "board" && (
         <GroupControl
           groupBy={groupBy}
@@ -612,7 +627,7 @@ function FilterBuilderContent({
   people: PersonForLabel[];
   staleDays: number;
   onPick: (f: Filter) => void;
-  startAt?: { prop?: string; op?: Filter["op"] };
+  startAt?: { prop?: string; op?: Filter["op"]; value?: Filter["value"] };
 }) {
   // Chips reopen at their property's step 2. Freshness ops reopen at the
   // synthetic "__freshness" group.
@@ -649,6 +664,9 @@ function FilterBuilderContent({
     if (FIRST.includes(def.key)) continue;
     rootItems.push({ key: def.key, label: def.label });
   }
+  rootItems.push({ key: "@created", label: "Created" });
+  rootItems.push({ key: "@created_by", label: "Created by" });
+  rootItems.push({ key: "@edited_by", label: "Last edited by" });
   rootItems.push({ key: "__freshness", label: "Freshness" });
 
   if (step.kind === "root") {
@@ -702,6 +720,35 @@ function FilterBuilderContent({
         >
           Edited in the last 14 days
         </BuilderRow>
+      </div>
+    );
+  }
+
+  const initialValue = startAt && startAt.prop === key ? startAt.value : undefined;
+
+  if (key === "@created") {
+    return (
+      <div style={{ padding: "2px 0" }}>
+        <StepTitle onBack={back}>Created</StepTitle>
+        <DateFilterRows
+          prop={key}
+          ranges={["today", "this_week", "past_7", "past_30", "this_month"]}
+          initial={initialValue}
+          onPick={onPick}
+        />
+      </div>
+    );
+  }
+  if (key === "@created_by" || key === "@edited_by") {
+    return (
+      <div style={{ padding: "2px 0" }}>
+        <StepTitle onBack={back}>{key === "@created_by" ? "Created by" : "Last edited by"}</StepTitle>
+        <BuilderRow onClick={() => onPick({ op: "is_me", prop: key })}>Me</BuilderRow>
+        {people.map((p) => (
+          <BuilderRow key={p.id} onClick={() => onPick({ op: "eq", prop: key, value: p.id })}>
+            {p.full_name ?? "Someone"}
+          </BuilderRow>
+        ))}
       </div>
     );
   }
@@ -795,6 +842,9 @@ function FilterBuilderContent({
             {o.label}
           </BuilderRow>
         ))}
+        <BuilderRow onClick={() => onPick({ op: "empty", prop: def.key })}>
+          No {def.label.toLowerCase()}
+        </BuilderRow>
       </div>
     );
   }
@@ -831,6 +881,7 @@ function FilterBuilderContent({
         <BuilderRow onClick={() => onPick({ op: "not_empty", prop: def.key })}>
           Anyone
         </BuilderRow>
+        <BuilderRow onClick={() => onPick({ op: "empty", prop: def.key })}>No one</BuilderRow>
         {people.map((p) => (
           <BuilderRow
             key={p.id}
@@ -873,17 +924,181 @@ function FilterBuilderContent({
         <BuilderRow onClick={() => onPick({ op: "eq", prop: def.key, value: "true" })}>
           Checked
         </BuilderRow>
+        <BuilderRow onClick={() => onPick({ op: "unchecked", prop: def.key })}>
+          Not checked
+        </BuilderRow>
       </div>
     );
   }
 
-  // Text, number, date, link, email, phone, related pages: present or not.
+  if (def.type === "date") {
+    return (
+      <div style={{ padding: "2px 0" }}>
+        <StepTitle onBack={back}>{def.label}</StepTitle>
+        <DateFilterRows
+          prop={def.key}
+          ranges={["overdue", "today", "this_week", "next_week", "next_7", "this_month"]}
+          initial={initialValue}
+          onPick={onPick}
+        />
+        <FilterDivider />
+        <BuilderRow onClick={() => onPick({ op: "not_empty", prop: def.key })}>
+          Has a date
+        </BuilderRow>
+        <BuilderRow onClick={() => onPick({ op: "empty", prop: def.key })}>No date</BuilderRow>
+      </div>
+    );
+  }
+
+  const compare =
+    def.type === "number"
+      ? { kind: "number" as const, ops: NUMBER_OPS }
+      : def.type === "links"
+        ? null
+        : { kind: "text" as const, ops: TEXT_OPS };
+
+  // Text, number, link, email, phone: compare; related pages: present or not.
   return (
     <div style={{ padding: "2px 0" }}>
       <StepTitle onBack={back}>{def.label}</StepTitle>
+      {compare ? (
+        <>
+          <CompareInput
+            kind={compare.kind}
+            ops={compare.ops}
+            initial={initialValue}
+            onPick={(op, value) => onPick({ op, prop: def.key, value })}
+          />
+          <FilterDivider />
+        </>
+      ) : null}
       <BuilderRow onClick={() => onPick({ op: "not_empty", prop: def.key })}>
         Has a value
       </BuilderRow>
+      <BuilderRow onClick={() => onPick({ op: "empty", prop: def.key })}>Empty</BuilderRow>
+    </div>
+  );
+}
+
+const NUMBER_OPS: Array<{ op: FilterOp; label: string }> = [
+  { op: "gt", label: "Above" },
+  { op: "gte", label: "At least" },
+  { op: "lt", label: "Below" },
+  { op: "lte", label: "At most" },
+];
+const TEXT_OPS: Array<{ op: FilterOp; label: string }> = [
+  { op: "contains", label: "Contains" },
+  { op: "not_contains", label: "Doesn\u2019t contain" },
+];
+const DATE_OPS: Array<{ op: FilterOp; label: string }> = [
+  { op: "before", label: "Before" },
+  { op: "date_is", label: "On" },
+  { op: "after", label: "After" },
+];
+const RANGE_LABELS: Record<string, string> = {
+  overdue: "Overdue",
+  today: "Today",
+  this_week: "This week",
+  next_week: "Next week",
+  next_7: "In the next 7 days",
+  past_7: "In the past 7 days",
+  past_30: "In the past 30 days",
+  this_month: "This month",
+};
+
+function FilterDivider() {
+  return (
+    <div aria-hidden style={{ height: 1, background: "var(--color-lineSoft)", margin: "4px 3px" }} />
+  );
+}
+
+/** Quick date ranges, then before / on / after a day. */
+function DateFilterRows({
+  prop,
+  ranges,
+  initial,
+  onPick,
+}: {
+  prop: string;
+  ranges: string[];
+  initial?: Filter["value"];
+  onPick: (f: Filter) => void;
+}) {
+  return (
+    <>
+      {ranges.map((r) => (
+        <BuilderRow key={r} onClick={() => onPick({ op: "date_is", prop, value: r })}>
+          {RANGE_LABELS[r] ?? r}
+        </BuilderRow>
+      ))}
+      <FilterDivider />
+      <CompareInput
+        kind="date"
+        ops={DATE_OPS}
+        initial={typeof initial === "string" && /^\d{4}-\d{2}-\d{2}$/.test(initial) ? initial : undefined}
+        onPick={(op, value) => onPick({ op, prop, value })}
+      />
+    </>
+  );
+}
+
+/** A value and the ways to compare against it: "Above 3", "Contains plan",
+ *  "Before Oct 20". Enter picks the first. */
+function CompareInput({
+  kind,
+  ops,
+  initial,
+  onPick,
+}: {
+  kind: "number" | "text" | "date";
+  ops: Array<{ op: FilterOp; label: string }>;
+  initial?: Filter["value"];
+  onPick: (op: FilterOp, value: string | number) => void;
+}) {
+  const [v, setV] = useState(initial === undefined || initial === null ? "" : String(initial));
+  const value = v.trim();
+  const valid =
+    kind === "number"
+      ? value !== "" && Number.isFinite(Number(value))
+      : kind === "date"
+        ? /^\d{4}-\d{2}-\d{2}$/.test(value)
+        : value !== "";
+  const pick = (op: FilterOp) => {
+    if (!valid) return;
+    onPick(op, kind === "number" ? Number(value) : value);
+  };
+  return (
+    <div style={{ padding: "6px 10px 8px" }}>
+      <input
+        type={kind === "date" ? "date" : kind === "number" ? "number" : "text"}
+        inputMode={kind === "number" ? "decimal" : undefined}
+        aria-label={kind === "date" ? "A day" : kind === "number" ? "A number" : "Text"}
+        placeholder={kind === "number" ? "A number" : kind === "text" ? "Some text" : undefined}
+        value={v}
+        onChange={(e) => setV(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            pick(ops[0].op);
+          }
+        }}
+        className="tnum w-full rounded-md border border-line bg-surface text-body focus:border-accent"
+        style={{ padding: "5px 8px", fontSize: 14 }}
+      />
+      <div className="mt-2 flex flex-wrap" style={{ gap: 6 }}>
+        {ops.map((o) => (
+          <button
+            key={o.op}
+            type="button"
+            disabled={!valid}
+            onClick={() => pick(o.op)}
+            className="rounded-md border border-line bg-surface text-meta text-body hover:bg-rail disabled:cursor-default disabled:text-faint disabled:hover:bg-surface"
+            style={{ padding: "3px 9px" }}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -973,25 +1188,174 @@ function BuilderRow({
 
 /* ─────────────────────────── Sort + Group controls ─────────────────────────── */
 
-type SortChoice = { key: string; label: string; spec: SortSpec };
-
-const SORT_CHOICES: SortChoice[] = [
-  { key: "edited:desc", label: "Newest edits", spec: { prop: "edited", dir: "desc" } },
-  { key: "edited:asc", label: "Oldest edits", spec: { prop: "edited", dir: "asc" } },
-  { key: "verified:asc", label: "Oldest verification", spec: { prop: "verified", dir: "asc" } },
-  { key: "title:asc", label: "Title A–Z", spec: { prop: "title", dir: "asc" } },
+/* Sort by any property, with an optional second sort that breaks ties.
+ * The quick picks below keep the familiar orders one click away. */
+const QUICK_SORTS: Array<{ label: string; spec: SortSpec }> = [
+  { label: "Newest edits", spec: { prop: "edited", dir: "desc" } },
+  { label: "Oldest verification", spec: { prop: "verified", dir: "asc" } },
+  { label: "Title A–Z", spec: { prop: "title", dir: "asc" } },
 ];
+
+/** Every property a view can sort by: built-ins, then properties. */
+function sortTargets(defs: PropDef[]): Array<{ prop: string; label: string }> {
+  return [
+    { prop: "title", label: "Title" },
+    { prop: "edited", label: "Edited" },
+    { prop: "verified", label: "Verified" },
+    { prop: "@created", label: "Created" },
+    { prop: "@created_by", label: "Created by" },
+    { prop: "@edited_by", label: "Last edited by" },
+    ...[...defs]
+      .filter((d) => d.type !== "links")
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+      .map((d) => ({ prop: `p:${d.key}`, label: d.label })),
+  ];
+}
+
+/** A single sort is stored as one spec, as views always have. */
+function storeSorts(list: SortSpec[]): SortSpec | SortSpec[] {
+  return list.length === 1 ? list[0] : list;
+}
 
 function SortControl({
   sort,
+  defs,
   onChange,
 }: {
-  sort: SortSpec;
-  onChange: (s: SortSpec) => void;
+  sort: SortSpec | SortSpec[];
+  defs: PropDef[];
+  onChange: (s: SortSpec | SortSpec[]) => void;
 }) {
-  const currentKey = `${sort.prop}:${sort.dir}`;
-  const current =
-    SORT_CHOICES.find((c) => c.key === currentKey) ?? SORT_CHOICES[0];
+  const sorts = sortsOf(sort);
+  const [picking, setPicking] = useState<number | null>(null);
+  const targets = sortTargets(defs);
+  const nameOf = (prop: string) => targets.find((t) => t.prop === prop)?.label ?? prop;
+  const set = (next: SortSpec[]) => onChange(storeSorts(next));
+  return (
+    <Popover
+      width={300}
+      onOpenChange={(open) => {
+        if (!open) setPicking(null);
+      }}
+      trigger={({ onClick, ref }) => (
+        <ToolbarBorderlessButton
+          innerRef={ref}
+          onClick={onClick}
+          iconPath="M7 4v12m0 0l-3-3m3 3l3-3M17 20V8m0 0l-3 3m3-3l3 3"
+          label={sortLabelOf(sort, defs)}
+        />
+      )}
+    >
+      {(close) =>
+        picking !== null ? (
+          <div style={{ padding: "2px 0", maxHeight: 360, overflowY: "auto" }}>
+            <StepTitle onBack={() => setPicking(null)}>
+              {picking === 0 ? "Sort by" : "Then by"}
+            </StepTitle>
+            {targets
+              .filter((t) => !sorts.some((x, i) => i !== picking && x.prop === t.prop))
+              .map((t) => (
+                <BuilderRow
+                  key={t.prop}
+                  onClick={() => {
+                    const next = sorts.slice();
+                    next[picking] = { prop: t.prop, dir: next[picking]?.dir ?? "asc" };
+                    set(next);
+                    setPicking(null);
+                  }}
+                  trailing={sorts[picking]?.prop === t.prop ? <CheckIcon /> : null}
+                >
+                  {t.label}
+                </BuilderRow>
+              ))}
+          </div>
+        ) : (
+          <div style={{ padding: "2px 0" }}>
+            <StepTitle>Sort</StepTitle>
+            {sorts.map((x, i) => (
+              <div key={i} className="flex items-center" style={{ gap: 6, padding: "3px 8px" }}>
+                <span className="text-meta text-faint" style={{ width: 34 }}>
+                  {i === 0 ? "By" : "Then"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPicking(i)}
+                  className="flex min-w-0 flex-1 items-center justify-between rounded-md border border-line bg-surface text-left text-body hover:bg-rail"
+                  style={{ padding: "4px 8px", fontSize: 13.5, gap: 6 }}
+                >
+                  <span className="truncate">{nameOf(x.prop)}</span>
+                  <span aria-hidden className="text-faint">
+                    ›
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = sorts.slice();
+                    next[i] = { ...x, dir: x.dir === "asc" ? "desc" : "asc" };
+                    set(next);
+                  }}
+                  aria-label={x.dir === "asc" ? "Ascending, switch to descending" : "Descending, switch to ascending"}
+                  title={x.dir === "asc" ? "Ascending" : "Descending"}
+                  className="rounded-md border border-line bg-surface text-meta text-body hover:bg-rail"
+                  style={{ padding: "4px 8px", minWidth: 62 }}
+                >
+                  {x.dir === "asc" ? "↑ Asc" : "↓ Desc"}
+                </button>
+                {sorts.length > 1 ? (
+                  <button
+                    type="button"
+                    aria-label="Remove this sort"
+                    title="Remove this sort"
+                    onClick={() => set(sorts.filter((_, j) => j !== i))}
+                    className="grid place-items-center rounded-md text-faint hover:bg-rail hover:text-strong"
+                    style={{ width: 22, height: 22 }}
+                  >
+                    ×
+                  </button>
+                ) : null}
+              </div>
+            ))}
+            {sorts.length < 2 ? (
+              <BuilderRow onClick={() => setPicking(sorts.length)}>
+                <span className="text-muted">+ Then by…</span>
+              </BuilderRow>
+            ) : null}
+            <FilterDivider />
+            {QUICK_SORTS.map((c) => {
+              const on =
+                sorts.length === 1 && sorts[0].prop === c.spec.prop && sorts[0].dir === c.spec.dir;
+              return (
+                <BuilderRow
+                  key={c.label}
+                  onClick={() => {
+                    onChange(c.spec);
+                    close();
+                  }}
+                  trailing={on ? <CheckIcon /> : null}
+                >
+                  {c.label}
+                </BuilderRow>
+              );
+            })}
+          </div>
+        )
+      }
+    </Popover>
+  );
+}
+
+/** Group a table's rows, or not. */
+function TableGroupControl({
+  value,
+  choices,
+  onChange,
+}: {
+  value: string | null;
+  choices: Array<{ key: string; label: string }>;
+  onChange: (key: string | null) => void;
+}) {
+  const current = choices.find((c) => c.key === value) ?? null;
   return (
     <Popover
       width={220}
@@ -999,22 +1363,31 @@ function SortControl({
         <ToolbarBorderlessButton
           innerRef={ref}
           onClick={onClick}
-          iconPath="M7 4v12m0 0l-3-3m3 3l3-3M17 20V8m0 0l-3 3m3-3l3 3"
-          label={current.label}
+          iconPath="M4 6h16M4 12h10M4 18h13"
+          label={current ? `Grouped by ${current.label.toLowerCase()}` : "Group"}
         />
       )}
     >
       {(close) => (
-        <div style={{ padding: "2px 0" }}>
-          <StepTitle>Sort by</StepTitle>
-          {SORT_CHOICES.map((c) => (
+        <div style={{ padding: "2px 0", maxHeight: 360, overflowY: "auto" }}>
+          <StepTitle>Group by</StepTitle>
+          <BuilderRow
+            onClick={() => {
+              onChange(null);
+              close();
+            }}
+            trailing={current ? null : <CheckIcon />}
+          >
+            None
+          </BuilderRow>
+          {choices.map((c) => (
             <BuilderRow
               key={c.key}
               onClick={() => {
-                onChange(c.spec);
+                onChange(c.key);
                 close();
               }}
-              trailing={c.key === current.key ? <CheckIcon /> : null}
+              trailing={c.key === value ? <CheckIcon /> : null}
             >
               {c.label}
             </BuilderRow>
@@ -1179,7 +1552,8 @@ export function MainView({ selection }: { selection: Selection }) {
   const pages = (shell.pages.data ?? []) as PageListItem[];
   const views = (shell.views.data ?? []) as ViewRow[];
   const members = (shell.members.data ?? []) as unknown as MemberRow[];
-  const propDefs = (shell.propDefs.data ?? []) as PropDef[];
+  const propDefsData = shell.propDefs.data;
+  const propDefs = useMemo(() => (propDefsData ?? []) as PropDef[], [propDefsData]);
   const workspace = shell.workspace.data;
   const staleDays = workspace?.stale_days ?? 30;
   const memberCount = members.length;
@@ -1217,7 +1591,7 @@ export function MainView({ selection }: { selection: Selection }) {
         scope: view.scope === "team" ? "team" : "personal",
         layout: (view.layout as ViewBase["layout"]) ?? "table",
         filter: (view.filter ?? []) as Filter[],
-        sort: (view.sort as SortSpec | null) ?? { prop: "edited", dir: "desc" },
+        sort: (view.sort as SortSpec | SortSpec[] | null) ?? { prop: "edited", dir: "desc" },
         group_by: view.group_by ?? null,
         config: readConfig(view.config),
       };
@@ -1233,7 +1607,7 @@ export function MainView({ selection }: { selection: Selection }) {
   );
 
   const filters: Filter[] = current?.filter ?? [];
-  const sort: SortSpec = current?.sort ?? { prop: "edited", dir: "desc" };
+  const sort: SortSpec | SortSpec[] = current?.sort ?? { prop: "edited", dir: "desc" };
   const layout: Layout = (current?.layout as Layout) ?? "table";
   // views.group_by is "the property the layout is organised by": a select
   // for a board, a date for a calendar. Each layout falls back to a
@@ -1367,11 +1741,27 @@ export function MainView({ selection }: { selection: Selection }) {
   };
 
   const onChangeFilters = (next: Filter[]) => persistOrDraft({ filter: next });
-  const onChangeSort = (s: SortSpec) => persistOrDraft({ sort: s });
+  const onChangeSort = (s: SortSpec | SortSpec[]) => persistOrDraft({ sort: s });
   const onChangeLayout = (l: Layout) => persistOrDraft({ layout: l });
   const onChangeGroupBy = (g: string) => persistOrDraft({ group_by: g });
   const viewConfig: ViewConfig = current?.config ?? EMPTY_CONFIG;
   const onChangeConfig = (next: ViewConfig) => persistOrDraft({ config: next });
+  // Tables group by a select, status, person, checkbox or area (or who made
+  // the page); anything else, or an archived property, means not grouped.
+  const tableGroupChoices = useMemo(
+    () => [
+      ...propDefs
+        .filter((d) => ["select", "status", "person", "checkbox"].includes(d.type))
+        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+        .map((d) => ({ key: d.key, label: d.label })),
+      { key: "@created_by", label: "Created by" },
+    ],
+    [propDefs],
+  );
+  const tableGroup: string | null =
+    viewConfig.group && tableGroupChoices.some((c) => c.key === viewConfig.group)
+      ? viewConfig.group
+      : null;
 
   const statusDef = propDefs.find((d) => d.key === "status");
 
@@ -1391,18 +1781,42 @@ export function MainView({ selection }: { selection: Selection }) {
         : (groupableDefs.find((d) => d.key === "status") ?? groupableDefs[0])?.key ?? "status";
   const groupByDef = propDefs.find((d) => d.key === groupBy);
 
-  const onNewPage = () => {
-    const seed: Record<string, unknown> = {};
-    for (const f of (base?.filter ?? [])) {
-      if (f.op === "eq" && f.prop && f.value !== undefined) {
-        // Filter values are strings; a checkbox stores a boolean.
-        const t = propDefs.find((d) => d.key === f.prop)?.type;
-        seed[f.prop] = t === "checkbox" ? String(f.value) === "true" : f.value;
-      }
-      if (f.op === "is_me" && f.prop && user?.id) seed[f.prop] = user.id;
-    }
+  // A new page starts with what the view's filters ask for (the filters as
+  // they are now, unsaved changes included), so it lands in this view.
+  const seedForView = (): Record<string, unknown> => {
+    const seed = seedFromFilters(filters, propDefs, user?.id);
     if (selection.kind === "area") seed.area = selection.area;
-    void createAndOpen({ seedProps: seed });
+    return seed;
+  };
+  const onNewPage = () => {
+    void createAndOpen({ seedProps: seedForView() });
+  };
+
+  // + New page inside a table: made in place, named in its row.
+  const onNewRow = async (groupValue: string | null | undefined): Promise<string | null> => {
+    const seed = {
+      ...seedForView(),
+      ...(groupValue !== undefined ? seedForGroup(tableGroup, groupValue, propDefs) : {}),
+    };
+    try {
+      const row = await create.mutateAsync({ seedProps: seed, quiet: true });
+      const listed = { ...(row as unknown as PageListItem) };
+      const fits =
+        runView([listed], { filter: filters, sort }, { me: user?.id ?? "", staleDays }).length > 0;
+      if (!fits) {
+        toast.push({
+          message: "Page added. It doesn\u2019t match this view\u2019s filters, so it isn\u2019t listed here.",
+          action: {
+            label: "Open",
+            onClick: () => navigate({ to: "/p/$pageId", params: { pageId: row.id } }),
+          },
+        });
+        return null;
+      }
+      return row.id;
+    } catch {
+      return null;
+    }
   };
 
   // Team and area toolbars are editable (edits flow to the draft).
@@ -1477,7 +1891,7 @@ export function MainView({ selection }: { selection: Selection }) {
         name: `${view.name} copy`,
         icon: view.icon,
         filter: (view.filter ?? []) as Filter[],
-        sort: (view.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
+        sort: (view.sort ?? { prop: "edited", dir: "desc" }) as SortSpec | SortSpec[],
         layout: view.layout as Layout,
         // Keep what a board groups by / a calendar places by.
         groupBy: view.group_by ?? null,
@@ -1496,7 +1910,7 @@ export function MainView({ selection }: { selection: Selection }) {
         viewId: view.id,
         name: `${view.name} copy`,
         filter: (view.filter ?? []) as Filter[],
-        sort: (view.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
+        sort: (view.sort ?? { prop: "edited", dir: "desc" }) as SortSpec | SortSpec[],
         layout: view.layout as Layout,
         // Keep what a board groups by / a calendar places by.
         groupBy: view.group_by ?? null,
@@ -1535,12 +1949,7 @@ export function MainView({ selection }: { selection: Selection }) {
 
   /* --- shortcut & spec support ---------------------------------------- */
 
-  const sortLabel = useMemo(() => {
-    const key = `${sort.prop}:${sort.dir}`;
-    return (
-      SORT_CHOICES.find((c) => c.key === key)?.label ?? SORT_CHOICES[0].label
-    );
-  }, [sort]);
+  const sortLabel = useMemo(() => sortLabelOf(sort, propDefs), [sort, propDefs]);
 
   const publisherName = useMemo(() => {
     if (!view || view.scope !== "team" || !view.owner_id) return "";
@@ -1702,6 +2111,11 @@ export function MainView({ selection }: { selection: Selection }) {
         anySelection={anySelection}
         onCheckboxClick={onCheckboxClick}
         getPageMenuBuild={getPageMenuBuild}
+        onNewCard={(value) =>
+          void createAndOpen({
+            seedProps: { ...seedForView(), ...seedForGroup(groupBy, value, propDefs) },
+          })
+        }
       />
     );
   else if (layout === "list")
@@ -1739,6 +2153,8 @@ export function MainView({ selection }: { selection: Selection }) {
         canArrange={editable}
         sorts={sortsOf(sort)}
         onSort={onChangeSort}
+        groupKey={tableGroup}
+        onNewRow={onNewRow}
       />
     );
 
@@ -1793,6 +2209,9 @@ export function MainView({ selection }: { selection: Selection }) {
         onChangeFilters={onChangeFilters}
         onChangeSort={onChangeSort}
         onChangeGroupBy={onChangeGroupBy}
+        tableGroup={tableGroup}
+        tableGroupChoices={tableGroupChoices}
+        onChangeTableGroup={(g) => onChangeConfig({ ...viewConfig, group: g })}
         propDefs={propDefs}
         people={people}
         staleDays={staleDays}
@@ -2346,6 +2765,7 @@ function BoardBody({
   anySelection,
   onCheckboxClick,
   getPageMenuBuild,
+  onNewCard,
 }: {
   rows: PageListItem[];
   groupBy: string;
@@ -2353,6 +2773,8 @@ function BoardBody({
   members: MemberRow[];
   staleThreshold: number;
   onMove: (pageId: string, value: string) => void;
+  /** + New page at the foot of a column: a page with that column's value. */
+  onNewCard?: (value: string) => void;
   selectedSet: Set<string>;
   anySelection: boolean;
   onCheckboxClick: (id: string, shift: boolean) => void;
@@ -2534,6 +2956,25 @@ function BoardBody({
               );
             })}
           </div>
+          {onNewCard ? (
+            <button
+              type="button"
+              onClick={() => onNewCard(col.value)}
+              className="mt-2 flex w-full items-center rounded-md text-left text-meta text-faint hover:bg-railHover hover:text-strong"
+              style={{ gap: 7, padding: "6px 6px" }}
+            >
+              <svg viewBox="0 0 24 24" width={13} height={13} aria-hidden>
+                <path
+                  d="M12 5v14M5 12h14"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                />
+              </svg>
+              New page
+            </button>
+          ) : null}
         </div>
       ))}
       {columns.length === 0 && (

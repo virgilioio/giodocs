@@ -39,7 +39,7 @@ export function patchDraft(
   patch: ViewDraft,
   pruneAgainst?: {
     filter?: Filter[];
-    sort?: SortSpec;
+    sort?: SortSpec | SortSpec[];
     layout?: ViewLayout;
     group_by?: string | null;
     config?: ViewConfig;

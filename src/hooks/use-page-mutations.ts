@@ -23,7 +23,7 @@ type ViewRow = {
 function viewSpec(v: ViewRow) {
   return {
     filter: (v.filter ?? []) as Filter[],
-    sort: (v.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
+    sort: (v.sort ?? { prop: "edited", dir: "desc" }) as SortSpec | SortSpec[],
   };
 }
 
@@ -259,7 +259,7 @@ export function useCreateView() {
       name: string;
       icon?: string | null;
       filter?: Filter[];
-      sort?: SortSpec;
+      sort?: SortSpec | SortSpec[];
       layout?: "table" | "board" | "list" | "calendar";
       groupBy?: string | null;
       config?: ViewConfig;
@@ -403,7 +403,7 @@ export function useForkView() {
       viewId: string;
       name: string;
       filter: Filter[];
-      sort: SortSpec;
+      sort: SortSpec | SortSpec[];
       layout: "table" | "board" | "list" | "calendar";
       groupBy?: string | null;
       config?: ViewConfig;
@@ -492,6 +492,8 @@ export function useCreatePage() {
       title?: string;
       /** The page icon; a new page from a template takes the template's. */
       icon?: string;
+      /** No "New page created" toast (a row added inside a table). */
+      quiet?: boolean;
       _tempId?: string;
     }) => {
       // New pages are private to their creator: the database adds the
@@ -540,6 +542,8 @@ export function useCreatePage() {
         verified_by: user?.id ?? null,
         edited_at: nowIso,
         edited_by: user?.id ?? null,
+        created_at: nowIso,
+        created_by: user?.id ?? null,
         access_type: "restricted" as PageListItem["access_type"],
       };
       qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) =>
@@ -559,6 +563,8 @@ export function useCreatePage() {
         verified_by: row.verified_by,
         edited_at: row.edited_at,
         edited_by: row.edited_by,
+        created_at: row.created_at,
+        created_by: row.created_by,
         access_type: row.access_type,
         archived_at: row.archived_at ?? null,
         parent_id: row.parent_id ?? null,
@@ -571,7 +577,7 @@ export function useCreatePage() {
       // Seed the page-detail cache so /p/{id} renders instantly with correct
       // data instead of flashing a loading skeleton.
       qc.setQueryData<PageFull>(qk.page(row.id), row);
-      toast.push(`New page created`);
+      if (!v.quiet) toast.push(`New page created`);
     },
     onError: (err, _v, ctx) => {
       if (ctx?.tempId) {

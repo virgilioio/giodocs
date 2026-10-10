@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { pageQuery } from "@/hooks/use-workspace-data";
@@ -8,7 +8,7 @@ import type { useRenamePage, useSetPageProperty } from "@/hooks/use-page-mutatio
 import { isTerminalStatus } from "@/lib/due-date";
 import { isTypedString, PROPERTY_KINDS } from "@/lib/property-kinds";
 import { relList, relResolve } from "@/lib/related-links";
-import { sortProp, type SortSpec } from "@/lib/run-view";
+import { groupRows, sortProp, type PropInfo, type RowGroup, type SortSpec } from "@/lib/run-view";
 import { viewTime } from "@/lib/view-time";
 import {
   TITLE_KEY,
@@ -95,9 +95,27 @@ const EMPTY = <span className="text-faint">—</span>;
 
 /* ─────────────────────────── Cells ─────────────────────────── */
 
-function PageTitleCell({ page, onSave }: { page: PageListItem; onSave: (title: string) => void }) {
-  const [editing, setEditing] = useState(false);
+function PageTitleCell({
+  page,
+  onSave,
+  autoEdit = false,
+  onEditDone,
+}: {
+  page: PageListItem;
+  onSave: (title: string) => void;
+  /** Start naming it right away (a row just added with + New page). */
+  autoEdit?: boolean;
+  onEditDone?: () => void;
+}) {
+  const [editing, setEditingState] = useState(autoEdit);
   const [value, setValue] = useState(page.title ?? "");
+  useEffect(() => {
+    if (autoEdit) setEditingState(true);
+  }, [autoEdit]);
+  const setEditing = (on: boolean) => {
+    setEditingState(on);
+    if (!on) onEditDone?.();
+  };
   const navigate = useNavigate();
   const qc = useQueryClient();
   const setOrigin = useSetPageOrigin();
@@ -114,6 +132,8 @@ function PageTitleCell({ page, onSave }: { page: PageListItem; onSave: (title: s
             setEditing(false);
             if (value !== page.title) onSave(value);
           }}
+          placeholder="Untitled"
+          aria-label="Page title"
           onKeyDown={(e) => {
             if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             if (e.key === "Escape") {
@@ -478,6 +498,8 @@ const TableRow = memo(function TableRow({
   anySelection,
   onCheckboxClick,
   buildMenu,
+  autoEdit,
+  onEditDone,
 }: {
   p: PageListItem;
   shown: string[];
@@ -487,6 +509,8 @@ const TableRow = memo(function TableRow({
   anySelection: boolean;
   onCheckboxClick: (id: string, shift: boolean) => void;
   buildMenu: MenuBuild;
+  autoEdit: boolean;
+  onEditDone: () => void;
 }) {
   return (
     <div className="contents group" role="row">
@@ -498,7 +522,12 @@ const TableRow = memo(function TableRow({
         />
       </div>
       <div data-page-id={p.id} role="cell" className={cellClass(selected)}>
-        <PageTitleCell page={p} onSave={(t) => rename({ pageId: p.id, title: t })} />
+        <PageTitleCell
+          page={p}
+          onSave={(t) => rename({ pageId: p.id, title: t })}
+          autoEdit={autoEdit}
+          onEditDone={onEditDone}
+        />
       </div>
       {shown.map((k) => (
         <div key={k} data-page-id={p.id} data-prop={k} role="cell" className={cellClass(selected)}>
@@ -869,6 +898,129 @@ function PropertiesMenu({
   );
 }
 
+/* ─────────────────────────── Groups and + New ─────────────────────────── */
+
+const NO_VALUE = "\u0000none";
+
+function GroupLabel({
+  group,
+  def,
+  groupKey,
+  members,
+  labelOf,
+}: {
+  group: RowGroup;
+  def: PropDef | undefined;
+  groupKey: string | null;
+  members: TableMember[];
+  labelOf: (k: string) => string;
+}) {
+  if (group.value === null)
+    return <span className="text-muted">No {labelOf(groupKey ?? "").toLowerCase()}</span>;
+  if (def && (def.type === "select" || def.type === "status")) {
+    const o = ((def.options as unknown as SelectOption[]) ?? []).find(
+      (x) => x.value === group.value,
+    );
+    if (o) return <StatusChip label={o.label} tint={o.tint} ink={o.ink} />;
+  }
+  if (def?.type === "person" || groupKey === "@created_by" || groupKey === "@edited_by")
+    return <PersonView member={members.find((m) => m.user_id === group.value)} />;
+  return <span className="text-strong">{group.label}</span>;
+}
+
+function GroupBlock({
+  label,
+  count,
+  open,
+  onToggle,
+  children,
+}: {
+  label: ReactNode;
+  count: number;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      <div className="contents" role="row">
+        <div
+          role="rowheader"
+          className="flex min-w-0 items-center border-b border-lineSoft"
+          style={{ gridColumn: "1 / -1", gap: 8, padding: "14px 6px 6px 0" }}
+        >
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={open}
+            aria-label={open ? "Collapse group" : "Expand group"}
+            className="grid shrink-0 place-items-center rounded-sm text-faint hover:bg-rail hover:text-strong"
+            style={{ width: 18, height: 18 }}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width={12}
+              height={12}
+              aria-hidden
+              style={{
+                transform: open ? "rotate(90deg)" : "none",
+                transition: "transform var(--dur-hover) var(--ease-out)",
+              }}
+            >
+              <path
+                d="m9 6 6 6-6 6"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.4}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          <span className="flex min-w-0 items-center text-meta">{label}</span>
+          <span className="tnum text-caption text-faint">{count}</span>
+        </div>
+      </div>
+      {children}
+    </>
+  );
+}
+
+function NewRowButton({ onAdd }: { onAdd: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="contents" role="row">
+      <div className="border-b border-lineSoft" style={{ gridColumn: "1 / -1" }}>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await onAdd();
+            } finally {
+              setBusy(false);
+            }
+          }}
+          className="flex w-full items-center text-left text-meta text-faint hover:bg-sunken hover:text-strong disabled:cursor-default"
+          style={{ gap: 7, padding: "7px 11px 7px 27px" }}
+        >
+          <svg viewBox="0 0 24 24" width={13} height={13} aria-hidden>
+            <path
+              d="M12 5v14M5 12h14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+            />
+          </svg>
+          New page
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ─────────────────────────── Table ─────────────────────────── */
 
 export function ViewTable({
@@ -891,6 +1043,8 @@ export function ViewTable({
   canArrange,
   sorts,
   onSort,
+  groupKey,
+  onNewRow,
 }: {
   rows: PageListItem[];
   pages: PageListItem[];
@@ -911,6 +1065,11 @@ export function ViewTable({
   canArrange: boolean;
   sorts: SortSpec[];
   onSort: (s: SortSpec) => void;
+  /** The property rows are grouped by, or null. */
+  groupKey: string | null;
+  /** Adds a page from the + New page row (seeded with the group's value);
+   *  resolves to its id, or null if it wasn't made. */
+  onNewRow?: (groupValue: string | null | undefined) => Promise<string | null>;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -1146,6 +1305,51 @@ export function ViewTable({
     onCheckboxClick(id, e.shiftKey);
   };
 
+  const [editId, setEditId] = useState<string | null>(null);
+  const clearEdit = useMemo(() => () => setEditId(null), []);
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const addRow = async (groupValue: string | null | undefined) => {
+    if (!onNewRow) return;
+    const id = await onNewRow(groupValue);
+    if (id) setEditId(id);
+  };
+
+  // Grouping keeps each group's rows in the view's sort order.
+  const groupDef = groupKey ? defs.get(groupKey) : undefined;
+  const groups = useMemo(() => {
+    if (!groupKey) return null;
+    const info = new Map<string, PropInfo>();
+    if (groupDef)
+      info.set(groupKey, {
+        type: groupDef.type,
+        options: (groupDef.options as unknown as SelectOption[]) ?? [],
+      });
+    const nameOf = (id: string) => {
+      const m = members.find((x) => x.user_id === id);
+      return m?.profiles?.full_name || m?.profiles?.email || "Someone";
+    };
+    return groupRows(rows, groupKey, { props: info, nameOf });
+  }, [rows, groupKey, groupDef, members]);
+
+  const renderRow = (p: PageListItem) => {
+    const stale = new Date(p.verified_at).getTime() < staleThreshold;
+    return (
+      <TableRow
+        key={p.id}
+        p={p}
+        shown={shown}
+        ctx={stale ? ctxStale : ctxOk}
+        rename={renameMutate}
+        selected={selectedSet.has(p.id)}
+        anySelection={anySelection}
+        onCheckboxClick={onCheckboxClick}
+        buildMenu={getPageMenuBuild(p)}
+        autoEdit={editId === p.id}
+        onEditDone={clearEdit}
+      />
+    );
+  };
+
   const heading = (k: string) => (
     <PropHeading
       key={k}
@@ -1204,22 +1408,44 @@ export function ViewTable({
           </div>
         </div>
 
-        {rows.map((p) => {
-          const stale = new Date(p.verified_at).getTime() < staleThreshold;
-          return (
-            <TableRow
-              key={p.id}
-              p={p}
-              shown={shown}
-              ctx={stale ? ctxStale : ctxOk}
-              rename={renameMutate}
-              selected={selectedSet.has(p.id)}
-              anySelection={anySelection}
-              onCheckboxClick={onCheckboxClick}
-              buildMenu={getPageMenuBuild(p)}
-            />
-          );
-        })}
+        {groups
+          ? groups.map((g) => {
+              const id = g.value ?? NO_VALUE;
+              const open = !collapsed.has(id);
+              return (
+                <GroupBlock
+                  key={id}
+                  label={
+                    <GroupLabel
+                      group={g}
+                      def={groupKey ? defs.get(groupKey) : undefined}
+                      groupKey={groupKey}
+                      members={members}
+                      labelOf={labelOf}
+                    />
+                  }
+                  count={g.pages.length}
+                  open={open}
+                  onToggle={() =>
+                    setCollapsed((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(id)) next.delete(id);
+                      else next.add(id);
+                      return next;
+                    })
+                  }
+                >
+                  {open ? (
+                    <>
+                      {g.pages.map(renderRow)}
+                      {onNewRow ? <NewRowButton onAdd={() => addRow(g.value)} /> : null}
+                    </>
+                  ) : null}
+                </GroupBlock>
+              );
+            })
+          : rows.map(renderRow)}
+        {!groups && onNewRow ? <NewRowButton onAdd={() => addRow(undefined)} /> : null}
       </div>
       {drag ? (
         <div

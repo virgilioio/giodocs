@@ -84,6 +84,7 @@ import {
 import { personalViewFooter } from "@/lib/personal-view-footer";
 import { layoutOf, type ViewLayout } from "@/lib/view-drafts";
 import { readConfig } from "@/lib/view-config";
+import { sortLabel } from "@/lib/sort-label";
 import { useDrafts, patchDraft as storePatchDraft } from "@/lib/view-drafts-store";
 
 
@@ -844,7 +845,7 @@ function SidebarBody({
         pages,
         {
           filter: (v.filter ?? []) as Filter[],
-          sort: (v.sort ?? { prop: "edited", dir: "desc" }) as SortSpec,
+          sort: (v.sort ?? { prop: "edited", dir: "desc" }) as SortSpec | SortSpec[],
         },
         ctx,
       ).length;
@@ -1098,18 +1099,14 @@ function relTime(iso: string) {
 /* Personal view row — hover reveals ⋯ in place of the count. */
 /* Sort label used by the personal-view menu footer. Matches the labels
  * shown by the toolbar's sort picker in MainView. */
-function sortLabelFor(sort: { prop: string; dir: string } | null | undefined): string {
-  if (!sort) return "";
-  const key = `${sort.prop}:${sort.dir}`;
-  switch (key) {
-    case "edited:desc": return "Newest edits";
-    case "edited:asc":  return "Oldest edits";
-    case "created:desc": return "Newest first";
-    case "created:asc":  return "Oldest first";
-    case "verified:asc": return "Stalest verification";
-    case "title:asc":    return "Title A→Z";
-    default: return "";
-  }
+function sortLabelFor(
+  sort: SortSpec | SortSpec[] | null | undefined,
+  defs: Array<{ key: string; label: string | null }>,
+): string {
+  return sortLabel(
+    sort,
+    defs.map((d) => ({ key: d.key, label: d.label ?? d.key })),
+  );
 }
 
 /* The three layout choices with their sub-line copy. Used by the layout
@@ -1180,16 +1177,20 @@ function MyViewRow({
   const drafts = useDrafts();
 
   const effectiveLayout = layoutOf(v, drafts);
+  const sortDefs = (usePropDefs(useWorkspaceId()).data ?? []) as Array<{
+    key: string;
+    label: string | null;
+  }>;
 
   const build = (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }): MenuSpec => {
     const filters = (v.filter ?? []) as Filter[];
-    const sort = (v.sort as SortSpec | null) ?? { prop: "edited", dir: "desc" };
+    const sort = (v.sort as SortSpec | SortSpec[] | null) ?? { prop: "edited", dir: "desc" };
     const total = pages.length;
     const matched = runView(pages, { filter: filters, sort }, ctx).length;
     const footer = personalViewFooter({
       matchCount: matched,
       totalCount: total,
-      sortLabel: sortLabelFor(sort),
+      sortLabel: sortLabelFor(sort, sortDefs),
     });
 
     const rows: MenuRow[] = [
@@ -1441,16 +1442,20 @@ function TeamViewRow({
   const drafts = useDrafts();
 
   const effectiveLayout = layoutOf(v, drafts);
+  const sortDefs = (usePropDefs(useWorkspaceId()).data ?? []) as Array<{
+    key: string;
+    label: string | null;
+  }>;
 
   const build = (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }): MenuSpec => {
     const filters = (v.filter ?? []) as Filter[];
-    const sort = (v.sort as SortSpec | null) ?? { prop: "edited", dir: "desc" };
+    const sort = (v.sort as SortSpec | SortSpec[] | null) ?? { prop: "edited", dir: "desc" };
     const total = pages.length;
     const matched = runView(pages, { filter: filters, sort }, ctx).length;
     const footer = personalViewFooter({
       matchCount: matched,
       totalCount: total,
-      sortLabel: sortLabelFor(sort),
+      sortLabel: sortLabelFor(sort, sortDefs),
     });
 
     const rows: MenuRow[] = [
@@ -2517,7 +2522,7 @@ function NewPersonalViewPopover({
     try {
       const seedFilter = (currentView?.filter ?? []) as Filter[];
       const seedSort =
-        (currentView?.sort as SortSpec | null) ?? { prop: "edited", dir: "desc" };
+        (currentView?.sort as SortSpec | SortSpec[] | null) ?? { prop: "edited", dir: "desc" };
       const seedLayout = currentView?.layout ?? "table";
       const created = await createView.mutateAsync({
         name: trimmed,
