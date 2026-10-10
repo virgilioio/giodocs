@@ -221,16 +221,21 @@ function CommentItem({
 
   const remove = () => {
     setMenu(false);
-    removeM.mutate(
-      { id: c.id, removed: true },
-      {
-        onSuccess: () =>
-          toast.push({
-            message: isRoot && thread.replies.length ? "Thread removed." : "Comment removed.",
-            action: { label: "Undo", onClick: () => removeM.mutate({ id: c.id, removed: false }) },
-          }),
-        onError: (e) => toast.push(commentError(e)),
-      },
+    // A promise, not mutate callbacks: the comment leaves the list at once,
+    // and callbacks tied to it would never run.
+    const label = isRoot && thread.replies.length ? "Thread removed." : "Comment removed.";
+    removeM.mutateAsync({ id: c.id, removed: true }).then(
+      () =>
+        toast.push({
+          message: label,
+          action: {
+            label: "Undo",
+            onClick: () => {
+              removeM.mutateAsync({ id: c.id, removed: false }).catch((e) => toast.push(commentError(e)));
+            },
+          },
+        }),
+      (e) => toast.push(commentError(e)),
     );
   };
 
@@ -255,12 +260,11 @@ function CommentItem({
         {isRoot ? (
           <IconButton
             label={thread.root.resolved_at ? "Reopen thread" : "Resolve thread"}
-            onClick={() =>
-              resolve.mutate(
-                { thread: c.id, resolved: !thread.root.resolved_at },
-                { onError: (e) => toast.push(commentError(e)) },
-              )
-            }
+            onClick={() => {
+              resolve
+                .mutateAsync({ thread: c.id, resolved: !thread.root.resolved_at })
+                .catch((e) => toast.push(commentError(e)));
+            }}
           >
             <Svg d={thread.root.resolved_at ? ICON.reopen : ICON.check} />
           </IconButton>
@@ -417,6 +421,12 @@ function CommentsPanel({ pageId, blockOrder }: { pageId: string; blockOrder: rea
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusThread, q.data]);
 
+  // The page makes room for the panel (see .gio-comments-open in styles.css).
+  useEffect(() => {
+    document.documentElement.classList.add("gio-comments-open");
+    return () => document.documentElement.classList.remove("gio-comments-open");
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
@@ -437,12 +447,12 @@ function CommentsPanel({ pageId, blockOrder }: { pageId: string; blockOrder: rea
       className="flex flex-col border-l border-line bg-rail animate-drawerIn"
       style={{
         position: "fixed",
-        top: 0,
+        // Below the top bar, so its buttons (and this panel's toggle) stay reachable.
+        top: "var(--spacing-topbar)",
         right: 0,
         bottom: 0,
-        width: 372,
+        width: "var(--comments-panel-w)",
         zIndex: 60,
-        boxShadow: "-16px 0 40px rgba(13,13,9,.08)",
       }}
     >
       <div className="flex items-center border-b border-line bg-surface" style={{ padding: "12px 12px 12px 18px", gap: 8 }}>

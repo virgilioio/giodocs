@@ -211,6 +211,12 @@ button:is([class~="bg-btn"], [class~="border-line"][class~="bg-surface"], .gio-p
 .gio-mention[data-missing="true"] { color: var(--color-muted); cursor: default; text-decoration: none; }
 .gio-mention::selection { background: var(--color-accentWash); }
 
+/* The comments panel sits on the right, below the top bar. While it's open
+   the page column re-centres in the space left of it (instant: a layout
+   move is never animated). */
+:root { --comments-panel-w: 372px; }
+.gio-comments-open main { padding-right: var(--comments-panel-w); }
+
 /* A block the comments panel points at flashes once. */
 @keyframes gioFlash { from { background-color: var(--color-highlight) } to { background-color: transparent } }
 .gio-flash { animation: gioFlash var(--dur-flash) var(--ease-out); border-radius: 6px; }
