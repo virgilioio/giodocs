@@ -184,7 +184,11 @@ function EmptyState({
         e.preventDefault();
         setOver(true);
       }}
-      onDragLeave={() => setOver(false)}
+      onDragLeave={(e) => {
+        // Moving over a child element fires dragleave on the parent: only
+        // clear when the pointer really left (no flicker).
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false);
+      }}
       onDrop={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -342,8 +346,12 @@ export function ImageBlock({
   onDelete: () => void;
   onUndoMark?: () => void;
 }) {
-  const align = readAlign(block);
-  const w = readW(block);
+  // While resizing, the width lives here (only this image re-renders); the
+  // block is written once, on release — one save and one undo step, not
+  // one per pixel.
+  const [draft, setDraft] = useState<{ w: number; align: ReturnType<typeof readAlign> } | null>(null);
+  const align = draft?.align ?? readAlign(block);
+  const w = draft?.w ?? readW(block);
   const path = (block as { path?: string }).path ?? null;
   const cap = ((block as { cap?: string }).cap ?? "") as string;
   const [hover, setHover] = useState(false);
@@ -368,25 +376,48 @@ export function ImageBlock({
     [start],
   );
 
-  /* Resize — listeners on WINDOW, since the pointer leaves a shrinking image. */
-  const beginResize = (edge: "left" | "right", ev: React.MouseEvent) => {
+  /* Resize — listeners on WINDOW, since the pointer leaves a shrinking image.
+   * Pointer events (mouse, pen and touch); Esc puts the width back. */
+  const beginResize = (edge: "left" | "right", ev: React.PointerEvent) => {
     if (locked) return;
     ev.preventDefault();
     ev.stopPropagation();
     const startX = ev.clientX;
     const startWidth = w;
+    const startAlign = align;
     const containerW = wrapRef.current?.offsetWidth ?? 640;
-    onUndoMark?.();
-    const move = (e: MouseEvent) => {
-      const next = resizeW(startWidth, e.clientX - startX, containerW, align, edge);
-      onChange({ w: next, align: alignAfterResize(align) } as unknown as Partial<Blk>);
+    let last: { w: number; align: ReturnType<typeof readAlign> } | null = null;
+    const prevSelect = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
+    const move = (e: PointerEvent) => {
+      const next = resizeW(startWidth, e.clientX - startX, containerW, startAlign, edge);
+      last = { w: next, align: alignAfterResize(startAlign) };
+      setDraft(last);
     };
-    const up = () => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
+    const stop = (commitIt: boolean) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKey, true);
+      document.body.style.userSelect = prevSelect;
+      setDraft(null);
+      if (commitIt && last && (last.w !== startWidth || last.align !== startAlign)) {
+        onUndoMark?.();
+        onChange({ w: last.w, align: last.align } as unknown as Partial<Blk>);
+      }
     };
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
+    const onUp = () => stop(true);
+    const onCancel = () => stop(false);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      stop(false);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKey, true);
   };
 
   const empty = !path && !slot?.preview;
@@ -484,8 +515,9 @@ export function ImageBlock({
                 key={edge}
                 role="separator"
                 aria-label={`Resize from the ${edge}`}
-                onMouseDown={(e) => beginResize(edge, e)}
+                onPointerDown={(e) => beginResize(edge, e)}
                 style={{
+                  touchAction: "none",
                   position: "absolute",
                   [edge]: 5,
                   top: "50%",
