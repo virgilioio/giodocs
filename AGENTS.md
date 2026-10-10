@@ -131,6 +131,26 @@ provider Virgilio already has; don't build them until asked.
   view-only is read-only for everyone else, and the app shows it
   read-only ("View only"). Verifying stays open to readers.
 
+## Decisions (Allan, 2026-10-10: view tables, Phase 1)
+- views.config holds how a view shows its pages, separate from what it
+  shows (filter, sort): the properties a table shows and their order
+  (unset means the default set), widths, Calculate-row choices and the
+  table's grouping. It's read defensively (src/lib/view-config.ts) and
+  copied with the view (duplicate, fork, Save as my view). On team and
+  area views these are draft changes like filters; resizing alone never
+  marks a view changed.
+- Built-in properties start with "@": @created, @created_by, @edited,
+  @edited_by, @verified. Property keys start with a letter, so they never
+  collide. Built-ins can be shown, sorted, filtered and grouped, never set.
+- A sort is one spec or a list (the first wins, the next breaks ties); a
+  single sort is still stored as one spec. Sorting is type-aware: options
+  in their order, numbers as numbers, people by name, blanks last.
+- A new pick of what a property is replaces its old filter; comparisons
+  (above / below, before / after) add up into a range; tags add up.
+- A page made from a view starts with what the view's current filters
+  name and the group it was added to (src/lib/view-seed.ts), so it lands
+  in that view.
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.
