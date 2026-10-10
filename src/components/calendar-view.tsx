@@ -1,7 +1,15 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useSetPageOrigin } from "@/lib/page-origin";
-import { dateSpan, daysOfSpan, formatDue, moveDateValue, toDueString } from "@/lib/due-date";
+import {
+  addDaysKey,
+  dateSpan,
+  daysBetweenKeys,
+  daysOfSpan,
+  formatDue,
+  moveDateValue,
+  toDueString,
+} from "@/lib/due-date";
 import { monthGrid, shiftMonth, todayKey, WEEKDAYS } from "@/lib/calendar-grid";
 import { Ico } from "./emoji-icon";
 import type { PageListItem } from "@/lib/types";
@@ -69,15 +77,23 @@ export function CalendarViewBody({
         undated.push(p);
         continue;
       }
-      // A range shows on every day it covers.
-      for (const k of daysOfSpan(span)) {
+      // A range shows on every day it covers that's on this grid (a long
+      // range is clipped to the grid, not to its first weeks).
+      const first = grid[0].key;
+      const last = grid[grid.length - 1].key;
+      if (span.end < first || span.start > last) continue;
+      const clipped = {
+        start: span.start < first ? first : span.start,
+        end: span.end > last ? last : span.end,
+      };
+      for (const k of daysOfSpan(clipped, 42)) {
         const list = byDay.get(k);
         if (list) list.push(p);
         else byDay.set(k, [p]);
       }
     }
     return { byDay, undated };
-  }, [rows, dateKey]);
+  }, [rows, dateKey, grid]);
 
   const open = (id: string) => {
     setOrigin(id);
@@ -96,13 +112,16 @@ export function CalendarViewBody({
     );
   }
 
-  const chip = (p: PageListItem) => (
+  // `day` is the day this copy of the card sits on (a range has one per
+  // day), so a drag moves the range by how far that copy travelled.
+  const chip = (p: PageListItem, day?: string) => (
     <button
       key={p.id}
       type="button"
       draggable
       onDragStart={(e) => {
         e.dataTransfer.setData("text/pageId", p.id);
+        if (day) e.dataTransfer.setData("text/fromDay", day);
         e.dataTransfer.effectAllowed = "move";
         setDragId(p.id);
       }}
@@ -151,10 +170,20 @@ export function CalendarViewBody({
       if (!id) return;
       const page = rows.find((r) => r.id === id);
       if (!page) return;
-      // Dropping where it already starts does nothing; a range moves whole.
+      // A range moves whole, by as many days as the card that was dragged;
+      // dropping a card back on its own day does nothing.
       const value = propsOf(page)[dateKey];
+      if (!key) return onMove(id, null);
+      const from = e.dataTransfer.getData("text/fromDay");
+      const span = dateSpan(value);
+      if (span && from) {
+        const delta = daysBetweenKeys(from, key);
+        if (delta === 0) return;
+        onMove(id, moveDateValue(value, addDaysKey(span.start, delta)));
+        return;
+      }
       if ((toDueString(value) ?? "") === key) return;
-      onMove(id, key ? moveDateValue(value, key) : null);
+      onMove(id, moveDateValue(value, key));
     },
   });
 
@@ -284,7 +313,7 @@ export function CalendarViewBody({
               >
                 {d.day}
               </span>
-              {shown.map(chip)}
+              {shown.map((p) => chip(p, d.key))}
               {more > 0 || (isOpen && pages.length > MAX_CHIPS) ? (
                 <button
                   type="button"
@@ -323,7 +352,7 @@ export function CalendarViewBody({
               gap: 6,
             }}
           >
-            {undated.map(chip)}
+            {undated.map((p) => chip(p))}
           </div>
         </div>
       ) : null}

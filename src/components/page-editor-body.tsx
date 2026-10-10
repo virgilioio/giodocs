@@ -68,7 +68,7 @@ const COLS_GAP = 40;
  *  open a page marquee session whose pointerup click branch blurred the
  *  editor and cleared the DOM selection mid-gesture. */
 export const MARQUEE_SKIP_SEL =
-  '[contenteditable="true"], textarea, input, select, [data-table-cell], [data-table-handle], [data-sheet]';
+  '[contenteditable="true"], textarea, input, select, [data-table-cell], [data-table-handle], [data-sheet], [data-view-block], [data-view-block-start]';
 import {
   push as undoPush,
   undo as undoDo,

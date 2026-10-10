@@ -161,10 +161,23 @@ function InlineViewBody({
   const [showAll, setShowAll] = useState(false);
   const editable = !locked;
   const patch = (p: Partial<InlineView>) => onChange({ ...view, ...p });
+  // Someone who can only read the page can still sort it for themselves;
+  // that stays on their screen and never saves into the page.
+  const [readerSort, setReaderSort] = useState<SortSpec | SortSpec[] | null>(null);
+  const sort = editable ? view.sort : (readerSort ?? view.sort);
+  const changeSort = (s: SortSpec | SortSpec[]) =>
+    editable ? patch({ sort: s }) : setReaderSort(s);
+  // The name saves when you leave the field, as one change.
+  const [name, setName] = useState(view.name);
+  const [nameFor, setNameFor] = useState(view.name);
+  if (nameFor !== view.name) {
+    setNameFor(view.name);
+    setName(view.name);
+  }
 
   const rows = useMemo(
-    () => runView(rt.pages, { filter: view.filter, sort: view.sort }, rt.runCtx),
-    [rt.pages, view.filter, view.sort, rt.runCtx],
+    () => runView(rt.pages, { filter: view.filter, sort }, rt.runCtx),
+    [rt.pages, view.filter, sort, rt.runCtx],
   );
   const staleThreshold = Date.now() - rt.staleDays * 24 * 60 * 60 * 1000;
   const groupable = rt.propDefs.filter((d) => d.type === "select" || d.type === "status");
@@ -201,7 +214,8 @@ function InlineViewBody({
         ...(groupValue !== undefined ? seedForGroup(tableGroup, groupValue, rt.propDefs) : {}),
       };
       const row = await create.mutateAsync({ seedProps, quiet: true });
-      const fits = runView([row as unknown as PageListItem], { filter: view.filter, sort: view.sort }, rt.runCtx).length > 0;
+      const fits =
+        runView([row as unknown as PageListItem], { filter: view.filter, sort }, rt.runCtx).length > 0;
       if (!fits) {
         toast.push({
           message: "Page added. It doesn’t match this view’s filters, so it isn’t listed here.",
@@ -289,8 +303,8 @@ function InlineViewBody({
         config={view.config}
         onConfig={(config) => patch({ config })}
         canArrange={editable}
-        sorts={sortsOf(view.sort)}
-        onSort={(s: SortSpec) => patch({ sort: s })}
+        sorts={sortsOf(sort)}
+        onSort={(s: SortSpec) => changeSort(s)}
         groupKey={tableGroup}
         onNewRow={editable ? onNewRow : undefined}
         relations={rt.tableRelations}
@@ -306,12 +320,22 @@ function InlineViewBody({
       <div className="flex items-center" style={{ gap: 8 }}>
         {editable ? (
           <input
-            value={view.name}
-            onChange={(e) => patch({ name: e.target.value })}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => {
+              if (name !== view.name) patch({ name: name.slice(0, 200) });
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              if (e.key === "Escape") {
+                setName(view.name);
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
             placeholder="Untitled view"
             aria-label="View name"
-            className="min-w-0 flex-1 bg-transparent font-display text-subhead text-noir focus:outline-none"
-            style={{ fontWeight: 700 }}
+            className="min-w-0 flex-1 rounded-sm border border-transparent bg-transparent font-display text-subhead text-noir focus:border-accent"
+            style={{ fontWeight: 700, padding: "0 4px", marginLeft: -5 }}
           />
         ) : (
           <span className="min-w-0 flex-1 truncate font-display text-subhead text-noir" style={{ fontWeight: 700 }}>
@@ -322,13 +346,12 @@ function InlineViewBody({
           {rows.length} {rows.length === 1 ? "page" : "pages"}
         </span>
         {editable ? (
-          <div role="radiogroup" aria-label="Layout" className="flex shrink-0 items-center rounded-md border border-line" style={{ padding: 2, gap: 2 }}>
+          <div role="group" aria-label="Layout" className="flex shrink-0 items-center rounded-md border border-line" style={{ padding: 2, gap: 2 }}>
             {LAYOUT_CHOICES.map((c) => (
               <button
                 key={c.layout}
                 type="button"
-                role="radio"
-                aria-checked={view.layout === c.layout}
+                aria-pressed={view.layout === c.layout}
                 aria-label={c.label}
                 title={c.label}
                 onClick={() => patch({ layout: c.layout })}
@@ -343,11 +366,11 @@ function InlineViewBody({
       </div>
       <QueryToolbar
         filters={view.filter}
-        sort={view.sort}
+        sort={sort}
         groupBy={boardGroup}
         layout={view.layout}
         onChangeFilters={(filter: Filter[]) => patch({ filter })}
-        onChangeSort={(sort) => patch({ sort })}
+        onChangeSort={changeSort}
         onChangeGroupBy={(g) => patch({ group_by: g })}
         tableGroup={tableGroup}
         tableGroupChoices={tableGroupChoices}

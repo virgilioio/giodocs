@@ -12,6 +12,7 @@
  */
 
 import { splitInlineSource } from "./split-inline";
+import { recallCopied } from "./copied-blocks";
 import { applyCalloutDefaults } from "./callout-prefs";
 import { nanoid } from "nanoid";
 import { parseMarkdown } from "@/lib/markdown-import";
@@ -425,6 +426,9 @@ export function parsePasteToBlocks(
   htmlSrc: string,
   plainSrc: string,
 ): { blocks: Blk[]; consumeEvent: boolean } | null {
+  // Blocks copied or cut in this tab come back exactly as they were.
+  const copied = recallCopied(plainSrc);
+  if (copied && copied.length > 0) return { blocks: copied as Blk[], consumeEvent: true };
   if (htmlSrc) {
     const structured = htmlToBlocks(htmlSrc) as Blk[] | null;
     if (structured && structured.length > 0) {

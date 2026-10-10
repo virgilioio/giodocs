@@ -20,6 +20,7 @@ import type { Block } from "./types";
 import { blockToMarkdown, blocksHtmlFragment } from "./export";
 import { numberedOrdinals } from "./blocks";
 import { toClipboardRich } from "./clipboard";
+import { rememberCopied } from "./copied-blocks";
 
 export function blocksToClipboard(
   blocks: readonly Block[],
@@ -28,6 +29,12 @@ export function blocksToClipboard(
   const markdown = blocks
     .map((b) => {
       const ord = b.type === "numbered" && b.id ? (ords.get(b.id) ?? 1) : 1;
+      // A view inside a page has no text of its own; its name stands in,
+      // so the clipboard is never empty and a paste here can find it.
+      if (b.type === "view") {
+        const name = (b as { view?: { name?: unknown } }).view?.name;
+        return `View: ${typeof name === "string" && name ? name : "Untitled view"}`;
+      }
       return blockToMarkdown(b, ord);
     })
     .join("\n\n");
@@ -39,6 +46,8 @@ export async function writeBlocksClipboard(
   blocks: readonly Block[],
 ): Promise<void> {
   const { markdown, html } = blocksToClipboard(blocks);
+  // Kept as they are, so pasting them back in this tab restores them whole.
+  rememberCopied(markdown, blocks);
   // ONE clipboard path — src/lib/clipboard.ts — so a rejected promise in a
   // sandboxed frame can never escape as an unhandled rejection.
   toClipboardRich(markdown, html);

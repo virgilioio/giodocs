@@ -79,7 +79,7 @@ export function toDateValue(start: string, end?: string | null): string {
   return a < b ? `${a}/${b}` : `${b}/${a}`;
 }
 
-function addDaysKey(key: string, n: number): string {
+export function addDaysKey(key: string, n: number): string {
   const p = dueParts(key)!;
   const d = new Date(p[0], p[1] - 1, p[2] + n);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
