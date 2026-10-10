@@ -118,13 +118,16 @@ export function installTooltips(): () => void {
     const text = (el.getAttribute("title") ?? el.getAttribute("data-gio-title") ?? "").trim();
     if (!text) return;
     const control = el.matches(CONTROL);
-    if (!control && !cutDescendant(el)) return;
-    // Text that is already visible in full as the control's own label adds
-    // nothing as a tooltip.
-    if (control && el.textContent?.trim() === text && !cutDescendant(el)) return;
+    // Text that is fully visible (or a control whose own label already says
+    // it) gets no tooltip at all, not even the browser's.
+    const wanted =
+      (control && el.textContent?.trim() !== text) || cutDescendant(el);
     target = el;
-    el.setAttribute("data-gio-title", el.getAttribute("title") ?? text);
-    el.removeAttribute("title");
+    if (el.hasAttribute("title")) {
+      el.setAttribute("data-gio-title", el.getAttribute("title") ?? text);
+      el.removeAttribute("title");
+    }
+    if (!wanted) return;
     const instant = performance.now() - lastHidden < SKIP;
     if (instant) show(el, text, true);
     else timer = window.setTimeout(() => {
