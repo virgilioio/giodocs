@@ -101,6 +101,31 @@ provider Virgilio already has; don't build them until asked.
   id and no RETURNING (insert, then select): the creator's access row is
   added after the insert, so an insert...select would fail RLS.
 
+## Decisions (Allan, 2026-10-10: history, mentions, inbox, comments, templates)
+- Page history restores through restore_page_from_version only: it checks
+  edit access, saves the current content as a version first (its id is
+  the Undo) and restores title, icon and blocks. Properties are never
+  restored. restore_page_version is no longer callable.
+- Mentions are inline source: "@[Name](user:<uuid>)" and "@[](page:<uuid>)".
+  The one grammar rule is in inline-tokens.ts (before links); chips are
+  atoms like custom emoji. What a chip shows comes from the mention
+  directory (src/lib/mention-directory.ts, filled by app-shell). A page
+  mention never stores a title, and a page the reader can't open reads
+  "Private page". page_backlinks (as the caller) feeds "Linked from".
+- The inbox is the notifications table. Only database code writes it
+  (pages_notify_mentions, add_comment); people read and mark read their
+  own rows. Only people who can open the page are notified, never the
+  writer, and a notification failure never blocks a save. Email comes
+  later from these rows.
+- Comments: anyone who can open a page reads and adds comments; authors
+  edit and remove (soft, with Undo) their own; anyone who can open the
+  page resolves. All writes go through the comment functions.
+- A template is a page in a state (pages.template_at), like an archived
+  page: not a page kind. Templates leave views and page lists, stay in
+  search, and are offered on a blank page and from the template banner.
+  Starting from one copies blocks (new ids), icon, title and properties
+  (the page's own properties win).
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.
