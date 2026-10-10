@@ -364,6 +364,7 @@ export type Database = {
           parent_id: string | null
           props: Json
           search_tsv: unknown
+          template_at: string | null
           title: string
           verified_at: string
           verified_by: string | null
@@ -384,6 +385,7 @@ export type Database = {
           parent_id?: string | null
           props?: Json
           search_tsv?: unknown
+          template_at?: string | null
           title?: string
           verified_at?: string
           verified_by?: string | null
@@ -404,6 +406,7 @@ export type Database = {
           parent_id?: string | null
           props?: Json
           search_tsv?: unknown
+          template_at?: string | null
           title?: string
           verified_at?: string
           verified_by?: string | null
