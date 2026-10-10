@@ -505,7 +505,7 @@ const TableRow = memo(function TableRow({
   selected,
   anySelection,
   onCheckboxClick,
-  buildMenu,
+  getMenu,
   autoEdit,
   onEditDone,
 }: {
@@ -516,7 +516,7 @@ const TableRow = memo(function TableRow({
   selected: boolean;
   anySelection: boolean;
   onCheckboxClick: (id: string, shift: boolean) => void;
-  buildMenu: MenuBuild;
+  getMenu: (p: PageListItem) => MenuBuild;
   autoEdit: boolean;
   onEditDone: () => void;
 }) {
@@ -554,7 +554,7 @@ const TableRow = memo(function TableRow({
         )}
       >
         <SpecMenuTrigger
-          build={buildMenu}
+          build={(mctx) => getMenu(p)(mctx)}
           size="sm"
           ariaLabel="Page actions"
           className="opacity-0 group-hover:opacity-100 focus:opacity-100"
@@ -711,7 +711,8 @@ function PropHeading({
   onPointerDownLabel: (e: React.PointerEvent) => void;
   onResizeStart: (e: React.PointerEvent) => void;
   onResetWidth: () => void;
-  onNudgeWidth: (dx: number) => void;
+  /** Arrow keys resize live; the width is saved once, on key up. */
+  onNudgeWidth: (dx: number, commit: boolean) => void;
   suppressClick: React.MutableRefObject<boolean>;
 }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -774,8 +775,11 @@ function PropHeading({
           onKeyDown={(e) => {
             if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
               e.preventDefault();
-              onNudgeWidth(e.key === "ArrowLeft" ? -16 : 16);
+              onNudgeWidth(e.key === "ArrowLeft" ? -16 : 16, false);
             }
+          }}
+          onKeyUp={(e) => {
+            if (e.key === "ArrowLeft" || e.key === "ArrowRight") onNudgeWidth(0, true);
           }}
         />
       ) : null}
@@ -856,8 +860,8 @@ function PropertiesMenu({
                 role="menuitemcheckbox"
                 aria-checked={on}
                 onClick={() => onChange(on ? hideProp(shown, k) : showProp(shown, k))}
-                className="flex w-full items-center rounded-md text-left hover:bg-rail"
-                style={{ gap: 9, padding: "6px 10px", fontSize: 14 }}
+                className="flex w-full items-center rounded-md text-left text-row hover:bg-rail"
+                style={{ gap: 9, padding: "6px 10px" }}
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -889,7 +893,7 @@ function PropertiesMenu({
                     padding: 2,
                     justifyItems: on ? "end" : "start",
                     background: on ? "var(--color-accent)" : "var(--color-rule)",
-                    transition: "background-color 150ms var(--ease-out)",
+                    transition: "background-color var(--dur-hover) var(--ease-out)",
                   }}
                 >
                   <span
@@ -1203,6 +1207,7 @@ export function ViewTable({
   const wrapRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const suppressClick = useRef(false);
+  const nudged = useRef<string | null>(null);
   const [drag, setDrag] = useState<{ key: string; x: number; index: number } | null>(null);
   const [resizing, setResizing] = useState<string | null>(null);
 
@@ -1399,17 +1404,20 @@ export function ViewTable({
       px = Math.round(Math.min(800, Math.max(60, startW + ev.clientX - startX)));
       grid.style.gridTemplateColumns = templateWith({ key: k, px });
     };
-    const onUp = () => {
+    const end = (commit: boolean) => {
       handle.removeEventListener("pointermove", onMove);
       handle.removeEventListener("pointerup", onUp);
-      handle.removeEventListener("pointercancel", onUp);
+      handle.removeEventListener("pointercancel", onCancel);
       setResizing(null);
-      if (px !== startW) onConfig(setWidth(config, k, px));
+      if (commit && px !== startW) onConfig(setWidth(config, k, px));
       else grid.style.gridTemplateColumns = templateWith();
     };
+    const onUp = () => end(true);
+    // A cancelled gesture (the system took the pointer) puts it back.
+    const onCancel = () => end(false);
     handle.addEventListener("pointermove", onMove);
     handle.addEventListener("pointerup", onUp);
-    handle.addEventListener("pointercancel", onUp);
+    handle.addEventListener("pointercancel", onCancel);
   };
 
   // React owns the template again after every render (a saved width, a
@@ -1446,7 +1454,7 @@ export function ViewTable({
   // Grouping keeps each group's rows in the view's sort order.
   const groupDef = groupKey ? defs.get(groupKey) : undefined;
   const groups = useMemo(() => {
-    if (!groupKey) return null;
+    if (!groupKey || rows.length === 0) return null;
     const info = new Map<string, PropInfo>();
     if (groupDef)
       info.set(groupKey, {
@@ -1472,7 +1480,7 @@ export function ViewTable({
         selected={selectedSet.has(p.id)}
         anySelection={anySelection}
         onCheckboxClick={onCheckboxClick}
-        buildMenu={getPageMenuBuild(p)}
+        getMenu={getPageMenuBuild}
         autoEdit={editId === p.id}
         onEditDone={clearEdit}
       />
@@ -1508,12 +1516,18 @@ export function ViewTable({
       onPointerDownLabel={(e) => startHeadingDrag(e, k)}
       onResizeStart={(e) => startResize(e, k)}
       onResetWidth={() => onConfig(setWidth(config, k, null))}
-      onNudgeWidth={(dx) => {
-        const head = gridRef.current?.querySelector<HTMLElement>(
-          `[data-prop-header="${CSS.escape(k)}"]`,
-        );
-        const w = head?.getBoundingClientRect().width ?? widthOf(config, k, typeOf(k));
-        onConfig(setWidth(config, k, Math.round(w) + dx));
+      onNudgeWidth={(dx, commit) => {
+        const grid = gridRef.current;
+        const head = grid?.querySelector<HTMLElement>(`[data-prop-header="${CSS.escape(k)}"]`);
+        const w = Math.round(head?.getBoundingClientRect().width ?? widthOf(config, k, typeOf(k)));
+        if (commit) {
+          if (nudged.current === k) onConfig(setWidth(config, k, w));
+          nudged.current = null;
+          return;
+        }
+        const px = Math.min(800, Math.max(60, w + dx));
+        nudged.current = k;
+        if (grid) grid.style.gridTemplateColumns = templateWith({ key: k, px });
       }}
       suppressClick={suppressClick}
     />
@@ -1592,6 +1606,17 @@ export function ViewTable({
               );
             })
           : rows.map(renderRow)}
+        {rows.length === 0 ? (
+          <div className="contents" role="row">
+            <div
+              role="cell"
+              className="border-b border-lineSoft text-meta text-secondary"
+              style={{ gridColumn: "1 / -1", padding: "18px 11px 18px 27px" }}
+            >
+              Nothing matches this view yet. Pages appear here the moment their properties match.
+            </div>
+          </div>
+        ) : null}
         {!groups && onNewRow ? <NewRowButton onAdd={() => addRow(undefined)} /> : null}
         {!groups ? calcRow(rows) : null}
       </div>

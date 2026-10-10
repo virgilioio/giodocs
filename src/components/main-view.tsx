@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { primaryMod } from "@/lib/platform";
 import { toClipboard } from "@/lib/clipboard";
 import { usePrefs } from "@/lib/preferences";
@@ -8,7 +8,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useAllPropDefs, useWorkspaceShell, pageQuery } from "@/hooks/use-workspace-data";
-import { runView, sortsOf, type Filter, type FilterOp, type SortSpec } from "@/lib/run-view";
+import {
+  runView,
+  sortsOf,
+  type Filter,
+  type FilterOp,
+  type PropInfo,
+  type SortSpec,
+} from "@/lib/run-view";
 import { readConfig, type ViewConfig } from "@/lib/view-config";
 import { sortLabel as sortLabelOf } from "@/lib/sort-label";
 import { seedForGroup, seedFromFilters } from "@/lib/view-seed";
@@ -358,7 +365,13 @@ function QueryToolbar({
                           staleDays={staleDays}
                           startAt={{ prop: f.prop, op: f.op, value: f.value }}
                           onPick={(picked) => {
-                            pickFilter(picked);
+                            // Editing a chip changes that filter in place.
+                            onChangeFilters(
+                              applyFilterReplacement(
+                                filters.filter((_, idx) => idx !== i),
+                                picked,
+                              ),
+                            );
                             close();
                           }}
                         />
@@ -394,7 +407,7 @@ function QueryToolbar({
         style={{ width: 1, height: 16 }}
       />
 
-      <SortControl sort={sort} defs={propDefs} onChange={onChangeSort} />
+      <SortControl sort={sort} defs={propDefs} nameDefs={labelDefs} onChange={onChangeSort} />
 
       {layout === "table" && editable && (
         <TableGroupControl
@@ -697,7 +710,8 @@ function FilterBuilderContent({
             color: "var(--color-whisper)",
           }}
         >
-          Filters combine with and. Two filters on one property replace each other.
+          Filters combine with and. A new pick for a property replaces the old one; ranges
+          (above and below, before and after) and tags add up.
         </div>
       </div>
     );
@@ -1082,8 +1096,8 @@ function CompareInput({
             pick(ops[0].op);
           }
         }}
-        className="tnum w-full rounded-md border border-line bg-surface text-body focus:border-accent"
-        style={{ padding: "5px 8px", fontSize: 14 }}
+        className="tnum w-full rounded-md border border-line bg-surface text-row text-body focus:border-accent"
+        style={{ padding: "5px 8px" }}
       />
       <div className="mt-2 flex flex-wrap" style={{ gap: 6 }}>
         {ops.map((o) => (
@@ -1220,16 +1234,21 @@ function storeSorts(list: SortSpec[]): SortSpec | SortSpec[] {
 function SortControl({
   sort,
   defs,
+  nameDefs,
   onChange,
 }: {
   sort: SortSpec | SortSpec[];
   defs: PropDef[];
+  /** Archived properties too, so a saved sort on one still reads by name. */
+  nameDefs: PropDef[];
   onChange: (s: SortSpec | SortSpec[]) => void;
 }) {
   const sorts = sortsOf(sort);
   const [picking, setPicking] = useState<number | null>(null);
   const targets = sortTargets(defs);
-  const nameOf = (prop: string) => targets.find((t) => t.prop === prop)?.label ?? prop;
+  const named = sortTargets(nameDefs);
+  const nameOf = (prop: string) =>
+    (targets.find((t) => t.prop === prop) ?? named.find((t) => t.prop === prop))?.label ?? prop;
   const set = (next: SortSpec[]) => onChange(storeSorts(next));
   return (
     <Popover
@@ -1242,7 +1261,7 @@ function SortControl({
           innerRef={ref}
           onClick={onClick}
           iconPath="M7 4v12m0 0l-3-3m3 3l3-3M17 20V8m0 0l-3 3m3-3l3 3"
-          label={sortLabelOf(sort, defs)}
+          label={sortLabelOf(sort, nameDefs)}
         />
       )}
     >
@@ -1280,8 +1299,8 @@ function SortControl({
                 <button
                   type="button"
                   onClick={() => setPicking(i)}
-                  className="flex min-w-0 flex-1 items-center justify-between rounded-md border border-line bg-surface text-left text-body hover:bg-rail"
-                  style={{ padding: "4px 8px", fontSize: 13.5, gap: 6 }}
+                  className="flex min-w-0 flex-1 items-center justify-between rounded-md border border-line bg-surface text-left text-meta text-body hover:bg-rail"
+                  style={{ padding: "4px 8px", gap: 6 }}
                 >
                   <span className="truncate">{nameOf(x.prop)}</span>
                   <span aria-hidden className="text-faint">
@@ -1551,7 +1570,11 @@ export function MainView({ selection }: { selection: Selection }) {
 
   const pages = (shell.pages.data ?? []) as PageListItem[];
   const views = (shell.views.data ?? []) as ViewRow[];
-  const members = (shell.members.data ?? []) as unknown as MemberRow[];
+  const membersData = shell.members.data;
+  const members = useMemo(
+    () => (membersData ?? []) as unknown as MemberRow[],
+    [membersData],
+  );
   const propDefsData = shell.propDefs.data;
   const propDefs = useMemo(() => (propDefsData ?? []) as PropDef[], [propDefsData]);
   const workspace = shell.workspace.data;
@@ -1631,9 +1654,29 @@ export function MainView({ selection }: { selection: Selection }) {
   const clearDraft = (id: string) => storeClearDraft(id);
 
 
+  // What sorting needs to know: each property's type and option order, and
+  // people's names (so Owner sorts by name, not by id).
+  const runCtx = useMemo(() => {
+    const props = new Map<string, PropInfo>(
+      propDefs.map((d) => [
+        d.key,
+        { type: d.type, options: (d.options as unknown as SelectOption[] | null) ?? [] },
+      ]),
+    );
+    const names = new Map(
+      members.map((m) => [m.user_id, m.profiles?.full_name || m.profiles?.email || ""]),
+    );
+    return {
+      me: user?.id ?? "",
+      staleDays,
+      props,
+      nameOf: (id: string) => names.get(id) || id,
+    };
+  }, [propDefs, members, user?.id, staleDays]);
+
   const rows = useMemo(
-    () => runView(pages, { filter: filters, sort }, { me: user?.id ?? "", staleDays }),
-    [pages, filters, sort, user?.id, staleDays],
+    () => runView(pages, { filter: filters, sort }, runCtx),
+    [pages, filters, sort, runCtx],
   );
 
   const rowIds = useMemo(() => rows.map((r) => r.id), [rows]);
@@ -1650,10 +1693,13 @@ export function MainView({ selection }: { selection: Selection }) {
     setSelPages((prev) => rangeSelect(rowIds, selPageAnchor, id, prev));
     setSelPageAnchor(id);
   };
-  const onCheckboxClick = (id: string, shift: boolean) => {
-    if (shift) toggleShift(id);
-    else toggleOne(id);
-  };
+  // Stable across renders (rows are memoised); reads the latest state.
+  const checkboxRef = useRef({ toggleOne, toggleShift });
+  checkboxRef.current = { toggleOne, toggleShift };
+  const onCheckboxClick = useCallback((id: string, shift: boolean) => {
+    if (shift) checkboxRef.current.toggleShift(id);
+    else checkboxRef.current.toggleOne(id);
+  }, []);
   const clearSelection = () => {
     setSelPages([]);
     setSelPageAnchor(null);
@@ -1802,7 +1848,7 @@ export function MainView({ selection }: { selection: Selection }) {
       const row = await create.mutateAsync({ seedProps: seed, quiet: true });
       const listed = { ...(row as unknown as PageListItem) };
       const fits =
-        runView([listed], { filter: filters, sort }, { me: user?.id ?? "", staleDays }).length > 0;
+        runView([listed], { filter: filters, sort }, runCtx).length > 0;
       if (!fits) {
         toast.push({
           message: "Page added. It doesn\u2019t match this view\u2019s filters, so it isn\u2019t listed here.",
@@ -1949,7 +1995,11 @@ export function MainView({ selection }: { selection: Selection }) {
 
   /* --- shortcut & spec support ---------------------------------------- */
 
-  const sortLabel = useMemo(() => sortLabelOf(sort, propDefs), [sort, propDefs]);
+  const allDefsData = useAllPropDefs(ws).data as PropDef[] | undefined;
+  const sortLabel = useMemo(
+    () => sortLabelOf(sort, allDefsData && allDefsData.length ? allDefsData : propDefs),
+    [sort, allDefsData, propDefs],
+  );
 
   const publisherName = useMemo(() => {
     if (!view || view.scope !== "team" || !view.owner_id) return "";
@@ -2085,8 +2135,18 @@ export function MainView({ selection }: { selection: Selection }) {
       );
   };
 
+  // The table's rows are memoised, so they get one builder for the life of
+  // the view; it reads the latest one when a menu opens.
+  const menuBuildRef = useRef(getPageMenuBuild);
+  menuBuildRef.current = getPageMenuBuild;
+  const stableMenuBuild = useCallback(
+    (p: PageListItem) => (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) =>
+      menuBuildRef.current(p)(mctx),
+    [],
+  );
+
   let body: ReactNode;
-  if (rows.length === 0) body = emptyBody;
+  if (rows.length === 0 && layout !== "table") body = emptyBody;
   else if (layout === "calendar")
     body = (
       <CalendarViewBody
@@ -2146,7 +2206,7 @@ export function MainView({ selection }: { selection: Selection }) {
         onCheckboxClick={onCheckboxClick}
         selectAllState={selectAllState}
         onHeaderCheckboxClick={onHeaderCheckboxClick}
-        getPageMenuBuild={getPageMenuBuild}
+        getPageMenuBuild={stableMenuBuild}
         propDefs={propDefs}
         config={viewConfig}
         onConfig={onChangeConfig}
