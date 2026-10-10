@@ -47,7 +47,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<Item[]>([]);
   const timers = useRef(new Map<number, Timer>());
   const paused = useRef(false);
-  const hovered = useRef(false);
+  /** The toast under the pointer, if any. */
+  const hovered = useRef<number | null>(null);
   const nodes = useRef(new Map<number, HTMLDivElement>());
   const lastTops = useRef(new Map<number, number>());
 
@@ -55,6 +56,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     timers.current.delete(id);
     setItems((prev) => prev.filter((x) => x.id !== id));
   }, []);
+  const setPausedRef = useRef<(next: boolean) => void>(() => {});
 
   const leave = useCallback(
     (id: number) => {
@@ -64,6 +66,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       setItems((prev) =>
         prev.map((x) => (x.id === id && !x.leaving ? { ...x, leaving: true } : x)),
       );
+      // A toast leaving from under a still pointer gets no mouseleave; don't
+      // stay paused because of it.
+      if (hovered.current === id) {
+        hovered.current = null;
+        setPausedRef.current(document.hidden);
+      }
       window.setTimeout(() => remove(id), reducedMotion() ? 0 : EXIT_MS);
     },
     [remove],
@@ -94,8 +102,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [run],
   );
 
+  setPausedRef.current = setPaused;
+
   useEffect(() => {
-    const onVis = () => setPaused(document.hidden || hovered.current);
+    const onVis = () => setPaused(document.hidden || hovered.current !== null);
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [setPaused]);
@@ -161,12 +171,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               else nodes.current.delete(t.id);
             }}
             onMouseEnter={() => {
-              hovered.current = true;
+              hovered.current = t.id;
               setPaused(true);
             }}
             onMouseLeave={() => {
-              hovered.current = false;
-              setPaused(document.hidden);
+              if (hovered.current === t.id) hovered.current = null;
+              setPaused(document.hidden || hovered.current !== null);
             }}
             aria-hidden={t.leaving ? true : undefined}
             className="pointer-events-auto flex max-w-md items-center gap-3 rounded-lg bg-btn px-4 py-2 text-meta text-btnFg shadow-toast animate-toastUp"
@@ -188,9 +198,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 onClick={() => {
                   t.action!.onClick();
                   leave(t.id);
-                  // The toast under the pointer is going away; don't stay paused.
-                  hovered.current = false;
-                  setPaused(document.hidden);
                 }}
                 className="rounded-md px-2 py-0.5 text-meta font-bold text-btnFg hover:bg-white/10"
               >
