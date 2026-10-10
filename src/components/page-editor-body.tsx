@@ -3790,6 +3790,7 @@ function BlockRowImpl({
       // comes from `.gio-row:hover > .gio-block-gutter` in styles.css,
       // which is scoped to the hovered row itself in every container.
       className="gio-row relative"
+      data-gutter={pageScope ? "page" : undefined}
       style={{
         opacity: dimmed ? 0.45 : undefined,
         background: selected ? "var(--color-blueTint)" : undefined,
@@ -3803,18 +3804,16 @@ function BlockRowImpl({
 
       {(
         <div
-          className="gio-block-gutter pointer-events-none absolute top-0 flex select-none items-center gap-0.5 opacity-0 transition-opacity duration-100"
+          className="gio-block-gutter pointer-events-none absolute top-0 select-none opacity-0 transition-opacity duration-100"
           style={{
-            // `left` comes from .gio-block-gutter in styles.css
-            // (calc(-1 * var(--gio-gutter-x))) — the row no longer carries a
-            // negative margin, so the offset must live here.
-            height: "var(--gio-block-lh)",
-            width: 39,
-
+            // Position and size come from .gio-block-gutter in styles.css:
+            // `left` is calc(-1 * var(--gio-gutter-x)), the width reaches
+            // the row's edge, and page-level rows stretch it full height.
             opacity: selected ? 1 : undefined,
             pointerEvents: selected ? "auto" : undefined,
           }}
         >
+          <div className="flex items-center gap-0.5" style={{ height: "var(--gio-block-lh)" }}>
           <button
             type="button"
             aria-label="Insert block below"
@@ -3854,6 +3853,7 @@ function BlockRowImpl({
           >
             ⋮⋮
           </button>
+          </div>
         </div>
       )}
 

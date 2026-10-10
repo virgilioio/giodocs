@@ -462,6 +462,21 @@ button:is([class~="bg-btn"], [class~="border-line"][class~="bg-surface"], .gio-p
 }
 .gio-block-gutter {
   left: calc(-1 * var(--gio-gutter-x));
+  /* Touches the row: no gap for the pointer to fall through on its way
+     from the text to the handles. */
+  width: var(--gio-gutter-x);
+  height: var(--gio-block-lh);
+}
+/* A page-level block's gutter is a strip down the block's whole height in
+   the page margin, and it stays reachable while hidden: the pointer can
+   leave the text from any line, in any direction, and the + and ⋮⋮ are
+   still there when it arrives (Notion's behaviour). Blocks inside callouts
+   and columns keep the first-line gutter, so the strip never covers the
+   container's own controls. The buttons stay on the first line. */
+.gio-row[data-gutter="page"] > .gio-block-gutter {
+  height: auto;
+  bottom: 0;
+  pointer-events: auto;
 }
 /* Once revealed, the gutter keeps itself alive while hovered — it sits
    outside the row's box, so the row's own :hover ends at its edge. */
