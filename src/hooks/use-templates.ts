@@ -3,8 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { qk } from "@/lib/query-keys";
 import { useToast } from "@/lib/toast";
 import { useWorkspaceId } from "@/lib/workspace-context";
-import { cloneBlocksFresh, mergeTemplateProps } from "@/lib/template-copy";
-import { useCreatePageAndOpen } from "./use-page-mutations";
+import { cloneBlocksFresh, mergeTemplateProps, pathForPage, retargetBlockPaths } from "@/lib/template-copy";
+import { collectImagePaths } from "@/lib/image-ops";
+import { IMAGE_BUCKET } from "@/lib/image-ops";
+import { useNavigate } from "@tanstack/react-router";
+import { useCreatePage } from "./use-page-mutations";
 import type { Block, PageFull } from "@/lib/types";
 
 /* Templates: making a page one (or not), and starting pages from them.
@@ -69,16 +72,36 @@ export type AppliedPage = {
   edited_by: string | null;
 };
 
-/** Fill a blank page from a template: its blocks (with new ids), icon and
- *  title, and its properties under the ones the page already has. */
+/** Copy the template's images and files into the new page's own folder,
+ *  so everyone who can open the new page sees them (storage access follows
+ *  the page a file sits under). A file that can't be copied keeps pointing
+ *  at the template's: still visible to people who can open the template. */
+async function copyTemplateFiles(blocks: unknown[], pageId: string): Promise<unknown[]> {
+  const paths = [...new Set(collectImagePaths(blocks as never))];
+  const map = new Map<string, string>();
+  await Promise.all(
+    paths.map(async (from) => {
+      const to = pathForPage(from, pageId);
+      if (!to) return;
+      const { error } = await supabase.storage.from(IMAGE_BUCKET).copy(from, to);
+      if (!error) map.set(from, to);
+    }),
+  );
+  return map.size ? retargetBlockPaths(blocks, map) : blocks;
+}
+
+/** Fill a blank page from a template: its blocks (with new ids, and its
+ *  images copied over), icon and title, and its properties under the ones
+ *  the page already has. */
 export async function applyTemplate(
   pageId: string,
   templateId: string,
   current: { title: string; props: unknown },
 ): Promise<AppliedPage> {
   const tpl = await fetchTemplateContent(templateId);
+  const blocks = await copyTemplateFiles(cloneBlocksFresh(tpl.blocks), pageId);
   const patch = {
-    blocks: cloneBlocksFresh(tpl.blocks) as never,
+    blocks: blocks as never,
     icon: tpl.icon || "📄",
     title: current.title.trim() ? current.title : tpl.title,
     props: mergeTemplateProps(current.props, tpl.props) as never,
@@ -97,19 +120,36 @@ export async function applyTemplate(
   };
 }
 
-/** Start a new page from a template and open it. */
+/** Start a new page from a template and open it. The page is made first
+ *  (its images can only be copied under a page that exists), then filled. */
 export function useNewPageFromTemplate() {
-  const createAndOpen = useCreatePageAndOpen();
+  const create = useCreatePage();
+  const qc = useQueryClient();
+  const navigate = useNavigate();
   const toast = useToast();
   return async (templateId: string) => {
     try {
       const tpl = await fetchTemplateContent(templateId);
-      await createAndOpen({
+      const created = await create.mutateAsync({
         seedProps: mergeTemplateProps({}, tpl.props),
-        blocks: cloneBlocksFresh(tpl.blocks),
         title: tpl.title,
         icon: tpl.icon || "📄",
       });
+      const row = await applyTemplate(created.id, templateId, { title: tpl.title, props: created.props });
+      qc.setQueryData<PageFull | null>(qk.page(created.id), (prev) =>
+        prev
+          ? ({
+              ...prev,
+              title: row.title,
+              icon: row.icon ?? prev.icon,
+              props: row.props,
+              blocks: row.blocks as unknown as PageFull["blocks"],
+              edited_at: row.edited_at,
+              edited_by: row.edited_by,
+            } as PageFull)
+          : prev,
+      );
+      await navigate({ to: "/p/$pageId", params: { pageId: created.id } });
     } catch {
       toast.push("Couldn't start a page from that template. Try again.");
     }

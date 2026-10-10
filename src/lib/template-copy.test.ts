@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cloneBlocksFresh, isBlankPage, mergeTemplateProps } from "./template-copy";
+import { cloneBlocksFresh, isBlankPage, mergeTemplateProps, pathForPage, retargetBlockPaths } from "./template-copy";
 
 describe("cloneBlocksFresh", () => {
   it("gives every block, nested ones too, a new id and leaves the template alone", () => {
@@ -33,5 +33,26 @@ describe("isBlankPage", () => {
     expect(isBlankPage("Plan", [])).toBe(false);
     expect(isBlankPage("", [{ id: "1", type: "h1", text: "" }])).toBe(false);
     expect(isBlankPage("", [{ id: "1", type: "text", text: "hi" }])).toBe(false);
+  });
+});
+
+describe("template images", () => {
+  it("moves image and file paths into the new page's folder", () => {
+    expect(pathForPage("ws/tpl/a.png", "new")).toBe("ws/new/a.png");
+    expect(pathForPage("ws/tpl/files/b.pdf", "new")).toBe("ws/new/files/b.pdf");
+    expect(pathForPage("ws/emoji/x.png", "new")).toBeNull();
+    expect(pathForPage("ws/new/a.png", "new")).toBeNull();
+    const map = new Map([["ws/tpl/a.png", "ws/new/a.png"], ["ws/tpl/c.png", "ws/new/c.png"]]);
+    const out = retargetBlockPaths(
+      [
+        { id: "1", type: "image", path: "ws/tpl/a.png" },
+        { id: "2", type: "imagerow", cols: 2, paths: ["ws/tpl/c.png", "ws/tpl/missing.png"] },
+        { id: "3", type: "callout", children: [{ id: "4", type: "image", path: "ws/tpl/a.png" }] },
+      ],
+      map,
+    ) as Array<Record<string, unknown>>;
+    expect(out[0].path).toBe("ws/new/a.png");
+    expect(out[1].paths).toEqual(["ws/new/c.png", "ws/tpl/missing.png"]);
+    expect(((out[2].children as Array<Record<string, unknown>>)[0]).path).toBe("ws/new/a.png");
   });
 });

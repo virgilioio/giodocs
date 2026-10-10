@@ -45,3 +45,28 @@ export function isBlankPage(title: string | null | undefined, blocks: unknown): 
     return r.type === "text" && !String(r.text ?? "").trim() && !Array.isArray(r.children);
   });
 }
+
+/** Where a copied template file lives in the new page:
+ *  "{ws}/{templateId}/x.png" → "{ws}/{pageId}/x.png" (files/ kept). Paths
+ *  that aren't in a page folder (or are already in this page's) are left. */
+export function pathForPage(path: string, pageId: string): string | null {
+  const parts = path.split("/");
+  if (parts.length < 3 || parts[1] === "emoji" || parts[1] === pageId) return null;
+  return [parts[0], pageId, ...parts.slice(2)].join("/");
+}
+
+/** The block tree with every image and file path swapped through `map`
+ *  (paths missing from `map` stay as they are). */
+export function retargetBlockPaths(blocks: unknown, map: ReadonlyMap<string, string>): unknown[] {
+  if (!Array.isArray(blocks)) return [];
+  const swap = (p: unknown) => (typeof p === "string" && map.has(p) ? map.get(p)! : p);
+  return blocks.map((b) => {
+    if (!b || typeof b !== "object" || Array.isArray(b)) return b;
+    const out: Rec = { ...(b as Rec) };
+    if (out.type === "image" || out.type === "file") out.path = swap(out.path);
+    if (out.type === "imagerow" && Array.isArray(out.paths)) out.paths = (out.paths as unknown[]).map(swap);
+    if (Array.isArray(out.children)) out.children = retargetBlockPaths(out.children, map);
+    if (Array.isArray(out.cols)) out.cols = (out.cols as unknown[]).map((c) => retargetBlockPaths(c, map));
+    return out;
+  });
+}
