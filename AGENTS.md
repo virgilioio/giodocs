@@ -76,3 +76,36 @@ co-editing cursors, dark mode, multi-workspace UI.
 - Vocabulary in code and UI: Page, Property, View, Area, Block,
   Verified, Team view. Never: doc, record, field, column, database,
   folder, space, element, approved.
+
+## Motion and feel (2026-10-10)
+Gio Docs follows the Gio motion standard shared with Gio Sales and Gio ATS
+(timing, easing, origins, robustness) and keeps its own look. Use these
+pieces; don't add per-component animation values.
+- Tokens: `--ease-out`, `--ease-in-out`, `--ease-drawer`, `--ease-spring`,
+  `--dur-*` and `--animate-*` in src/styles.css. Menus enter at 180ms from
+  scale .96 and grow from their trigger (set `transform-origin`); dialogs
+  220ms from their centre. Exits are faster than entrances. The command
+  palette is never animated. Never `transition: all`, never `ease-in`,
+  never animate `left`/`width` for movement (use transform). Reduced motion
+  keeps opacity and colour, drops movement.
+- Centred dialogs use the `translate` property, not `transform`, so the
+  scale-in composes with the centring.
+- Exits: overlays opt in with a ref from src/lib/exit-motion.ts —
+  `exitOnly("pop" | "dialog" | "fade")`, or `exitRef(kind, otherRef)` when
+  the element already has a ref. A scrim that contains its card marks the
+  card `data-motion-card`. Only on positioned overlays (fixed/absolute),
+  never on in-flow content.
+- Toasts: `useToast().push` (src/lib/toast.tsx) — bottom centre, pause on
+  hover and hidden tab, polite live region.
+- Tooltips: write `title` (and `aria-label` on icon-only controls);
+  src/lib/tooltips.ts shows a styled tooltip after 400ms on controls and on
+  text only while it is cut off. Don't build per-component tooltips.
+- No layout shift: bars and banners float (sticky/absolute) instead of
+  pushing content; bold-when-active labels use `.gio-stable-bold` with
+  `data-label`; images hold their shape while loading.
+- Buttons with `bg-btn`, bordered `border-line bg-surface` buttons, or
+  `.gio-press` get press feedback automatically.
+- Focus: `:focus-visible` outline from styles.css; a text field that
+  removes the outline must show focus another way (`focus:border-accent`).
+- Editor drag: block drags start after 4px; a click on the grip still opens
+  the block menu. Board drops into the same column write nothing.
