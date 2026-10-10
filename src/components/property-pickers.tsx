@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Popover } from "./popover";
 import {
   dueDeltaDays,
@@ -1138,6 +1138,7 @@ export function TypedValueEditor({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(current);
   const [error, setError] = useState<string | null>(null);
+  const errorId = useId();
   useEffect(() => {
     onOpenChange?.(editing);
   }, [editing, onOpenChange]);
@@ -1177,6 +1178,7 @@ export function TypedValueEditor({
           inputMode={type === "phone" ? "tel" : type === "email" ? "email" : "url"}
           aria-label={type === "url" ? "Link" : type === "email" ? "Email address" : "Phone number"}
           aria-invalid={error ? true : undefined}
+          aria-describedby={error ? errorId : undefined}
           placeholder={type === "url" ? "https://…" : type === "email" ? "name@company.com" : "+52 33 1234 5678"}
           onChange={(e) => {
             setDraft(e.target.value);
@@ -1206,7 +1208,7 @@ export function TypedValueEditor({
           }}
         />
         {error ? (
-          <div role="alert" className="text-caption text-danger" style={{ marginTop: 3 }}>
+          <div id={errorId} role="alert" className="text-caption text-danger" style={{ marginTop: 3 }}>
             {error}
           </div>
         ) : null}

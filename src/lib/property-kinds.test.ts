@@ -41,6 +41,8 @@ describe("hrefFor / displayFor", () => {
     expect(hrefFor("email", "a@b.co")).toBe("mailto:a@b.co");
     expect(hrefFor("phone", "+52 (33) 1234-5678")).toBe("tel:+523312345678");
     expect(hrefFor("url", "a.io")).toBe("https://a.io");
+    expect(hrefFor("url", "javascript:alert(1)")).toBeNull();
+    expect(hrefFor("url", "data:text/html,hi")).toBeNull();
   });
   it("shows a link without its scheme", () => {
     expect(displayFor("url", "https://www.virgilio.tech/jobs/")).toBe("virgilio.tech/jobs");

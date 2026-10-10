@@ -7,7 +7,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
-import { useWorkspaceShell, pageQuery } from "@/hooks/use-workspace-data";
+import { useAllPropDefs, useWorkspaceShell, pageQuery } from "@/hooks/use-workspace-data";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
 import { applyFilterReplacement, filterLabel } from "@/lib/filter-label";
 import { PageOriginContext, useSetPageOrigin } from "@/lib/page-origin";
@@ -330,6 +330,9 @@ function QueryToolbar({
     (d) => d.type === "select" || d.type === "status",
   );
   const dateDefs = propDefs.filter((d) => d.type === "date");
+  // Chips name archived properties too (a saved filter can still use one).
+  const allDefs = useAllPropDefs(useWorkspaceId()).data as PropDef[] | undefined;
+  const labelDefs = allDefs && allDefs.length ? allDefs : propDefs;
 
   return (
     <div
@@ -347,7 +350,7 @@ function QueryToolbar({
             return (
               <FilterChip
                 key={i}
-                label={filterLabel(f, { people, staleDays, defs: propDefs })}
+                label={filterLabel(f, { people, staleDays, defs: labelDefs })}
                 clickable={clickable}
                 removable={clickable}
                 onRemove={() =>
@@ -416,6 +419,7 @@ function QueryToolbar({
           title="Show by"
           iconPath="M5 5h14v15H5zM5 10h14M9 3v4M15 3v4"
           emptyText="Add a date property to place pages on the calendar."
+          fallbackLabel="No date property"
         />
       )}
 
@@ -1044,6 +1048,7 @@ function GroupControl({
   title = "Group by",
   iconPath = "M6 4v16 M12 4v16 M18 4v16",
   emptyText = "Add a select property to group.",
+  fallbackLabel = "Status",
 }: {
   groupBy: string;
   defs: PropDef[];
@@ -1051,6 +1056,7 @@ function GroupControl({
   title?: string;
   iconPath?: string;
   emptyText?: string;
+  fallbackLabel?: string;
 }) {
   const current = defs.find((d) => d.key === groupBy) ?? defs[0] ?? null;
   return (
@@ -1061,7 +1067,7 @@ function GroupControl({
           innerRef={ref}
           onClick={onClick}
           iconPath={iconPath}
-          label={current ? current.label : defs.length ? "Status" : "No date property"}
+          label={current ? current.label : fallbackLabel}
         />
       )}
     >
@@ -1433,16 +1439,30 @@ function TagsCell({
  * columns. They render through the SAME shared editors the page properties
  * strip uses, so a Due date behaves identically in both places. The
  * built-in selects, people and tags already have their own dedicated
- * columns, so they are deliberately not repeated here; selects and statuses
- * a team creates get a column of their own. */
-const EXTRA_CELL_TYPES = new Set(["date", "number", "text", "checkbox", "url", "email", "phone"]);
+ * columns, so they are deliberately not repeated here.
+ *
+ * Date, number, text and checkbox properties always get a column, as they
+ * always have. The newer kinds (link, email, phone, and selects/statuses
+ * the team made) get one once any page uses them, so tables don't fill with
+ * empty columns as the team adds properties; `sticky` keeps a column that
+ * has appeared, so clearing its last value doesn't pull it from under you. */
+const ALWAYS_CELL_TYPES = new Set(["date", "number", "text", "checkbox"]);
 const FIXED_KEYS = new Set(["area", "owner", "status", "tags"]);
 
-/** A property gets a column once any page in the workspace has a value for
- *  it, so tables don't fill with empty columns as the team adds
- *  properties. `pages` is the whole workspace list, so columns stay put
- *  while filters change. */
-export function extraColumnDefs(propDefs: PropDef[], pages?: PageListItem[]): PropDef[] {
+function isNewKindColumn(d: PropDef): boolean {
+  return (
+    d.type === "url" ||
+    d.type === "email" ||
+    d.type === "phone" ||
+    (!d.is_system && (d.type === "select" || d.type === "status"))
+  );
+}
+
+export function extraColumnDefs(
+  propDefs: PropDef[],
+  pages?: PageListItem[],
+  sticky?: Set<string>,
+): PropDef[] {
   const used = pages
     ? new Set(
         pages.flatMap((p) =>
@@ -1453,13 +1473,12 @@ export function extraColumnDefs(propDefs: PropDef[], pages?: PageListItem[]): Pr
       )
     : null;
   return [...propDefs]
-    .filter(
-      (d) =>
-        !FIXED_KEYS.has(d.key) &&
-        (EXTRA_CELL_TYPES.has(d.type) ||
-          (!d.is_system && (d.type === "select" || d.type === "status"))) &&
-        (!used || used.has(d.key)),
-    )
+    .filter((d) => {
+      if (FIXED_KEYS.has(d.key)) return false;
+      if (ALWAYS_CELL_TYPES.has(d.type)) return true;
+      if (!isNewKindColumn(d)) return false;
+      return !used || used.has(d.key) || !!sticky?.has(d.key);
+    })
     .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
 }
 
@@ -1781,7 +1800,9 @@ export function MainView({ selection }: { selection: Selection }) {
   );
   const dateDefs = propDefs.filter((d) => d.type === "date");
   const groupBy: string =
-    layout === "calendar"
+    propDefs.length === 0
+      ? storedGroupBy
+      : layout === "calendar"
       ? dateDefs.some((d) => d.key === storedGroupBy)
         ? storedGroupBy
         : (dateDefs.find((d) => d.key === "due") ?? dateDefs[0])?.key ?? ""
@@ -1793,7 +1814,11 @@ export function MainView({ selection }: { selection: Selection }) {
   const onNewPage = () => {
     const seed: Record<string, unknown> = {};
     for (const f of (base?.filter ?? [])) {
-      if (f.op === "eq" && f.prop && f.value !== undefined) seed[f.prop] = f.value;
+      if (f.op === "eq" && f.prop && f.value !== undefined) {
+        // Filter values are strings; a checkbox stores a boolean.
+        const t = propDefs.find((d) => d.key === f.prop)?.type;
+        seed[f.prop] = t === "checkbox" ? String(f.value) === "true" : f.value;
+      }
       if (f.op === "is_me" && f.prop && user?.id) seed[f.prop] = user.id;
     }
     if (selection.kind === "area") seed.area = selection.area;
@@ -2888,13 +2913,15 @@ function TableBody({
   getPageMenuBuild: (p: PageListItem) => (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
   propDefs: PropDef[];
 }) {
+  // Columns that have appeared stay for the session.
+  const stickyCols = useRef(new Set<string>());
   // Keyed on WHICH columns show, so a value edit (a new pages array) doesn't
   // hand every memoised row a new extraDefs array.
-  const extraKeys = extraColumnDefs(propDefs, pages)
-    .map((d) => d.key)
-    .join(",");
+  const shownNow = extraColumnDefs(propDefs, pages, stickyCols.current);
+  shownNow.forEach((d) => stickyCols.current.add(d.key));
+  const extraKeys = shownNow.map((d) => d.key).join(",");
   const extraDefs = useMemo(
-    () => extraColumnDefs(propDefs, pages),
+    () => extraColumnDefs(propDefs, pages, stickyCols.current),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [propDefs, extraKeys],
   );

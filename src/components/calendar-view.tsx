@@ -18,6 +18,16 @@ function propsOf(p: PageListItem): Record<string, unknown> {
   return (p.props ?? {}) as Record<string, unknown>;
 }
 
+/** "Saturday, October 10" for a "YYYY-MM-DD" key, read in local time. */
+function dayName(key: string): string {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+}
+
 function monthTitle(year: number, month0: number): string {
   return new Date(year, month0, 1).toLocaleDateString(undefined, {
     month: "long",
@@ -182,7 +192,7 @@ export function CalendarViewBody({
       </div>
 
       <div
-        role="grid"
+        role="region"
         aria-label={`${monthTitle(ym.year, ym.month0)}, pages by ${dateLabel.toLowerCase()}`}
         className="overflow-hidden rounded-xl border border-line bg-line"
         style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 1 }}
@@ -190,7 +200,7 @@ export function CalendarViewBody({
         {WEEKDAYS.map((d) => (
           <div
             key={d}
-            role="columnheader"
+            aria-hidden
             className="bg-rail text-label uppercase text-faint"
             style={{ padding: "7px 8px" }}
           >
@@ -207,8 +217,9 @@ export function CalendarViewBody({
           return (
             <div
               key={d.key}
-              role="gridcell"
-              aria-label={`${d.key}${pages.length ? `, ${pages.length} page${pages.length === 1 ? "" : "s"}` : ""}`}
+              role="group"
+              data-day={d.key}
+              aria-label={`${dayName(d.key)}${pages.length ? `, ${pages.length} page${pages.length === 1 ? "" : "s"}` : ""}`}
               {...dropProps(d.key)}
               className={d.inMonth ? "bg-surface" : "bg-track"}
               style={{
@@ -258,15 +269,19 @@ export function CalendarViewBody({
         })}
       </div>
 
-      {undated.length > 0 ? (
+      {undated.length > 0 || dragId !== null ? (
         <div
           {...dropProps("")}
           className="mt-4 rounded-xl border border-line bg-rail"
-          style={{ padding: 10 }}
+          style={{
+            padding: 10,
+            boxShadow: overDay === "" && dragId !== null ? "inset 0 0 0 2px var(--color-accentRing)" : undefined,
+          }}
         >
           <div className="mb-2 text-meta text-muted">
-            {undated.length === 1 ? "1 page has" : `${undated.length} pages have`} no{" "}
-            {dateLabel.toLowerCase()}. Drag one onto a day to give it one.
+            {undated.length === 0
+              ? `Drop a page here to clear its ${dateLabel.toLowerCase()}.`
+              : `${undated.length === 1 ? "1 page has" : `${undated.length} pages have`} no ${dateLabel.toLowerCase()}. Drag one onto a day to give it one.`}
           </div>
           <div
             style={{

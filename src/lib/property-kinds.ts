@@ -115,7 +115,12 @@ export function checkTypedValue(type: string, raw: string): CheckResult {
 /** Where a link / email / phone value goes when opened. */
 export function hrefFor(type: string, value: string): string | null {
   if (!value) return null;
-  if (type === "url") return /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : `https://${value}`;
+  if (type === "url") {
+    // Only web, mail and phone links open; anything else written through
+    // the API (data:, javascript:, …) stays plain text.
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(value)) return `https://${value}`;
+    return /^(https?|mailto|tel):/i.test(value) ? value : null;
+  }
   if (type === "email") return `mailto:${value}`;
   if (type === "phone") return `tel:${value.replace(/[^0-9+]/g, "")}`;
   return null;
