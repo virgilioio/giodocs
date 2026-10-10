@@ -17,6 +17,8 @@ import { getPageOrigin } from "@/lib/page-origin";
 import { Ico } from "./emoji-icon";
 import { PageBreadcrumb } from "./page-breadcrumb";
 import { SidebarTreeView, useTreeExpanded, type TreeNode } from "./sidebar-tree";
+import { DRAG_TYPE, draggedPage } from "@/lib/page-drag";
+import type { MoveTarget } from "@/lib/page-tree";
 import { useEmojiSet } from "@/hooks/use-custom-emoji";
 import { setInlineEmojiSet } from "@/lib/emoji-registry";
 import { mentionPage, setMentionDirectory } from "@/lib/mention-directory";
@@ -29,6 +31,7 @@ import { resolvePageIdParam } from "@/lib/slug";
 import {
   useCreatePageAndOpen,
   useDeletePage,
+  useMovePage,
   useRestorePage,
   useShareToWorkspace,
 } from "@/hooks/use-page-mutations";
@@ -672,7 +675,68 @@ function SidebarBody({
   const deletePage = useDeletePage();
   const restorePage = useRestorePage();
   const shareToWorkspace = useShareToWorkspace();
+  const movePage = useMovePage();
   const [expanded, toggleExpanded, openExpanded] = useTreeExpanded();
+  const [headerOver, setHeaderOver] = useState<SectionKey | null>(null);
+
+  /* A drag in the tree. Top level means the section's: a private page
+   * dropped at the top of Workspace is shared with everyone; a shared page
+   * isn't made private by a drag (that's a change of who can see it, made
+   * from Share). Deeper moves keep who can see the page. */
+  const titleOf = (p: PageListItem | undefined) => p?.title?.trim() || "Untitled";
+  const onMove = (section: SectionKey, pageId: string, target: MoveTarget) => {
+    const p = pages.find((x) => x.id === pageId);
+    if (!p) return;
+    const shared = p.access_type === "workspace";
+    let share = false;
+    if (target.parentId === null) {
+      if (section === "private" && shared) {
+        toast.push(
+          `"${titleOf(p)}" is shared with everyone. To make it private, change who can see it from Share first.`,
+        );
+        return;
+      }
+      share = section === "workspace" && !shared;
+    }
+    const parent = target.parentId ? pages.find((x) => x.id === target.parentId) : undefined;
+    const fromDb = p.database_id ? pages.find((x) => x.id === p.database_id) : undefined;
+    const sameParent = (p.parent_id ?? null) === target.parentId;
+    const message = share
+      ? `Moved "${titleOf(p)}" to Workspace. Everyone in the workspace can open it now.`
+      : sameParent
+      ? `Moved "${titleOf(p)}".`
+      : parent?.is_database
+        ? `"${titleOf(p)}" is now a row of "${titleOf(parent)}".`
+        : fromDb
+          ? `"${titleOf(p)}" left "${titleOf(fromDb)}", so it has no properties now. Undo brings them back.`
+          : parent
+            ? `Moved "${titleOf(p)}" into "${titleOf(parent)}".`
+            : `Moved "${titleOf(p)}" to the top.`;
+    if (target.parentId) openExpanded(target.parentId);
+    movePage.mutate(
+      { pageId, target, message },
+      { onSuccess: () => (share ? shareToWorkspace.mutate(pageId) : undefined) },
+    );
+  };
+  // A section header takes a page at the end of that section's top level.
+  const headerDrop = (section: SectionKey) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (!draggedPage() || !e.dataTransfer.types.includes(DRAG_TYPE)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      if (headerOver !== section) setHeaderOver(section);
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setHeaderOver(null);
+    },
+    onDrop: (e: React.DragEvent) => {
+      const id = draggedPage();
+      setHeaderOver(null);
+      if (!id) return;
+      e.preventDefault();
+      onMove(section, id, { parentId: null, beforeId: null });
+    },
+  });
 
   const live = useMemo(() => pages.filter((p) => !p.archived_at), [pages]);
   const nonRoots = useMemo(() => live.filter((p) => !!p.parent_id), [live]);
@@ -831,12 +895,19 @@ function SidebarBody({
           <SkeletonList />
         ) : (
           <>
-            <SectionHeader
-              label="Workspace"
-              open={sections.workspace}
-              onToggle={() => toggleSection("workspace")}
-              trailing={<NewTopLevelMenu section="workspace" onCreate={(k) => createTop("workspace", k)} />}
-            />
+            <div
+              data-section-drop="workspace"
+              {...headerDrop("workspace")}
+              className="rounded-md"
+              style={{ boxShadow: headerOver === "workspace" ? "inset 0 0 0 1px var(--color-accent)" : undefined }}
+            >
+              <SectionHeader
+                label="Workspace"
+                open={sections.workspace}
+                onToggle={() => toggleSection("workspace")}
+                trailing={<NewTopLevelMenu section="workspace" onCreate={(k) => createTop("workspace", k)} />}
+              />
+            </div>
             {sections.workspace && (
               <SidebarTreeView
                 pages={workspaceTree}
@@ -847,15 +918,24 @@ function SidebarBody({
                 onAddInside={(p) => addInside(p)}
                 menuFor={menuFor}
                 empty={sectionEmpty("workspace")}
+                onMove={(id, t) => onMove("workspace", id, t)}
+                onExpand={openExpanded}
               />
             )}
 
-            <SectionHeader
-              label="Private"
-              open={sections.private}
-              onToggle={() => toggleSection("private")}
-              trailing={<NewTopLevelMenu section="private" onCreate={(k) => createTop("private", k)} />}
-            />
+            <div
+              data-section-drop="private"
+              {...headerDrop("private")}
+              className="rounded-md"
+              style={{ boxShadow: headerOver === "private" ? "inset 0 0 0 1px var(--color-accent)" : undefined }}
+            >
+              <SectionHeader
+                label="Private"
+                open={sections.private}
+                onToggle={() => toggleSection("private")}
+                trailing={<NewTopLevelMenu section="private" onCreate={(k) => createTop("private", k)} />}
+              />
+            </div>
             {sections.private && (
               <SidebarTreeView
                 pages={privateTree}
@@ -866,6 +946,8 @@ function SidebarBody({
                 onAddInside={(p) => addInside(p)}
                 menuFor={menuFor}
                 empty={sectionEmpty("private")}
+                onMove={(id, t) => onMove("private", id, t)}
+                onExpand={openExpanded}
               />
             )}
           </>

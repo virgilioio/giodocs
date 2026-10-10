@@ -18,11 +18,24 @@ export type TreePage = {
   parent_id?: string | null;
   edited_at?: string | null;
   props?: unknown;
+  /** Order among siblings (pages.position); unordered pages come after. */
+  position?: number | null;
 };
 
-function byEditedDesc<P extends TreePage>(a: P, b: P): number {
-  return String(b.edited_at ?? "").localeCompare(String(a.edited_at ?? ""));
+/** Sibling order, as move_page keeps it: by position (unordered last),
+ *  then newest edit first, then id. */
+export function bySiblingOrder<P extends TreePage>(a: P, b: P): number {
+  const pa = a.position ?? null;
+  const pb = b.position ?? null;
+  if (pa !== pb) {
+    if (pa === null) return 1;
+    if (pb === null) return -1;
+    return pa - pb;
+  }
+  const e = String(b.edited_at ?? "").localeCompare(String(a.edited_at ?? ""));
+  return e !== 0 ? e : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
+const byEditedDesc = bySiblingOrder;
 
 function areaOf(p: TreePage): string {
   const props =
@@ -39,7 +52,7 @@ function indexById<P extends TreePage>(pages: readonly P[]): Map<string, P> {
   return m;
 }
 
-/** Direct children, most-recently-edited first. */
+/** Direct children, in sibling order. */
 export function childrenOf<P extends TreePage>(
   id: string,
   pages: readonly P[],
@@ -187,4 +200,89 @@ function hintFor<P extends TreePage>(page: P, map: Map<string, P>): string {
   const parent = page.parent_id ? map.get(page.parent_id) : undefined;
   const title = parent ? String(parent.title ?? "").trim() : "";
   return title || "unfiled";
+}
+
+/* ─────────────── Moving a page in the tree (sidebar drag) ─────────────── */
+
+/** Where a dragged page lands, relative to the row it's over. */
+export type DropZone = "before" | "inside" | "after";
+
+/** What move_page needs: the new parent and the sibling it goes before
+ *  (null: last). */
+export type MoveTarget = { parentId: string | null; beforeId: string | null };
+
+/** The zone from the pointer's height within the row: top quarter before,
+ *  bottom quarter after, the middle inside. */
+export function dropZoneAt(offsetY: number, height: number): DropZone {
+  if (height <= 0) return "inside";
+  const f = offsetY / height;
+  return f < 0.25 ? "before" : f > 0.75 ? "after" : "inside";
+}
+
+/** Turn "over this row, in this zone" into a move. Null when it isn't a
+ *  move at all: onto itself, into its own subtree, or back where it is. */
+export function moveTargetFor<P extends TreePage>(
+  dragged: string,
+  over: P,
+  zone: DropZone,
+  pages: readonly P[],
+  expanded: Set<string>,
+): MoveTarget | null {
+  if (over.id === dragged) return null;
+  if (descendantsOf(dragged, pages).has(over.id)) return null;
+  const me = pages.find((p) => p.id === dragged);
+  let target: MoveTarget;
+  if (zone === "inside") {
+    target = { parentId: over.id, beforeId: null };
+  } else if (zone === "before") {
+    target = { parentId: over.parent_id ?? null, beforeId: over.id };
+  } else {
+    const kids = childrenOf(over.id, pages).filter((k) => k.id !== dragged);
+    if (expanded.has(over.id) && kids.length > 0) {
+      // Below an open page with children: its first child.
+      target = { parentId: over.id, beforeId: kids[0]!.id };
+    } else {
+      const sibs = siblingsOf(over, pages).filter((x) => x.id !== dragged);
+      const i = sibs.findIndex((x) => x.id === over.id);
+      target = { parentId: over.parent_id ?? null, beforeId: sibs[i + 1]?.id ?? null };
+    }
+  }
+  if (me && isSameSpot(me, target, pages)) return null;
+  return target;
+}
+
+function siblingsOf<P extends TreePage>(page: P, pages: readonly P[]): P[] {
+  const parent = page.parent_id ?? null;
+  return pages.filter((p) => (p.parent_id ?? null) === parent).sort(bySiblingOrder);
+}
+
+/** True when the move leaves the page exactly where it is. */
+function isSameSpot<P extends TreePage>(me: P, t: MoveTarget, pages: readonly P[]): boolean {
+  if ((me.parent_id ?? null) !== t.parentId) return false;
+  const sibs = siblingsOf(me, pages);
+  const i = sibs.findIndex((x) => x.id === me.id);
+  const next = sibs[i + 1]?.id ?? null;
+  return t.beforeId === next || t.beforeId === me.id;
+}
+
+/** The list as it will look after a move (for the optimistic update):
+ *  the page's parent changes and its new siblings are renumbered. */
+export function applyMove<P extends TreePage>(
+  pages: readonly P[],
+  pageId: string,
+  t: MoveTarget,
+): P[] {
+  const me = pages.find((p) => p.id === pageId);
+  if (!me) return [...pages];
+  const sibs = pages
+    .filter((p) => (p.parent_id ?? null) === t.parentId && p.id !== pageId)
+    .sort(bySiblingOrder);
+  const at = t.beforeId ? sibs.findIndex((x) => x.id === t.beforeId) : -1;
+  const order = at < 0 ? [...sibs, me] : [...sibs.slice(0, at), me, ...sibs.slice(at)];
+  const pos = new Map(order.map((p, i) => [p.id, i + 1]));
+  return pages.map((p) => {
+    if (p.id === pageId) return { ...p, parent_id: t.parentId, position: pos.get(p.id)! };
+    const n = pos.get(p.id);
+    return n !== undefined && n !== p.position ? { ...p, position: n } : p;
+  });
 }

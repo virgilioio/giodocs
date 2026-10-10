@@ -21,6 +21,7 @@ const PAGE_LIST_FIELDS: (keyof PageListItem)[] = [
   "parent_id",
   "database_id",
   "is_database",
+  "position",
 ];
 
 function projectPage(row: Record<string, unknown>): PageListItem {

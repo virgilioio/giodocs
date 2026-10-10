@@ -77,6 +77,16 @@ once. The decisions below replace it wherever an older section disagrees.
 - A database inside a page: a "view" block names a database_id. "/table"
   in a page makes a new child database and places it inline; "/view"
   places a linked view of an existing database.
+- Moving a page (sidebar drag, Placed in) goes through move_page only: it
+  needs edit access on the page and on where it goes, keeps the cycle
+  guard, and sets the order among siblings (pages.position; unordered
+  pages sort after, newest edit first). Into a database the page becomes
+  a row; out of one it loses its properties; between databases values
+  carry over to properties with the same name and type when they're legal
+  there. It returns where the page was, and Undo passes that back. A drag
+  never changes who can see a page, except a private page dropped at the
+  top of Workspace, which is shared with everyone; a shared page isn't
+  made private by a drag (that's Share's job).
 - Children inherit access from their parent on creation: a row added to a
   shared database is visible to everyone who can open the database. A
   top-level page is private to its creator until shared.

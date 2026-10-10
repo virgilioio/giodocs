@@ -7,6 +7,10 @@ import {
   descendantsOf,
   flattenTree,
   placementRows,
+  applyMove,
+  bySiblingOrder,
+  dropZoneAt,
+  moveTargetFor,
   type TreePage,
 } from "./page-tree";
 
@@ -21,6 +25,7 @@ function p(
     parent_id,
     edited_at: extra.edited_at ?? `2026-01-01T00:00:0${id.length}Z`,
     props: extra.props ?? {},
+    position: extra.position ?? null,
   };
 }
 
@@ -155,5 +160,58 @@ describe("placementRows", () => {
       r.kind === "page" ? [r.page.id] : [],
     );
     expect(ids).toEqual(["roadmap"]);
+  });
+});
+
+describe("moving pages in the tree", () => {
+  // Roots: a(1) b(2) c(3); a has children a1(1) a2(2).
+  const pages = [
+    p("a", null, { position: 1 }),
+    p("b", null, { position: 2 }),
+    p("c", null, { position: 3 }),
+    p("a1", "a", { position: 1 }),
+    p("a2", "a", { position: 2 }),
+  ];
+  const closed = new Set<string>();
+  const open = new Set(["a"]);
+  const byId = (id: string) => pages.find((x) => x.id === id)!;
+
+  it("orders siblings by position, unordered ones last by newest edit", () => {
+    const list = [
+      p("x", null, { edited_at: "2026-02-01T00:00:00Z" }),
+      p("y", null, { position: 2 }),
+      p("z", null, { edited_at: "2026-03-01T00:00:00Z" }),
+      p("w", null, { position: 1 }),
+    ];
+    expect([...list].sort(bySiblingOrder).map((x) => x.id)).toEqual(["w", "y", "z", "x"]);
+  });
+
+  it("reads the zone from the pointer's height", () => {
+    expect(dropZoneAt(2, 28)).toBe("before");
+    expect(dropZoneAt(14, 28)).toBe("inside");
+    expect(dropZoneAt(26, 28)).toBe("after");
+  });
+
+  it("before, after and inside a row", () => {
+    expect(moveTargetFor("c", byId("a"), "before", pages, closed)).toEqual({ parentId: null, beforeId: "a" });
+    expect(moveTargetFor("c", byId("a"), "after", pages, closed)).toEqual({ parentId: null, beforeId: "b" });
+    expect(moveTargetFor("c", byId("b"), "inside", pages, closed)).toEqual({ parentId: "b", beforeId: null });
+    // Below an open page with children: its first child.
+    expect(moveTargetFor("c", byId("a"), "after", pages, open)).toEqual({ parentId: "a", beforeId: "a1" });
+  });
+
+  it("is no move onto itself, into its own subtree, or back where it is", () => {
+    expect(moveTargetFor("a", byId("a"), "inside", pages, closed)).toBeNull();
+    expect(moveTargetFor("a", byId("a1"), "inside", pages, open)).toBeNull();
+    expect(moveTargetFor("a", byId("b"), "before", pages, closed)).toBeNull();
+    expect(moveTargetFor("b", byId("a"), "after", pages, closed)).toBeNull();
+  });
+
+  it("applies a move: new parent, siblings renumbered", () => {
+    const next = applyMove(pages, "c", { parentId: "a", beforeId: "a2" });
+    const kids = next.filter((x) => x.parent_id === "a").sort(bySiblingOrder).map((x) => x.id);
+    expect(kids).toEqual(["a1", "c", "a2"]);
+    const roots = next.filter((x) => !x.parent_id).sort(bySiblingOrder).map((x) => x.id);
+    expect(roots).toEqual(["a", "b"]);
   });
 });

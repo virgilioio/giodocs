@@ -11,7 +11,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import type { PageListItem, PageFull, Block } from "@/lib/types";
-import { descendantsOf } from "@/lib/page-tree";
+import { applyMove, descendantsOf, type MoveTarget } from "@/lib/page-tree";
 
 
 type ViewRow = {
@@ -1514,23 +1514,20 @@ export function useSetPageParent() {
       oldParentTitle?: string | null;
       quiet?: boolean;
     }) => {
-      const { error } = await supabase
-        .from("pages")
-        .update({ parent_id: v.parentId })
-        .eq("id", v.pageId);
+      // The one path for a change of place (move_page): edit rights on both
+      // ends, the cycle guard, and a database's properties.
+      const { error } = await supabase.rpc("move_page", {
+        p_page: v.pageId,
+        p_parent: v.parentId,
+      });
       if (error) throw error;
     },
     onSuccess: (_r, v) => {
       qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) =>
-        prev
-          ? prev.map((p) =>
-              p.id === v.pageId ? { ...p, parent_id: v.parentId } : p,
-            )
-          : prev,
+        prev ? applyMove(prev, v.pageId, { parentId: v.parentId, beforeId: null }) : prev,
       );
-      qc.setQueryData<PageFull | null>(qk.page(v.pageId), (prev) =>
-        prev ? { ...prev, parent_id: v.parentId } : prev,
-      );
+      void qc.invalidateQueries({ queryKey: qk.pages(ws) });
+      void qc.invalidateQueries({ queryKey: qk.page(v.pageId) });
       if (v.quiet) return;
       const title = v.title?.trim() || "Untitled";
       if (v.parentId === null) {
@@ -1551,6 +1548,87 @@ export function useSetPageParent() {
       toast.push((err as Error).message);
     },
   });
+}
+
+/** Move a page in the tree (sidebar drag): a new parent and the sibling it
+ *  goes before. Optimistic; the toast offers Undo, which puts the page back
+ *  where it was, with the properties it had. */
+export function useMovePage() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const toast = useToast();
+  const move = useMutation({
+    mutationFn: async (v: {
+      pageId: string;
+      target: MoveTarget;
+      props?: unknown;
+      message?: string;
+      undo?: boolean;
+    }) => {
+      const { data, error } = await supabase.rpc("move_page", {
+        p_page: v.pageId,
+        p_parent: v.target.parentId,
+        p_before: v.target.beforeId,
+        ...(v.props !== undefined ? { p_props: v.props as never } : {}),
+      });
+      if (error) throw error;
+      return data as unknown as { parent_id: string | null; before: string | null; props: unknown };
+    },
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: qk.pages(ws) });
+      const snapshot = qc.getQueryData<PageListItem[]>(qk.pages(ws));
+      if (snapshot) {
+        const parent = v.target.parentId ? snapshot.find((p) => p.id === v.target.parentId) : undefined;
+        const nextDb = parent?.is_database ? parent.id : null;
+        const moved = applyMove(snapshot, v.pageId, v.target).map((p) =>
+          p.id === v.pageId
+            ? {
+                ...p,
+                database_id: nextDb,
+                // Out of a database: no properties. Into another: the server
+                // carries over what fits; the refetch shows it.
+                props: (v.props !== undefined
+                  ? v.props
+                  : nextDb === (p.database_id ?? null)
+                    ? p.props
+                    : {}) as PageListItem["props"],
+              }
+            : p,
+        );
+        qc.setQueryData<PageListItem[]>(qk.pages(ws), moved);
+      }
+      return { snapshot };
+    },
+    onError: (err, _v, ctx) => {
+      if (ctx?.snapshot) qc.setQueryData(qk.pages(ws), ctx.snapshot);
+      toast.push((err as Error).message || "Couldn't move that page.");
+    },
+    onSuccess: (prev, v) => {
+      if (v.undo) {
+        toast.push("Moved back.");
+        return;
+      }
+      toast.push({
+        message: v.message ?? "Moved.",
+        action: {
+          label: "Undo",
+          onClick: () =>
+            move.mutate({
+              pageId: v.pageId,
+              target: { parentId: prev.parent_id, beforeId: prev.before },
+              props: prev.props,
+              undo: true,
+            }),
+        },
+        durationMs: 8_000,
+      });
+    },
+    onSettled: (_d, _e, v) => {
+      void qc.invalidateQueries({ queryKey: qk.pages(ws) });
+      void qc.invalidateQueries({ queryKey: qk.page(v.pageId) });
+    },
+  });
+  return move;
 }
 
 /** A page id chosen by the client, so a page can be read back after an

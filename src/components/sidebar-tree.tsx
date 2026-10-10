@@ -20,9 +20,17 @@
  * seeing different trees is correct.
  */
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { flattenTree, type TreePage } from "@/lib/page-tree";
+import {
+  dropZoneAt,
+  flattenTree,
+  moveTargetFor,
+  type DropZone,
+  type MoveTarget,
+  type TreePage,
+} from "@/lib/page-tree";
+import { DRAG_TYPE, draggedPage, setDraggedPage } from "@/lib/page-drag";
 import { Ico } from "./emoji-icon";
 import { SpecMenuTrigger, type MenuSpec } from "./row-menu";
 
@@ -35,6 +43,9 @@ const RAMP = [
 ] as const;
 
 export type TreeNode = TreePage & { is_database?: boolean };
+
+
+const EXPAND_AFTER_MS = 600;
 
 export function useTreeExpanded(): [Set<string>, (id: string) => void, (id: string) => void] {
   const [expanded, setExpanded] = useState<Set<string>>(() => {
@@ -91,6 +102,8 @@ export function SidebarTreeView<P extends TreeNode>({
   onAddInside,
   menuFor,
   empty,
+  onMove,
+  onExpand,
 }: {
   pages: readonly P[];
   expanded: Set<string>;
@@ -103,17 +116,100 @@ export function SidebarTreeView<P extends TreeNode>({
   menuFor?: (page: P) => (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
   /** Shown when there's nothing to list. */
   empty?: ReactNode;
+  /** Drag a row: reorder among siblings, or drop onto a row to place it
+   *  inside. Absent: rows don't drag. */
+  onMove?: (pageId: string, target: MoveTarget) => void;
+  /** Open a collapsed row the drag rests on. */
+  onExpand?: (id: string) => void;
 }) {
   const rows = flattenTree(pages, expanded);
+  const [over, setOver] = useState<{ id: string; zone: DropZone } | null>(null);
+  const hoverTimer = useRef<{ id: string; t: number } | null>(null);
+  const clearHover = () => {
+    if (hoverTimer.current) window.clearTimeout(hoverTimer.current.t);
+    hoverTimer.current = null;
+  };
+  useEffect(() => clearHover, []);
   if (rows.length === 0 && empty) return <>{empty}</>;
   return (
-    <ul data-page-tree>
+    <ul data-page-tree onDragLeave={(e) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+        setOver(null);
+        clearHover();
+      }
+    }}>
       {rows.map((r) => {
         const ramp = RAMP[Math.min(r.depth, RAMP.length - 1)]!;
         const active = activeId === r.page.id;
         const title = String(r.page.title ?? "").trim() || "Untitled";
+        const zone = over?.id === r.page.id ? over.zone : null;
+        const targetFor = (z: DropZone) =>
+          draggedPage() ? moveTargetFor(draggedPage()!, r.page, z, pages, expanded) : null;
         return (
-          <li key={r.page.id} className="group flex items-stretch" data-tree-row={r.page.id}>
+          <li
+            key={r.page.id}
+            className="group relative flex items-stretch"
+            data-tree-row={r.page.id}
+            data-drop={zone ?? undefined}
+            draggable={!!onMove}
+            onDragStart={(e) => {
+              if (!onMove) return;
+              setDraggedPage(r.page.id);
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData(DRAG_TYPE, r.page.id);
+              e.dataTransfer.setData("text/plain", title);
+            }}
+            onDragEnd={() => {
+              setDraggedPage(null);
+              setOver(null);
+              clearHover();
+            }}
+            onDragOver={(e) => {
+              if (!onMove || !draggedPage()) return;
+              const box = e.currentTarget.getBoundingClientRect();
+              const z = dropZoneAt(e.clientY - box.top, box.height);
+              if (!targetFor(z)) {
+                if (over?.id === r.page.id) setOver(null);
+                return;
+              }
+              e.preventDefault();
+              e.stopPropagation();
+              e.dataTransfer.dropEffect = "move";
+              if (over?.id !== r.page.id || over.zone !== z) setOver({ id: r.page.id, zone: z });
+              // Resting on a closed page opens it, so you can go deeper.
+              if (z === "inside" && r.hasKids && !r.expanded && onExpand) {
+                if (hoverTimer.current?.id !== r.page.id) {
+                  clearHover();
+                  const id = r.page.id;
+                  hoverTimer.current = { id, t: window.setTimeout(() => onExpand(id), EXPAND_AFTER_MS) };
+                }
+              } else clearHover();
+            }}
+            onDrop={(e) => {
+              if (!onMove || !draggedPage()) return;
+              const box = e.currentTarget.getBoundingClientRect();
+              const t = targetFor(dropZoneAt(e.clientY - box.top, box.height));
+              e.preventDefault();
+              e.stopPropagation();
+              const id = draggedPage()!;
+              setDraggedPage(null);
+              setOver(null);
+              clearHover();
+              if (t) onMove(id, t);
+            }}
+          >
+            {zone === "before" || zone === "after" ? (
+              <span
+                aria-hidden
+                data-drop-line
+                className="pointer-events-none absolute right-1 rounded-full bg-accent"
+                style={{
+                  height: 2,
+                  left: r.depth * 17 + 14,
+                  [zone === "before" ? "top" : "bottom"]: -1,
+                }}
+              />
+            ) : null}
             {/* One guide cell per ancestor level. */}
             {Array.from({ length: r.depth }, (_, i) => (
               <span
@@ -157,7 +253,13 @@ export function SidebarTreeView<P extends TreeNode>({
                 className="flex min-w-0 flex-1 items-center rounded-md hover:bg-railHover"
                 style={{
                   height: ramp.height,
-                  background: active ? "var(--color-railHover)" : "transparent",
+                  background:
+                    zone === "inside"
+                      ? "var(--color-selected)"
+                      : active
+                        ? "var(--color-railHover)"
+                        : "transparent",
+                  boxShadow: zone === "inside" ? "inset 0 0 0 1px var(--color-accent)" : undefined,
                   paddingRight: 2,
                 }}
               >

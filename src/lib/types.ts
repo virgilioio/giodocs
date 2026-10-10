@@ -25,6 +25,8 @@ export type PageListItem = Pick<
   database_id?: string | null;
   /** A database: its children are its rows. */
   is_database?: boolean;
+  /** Order among siblings in the tree (pages.position). */
+  position?: number | null;
 };
 
 export type PageFull = Omit<PageRow, "search_tsv"> & {
