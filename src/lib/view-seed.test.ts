@@ -68,3 +68,22 @@ describe("seedForGroup", () => {
     expect(seedForGroup("@created_by", "me", DEFS)).toEqual({});
   });
 });
+
+describe("seeding relations", () => {
+  const defs = [
+    { key: "project", type: "relation", config: {} },
+    { key: "tasks", type: "relation", config: { of: "project" } },
+  ];
+  it("a relation filter links the new page; a far side can't be seeded", () => {
+    expect(
+      seedFromFilters(
+        [
+          { op: "includes", prop: "project", value: "p1" },
+          { op: "includes", prop: "tasks", value: "t1" },
+        ],
+        defs,
+        "me",
+      ),
+    ).toEqual({ project: ["p1"] });
+  });
+});

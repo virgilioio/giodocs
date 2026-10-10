@@ -72,6 +72,8 @@ export type MenuSpec = {
     initial?: string;
     selectOnFocus?: boolean;
     onCommit: (v: string) => void;
+    /** Committing leads to another step (the caller swaps the spec). */
+    keepOpen?: boolean;
   };
   confirm?: {
     title: string;
@@ -537,7 +539,7 @@ function SpecBody({ spec, onClose }: { spec: MenuSpec; onClose: () => void }) {
           ),
         )}
       </div>
-      {spec.input && <SpecInput input={spec.input} onClose={onClose} />}
+      {spec.input && <SpecInput key={spec.title} input={spec.input} onClose={onClose} />}
       {spec.footer && (
         <div
           style={{
@@ -592,7 +594,8 @@ function SpecInput({
             e.preventDefault();
             const v = value.trim();
             if (v) input.onCommit(v);
-            onClose();
+            // A step that leads to another step keeps the menu open.
+            if (!(input.keepOpen && v)) onClose();
           }
         }}
         className="w-full bg-rail focus:outline-none"

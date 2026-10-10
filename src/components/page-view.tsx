@@ -40,6 +40,24 @@ import {
 } from "./property-pickers";
 import { isPropSet, isTerminalStatus } from "@/lib/due-date";
 import { summarizeProp } from "@/lib/prop-summary";
+import {
+  buildRelationIndex,
+  isBackRelation,
+  isComputedDef,
+  relatedIds,
+  relatedPages,
+  relationCandidates,
+  relationConfig,
+  relationWrite,
+  rollupConfig,
+  rollupKind,
+  rollupText,
+  valueWords,
+  type RelationIndex,
+} from "@/lib/relations";
+import { RelationEditor } from "./relation-editor";
+import { BUILT_IN_LABELS, BUILT_IN_TYPES } from "@/lib/view-config";
+import { CALC_LABELS, calcsFor } from "@/lib/view-calc";
 import { isTypedString, PROPERTY_KINDS, kindLabel, type PropertyType } from "@/lib/property-kinds";
 import { useAddPropertyOption, useCreateProperty } from "@/hooks/use-property-mutations";
 import { formatTimestamp } from "@/lib/format";
@@ -321,6 +339,15 @@ function EmptyValue({ propKey, defType }: { propKey: string; defType?: string })
  * is open — achieved by lifting the "is my popover open" flag up here
  * and mixing it with the hover flag in the caller. */
 
+/** What the strip needs for relations and rollups. */
+type StripRelations = {
+  idx: RelationIndex;
+  words: (value: unknown, key: string) => string[];
+  candidates: (def: PropDef, self: PageListItem) => PageListItem[];
+  scopeNote: (def: PropDef) => string | undefined;
+  onWrite: (w: { pageId: string; key: string; value: string[] }) => void;
+};
+
 function EditableValue({
   propKey,
   page,
@@ -330,6 +357,7 @@ function EditableValue({
   areas,
   onSet,
   onOpenChange,
+  relations,
 }: {
   propKey: string;
   page: PageFull;
@@ -339,6 +367,7 @@ function EditableValue({
   areas: string[];
   onSet: (value: unknown) => void;
   onOpenChange: (open: boolean) => void;
+  relations: StripRelations;
 }) {
   const navigate = useNavigate();
   const addOption = useAddPropertyOption();
@@ -552,6 +581,75 @@ function EditableValue({
     );
   }
 
+  /* ── Relation ── both sides; on the far side a change is written to the
+   * other page's near side. */
+  if (def?.type === "relation") {
+    const self = page as unknown as PageListItem;
+    const linked = relatedPages(self, def.key, relations.idx);
+    const write = (otherId: string, add: boolean) => {
+      const w = relationWrite(def, self, otherId, add, relations.idx);
+      if (w) relations.onWrite(w);
+    };
+    return (
+      <Popover
+        width={300}
+        onOpenChange={onOpenChange}
+        trigger={({ onClick, ref }) => (
+          <button
+            ref={ref}
+            type="button"
+            onClick={onClick}
+            className={VALUE_CELL_CLASS + " min-w-0 flex-wrap"}
+            style={{ ...VALUE_CELL_STYLE, gap: 5 }}
+          >
+            {linked.length === 0
+              ? empty
+              : linked.map((p) => (
+                  <span
+                    key={p.id}
+                    className="inline-flex min-w-0 items-center rounded-md bg-sunken text-strong"
+                    style={{ gap: 4, padding: "1px 7px", fontSize: 13.5 }}
+                  >
+                    <Ico icon={p.icon || "📄"} size={13} />
+                    <span className="truncate">{p.title || "Untitled"}</span>
+                  </span>
+                ))}
+          </button>
+        )}
+      >
+        {() => (
+          <RelationEditor
+            linked={linked}
+            candidates={relations.candidates(def, self)}
+            scopeNote={relations.scopeNote(def)}
+            onAdd={(id) => write(id, true)}
+            onRemove={(id) => write(id, false)}
+            onOpenPage={(id) => navigate({ to: "/p/$pageId", params: { pageId: id } })}
+          />
+        )}
+      </Popover>
+    );
+  }
+
+  /* ── Rollup ── worked out from the related pages: read only. */
+  if (def?.type === "rollup") {
+    const text = rollupText(page as unknown as PageListItem, def, relations.idx, relations.words);
+    return (
+      <span
+        className={`flex items-center ${rollupKind(def) === "number" ? "tnum" : ""}`}
+        style={{
+          ...VALUE_CELL_STYLE,
+          fontSize: 14,
+          color: "var(--color-strong)",
+          cursor: "default",
+        }}
+        title="Worked out from the related pages"
+      >
+        {text || empty}
+      </span>
+    );
+  }
+
   /* ── Related links ── entries that do not resolve against the reader's
    * own visible page list render NOTHING here (see related-links.ts). */
   if (def?.type === "links") {
@@ -667,6 +765,8 @@ const TYPE_LABEL: Record<string, string> = {
   checkbox: "Checkbox",
   text: "Text",
   links: "Links",
+  relation: "Relation",
+  rollup: "Rollup",
   url: "Link",
   email: "Email",
   phone: "Phone",
@@ -675,10 +775,12 @@ const TYPE_LABEL: Record<string, string> = {
 function AddPropertyPopover({
   propDefs,
   present,
+  views,
   onAdd,
 }: {
   propDefs: PropDef[];
   present: Set<string>;
+  views: Array<{ id: string; name: string }>;
   onAdd: (key: string, seed: unknown, focusAfter: boolean) => void;
 }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -687,12 +789,15 @@ function AddPropertyPopover({
   const createProperty = useCreateProperty();
   const candidates = propDefs
     .filter((d) => !present.has(d.key))
-    .filter((d) => d.key !== "area" && d.key !== "owner");
+    .filter((d) => d.key !== "area" && d.key !== "owner")
+    // A rollup shows by itself once its relation links somewhere.
+    .filter((d) => d.type !== "rollup");
 
   const seedFor = (t: string): unknown => {
     switch (t) {
       case "multi_select":
       case "links":
+      case "relation":
         return [];
       case "checkbox":
         return false;
@@ -708,22 +813,159 @@ function AddPropertyPopover({
     setSub(null);
   };
 
+  const create = (
+    label: string,
+    type: PropertyType,
+    config?: Record<string, unknown>,
+    backLabel?: string,
+  ) =>
+    createProperty.mutate(
+      { label, type, config, backLabel },
+      { onSuccess: (def) => onAdd(def.key, seedFor(def.type), true) },
+    );
+
   // Step 2: name it. Creating adds it to the workspace and to this page.
-  const nameSpec = (type: PropertyType): MenuSpec => ({
+  const nameSpec = (
+    type: PropertyType,
+    then?: (label: string) => void,
+    back: MenuSpec = typeSpec,
+  ): MenuSpec => ({
     title: `New ${kindLabel(type).toLowerCase()} property`,
     rows: [],
-    onBack: () => setSub(typeSpec),
+    onBack: () => setSub(back),
     footer: "Everyone in the workspace can use it. Only owners can archive it.",
     input: {
       placeholder: "Name it, then press Enter",
-      onCommit: (label) => {
-        createProperty.mutate(
-          { label, type },
-          { onSuccess: (def) => onAdd(def.key, seedFor(def.type), true) },
-        );
-      },
+      onCommit: (label) => (then ? then(label) : create(label, type)),
+      // A relation's name leads to "one way or both".
+      keepOpen: type === "relation",
     },
   });
+
+  /* Relation: which pages it links to, its name, then one way or both. */
+  const relationScopeSpec = (): MenuSpec => ({
+    title: "Link to",
+    onBack: () => setSub(typeSpec),
+    footer: "A view keeps the choice to its pages, as it filters them.",
+    rows: [
+      {
+        kind: "row",
+        label: "Any page",
+        icon: "M5 4h10l4 4v12H5z",
+        onPick: () => setSub(relationName(null)),
+      },
+      ...(views.length ? [{ kind: "sep" as const }] : []),
+      ...views.map<MenuRow>((v) => ({
+        kind: "row",
+        label: `Pages in ${v.name}`,
+        icon: "M4 5h16v14H4zM4 10h16",
+        onPick: () => setSub(relationName(v.id)),
+      })),
+    ],
+  });
+  const relationName = (viewId: string | null): MenuSpec =>
+    nameSpec("relation", (label) => setSub(relationSides(label, viewId)), relationScopeSpec());
+  const relationSides = (label: string, viewId: string | null): MenuSpec => ({
+    title: label,
+    onBack: () => setSub(relationName(viewId)),
+    rows: [
+      {
+        kind: "row",
+        label: "Only here",
+        hint: { text: "One way" },
+        onPick: () => create(label, "relation", { view_id: viewId }),
+      },
+      {
+        kind: "row",
+        label: "Also on the linked pages…",
+        hint: { text: "Two way" },
+        onPick: () =>
+          setSub({
+            title: "On the linked pages",
+            rows: [],
+            onBack: () => setSub(relationSides(label, viewId)),
+            footer: `A page this one links to with ${label} shows it under this name, and links can be made from either side.`,
+            input: {
+              placeholder: "Name it there, then press Enter",
+              onCommit: (back) => create(label, "relation", { view_id: viewId }, back),
+            },
+          }),
+      },
+    ],
+  });
+
+  /* Rollup: a relation, a property of the pages it links to, a calculation. */
+  const relationDefs = propDefs.filter((d) => d.type === "relation");
+  const rollupRelationSpec = (): MenuSpec => ({
+    title: "Roll up through",
+    onBack: () => setSub(typeSpec),
+    footer: relationDefs.length
+      ? undefined
+      : "Make a relation first: a rollup works across the pages it links to.",
+    rows: relationDefs.map<MenuRow>((d) => ({
+      kind: "row",
+      label: d.label,
+      icon: PROPERTY_KINDS.find((k) => k.type === "relation")?.icon,
+      onPick: () => setSub(rollupTargetSpec(d.key)),
+    })),
+  });
+  const rollupTargetSpec = (relation: string): MenuSpec => ({
+    title: "Of their",
+    onBack: () => setSub(rollupRelationSpec()),
+    rows: [
+      {
+        kind: "row",
+        label: "Pages (title)",
+        onPick: () => setSub(rollupCalcSpec(relation, "title", "title")),
+      },
+      ...propDefs
+        .filter((d) => d.type !== "rollup" && d.type !== "links")
+        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+        .map<MenuRow>((d) => ({
+          kind: "row",
+          label: d.label,
+          hint: { text: kindLabel(d.type) },
+          onPick: () => setSub(rollupCalcSpec(relation, d.key, d.type)),
+        })),
+      ...Object.entries(BUILT_IN_LABELS).map<MenuRow>(([k, l]) => ({
+        kind: "row",
+        label: l,
+        onPick: () => setSub(rollupCalcSpec(relation, k, BUILT_IN_TYPES[k])),
+      })),
+    ],
+  });
+  const rollupCalcSpec = (relation: string, target: string, type: string): MenuSpec => ({
+    title: "Show",
+    onBack: () => setSub(rollupTargetSpec(relation)),
+    rows: [
+      ...(type === "title" ||
+      type === "select" ||
+      type === "status" ||
+      type === "person" ||
+      type === "text" ||
+      type === "multi_select" ||
+      type === "relation"
+        ? [
+            {
+              kind: "row" as const,
+              label: "Their values",
+              onPick: () => setSub(rollupName(relation, target, "show", type)),
+            },
+          ]
+        : []),
+      ...calcsFor(type === "title" ? "text" : type).map<MenuRow>((c) => ({
+        kind: "row",
+        label: CALC_LABELS[c],
+        onPick: () => setSub(rollupName(relation, target, c, type)),
+      })),
+    ],
+  });
+  const rollupName = (relation: string, target: string, calc: string, type: string): MenuSpec =>
+    nameSpec(
+      "rollup",
+      (label) => create(label, "rollup", { relation, target, calc }),
+      rollupCalcSpec(relation, target, type),
+    );
 
   // Step 1: pick a type.
   const typeSpec: MenuSpec = {
@@ -734,7 +976,14 @@ function AddPropertyPopover({
       label: k.label,
       icon: k.icon,
       hint: { text: k.hint },
-      onPick: () => setSub(nameSpec(k.type)),
+      onPick: () =>
+        setSub(
+          k.type === "relation"
+            ? relationScopeSpec()
+            : k.type === "rollup"
+              ? rollupRelationSpec()
+              : nameSpec(k.type),
+        ),
     })),
   };
 
@@ -816,6 +1065,8 @@ function PropertyStrip({
   onVerify,
   justVerified,
   onSet,
+  onSetPage,
+  views,
 }: {
   page: PageFull;
   propDefs: PropDef[];
@@ -827,14 +1078,54 @@ function PropertyStrip({
   onVerify: () => void;
   justVerified: boolean;
   onSet: (key: string, value: unknown) => void;
+  /** A change to another page (the far side of a relation writes there). */
+  onSetPage: (pageId: string, key: string, value: unknown) => void;
+  views: Array<{ id: string; name: string; filter: unknown }>;
 }) {
   const propsRec = propsOf(page);
+  const relIdx = useMemo(() => buildRelationIndex(pages, propDefs), [pages, propDefs]);
+  const relations = useMemo<StripRelations>(() => {
+    const names = new Map(
+      members.map((m) => [m.user_id, m.profiles?.full_name || m.profiles?.email || ""]),
+    );
+    const titleOf = (id: string) => relIdx.byId.get(id)?.title || "Untitled";
+    return {
+      idx: relIdx,
+      words: valueWords({ defs: relIdx.defs, nameOf: (id) => names.get(id) || id, titleOf }),
+      candidates: (def, self) =>
+        relationCandidates(def, self, relIdx, views, { me: meId, staleDays }),
+      scopeNote: (def) => {
+        const v = views.find((x) => x.id === relationConfig(def).viewId);
+        return v ? `Pages in ${v.name}` : undefined;
+      },
+      onWrite: (w) =>
+        w.pageId === page.id ? onSet(w.key, w.value) : onSetPage(w.pageId, w.key, w.value),
+    };
+    // onSet/onSetPage are fresh closures each render; they only call through.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [relIdx, members, views, meId, staleDays, page.id]);
   // null-is-absent: set_page_property stores an explicit null when a value
   // is cleared rather than dropping the key, so a cleared property must not
   // count as present — otherwise the strip keeps an unremovable empty row.
   const present = new Set(
     Object.keys(propsRec).filter((k) => isPropSet(propsRec[k])),
   );
+  // Worked-out properties show when they have something to say: a
+  // relation's far side when pages link here, a rollup when its relation
+  // links to pages.
+  for (const d of propDefs) {
+    const self = page as unknown as PageListItem;
+    if (isBackRelation(d) && relatedIds(self, d.key, relIdx).length) present.add(d.key);
+    if (d.type === "rollup") {
+      const rel = rollupConfig(d)?.relation;
+      if (rel && relatedIds(self, rel, relIdx).length) present.add(d.key);
+    }
+    // A stored relation whose pages are all private to the reader shows
+    // nothing to edit, so it reads as empty.
+    if (d.type === "relation" && !isBackRelation(d) && !relatedIds(self, d.key, relIdx).length) {
+      present.delete(d.key);
+    }
+  }
   const byPos = [...propDefs].sort(
     (a, b) => (a.position ?? 0) - (b.position ?? 0),
   );
@@ -882,7 +1173,15 @@ function PropertyStrip({
     const out: string[] = [];
     for (const r of rows) {
       const def = propDefs.find((d) => d.key === r.key);
-      const text = summarizeProp(propsRec[r.key], def, labelFor(r.key, propDefs), nameOf);
+      const self = page as unknown as PageListItem;
+      const text =
+        def?.type === "relation"
+          ? relatedPages(self, r.key, relIdx)
+              .map((p) => p.title || "Untitled")
+              .join(", ") || null
+          : def?.type === "rollup"
+            ? rollupText(self, def, relIdx, relations.words) || null
+            : summarizeProp(propsRec[r.key], def, labelFor(r.key, propDefs), nameOf);
       if (text) out.push(text);
     }
     return out.join(" · ");
@@ -978,7 +1277,7 @@ function PropertyStrip({
       {rows.map((r) => {
         const def = propDefs.find((d) => d.key === r.key);
         const removable =
-          def && def.is_system === false && shown.has(r.key);
+          def && def.is_system === false && shown.has(r.key) && !isComputedDef(def);
         const active = hoverKey === r.key || openKey === r.key;
         const showX = removable && active;
         const label = labelFor(r.key, propDefs);
@@ -1043,6 +1342,7 @@ function PropertyStrip({
                 def={def}
                 members={members}
                 pages={pages}
+                    relations={relations}
                 areas={areas}
                 onSet={(v) => onSet(r.key, v)}
                 onOpenChange={(open) =>
@@ -1190,9 +1490,11 @@ function PropertyStrip({
       <AddPropertyPopover
         propDefs={propDefs}
         present={shown}
+        views={views}
         onAdd={(key, seed) => {
           setAdded((prev) => new Set(prev).add(key));
-          onSet(key, seed);
+          // Worked-out properties hold nothing to seed; the row just opens.
+          if (!isComputedDef(propDefs.find((d) => d.key === key))) onSet(key, seed);
         }}
       />
       </div>
@@ -1832,6 +2134,8 @@ export function PageEditor({ pageId }: { pageId: string }) {
         members={members}
         meId={meId}
         pages={(shell.pages.data ?? []) as PageListItem[]}
+        views={(shell.views.data ?? []) as Array<{ id: string; name: string; filter: unknown }>}
+        onSetPage={(pageId, key, value) => setProp.mutate({ pageId, key, value })}
         areas={areasList}
         staleDays={staleDays}
         onVerify={onVerify}

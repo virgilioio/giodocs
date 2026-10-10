@@ -36,7 +36,14 @@ export function useCreateProperty() {
   const { user } = useAuth();
   const toast = useToast();
   return useMutation({
-    mutationFn: async (v: { label: string; type: PropertyType }) => {
+    mutationFn: async (v: {
+      label: string;
+      type: PropertyType;
+      /** A relation's or rollup's settings (property_defs.config). */
+      config?: Record<string, unknown>;
+      /** A two-way relation: its far side, named for the linked pages. */
+      backLabel?: string;
+    }) => {
       const label = v.label.trim();
       if (!label) throw new Error("Give the property a name.");
       // Keys are workspace-wide and include archived properties.
@@ -53,20 +60,42 @@ export function useCreateProperty() {
       // takes the next key instead of failing.
       for (let attempt = 0; attempt < 3; attempt++) {
         const key = keyForLabel(label, taken);
-        const { data, error } = await supabase
-          .from("property_defs")
-          .insert({
-            workspace_id: ws,
-            key,
-            label,
-            type: v.type,
-            options: [],
-            position,
-            created_by: user!.id,
-          })
-          .select("*")
-          .single();
-        if (!error) return data as PropDef;
+        const backLabel = v.backLabel?.trim();
+        const backKey = backLabel ? keyForLabel(backLabel, [...taken, key]) : null;
+        const row = {
+          workspace_id: ws,
+          key,
+          label,
+          type: v.type,
+          options: [],
+          position,
+          created_by: user!.id,
+          config: (backKey ? { ...(v.config ?? {}), back: backKey } : (v.config ?? {})) as never,
+        };
+        // A two-way relation's two sides are made in one statement, so
+        // neither exists without the other.
+        const rows = backKey
+          ? [
+              row,
+              {
+                ...row,
+                key: backKey,
+                label: backLabel!,
+                position: position + 1,
+                config: { of: key } as never,
+              },
+            ]
+          : [row];
+        const { data, error } = await supabase.from("property_defs").insert(rows).select("*");
+        if (!error) {
+          const made = (data ?? []) as PropDef[];
+          for (const d of made.slice(1)) {
+            qc.setQueryData<PropDef[]>(qk.propDefs(ws), (prev) =>
+              prev ? [...prev.filter((x) => x.key !== d.key), d] : [d],
+            );
+          }
+          return made.find((d) => d.key === key) ?? made[0];
+        }
         if ((error as { code?: string }).code !== "23505") throw error;
         taken.push(key);
       }

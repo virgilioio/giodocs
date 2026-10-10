@@ -17,7 +17,9 @@ export type PropertyType =
   | "url"
   | "email"
   | "phone"
-  | "links";
+  | "links"
+  | "relation"
+  | "rollup";
 
 export type PropertyKind = {
   type: PropertyType;
@@ -41,7 +43,25 @@ export const PROPERTY_KINDS: PropertyKind[] = [
   { type: "email", label: "Email", hint: "An email address", icon: "M4 6h16v12H4zM4 7l8 6 8-6" },
   { type: "phone", label: "Phone", hint: "A phone number", icon: "M6.6 3.5h2.8l1.4 4.2-2 1.4a11 11 0 0 0 6.1 6.1l1.4-2 4.2 1.4v2.8a2 2 0 0 1-2.2 2A16.6 16.6 0 0 1 4.6 5.7a2 2 0 0 1 2-2.2z" },
   { type: "links", label: "Related pages", hint: "Links to pages or URLs", icon: "M8 7h11M8 12h11M8 17h11M4.5 7h.01M4.5 12h.01M4.5 17h.01" },
+  {
+    type: "relation",
+    label: "Relation",
+    hint: "Links to other pages, both ways",
+    icon: "M7 7h4v4H7zM13 13h4v4h-4zM11 9h2a2 2 0 0 1 2 2v2",
+  },
+  {
+    type: "rollup",
+    label: "Rollup",
+    hint: "A figure from related pages",
+    icon: "M4 19h16M7 15l3-4 3 2 4-6",
+  },
 ];
+
+/** Kinds that need more than a name to set up (made from a page's
+ *  Add a property menu, step by step). */
+export function needsSetup(type: PropertyType): boolean {
+  return type === "relation" || type === "rollup";
+}
 
 export function kindLabel(type: string): string {
   return PROPERTY_KINDS.find((k) => k.type === type)?.label ?? type;

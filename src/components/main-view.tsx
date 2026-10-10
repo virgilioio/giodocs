@@ -19,7 +19,16 @@ import {
 import { readConfig, type ViewConfig } from "@/lib/view-config";
 import { sortLabel as sortLabelOf } from "@/lib/sort-label";
 import { seedForGroup, seedFromFilters } from "@/lib/view-seed";
-import { ViewTable, RowCheckbox } from "./view-table";
+import { ViewTable, RowCheckbox, type TableRelations } from "./view-table";
+import {
+  buildRelationIndex,
+  readValueWith,
+  relationCandidates,
+  relationConfig,
+  rollupKind,
+  valueWords,
+} from "@/lib/relations";
+import { relList } from "@/lib/related-links";
 import { applyFilterReplacement, filterLabel } from "@/lib/filter-label";
 import { PageOriginContext, useSetPageOrigin } from "@/lib/page-origin";
 import { areaBaseView, currentView, type ViewBase, type ViewDraft } from "@/lib/view-drafts";
@@ -332,6 +341,10 @@ function QueryToolbar({
   // Chips name archived properties too (a saved filter can still use one).
   const allDefs = useAllPropDefs(useWorkspaceId()).data as PropDef[] | undefined;
   const labelDefs = allDefs && allDefs.length ? allDefs : propDefs;
+  const pageTitle = (id: string) => {
+    const p = pages.find((x) => x.id === id);
+    return p ? p.title || "Untitled" : "a private page";
+  };
 
   return (
     <div
@@ -349,7 +362,7 @@ function QueryToolbar({
             return (
               <FilterChip
                 key={i}
-                label={filterLabel(f, { people, staleDays, defs: labelDefs })}
+                label={filterLabel(f, { people, staleDays, defs: labelDefs, pageTitle })}
                 clickable={clickable}
                 removable={clickable}
                 onRemove={() =>
@@ -941,6 +954,70 @@ function FilterBuilderContent({
         <BuilderRow onClick={() => onPick({ op: "unchecked", prop: def.key })}>
           Not checked
         </BuilderRow>
+      </div>
+    );
+  }
+
+  if (def.type === "relation") {
+    // The pages it links to anywhere (near side), or the pages that link
+    // here (far side): pick one to see the pages related to it.
+    const byId = new Map(pages.filter((p) => !p.archived_at).map((p) => [p.id, p]));
+    const of = relationConfig(def).of;
+    const ids = new Set<string>();
+    for (const p of byId.values()) {
+      if (of) {
+        if (relList(propsOf(p)[of]).length) ids.add(p.id);
+      } else {
+        relList(propsOf(p)[def.key]).forEach((id) => byId.has(id) && ids.add(id));
+      }
+    }
+    const list = [...ids]
+      .map((id) => byId.get(id)!)
+      .sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+    return (
+      <div style={{ padding: "2px 0", maxHeight: 360, overflowY: "auto" }}>
+        <StepTitle onBack={back}>{def.label}</StepTitle>
+        {list.length === 0 && <EmptyValues />}
+        {list.map((p) => (
+          <BuilderRow
+            key={p.id}
+            leading={<Ico icon={p.icon || "📄"} size={15} />}
+            onClick={() => onPick({ op: "includes", prop: def.key, value: p.id })}
+          >
+            {p.title || "Untitled"}
+          </BuilderRow>
+        ))}
+        <FilterDivider />
+        <BuilderRow onClick={() => onPick({ op: "not_empty", prop: def.key })}>
+          Linked to any page
+        </BuilderRow>
+        <BuilderRow onClick={() => onPick({ op: "empty", prop: def.key })}>Not linked</BuilderRow>
+      </div>
+    );
+  }
+
+  if (def.type === "rollup") {
+    const kind = rollupKind(def);
+    return (
+      <div style={{ padding: "2px 0" }}>
+        <StepTitle onBack={back}>{def.label}</StepTitle>
+        {kind === "date" ? (
+          <DateFilterRows
+            prop={def.key}
+            ranges={["today", "this_week", "next_week", "this_month"]}
+            initial={initialValue}
+            onPick={onPick}
+          />
+        ) : (
+          <CompareInput
+            kind={kind === "number" ? "number" : "text"}
+            ops={kind === "number" ? NUMBER_OPS : TEXT_OPS}
+            initial={initialValue}
+            onPick={(op, value) => onPick({ op, prop: def.key, value })}
+          />
+        )}
+        <FilterDivider />
+        <BuilderRow onClick={() => onPick({ op: "empty", prop: def.key })}>Empty</BuilderRow>
       </div>
     );
   }
@@ -1568,8 +1645,10 @@ export function MainView({ selection }: { selection: Selection }) {
   const publishView = usePublishView();
   const deleteView = useDeleteView();
 
-  const pages = (shell.pages.data ?? []) as PageListItem[];
-  const views = (shell.views.data ?? []) as ViewRow[];
+  const pagesData = shell.pages.data;
+  const pages = useMemo(() => (pagesData ?? []) as PageListItem[], [pagesData]);
+  const viewsData = shell.views.data;
+  const views = useMemo(() => (viewsData ?? []) as ViewRow[], [viewsData]);
   const membersData = shell.members.data;
   const members = useMemo(
     () => (membersData ?? []) as unknown as MemberRow[],
@@ -1656,6 +1735,7 @@ export function MainView({ selection }: { selection: Selection }) {
 
   // What sorting needs to know: each property's type and option order, and
   // people's names (so Owner sorts by name, not by id).
+  const relIdx = useMemo(() => buildRelationIndex(pages, propDefs), [pages, propDefs]);
   const runCtx = useMemo(() => {
     const props = new Map<string, PropInfo>(
       propDefs.map((d) => [
@@ -1666,13 +1746,41 @@ export function MainView({ selection }: { selection: Selection }) {
     const names = new Map(
       members.map((m) => [m.user_id, m.profiles?.full_name || m.profiles?.email || ""]),
     );
+    const nameOf = (id: string) => names.get(id) || id;
+    const titleOf = (id: string) => {
+      const p = relIdx.byId.get(id);
+      return p ? p.title || "Untitled" : "Private page";
+    };
     return {
       me: user?.id ?? "",
       staleDays,
       props,
-      nameOf: (id: string) => names.get(id) || id,
+      nameOf,
+      titleOf,
+      // Relations (both sides) and rollups are worked out from the pages.
+      readValue: readValueWith(relIdx, valueWords({ defs: relIdx.defs, nameOf, titleOf })),
     };
-  }, [propDefs, members, user?.id, staleDays]);
+  }, [propDefs, members, user?.id, staleDays, relIdx]);
+
+  // What tables need to show and edit relations and rollups.
+  const tableRelations = useMemo<TableRelations>(() => {
+    const words = valueWords({
+      defs: relIdx.defs,
+      nameOf: runCtx.nameOf,
+      titleOf: runCtx.titleOf,
+    });
+    const viewName = (id: string | null) => views.find((v) => v.id === id)?.name;
+    return {
+      idx: relIdx,
+      words,
+      readValue: runCtx.readValue,
+      candidates: (def, page) => relationCandidates(def, page, relIdx, views, runCtx),
+      scopeNote: (def) => {
+        const name = viewName(relationConfig(def).viewId);
+        return name ? `Pages in ${name}` : undefined;
+      },
+    };
+  }, [relIdx, runCtx, views]);
 
   const rows = useMemo(
     () => runView(pages, { filter: filters, sort }, runCtx),
@@ -2215,6 +2323,7 @@ export function MainView({ selection }: { selection: Selection }) {
         onSort={onChangeSort}
         groupKey={tableGroup}
         onNewRow={onNewRow}
+        relations={tableRelations}
       />
     );
 

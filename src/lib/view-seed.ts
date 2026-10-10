@@ -1,12 +1,13 @@
 import type { Filter } from "./run-view";
 import { rangeOf } from "./run-view";
+import { isComputedDef } from "./relations";
 
 /* What a page made from inside a view starts with, so it lands in the view
  * it was made from: the values the view's filters ask for (and the group it
  * was added to). Filters that don't name one value (contains, above,
  * before…) seed nothing. Pure. */
 
-type SeedDef = { key: string; type: string };
+type SeedDef = { key: string; type: string; config?: unknown };
 
 function localDay(d: Date): string {
   const p = (n: number) => String(n).padStart(2, "0");
@@ -25,6 +26,8 @@ export function seedFromFilters(
     const k = f.prop;
     // Built-ins (@created, …) and unknown properties can't be set.
     if (!k || k.startsWith("@") || !typeOf(k)) continue;
+    // Worked-out properties (a relation's far side, rollups) can't be set.
+    if (isComputedDef(defs.find((d) => d.key === k))) continue;
     const t = typeOf(k);
     switch (f.op) {
       case "eq":
@@ -69,8 +72,9 @@ export function seedForGroup(
   defs: SeedDef[],
 ): Record<string, unknown> {
   if (!key || key.startsWith("@") || value === null) return {};
-  const t = defs.find((d) => d.key === key)?.type;
-  if (!t) return {};
+  const def = defs.find((d) => d.key === key);
+  const t = def?.type;
+  if (!t || isComputedDef(def)) return {};
   if (t === "checkbox") return { [key]: value === "true" };
   if (t === "multi_select") return { [key]: [value] };
   return { [key]: value };

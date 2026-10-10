@@ -6,6 +6,8 @@ import {
   relatedIds,
   rollupKind,
   rollupText,
+  relationWrite,
+  relationCandidates,
 } from "./relations";
 import { runView } from "./run-view";
 import type { PageListItem } from "./types";
@@ -131,5 +133,44 @@ describe("rollups", () => {
         ctx,
       ).map((p) => p.id),
     ).toEqual(["p1", "p2"]);
+  });
+});
+
+describe("editing relations", () => {
+  it("the near side changes this page; the far side changes the other page", () => {
+    expect(relationWrite(DEFS[0], byId("t3"), "p1", true, idx)).toEqual({
+      pageId: "t3",
+      key: "project",
+      value: ["p2", "p1"],
+    });
+    expect(relationWrite(DEFS[1], byId("p1"), "t1", false, idx)).toEqual({
+      pageId: "t1",
+      key: "project",
+      value: [],
+    });
+    expect(relationWrite(DEFS[1], byId("p2"), "t1", true, idx)).toEqual({
+      pageId: "t1",
+      key: "project",
+      value: ["p1", "p2"],
+    });
+  });
+  it("an unlink keeps links the reader can't see", () => {
+    expect(relationWrite(DEFS[0], byId("t2"), "p1", false, idx)?.value).toEqual(["gone"]);
+  });
+  it("candidates: a view's pages, or every page but this one", () => {
+    const ctx = { me: "me", staleDays: 30 };
+    const views = [{ id: "v1", filter: [{ op: "empty", prop: "project" }] }];
+    const scoped = { key: "x", type: "relation", config: { view_id: "v1" } };
+    expect(
+      relationCandidates(scoped, byId("t1"), idx, views, ctx)
+        .map((p) => p.id)
+        .sort(),
+    ).toEqual(["p1", "p2"]);
+    expect(relationCandidates(DEFS[0], byId("t1"), idx, views, ctx).map((p) => p.id)).toEqual([
+      "p1",
+      "p2",
+      "t2",
+      "t3",
+    ]);
   });
 });

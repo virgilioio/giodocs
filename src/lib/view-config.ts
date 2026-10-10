@@ -65,6 +65,8 @@ const TYPE_WIDTHS: Record<string, number> = {
   email: 200,
   phone: 150,
   text: 200,
+  relation: 200,
+  rollup: 120,
 };
 
 export function defaultWidth(key: string, type: string | undefined): number {
@@ -88,7 +90,14 @@ export function minWidthOf(key: string, type: string | undefined): number {
   if (key === TITLE_KEY) return 200;
   if (type === "timestamp") return 92;
   if (type === "checkbox" || type === "number") return 80;
-  if (type === "text" || type === "links" || type === "url" || type === "email") return 110;
+  if (
+    type === "text" ||
+    type === "links" ||
+    type === "url" ||
+    type === "email" ||
+    type === "relation"
+  )
+    return 110;
   return 90;
 }
 
@@ -153,6 +162,7 @@ function isNewKind(d: ConfigPropDef): boolean {
     d.type === "url" ||
     d.type === "email" ||
     d.type === "phone" ||
+    d.type === "relation" ||
     (!d.is_system && (d.type === "select" || d.type === "status"))
   );
 }

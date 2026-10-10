@@ -1,6 +1,7 @@
 import type { PageListItem } from "./types";
+import { formatDue } from "./due-date";
 import { relList } from "./related-links";
-import { propValue } from "./run-view";
+import { propValue, runView, type Filter, type RunViewCtx } from "./run-view";
 import {
   calcValue,
   calculateRaw,
@@ -206,4 +207,110 @@ export function rollupKind(def: RelDefLike | undefined): "number" | "date" | "te
   if (!cfg || cfg.calc === "show") return "text";
   if (cfg.calc === "earliest" || cfg.calc === "latest") return "date";
   return "number";
+}
+
+/* ── Editing ── */
+
+/** A relation's stored list with one page added or taken off. Pages the
+ *  reader can't open stay in it: an edit never drops someone else's link. */
+export function nextRelationValue(stored: unknown, pageId: string, add: boolean): string[] {
+  const list = relList(stored);
+  if (add) return list.includes(pageId) ? list : [...list, pageId];
+  return list.filter((id) => id !== pageId);
+}
+
+/** Which page's value a link or unlink changes, and to what. On the far
+ *  side of a two-way relation it's the other page's near side. */
+export function relationWrite(
+  def: RelDefLike,
+  page: PageListItem,
+  otherId: string,
+  add: boolean,
+  idx: RelationIndex,
+): { pageId: string; key: string; value: string[] } | null {
+  const { of } = relationConfig(def);
+  if (of) {
+    const other = idx.byId.get(otherId);
+    if (!other) return null;
+    return { pageId: otherId, key: of, value: nextRelationValue(propsOf(other)[of], page.id, add) };
+  }
+  return {
+    pageId: page.id,
+    key: def.key,
+    value: nextRelationValue(propsOf(page)[def.key], otherId, add),
+  };
+}
+
+/** The pages a relation can link to from this page: the pages of its view
+ *  when it has one (as that view filters them), otherwise every page. */
+export function relationCandidates(
+  def: RelDefLike,
+  page: PageListItem | null,
+  idx: RelationIndex,
+  views: Array<{ id: string; filter: unknown }>,
+  ctx: RunViewCtx,
+): PageListItem[] {
+  const all = [...idx.byId.values()];
+  const { viewId, of } = relationConfig(def);
+  let pool = all;
+  if (!of && viewId) {
+    const v = views.find((x) => x.id === viewId);
+    if (v)
+      pool = runView(
+        all,
+        { filter: (v.filter ?? []) as Filter[], sort: { prop: "title", dir: "asc" } },
+        ctx,
+      );
+  }
+  const out = pool.filter((p) => p.id !== page?.id);
+  return pool === all
+    ? out.sort((a, b) =>
+        (a.title || "").localeCompare(b.title || "", undefined, { sensitivity: "base" }),
+      )
+    : out;
+}
+
+/** How a rollup that shows values writes each one: option labels, people's
+ *  and pages' names, dates as days. */
+export function valueWords(opts: {
+  defs: ReadonlyMap<string, RelDefLike>;
+  nameOf: (userId: string) => string;
+  titleOf: (pageId: string) => string;
+}) {
+  return (value: unknown, key: string): string[] => {
+    if (value === null || value === undefined || value === "") return [];
+    const list = Array.isArray(value) ? value : [value];
+    if (key === "@created_by" || key === "@edited_by")
+      return list.map((v) => opts.nameOf(String(v)));
+    const d = opts.defs.get(key);
+    switch (d?.type) {
+      case "select":
+      case "status": {
+        const options = Array.isArray(d.options)
+          ? (d.options as Array<{ value?: unknown; label?: unknown }>)
+          : [];
+        return list.map((v) => {
+          const o = options.find((x) => x && x.value === v);
+          return typeof o?.label === "string" && o.label ? o.label : String(v);
+        });
+      }
+      case "person":
+        return list.map((v) => opts.nameOf(String(v)));
+      case "relation":
+        return list.map((v) => opts.titleOf(String(v)));
+      case "checkbox":
+        return [value === true || value === "true" ? "Checked" : "Not checked"];
+      case "date":
+        return list.map((v) => formatDue(v) || String(v));
+      default:
+        return list.map(String);
+    }
+  };
+}
+
+/** One line for a cell or a collapsed strip: "Website +2". */
+export function relationSummary(linked: PageListItem[]): string {
+  if (linked.length === 0) return "";
+  const first = linked[0].title || "Untitled";
+  return linked.length === 1 ? first : `${first} +${linked.length - 1}`;
 }

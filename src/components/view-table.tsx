@@ -8,6 +8,15 @@ import type { useRenamePage, useSetPageProperty } from "@/hooks/use-page-mutatio
 import { isTerminalStatus } from "@/lib/due-date";
 import { isTypedString, PROPERTY_KINDS } from "@/lib/property-kinds";
 import { relList, relResolve } from "@/lib/related-links";
+import {
+  relatedPages,
+  relationSummary,
+  relationWrite,
+  rollupKind,
+  rollupText,
+  type RelationIndex,
+} from "@/lib/relations";
+import { RelationEditor } from "./relation-editor";
 import { groupRows, sortProp, type PropInfo, type RowGroup, type SortSpec } from "@/lib/run-view";
 import { viewTime } from "@/lib/view-time";
 import {
@@ -400,6 +409,15 @@ function LinksCell({
   );
 }
 
+/** What tables need for relations and rollups (built once per view). */
+export type TableRelations = {
+  idx: RelationIndex;
+  words: (value: unknown, key: string) => string[];
+  readValue: (page: PageListItem, key: string) => unknown;
+  candidates: (def: PropDef, page: PageListItem) => PageListItem[];
+  scopeNote: (def: PropDef) => string | undefined;
+};
+
 type CellCtx = {
   defs: ReadonlyMap<string, PropDef>;
   members: TableMember[];
@@ -408,7 +426,55 @@ type CellCtx = {
   linkPages: PageListItem[];
   isStale: boolean;
   setProp: SetPropFn;
+  relations: TableRelations | null;
 };
+
+/** A relation in a cell: its pages in one line; the editor in a popover.
+ *  On a two-way relation's far side, a change is written to the other page. */
+function RelationCell({
+  page,
+  def,
+  rel,
+  setProp,
+}: {
+  page: PageListItem;
+  def: PropDef;
+  rel: TableRelations;
+  setProp: SetPropFn;
+}) {
+  const navigate = useNavigate();
+  const linked = relatedPages(page, def.key, rel.idx);
+  const write = (otherId: string, add: boolean) => {
+    const w = relationWrite(def, page, otherId, add, rel.idx);
+    if (w) setProp(w);
+  };
+  return (
+    <Popover
+      width={300}
+      trigger={({ onClick, ref }) => (
+        <button
+          ref={ref}
+          type="button"
+          onClick={onClick}
+          className="min-w-0 flex-1 truncate text-left text-meta text-body"
+        >
+          {linked.length ? relationSummary(linked) : EMPTY}
+        </button>
+      )}
+    >
+      {() => (
+        <RelationEditor
+          linked={linked}
+          candidates={rel.candidates(def, page)}
+          scopeNote={rel.scopeNote(def)}
+          onAdd={(id) => write(id, true)}
+          onRemove={(id) => write(id, false)}
+          onOpenPage={(id) => navigate({ to: "/p/$pageId", params: { pageId: id } })}
+        />
+      )}
+    </Popover>
+  );
+}
 
 function ValueCell({ page, k, ctx }: { page: PageListItem; k: string; ctx: CellCtx }) {
   const set = (value: unknown) => ctx.setProp({ pageId: page.id, key: k, value });
@@ -438,6 +504,25 @@ function ValueCell({ page, k, ctx }: { page: PageListItem; k: string; ctx: CellC
   }
   const def = ctx.defs.get(k);
   if (!def) return EMPTY;
+  if (def.type === "relation")
+    return ctx.relations ? (
+      <RelationCell page={page} def={def} rel={ctx.relations} setProp={ctx.setProp} />
+    ) : (
+      EMPTY
+    );
+  if (def.type === "rollup") {
+    // Worked out from the related pages: read only.
+    const text = ctx.relations ? rollupText(page, def, ctx.relations.idx, ctx.relations.words) : "";
+    return text ? (
+      <span
+        className={`truncate text-meta text-body ${rollupKind(def) === "number" ? "tnum" : ""}`}
+      >
+        {text}
+      </span>
+    ) : (
+      EMPTY
+    );
+  }
   const raw = propsOf(page)[k];
   switch (def.type) {
     case "person":
@@ -1043,6 +1128,7 @@ function CalcCell({
   pages,
   canArrange,
   onPick,
+  readValue,
 }: {
   k: string;
   label: string;
@@ -1051,10 +1137,11 @@ function CalcCell({
   pages: PageListItem[];
   canArrange: boolean;
   onPick: (calc: CalcId | null) => void;
+  readValue?: (page: PageListItem, key: string) => unknown;
 }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [spec, setSpec] = useState<MenuSpec | null>(null);
-  const value = calc ? calculate(calc, pages, k) : "";
+  const value = calc ? calculate(calc, pages, k, undefined, readValue) : "";
   const close = () => {
     setAnchor(null);
     setSpec(null);
@@ -1118,6 +1205,7 @@ function CalcRow({
   labelOf,
   typeOf,
   onPick,
+  readValue,
 }: {
   pages: PageListItem[];
   keys: string[];
@@ -1126,6 +1214,7 @@ function CalcRow({
   labelOf: (k: string) => string;
   typeOf: (k: string) => string | undefined;
   onPick: (k: string, calc: CalcId | null) => void;
+  readValue?: (page: PageListItem, key: string) => unknown;
 }) {
   const any = keys.some((k) => isCalcId(calcs?.[k]));
   if (!any && !canArrange) return null;
@@ -1145,6 +1234,7 @@ function CalcRow({
               pages={pages}
               canArrange={canArrange}
               onPick={(calc) => onPick(k, calc)}
+              readValue={readValue}
             />
           </div>
         );
@@ -1178,6 +1268,7 @@ export function ViewTable({
   onSort,
   groupKey,
   onNewRow,
+  relations,
 }: {
   rows: PageListItem[];
   pages: PageListItem[];
@@ -1203,6 +1294,8 @@ export function ViewTable({
   /** Adds a page from the + New page row (seeded with the group's value);
    *  resolves to its id, or null if it wasn't made. */
   onNewRow?: (groupValue: string | null | undefined) => Promise<string | null>;
+  /** Relations and rollups: their pages, figures and edits. */
+  relations?: TableRelations;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -1233,7 +1326,12 @@ export function ViewTable({
 
   const defs = useMemo(() => new Map(propDefs.map((d) => [d.key, d])), [propDefs]);
   const labelOf = (k: string) => labelOfProp(k, propDefs);
-  const typeOf = (k: string) => typeOfProp(k, propDefs);
+  const typeOf = (k: string) => {
+    const t = typeOfProp(k, propDefs);
+    if (t !== "rollup") return t;
+    const kind = rollupKind(defs.get(k));
+    return kind === "text" ? "rollup" : kind;
+  };
 
   // Options for multi-selects: every value any page uses, per property.
   const multiNow = useMemo(() => {
@@ -1258,9 +1356,23 @@ export function ViewTable({
   const setPropMutate = setProp.mutate;
   const renameMutate = rename.mutate;
 
+  // Rows re-render when relations change only if they show one.
+  const needsRelations = shown.some((k) => {
+    const t = defs.get(k)?.type;
+    return t === "relation" || t === "rollup";
+  });
+  const rel = needsRelations ? (relations ?? null) : null;
   const ctxFresh = useMemo(
-    () => ({ defs, members, areas: stableAreas, multiOptions, linkPages, setProp: setPropMutate }),
-    [defs, members, stableAreas, multiOptions, linkPages, setPropMutate],
+    () => ({
+      defs,
+      members,
+      areas: stableAreas,
+      multiOptions,
+      linkPages,
+      setProp: setPropMutate,
+      relations: rel,
+    }),
+    [defs, members, stableAreas, multiOptions, linkPages, setPropMutate, rel],
   );
   // One ctx object per staleness, so memoised rows keep their props.
   const ctxStale = useMemo(() => ({ ...ctxFresh, isStale: true }), [ctxFresh]);
@@ -1495,6 +1607,7 @@ export function ViewTable({
       canArrange={canArrange}
       labelOf={labelOf}
       typeOf={typeOf}
+      readValue={relations?.readValue}
       onPick={(k, calc) => {
         const calcs = { ...(config.calcs ?? {}) };
         if (calc) calcs[k] = calc;

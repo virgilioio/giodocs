@@ -9,7 +9,7 @@ import {
   useSetPropertyArchived,
   useUpdateProperty,
 } from "@/hooks/use-property-mutations";
-import { PROPERTY_KINDS, kindLabel, type PropertyType } from "@/lib/property-kinds";
+import { PROPERTY_KINDS, kindLabel, needsSetup, type PropertyType } from "@/lib/property-kinds";
 import { Popover } from "./popover";
 import type { SelectOption } from "./property-pickers";
 import type { Database } from "@/integrations/supabase/types";
@@ -112,43 +112,48 @@ function NewPropertyForm() {
     create.mutate({ label: l, type }, { onSuccess: () => setLabel("") });
   };
   return (
-    <form
-      className="mt-2 flex items-center gap-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        submit();
-      }}
-    >
-      <input
-        value={label}
-        onChange={(e) => setLabel(e.target.value)}
-        placeholder="New property name"
-        aria-label="New property name"
-        className="min-w-0 flex-1 rounded-md border border-line bg-surface focus:border-accent focus:outline-none"
-        style={{ padding: "6px 10px", fontSize: 14 }}
-      />
-      <select
-        value={type}
-        onChange={(e) => setType(e.target.value as PropertyType)}
-        aria-label="Property type"
-        className="rounded-md border border-line bg-surface focus:border-accent focus:outline-none"
-        style={{ padding: "6px 8px", fontSize: 14 }}
+    <>
+      <form
+        className="mt-2 flex items-center gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
       >
-        {PROPERTY_KINDS.map((k) => (
-          <option key={k.type} value={k.type}>
-            {k.label}
-          </option>
-        ))}
-      </select>
-      <button
-        type="submit"
-        disabled={!label.trim() || create.isPending}
-        className="bg-btn text-btnFg disabled:opacity-40"
-        style={{ fontSize: 13, fontWeight: 700, padding: "7px 12px", borderRadius: 8 }}
-      >
-        {create.isPending ? "Adding…" : "Add property"}
-      </button>
-    </form>
+        <input
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="New property name"
+          aria-label="New property name"
+          className="min-w-0 flex-1 rounded-md border border-line bg-surface focus:border-accent focus:outline-none"
+          style={{ padding: "6px 10px", fontSize: 14 }}
+        />
+        <select
+          value={type}
+          onChange={(e) => setType(e.target.value as PropertyType)}
+          aria-label="Property type"
+          className="rounded-md border border-line bg-surface focus:border-accent focus:outline-none"
+          style={{ padding: "6px 8px", fontSize: 14 }}
+        >
+          {PROPERTY_KINDS.filter((k) => !needsSetup(k.type)).map((k) => (
+            <option key={k.type} value={k.type}>
+              {k.label}
+            </option>
+          ))}
+        </select>
+        <button
+          type="submit"
+          disabled={!label.trim() || create.isPending}
+          className="bg-btn text-btnFg disabled:opacity-40"
+          style={{ fontSize: 13, fontWeight: 700, padding: "7px 12px", borderRadius: 8 }}
+        >
+          {create.isPending ? "Adding…" : "Add property"}
+        </button>
+      </form>
+      <p className="mt-2 text-caption text-faint">
+        Relations and rollups take a few more choices: add them from a page, with Add a property.
+      </p>
+    </>
   );
 }
 
