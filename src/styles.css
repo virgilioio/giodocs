@@ -471,12 +471,26 @@ button:is([class~="bg-btn"], [class~="border-line"][class~="bg-surface"], .gio-p
    row margin plus a compensating padding consumed real layout space, which
    inside a `columns` grid track pushed the row out of its track (blank
    strip on the left, overflow on the right). `--gio-gutter-x` is that
-   offset: 42px at page level (it has the page's 44px margin to sit in),
-   34px inside a column so it lives in the 40px grid gap instead of over
-   the neighbour. */
+   offset: 44px (Notion's gutter: a 24px +, 2px, a 14px handle, 4px to the
+   text), at page level and inside a column, where it sits in the 40px
+   grid gap and reaches 4px past it. */
 .gio-row {
-  --gio-gutter-x: 42px;
+  --gio-gutter-x: 44px;
 }
+/* The + and ⋮⋮ (Notion's): quiet at rest, full colour with a soft wash
+   when pointed at. */
+.gio-gutter-btn {
+  border-radius: 4px;
+  color: var(--color-whisper);
+  transition: color var(--dur-hover) ease, background-color var(--dur-hover) ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .gio-gutter-btn:hover {
+    color: var(--color-secondary);
+    background: color-mix(in srgb, var(--color-noir) 8%, transparent);
+  }
+}
+.gio-gutter-btn.is-selected { color: var(--color-blueInk); }
 .gio-block-gutter {
   left: calc(-1 * var(--gio-gutter-x));
   /* Touches the row: no gap for the pointer to fall through on its way
@@ -513,7 +527,7 @@ button:is([class~="bg-btn"], [class~="border-line"][class~="bg-surface"], .gio-p
   pointer-events: none;
 }
 .gio-cols .gio-row {
-  --gio-gutter-x: 34px;
+  --gio-gutter-x: 44px;
 }
 
 /* Columns resize handle: one per boundary between columns. It OWNS its own

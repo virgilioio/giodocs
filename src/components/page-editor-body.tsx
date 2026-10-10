@@ -3953,15 +3953,24 @@ function BlockRowImpl({
             pointerEvents: selected ? "auto" : undefined,
           }}
         >
-          <div className="flex items-center gap-0.5" style={{ height: "var(--gio-block-lh)" }}>
+          {/* Notion's gutter: the controls sit tight against the text (4px
+              to the first character), + is 24×24 with a 16px glyph, the
+              handle 14×24 with a 10×14 six-dot glyph, 2px apart, centred
+              on the block's first line. */}
+          <div
+            className="flex items-center justify-end gap-0.5"
+            style={{ height: "var(--gio-block-lh)", paddingRight: 4 }}
+          >
           <button
             type="button"
             aria-label="Insert block below"
             title="Add block below"
             onClick={onAddBelow}
-            className="grid h-6 w-6 place-items-center rounded-md text-faint hover:bg-sunken hover:text-muted"
+            className="gio-gutter-btn grid h-6 w-6 place-items-center"
           >
-            +
+            <svg viewBox="0 0 16 16" width={16} height={16} aria-hidden>
+              <path d="M8 2.5v11M2.5 8h11" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" />
+            </svg>
           </button>
           <button
             type="button"
@@ -3982,16 +3991,21 @@ function BlockRowImpl({
               // Plain click: open the block-handle menu anchored to this button.
               onHandleClick(e.currentTarget as HTMLElement);
             }}
-            className={
-              "grid h-6 w-6 place-items-center rounded-md hover:bg-sunken " +
-              (selected ? "text-blueInk" : "text-faint hover:text-muted")
-            }
+            className={"gio-gutter-btn grid h-6 place-items-center" + (selected ? " is-selected" : "")}
             style={{
+              width: 14,
               cursor: "grab",
               touchAction: "none",
             }}
           >
-            ⋮⋮
+            <svg viewBox="0 0 10 14" width={10} height={14} aria-hidden fill="currentColor">
+              <circle cx="2.5" cy="2.5" r="1.25" />
+              <circle cx="7.5" cy="2.5" r="1.25" />
+              <circle cx="2.5" cy="7" r="1.25" />
+              <circle cx="7.5" cy="7" r="1.25" />
+              <circle cx="2.5" cy="11.5" r="1.25" />
+              <circle cx="7.5" cy="11.5" r="1.25" />
+            </svg>
           </button>
           </div>
         </div>

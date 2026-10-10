@@ -271,6 +271,10 @@ provider Virgilio already has; don't build them until asked.
   and table headers 12, captions 12. Tokens in styles.css (text-h1/h2/h3
   for heading blocks, text-display for the title, text-prose for body).
   Exports use the same sizes.
+- Callouts (Notion's): 16px padding, 4px corners, 12px icon gap, ordinary
+  block spacing. The block gutter (Notion's): 44px wide, a 24×24 + with a
+  16px glyph, 2px, a 14×24 six-dot handle, 4px to the text, centred on the
+  first line; quiet at rest, full colour with a soft wash when pointed at.
 - `.gio-line` (the shared editable metrics) lives in the base layer so a
   block's size class wins over its inherits.
 
