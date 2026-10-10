@@ -11,6 +11,14 @@ import { relList, relResolve } from "@/lib/related-links";
 import { groupRows, sortProp, type PropInfo, type RowGroup, type SortSpec } from "@/lib/run-view";
 import { viewTime } from "@/lib/view-time";
 import {
+  CALC_LABELS,
+  CALC_SHORT,
+  calcsFor,
+  calculate,
+  isCalcId,
+  type CalcId,
+} from "@/lib/view-calc";
+import {
   TITLE_KEY,
   allPropKeys,
   hideProp,
@@ -1021,6 +1029,127 @@ function NewRowButton({ onAdd }: { onAdd: () => Promise<void> }) {
   );
 }
 
+/* ─────────────────────────── Calculate row ─────────────────────────── */
+
+function CalcCell({
+  k,
+  label,
+  type,
+  calc,
+  pages,
+  canArrange,
+  onPick,
+}: {
+  k: string;
+  label: string;
+  type: string | undefined;
+  calc: CalcId | undefined;
+  pages: PageListItem[];
+  canArrange: boolean;
+  onPick: (calc: CalcId | null) => void;
+}) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const [spec, setSpec] = useState<MenuSpec | null>(null);
+  const value = calc ? calculate(calc, pages, k) : "";
+  const close = () => {
+    setAnchor(null);
+    setSpec(null);
+  };
+  const content = calc ? (
+    <span className="flex min-w-0 items-baseline justify-end" style={{ gap: 6 }}>
+      <span className="shrink-0 text-label uppercase text-faint">{CALC_SHORT[calc]}</span>
+      <span className="tnum truncate text-meta text-body">{value || "—"}</span>
+    </span>
+  ) : (
+    <span className="text-meta text-faint opacity-0 group-hover/calc:opacity-100 group-focus-within/calc:opacity-100">
+      Calculate
+    </span>
+  );
+  if (!canArrange) return calc ? content : null;
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={calc ? `${label}: ${CALC_LABELS[calc]} ${value}` : `Calculate ${label}`}
+        onClick={(e) => {
+          const rows: MenuRow[] = [
+            {
+              kind: "row",
+              label: "None",
+              checked: !calc,
+              onPick: () => {
+                onPick(null);
+                close();
+              },
+            },
+            { kind: "sep" },
+            ...calcsFor(type).map<MenuRow>((c) => ({
+              kind: "row",
+              label: CALC_LABELS[c],
+              checked: calc === c,
+              onPick: () => {
+                onPick(c);
+                close();
+              },
+            })),
+          ];
+          setSpec({ title: `Calculate ${label.toLowerCase()}`, rows, width: 220 });
+          setAnchor(e.currentTarget);
+        }}
+        className="flex min-w-0 flex-1 justify-end rounded-sm hover:bg-sunken"
+        style={{ padding: "2px 4px" }}
+      >
+        {content}
+      </button>
+      <RowMenu spec={spec} anchor={anchor} align="end" onClose={close} />
+    </>
+  );
+}
+
+function CalcRow({
+  pages,
+  keys,
+  calcs,
+  canArrange,
+  labelOf,
+  typeOf,
+  onPick,
+}: {
+  pages: PageListItem[];
+  keys: string[];
+  calcs: Record<string, string> | undefined;
+  canArrange: boolean;
+  labelOf: (k: string) => string;
+  typeOf: (k: string) => string | undefined;
+  onPick: (k: string, calc: CalcId | null) => void;
+}) {
+  const any = keys.some((k) => isCalcId(calcs?.[k]));
+  if (!any && !canArrange) return null;
+  const cell = "flex min-w-0 items-center overflow-hidden border-b border-lineSoft";
+  return (
+    <div className="contents group/calc" role="row" data-calc-row>
+      <div className={cell} />
+      {keys.map((k) => {
+        const c = calcs?.[k];
+        return (
+          <div key={k} className={cell} style={{ padding: "5px 7px", minHeight: 32 }} data-calc={k}>
+            <CalcCell
+              k={k}
+              label={labelOf(k)}
+              type={typeOf(k)}
+              calc={isCalcId(c) ? c : undefined}
+              pages={pages}
+              canArrange={canArrange}
+              onPick={(calc) => onPick(k, calc)}
+            />
+          </div>
+        );
+      })}
+      <div className={cell + " sticky right-0 bg-surface"} />
+    </div>
+  );
+}
+
 /* ─────────────────────────── Table ─────────────────────────── */
 
 export function ViewTable({
@@ -1350,6 +1479,23 @@ export function ViewTable({
     );
   };
 
+  const calcRow = (forPages: PageListItem[]) => (
+    <CalcRow
+      pages={forPages}
+      keys={[TITLE_KEY, ...shown]}
+      calcs={config.calcs}
+      canArrange={canArrange}
+      labelOf={labelOf}
+      typeOf={typeOf}
+      onPick={(k, calc) => {
+        const calcs = { ...(config.calcs ?? {}) };
+        if (calc) calcs[k] = calc;
+        else delete calcs[k];
+        onConfig({ ...config, calcs });
+      }}
+    />
+  );
+
   const heading = (k: string) => (
     <PropHeading
       key={k}
@@ -1439,6 +1585,7 @@ export function ViewTable({
                     <>
                       {g.pages.map(renderRow)}
                       {onNewRow ? <NewRowButton onAdd={() => addRow(g.value)} /> : null}
+                      {calcRow(g.pages)}
                     </>
                   ) : null}
                 </GroupBlock>
@@ -1446,6 +1593,7 @@ export function ViewTable({
             })
           : rows.map(renderRow)}
         {!groups && onNewRow ? <NewRowButton onAdd={() => addRow(undefined)} /> : null}
+        {!groups ? calcRow(rows) : null}
       </div>
       {drag ? (
         <div
