@@ -117,6 +117,16 @@
 
 @media (prefers-reduced-motion: reduce) { .animate-skShimmer { animation: none } }
 
+/* Block drag: the drop line glides between gaps instead of jumping, and a
+   multi-block ghost carries a count. */
+.gio-drop-line { transition: transform 90ms cubic-bezier(.23,1,.32,1); }
+.gio-drag-count {
+  position: absolute; top: 6px; right: 6px; min-width: 20px; height: 20px; padding: 0 6px;
+  border-radius: 999px; background: var(--color-btn); color: var(--color-btnFg);
+  font: 700 12px/20px var(--font-sans); text-align: center;
+}
+@media (prefers-reduced-motion: reduce) { .gio-drop-line { transition: none } }
+
 
 
 /* ─────────────────────────── THEME RESOLUTION ───────────────────────────
