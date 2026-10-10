@@ -478,22 +478,30 @@ export function useCreatePage() {
       title?: string;
       _tempId?: string;
     }) => {
+      // New pages are private to their creator: the database adds the
+      // creator's access row right AFTER the insert, so the row can't be
+      // returned by the insert itself (RLS would hide it). Pick the id here,
+      // insert without returning, then read the page back.
+      const id = newPageId();
+      const { error: insertError } = await supabase.from("pages").insert({
+        id,
+        workspace_id: ws,
+        created_by: user!.id,
+        edited_by: user!.id,
+        verified_by: user!.id,
+        icon: "📄",
+        title: v.title ?? "",
+        parent_id: v.parentId ?? null,
+        props: v.seedProps as never,
+        blocks: (v.blocks ?? []) as never,
+      });
+      if (insertError) throw insertError;
       const { data, error } = await supabase
         .from("pages")
-        .insert({
-          workspace_id: ws,
-          created_by: user!.id,
-          edited_by: user!.id,
-          verified_by: user!.id,
-          icon: "📄",
-          title: v.title ?? "",
-          parent_id: v.parentId ?? null,
-          props: v.seedProps as never,
-          blocks: (v.blocks ?? []) as never,
-        })
         .select(
           "id, workspace_id, title, icon, props, blocks, access_type, verified_at, verified_by, edited_at, edited_by, created_by, created_at, deleted_at, archived_at, parent_id",
         )
+        .eq("id", id)
         .single();
       if (error) throw error;
       return data as unknown as PageFull;
@@ -515,7 +523,7 @@ export function useCreatePage() {
         verified_by: user?.id ?? null,
         edited_at: nowIso,
         edited_by: user?.id ?? null,
-        access_type: "workspace" as PageListItem["access_type"],
+        access_type: "restricted" as PageListItem["access_type"],
       };
       qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) =>
         prev ? [optimistic, ...prev] : [optimistic],
@@ -773,22 +781,29 @@ export function useDuplicatePage() {
 
       const suffixed = `${(src.title ?? "").trim() || "Untitled"} (copy)`;
 
+      // A copy is a new page: private to whoever made it, like any other
+      // new page (copying the source's access used to fail outright for
+      // restricted pages, since nobody was on the copy's access list).
+      const id = newPageId();
+      const { error: insertError } = await supabase.from("pages").insert({
+        id,
+        workspace_id: ws,
+        created_by: user!.id,
+        edited_by: user!.id,
+        verified_by: user!.id,
+        icon: src.icon ?? "📄",
+        title: suffixed,
+        props: (src.props ?? {}) as never,
+        blocks: cloned as never,
+        access_type: "restricted",
+      });
+      if (insertError) throw insertError;
       const { data, error } = await supabase
         .from("pages")
-        .insert({
-          workspace_id: ws,
-          created_by: user!.id,
-          edited_by: user!.id,
-          verified_by: user!.id,
-          icon: src.icon ?? "📄",
-          title: suffixed,
-          props: (src.props ?? {}) as never,
-          blocks: cloned as never,
-          access_type: src.access_type,
-        })
         .select(
           "id, title, icon, props, verified_at, verified_by, edited_at, edited_by, access_type, archived_at",
         )
+        .eq("id", id)
         .single();
       if (error) throw error;
       return data as PageListItem;
@@ -1423,4 +1438,15 @@ export function useSetPageParent() {
       toast.push((err as Error).message);
     },
   });
+}
+
+/** A page id chosen by the client, so a page can be read back after an
+ *  insert that doesn't return it. */
+function newPageId(): string {
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) =>
+      (Number(c) ^ (Math.random() * 16) >> (Number(c) / 4)).toString(16),
+    )
+  );
 }
