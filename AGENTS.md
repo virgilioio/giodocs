@@ -42,13 +42,16 @@ before proceeding.
   queries never select("*") — blocks is fetched only by usePage(id).
 
 ## Product model (the thesis — protect it)
-- ONE content object: Page. No page_type, no parent_id, no kind, no
-  is_database, no per-content-type tables, ever.
+- ONE content object: Page. No page_type, no kind, no is_database, no
+  per-content-type tables, ever.
 - A "database" is a saved query (a view). A view stores a filter, never
   a list of page ids.
-- There is NO folder tree and NO nested pages. A page's location is its
-  area property. Areas are derived from page properties — never a table,
-  never authored.
+- There is NO folder tree. A page's location is its area property. Areas
+  are derived from page properties — never a table, never authored.
+- "Placed in": a page can sit inside another page (pages.parent_id), at
+  most three levels deep, guarded by guard_page_parent. Deleting a page
+  un-places its children; it never deletes them. This is placement, not a
+  folder tree: the sidebar and views still organise by properties.
 - Freshness is first-class: verified_at is never touched by an edit;
   edited_at is never touched by a verification. The touch_page trigger's
   WHEN clause (title, blocks, props, icon) is what guarantees this.
@@ -82,8 +85,10 @@ provider Virgilio already has; don't build them until asked.
 - New pages are private to their creator (access_type 'restricted' with the
   creator as the only editor). Sharing with more people or with everyone in
   the workspace is a separate, explicit step. Existing pages keep their
-  access. Enforced by the database default and the
-  pages_grant_creator_access trigger. Create pages with a client-generated
+  access. The app sends access_type 'restricted' and the
+  pages_grant_creator_access trigger makes the creator an editor. The
+  column default is still 'workspace' until the new app is published from
+  Lovable; then a migration flips it. Create pages with a client-generated
   id and no RETURNING (insert, then select): the creator's access row is
   added after the insert, so an insert...select would fail RLS.
 
