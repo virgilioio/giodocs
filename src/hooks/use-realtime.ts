@@ -14,6 +14,8 @@ const PAGE_LIST_FIELDS: (keyof PageListItem)[] = [
   "verified_by",
   "edited_at",
   "edited_by",
+  "created_at",
+  "created_by",
   "access_type",
 ];
 
