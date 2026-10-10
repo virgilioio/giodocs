@@ -36,9 +36,19 @@ type SearchHit = {
   rank: number;
 };
 
+/** Where a page lives, for a result's second line: its database, or the
+ *  page it sits inside. Top-level pages need no note. */
+function placeOf(p: PageListItem | undefined, pages: PageListItem[]): string {
+  if (!p?.parent_id) return "";
+  const parent = pages.find((x) => x.id === p.parent_id);
+  if (!parent) return "";
+  const name = parent.title?.trim() || "Untitled";
+  return p.database_id ? name : `in ${name}`;
+}
+
 type Row =
   | { kind: "page"; page: SearchHit | PageListItem }
-  | { kind: "block"; pageId: string; pageTitle: string; pageIcon: string | null; area: string | null; blockId: string | null; sentence: string; term: string }
+  | { kind: "block"; pageId: string; pageTitle: string; pageIcon: string | null; blockId: string | null; sentence: string; term: string }
   | { kind: "view"; view: ViewRow }
   | { kind: "action"; label: string; run: () => void };
 
@@ -179,7 +189,6 @@ export function CommandPalette({
     for (const h of hits) {
       if (blockTotal >= 8) break;
       const snips = (h.snippets ?? []).slice(0, 2);
-      const area = (h.props?.area as string | undefined) ?? null;
       for (const s of snips) {
         if (blockTotal >= 8) break;
         const text = s?.text ?? "";
@@ -189,7 +198,6 @@ export function CommandPalette({
           pageId: h.id,
           pageTitle: h.title || "Untitled",
           pageIcon: h.icon,
-          area,
           blockId: s?.id ?? null,
           sentence: extractSentence(text, term),
           term,
@@ -377,7 +385,7 @@ export function CommandPalette({
             <Chip>↵</Chip><span>open</span>
             <Chip>esc</Chip><span>close</span>
           </div>
-          <em className="text-caption text-faint">One object. Many views.</em>
+          <em className="text-caption text-faint">Pages, rows and databases.</em>
         </div>
       </div>
     </div>
@@ -420,10 +428,16 @@ function PaletteRow({
   if (row.kind === "page") {
     const p = row.page as SearchHit | PageListItem;
     const props = (p.props ?? {}) as Record<string, unknown>;
-    const area = typeof props.area === "string" ? (props.area as string) : "";
-    const ownerId = typeof props.owner === "string" ? (props.owner as string) : "";
-    const owner = ownerId ? memberBy.get(ownerId) ?? "" : "";
-    const sub = [area, owner].filter(Boolean).join(" · ");
+    // Where it lives (its database, or the page it's inside), and who it's
+    // assigned to by its database's first person property.
+    const full = pages.find((x) => x.id === p.id);
+    const where = placeOf(full, pages);
+    const personKey = full?.database_id
+      ? propDefs.find((d) => d.database_id === full.database_id && d.type === "person" && !d.archived_at)?.key
+      : undefined;
+    const personId = personKey && typeof props[personKey] === "string" ? (props[personKey] as string) : "";
+    const person = personId ? memberBy.get(personId) ?? "" : "";
+    const sub = [where, person].filter(Boolean).join(" · ");
     return (
       <button type="button" className={cls} onMouseEnter={onEnter} onClick={onSelect}>
         <Ico icon={p.icon || "📄"} size={20} />
@@ -437,8 +451,9 @@ function PaletteRow({
     );
   }
   if (row.kind === "block") {
-    const sub =
-      [row.pageTitle, row.area].filter(Boolean).join(" · ");
+    const sub = [row.pageTitle, placeOf(pages.find((x) => x.id === row.pageId), pages).replace(/^in /, "")]
+      .filter(Boolean)
+      .join(" · ");
     return (
       <button type="button" className={cls} onMouseEnter={onEnter} onClick={onSelect}>
         <span className="text-ui">{row.pageIcon || "📄"}</span>
