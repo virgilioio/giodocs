@@ -19,6 +19,7 @@ import {
 } from "@/lib/custom-emoji";
 import { isImageMime } from "@/lib/image-ops";
 import { useToast } from "@/lib/toast";
+import { exitOnly } from "@/lib/exit-motion";
 
 const W = 344;
 const EST_H = 470;
@@ -142,6 +143,7 @@ export function CustomEmojiComposer({
 
   return (
     <div
+      ref={exitOnly("pop")}
       role="dialog"
       aria-label={editing ? "Edit custom emoji" : "Add custom emoji"}
       className="fixed bg-surface border border-line shadow-popover animate-popIn"
@@ -256,7 +258,7 @@ export function CustomEmojiComposer({
         onChange={(e) => setName(sanitizeEmojiName(e.target.value))}
         placeholder="ship-it"
         aria-label="Emoji name"
-        className="w-full border border-line bg-surface font-mono focus:outline-none"
+        className="w-full border border-line bg-surface font-mono focus:border-accent focus:outline-none"
         style={{ marginTop: 11, padding: "6px 9px", fontSize: 12.5, borderRadius: 8 }}
       />
       <input
@@ -264,7 +266,7 @@ export function CustomEmojiComposer({
         onChange={(e) => setDesc(e.target.value)}
         placeholder="Description (optional)"
         aria-label="Description"
-        className="w-full border border-line bg-surface focus:outline-none"
+        className="w-full border border-line bg-surface focus:border-accent focus:outline-none"
         style={{ marginTop: 7, padding: "6px 9px", fontSize: 12.5, borderRadius: 8 }}
       />
 

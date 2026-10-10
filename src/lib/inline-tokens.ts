@@ -28,9 +28,16 @@ export type InlineOpts = {
   emoji?: readonly { name: string; url?: string; description?: string }[];
 };
 
+// The name set is rebuilt only when the emoji list itself changes; the
+// tokenizer runs several times per keystroke.
+const namesCache = new WeakMap<object, ReadonlySet<string>>();
 export function inlineEmojiNames(opts?: InlineOpts): ReadonlySet<string> {
   const list = opts?.emoji ?? getInlineEmojiSet();
-  return new Set(list.map((e) => e.name));
+  const hit = namesCache.get(list);
+  if (hit) return hit;
+  const set = new Set(list.map((e) => e.name));
+  namesCache.set(list, set);
+  return set;
 }
 
 /** ':' + name + ':' where name is ^[a-z0-9][a-z0-9-]{0,23}$ */

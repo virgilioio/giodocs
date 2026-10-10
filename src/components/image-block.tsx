@@ -75,7 +75,9 @@ const BAR: React.CSSProperties = {
   position: "absolute",
   top: 8,
   left: "50%",
-  transform: "translateX(-50%)",
+  // translate, not transform, so the pop-in scale doesn't knock it off centre.
+  translate: "-50% 0",
+  transformOrigin: "top center",
   zIndex: 6,
   background: "var(--color-btn)",
   borderRadius: 9,
@@ -184,7 +186,11 @@ function EmptyState({
         e.preventDefault();
         setOver(true);
       }}
-      onDragLeave={() => setOver(false)}
+      onDragLeave={(e) => {
+        // Moving over a child element fires dragleave on the parent: only
+        // clear when the pointer really left (no flicker).
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false);
+      }}
       onDrop={(e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -276,6 +282,37 @@ function useUploader(onDone: (path: string, slot: number) => void) {
 
 /* ────────────── Resolved <img> ────────────── */
 
+/* Remember each image's shape so its block holds that height while the
+   signed URL resolves and the file decodes, instead of growing from zero
+   and pushing the page down. Per-device cache only; nothing is written to
+   the block. */
+const RATIO_KEY = "gio.image.ratios";
+const RATIO_MAX = 400;
+let ratios: Map<string, number> | null = null;
+function ratioCache(): Map<string, number> {
+  if (ratios) return ratios;
+  ratios = new Map();
+  try {
+    const raw = localStorage.getItem(RATIO_KEY);
+    if (raw) for (const [k, v] of JSON.parse(raw) as [string, number][]) ratios.set(k, v);
+  } catch {
+    /* private mode or bad data: start empty */
+  }
+  return ratios;
+}
+function rememberRatio(path: string, ratio: number) {
+  const m = ratioCache();
+  if (m.get(path) === ratio) return;
+  m.delete(path);
+  m.set(path, ratio);
+  while (m.size > RATIO_MAX) m.delete(m.keys().next().value as string);
+  try {
+    localStorage.setItem(RATIO_KEY, JSON.stringify([...m]));
+  } catch {
+    /* quota or private mode */
+  }
+}
+
 function StoredImage({
   path,
   preview,
@@ -289,17 +326,58 @@ function StoredImage({
 }) {
   const q = useSignedImageUrl(path);
   const src = q.data ?? preview ?? "";
+  // Once any source has shown, keep showing: the switch from the upload
+  // preview to the signed URL, or a refreshed signed URL, must not blink
+  // back to the placeholder.
+  const [loaded, setLoaded] = useState(false);
+  const ratioRef = useRef<number | null>(null);
+  useEffect(() => {
+    // The preview loads before the upload has a path; remember its shape
+    // once the path arrives.
+    if (path && ratioRef.current) rememberRatio(path, ratioRef.current);
+  }, [path]);
   useEffect(() => {
     if (q.data && preview && onLoaded) onLoaded();
   }, [q.data, preview, onLoaded]);
-  if (!src) return null;
+  const known = path ? ratioCache().get(path) : undefined;
+  const onImg = (img: HTMLImageElement) => {
+    if (img.naturalWidth && img.naturalHeight) {
+      ratioRef.current = img.naturalWidth / img.naturalHeight;
+      if (path) rememberRatio(path, ratioRef.current);
+    }
+    setLoaded(true);
+  };
   return (
-    <img
-      src={src}
-      alt={alt}
-      draggable={false}
-      style={{ display: "block", width: "100%", height: "auto", borderRadius: "inherit" }}
-    />
+    <div
+      style={{
+        position: "relative",
+        borderRadius: "inherit",
+        // Until the file is in, hold the remembered shape (or 16:9).
+        aspectRatio: loaded ? undefined : String(known ?? 16 / 9),
+        background: loaded ? undefined : "var(--color-sunken)",
+      }}
+    >
+      {src ? (
+        <img
+          ref={(el) => {
+            // A cached image can finish before React attaches onLoad.
+            if (el?.complete && el.naturalWidth) onImg(el);
+          }}
+          src={src}
+          alt={alt}
+          draggable={false}
+          onLoad={(e) => onImg(e.currentTarget)}
+          style={{
+            display: "block",
+            width: "100%",
+            height: "auto",
+            borderRadius: "inherit",
+            opacity: loaded ? 1 : 0,
+            transition: "opacity 200ms cubic-bezier(0.23, 1, 0.32, 1)",
+          }}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -342,8 +420,12 @@ export function ImageBlock({
   onDelete: () => void;
   onUndoMark?: () => void;
 }) {
-  const align = readAlign(block);
-  const w = readW(block);
+  // While resizing, the width lives here (only this image re-renders); the
+  // block is written once, on release — one save and one undo step, not
+  // one per pixel.
+  const [draft, setDraft] = useState<{ w: number; align: ReturnType<typeof readAlign> } | null>(null);
+  const align = draft?.align ?? readAlign(block);
+  const w = draft?.w ?? readW(block);
   const path = (block as { path?: string }).path ?? null;
   const cap = ((block as { cap?: string }).cap ?? "") as string;
   const [hover, setHover] = useState(false);
@@ -368,25 +450,48 @@ export function ImageBlock({
     [start],
   );
 
-  /* Resize — listeners on WINDOW, since the pointer leaves a shrinking image. */
-  const beginResize = (edge: "left" | "right", ev: React.MouseEvent) => {
+  /* Resize — listeners on WINDOW, since the pointer leaves a shrinking image.
+   * Pointer events (mouse, pen and touch); Esc puts the width back. */
+  const beginResize = (edge: "left" | "right", ev: React.PointerEvent) => {
     if (locked) return;
     ev.preventDefault();
     ev.stopPropagation();
     const startX = ev.clientX;
     const startWidth = w;
+    const startAlign = align;
     const containerW = wrapRef.current?.offsetWidth ?? 640;
-    onUndoMark?.();
-    const move = (e: MouseEvent) => {
-      const next = resizeW(startWidth, e.clientX - startX, containerW, align, edge);
-      onChange({ w: next, align: alignAfterResize(align) } as unknown as Partial<Blk>);
+    let last: { w: number; align: ReturnType<typeof readAlign> } | null = null;
+    const prevSelect = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
+    const move = (e: PointerEvent) => {
+      const next = resizeW(startWidth, e.clientX - startX, containerW, startAlign, edge);
+      last = { w: next, align: alignAfterResize(startAlign) };
+      setDraft(last);
     };
-    const up = () => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
+    const stop = (commitIt: boolean) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKey, true);
+      document.body.style.userSelect = prevSelect;
+      setDraft(null);
+      if (commitIt && last && (last.w !== startWidth || last.align !== startAlign)) {
+        onUndoMark?.();
+        onChange({ w: last.w, align: last.align } as unknown as Partial<Blk>);
+      }
     };
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
+    const onUp = () => stop(true);
+    const onCancel = () => stop(false);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      stop(false);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKey, true);
   };
 
   const empty = !path && !slot?.preview;
@@ -484,8 +589,9 @@ export function ImageBlock({
                 key={edge}
                 role="separator"
                 aria-label={`Resize from the ${edge}`}
-                onMouseDown={(e) => beginResize(edge, e)}
+                onPointerDown={(e) => beginResize(edge, e)}
                 style={{
+                  touchAction: "none",
                   position: "absolute",
                   [edge]: 5,
                   top: "50%",

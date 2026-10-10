@@ -98,7 +98,11 @@ function EmptyState({
         e.preventDefault();
         setOver(true);
       }}
-      onDragLeave={() => setOver(false)}
+      onDragLeave={(e) => {
+        // Moving over a child element fires dragleave on the parent: only
+        // clear when the pointer really left (no flicker).
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false);
+      }}
       onDrop={(e) => {
         e.preventDefault();
         e.stopPropagation();

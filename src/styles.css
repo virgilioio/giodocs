@@ -94,28 +94,117 @@
 
   --breakpoint-xs: 30rem;
 
-  --animate-popIn: popIn 120ms ease-out;
-  --animate-palIn: palIn 140ms ease-out;
-  --animate-cardIn: cardIn 220ms ease-out;
-  --animate-fadeIn: fadeIn 150ms ease-out;
-  --animate-toastUp: toastUp 180ms ease-out;
-  --animate-shake: shake 350ms ease-in-out;
-  --animate-skShimmer: skShimmer 1.5s linear infinite;
+  /* Motion (the Gio motion standard, shared with Gio Sales and Gio ATS).
+     Overriding --ease-out / --ease-in-out also retunes Tailwind's
+     ease-out / ease-in-out utilities. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);      /* enter, exit, feedback */
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);  /* on-screen movement */
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);   /* sheets, drawers */
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1); /* drag drop settle only */
+
+  /* Menus and popovers grow from their trigger (set transform-origin);
+     dialogs from their centre. The command palette is never animated. */
+  --animate-popIn: popIn 180ms cubic-bezier(0.23, 1, 0.32, 1);
+  --animate-dialogIn: dialogIn 220ms cubic-bezier(0.23, 1, 0.32, 1);
+  --animate-cardIn: cardIn 220ms cubic-bezier(0.23, 1, 0.32, 1);
+  --animate-fadeIn: fadeIn 150ms cubic-bezier(0.23, 1, 0.32, 1);
+  --animate-toastUp: toastUp 400ms ease;
+  --animate-shake: shake 300ms linear;
+  --animate-skShimmer: skShimmer 1.2s linear infinite;
 }
 
-@keyframes popIn   { from { opacity:0; transform:translateY(-4px) scale(.985) } to { opacity:1; transform:none } }
-@keyframes palIn   { from { opacity:0; transform:translateY(8px) }  to { opacity:1; transform:none } }
-@keyframes cardIn  { from { opacity:0; transform:translateY(10px) scale(.99) } to { opacity:1; transform:none } }
-@keyframes fadeIn  { from { opacity:0 } to { opacity:1 } }
-@keyframes toastUp { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:none } }
-@keyframes shake   { 0%,100% { transform:translateX(0) } 25% { transform:translateX(-3px) } 75% { transform:translateX(3px) } }
+/* Durations and delays — plain custom properties, read by CSS and by
+   src/lib/motion.ts. Exits are always faster than entrances. */
+:root {
+  --dur-press: 160ms;  --dur-hover: 150ms;  --dur-tooltip: 125ms;
+  --dur-menu-in: 180ms;  --dur-menu-out: 120ms;
+  --dur-dialog-in: 220ms; --dur-dialog-out: 150ms;
+  --dur-expand: 240ms;  --dur-move: 240ms;  --dur-switch: 200ms;
+  --dur-toast: 400ms;  --dur-toast-out: 200ms;
+  --dur-flash: 1200ms;  --dur-sidebar: 240ms;
+  --delay-tooltip: 400ms;
+}
+
+@keyframes popIn    { from { opacity:0; transform:scale(.96) } to { opacity:1; transform:none } }
+@keyframes popOut   { from { opacity:1; transform:none } to { opacity:0; transform:scale(.96) } }
+@keyframes dialogIn { from { opacity:0; transform:scale(.96) } to { opacity:1; transform:none } }
+@keyframes dialogOut{ from { opacity:1; transform:none } to { opacity:0; transform:scale(.96) } }
+@keyframes cardIn   { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:none } }
+@keyframes fadeIn   { from { opacity:0 } to { opacity:1 } }
+@keyframes fadeOut  { from { opacity:1 } to { opacity:0 } }
+@keyframes toastUp  { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:none } }
+@keyframes shake    { 0%,100% { transform:translateX(0) } 20% { transform:translateX(-6px) } 40% { transform:translateX(5px) } 60% { transform:translateX(-3px) } 80% { transform:translateX(2px) } }
 @keyframes skShimmer { from { background-position: 100% 0 } to { background-position: -100% 0 } }
 /* Marching ants — ONE grid-level overlay for a copied/cut sheet range. Four
    linear-gradient dashes, one per edge, scrolled by the animation: per-cell
    borders would fight the gridlines and the rule-above. */
 @keyframes shAnts { to { background-position: 14px 0, -14px 100%, 0 -14px, 100% 14px } }
 
-@media (prefers-reduced-motion: reduce) { .animate-skShimmer { animation: none } }
+/* Reduced motion keeps opacity and colour, drops movement. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --animate-popIn: fadeIn 180ms cubic-bezier(0.23, 1, 0.32, 1);
+    --animate-dialogIn: fadeIn 220ms cubic-bezier(0.23, 1, 0.32, 1);
+    --animate-cardIn: fadeIn 220ms cubic-bezier(0.23, 1, 0.32, 1);
+    --animate-toastUp: fadeIn 400ms ease;
+    --animate-shake: none;
+    --dur-sidebar: 0ms;
+    --dur-switch: 0ms;
+  }
+  .animate-skShimmer { animation: none }
+}
+
+/* Press feedback on buttons: primary (bg-btn), bordered secondary, and
+   anything opted in with .gio-press. Uses the `scale` property so it
+   composes with any transform or translate already on the button. */
+button:is([class~="bg-btn"], [class~="border-line"][class~="bg-surface"], .gio-press) {
+  transition-property: color, background-color, border-color, box-shadow, opacity, scale;
+  transition-duration: var(--dur-press);
+  transition-timing-function: var(--ease-out);
+}
+button:is([class~="bg-btn"], [class~="border-line"][class~="bg-surface"], .gio-press):active:not(:disabled) {
+  scale: .97;
+}
+@media (prefers-reduced-motion: reduce) {
+  button:is([class~="bg-btn"], [class~="border-line"][class~="bg-surface"], .gio-press):active:not(:disabled) { scale: none; }
+}
+
+/* A label that turns bold when active keeps its width: the box is sized by
+   an invisible bold copy, so neighbouring options never shift. */
+.gio-stable-bold { display: inline-grid; }
+.gio-stable-bold::after {
+  content: attr(data-label); font-weight: 700;
+  height: 0; overflow: hidden; visibility: hidden; user-select: none; pointer-events: none;
+}
+
+/* Tooltips (src/lib/tooltips.ts): every `title` on a control, and on text
+   only while it is cut off. 400ms delay; neighbours open instantly. */
+.gio-tooltip {
+  position: fixed; z-index: 150; pointer-events: none;
+  max-width: 280px; padding: 4px 8px; border-radius: 6px;
+  background: var(--color-btn); color: var(--color-btnFg);
+  font: 400 var(--text-caption)/1.4 var(--font-sans);
+  white-space: pre-line; overflow-wrap: anywhere;
+  box-shadow: 0 6px 18px rgba(13,13,9,.18);
+  opacity: 0; transform: scale(.97); visibility: hidden;
+  transition: opacity 100ms var(--ease-out), transform 100ms var(--ease-out), visibility 0s linear 100ms;
+}
+.gio-tooltip[data-open="true"] {
+  opacity: 1; transform: none; visibility: visible;
+  transition: opacity var(--dur-tooltip) var(--ease-out), transform var(--dur-tooltip) var(--ease-out), visibility 0s;
+}
+.gio-tooltip[data-instant="true"] { transition: none; }
+@media (prefers-reduced-motion: reduce) { .gio-tooltip { transform: none; } }
+
+/* Block drag: the drop line glides between gaps instead of jumping, and a
+   multi-block ghost carries a count. */
+.gio-drop-line { transition: transform 90ms cubic-bezier(.23,1,.32,1); }
+.gio-drag-count {
+  position: absolute; top: 6px; right: 6px; min-width: 20px; height: 20px; padding: 0 6px;
+  border-radius: 999px; background: var(--color-btn); color: var(--color-btnFg);
+  font: 700 12px/20px var(--font-sans); text-align: center;
+}
+@media (prefers-reduced-motion: reduce) { .gio-drop-line { transition: none } }
 
 
 

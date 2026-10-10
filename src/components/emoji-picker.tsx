@@ -230,7 +230,7 @@ export function EmojiPicker({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search emoji…"
           aria-label="Search emoji"
-          className="w-full rounded-md border border-line bg-track px-2 py-1.5 text-meta outline-none placeholder:text-faint"
+          className="w-full rounded-md border border-line bg-track px-2 py-1.5 text-meta outline-none placeholder:text-faint focus:border-accent"
           style={{ borderRadius: 9, padding: "7px 9px", fontSize: 14 }}
         />
       </div>

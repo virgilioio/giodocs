@@ -7,6 +7,7 @@
  */
 
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import { exitOnly } from "@/lib/exit-motion";
 import { useRowMenu, RowMenuList } from "./row-menu";
 import { useToast } from "@/lib/toast";
 import {
@@ -215,7 +216,9 @@ export function ExportDialog({
     <>
       {/* Scrim */}
       <div
+        ref={exitOnly("fade")}
         aria-hidden
+        className="animate-fadeIn"
         onMouseDown={() => (busy ? undefined : onClose())}
         style={{
           position: "fixed",
@@ -231,12 +234,15 @@ export function ExportDialog({
         role="dialog"
         aria-label="Export page"
         onMouseDown={(e) => e.stopPropagation()}
-        className="animate-popIn"
+        ref={exitOnly("dialog")}
+        className="animate-dialogIn"
         style={{
           position: "fixed",
           top: "50%",
           left: "50%",
-          transform: "translate(-50%, -50%)",
+          // The independent translate property, so the scale animation
+          // composes with the centring instead of replacing it.
+          translate: "-50% -50%",
           width: 460,
           zIndex: "calc(var(--z-modal) + 1)",
           background: "var(--color-surface)",
@@ -496,12 +502,13 @@ function DetailsRow({
           style={{
             position: "absolute",
             top: 2,
-            left: value ? 15 : 2,
+            left: 2,
             width: 13,
             height: 13,
             borderRadius: 999,
             background: "var(--color-surface)",
-            transition: "left 150ms ease",
+            transform: value ? "translateX(13px)" : "none",
+            transition: "transform var(--dur-switch) var(--ease-out)",
             boxShadow: "0 1px 2px rgba(13,13,9,.22)",
           }}
         />

@@ -152,8 +152,12 @@ export function useDragSession<T, P>(
     const d = s.current;
     if (!d) return;
     const next = optsRef.current.hitTest(d.pt, d.payload);
+    // Same target as last move: don't re-render the table on every event.
+    const same =
+      next === d.target ||
+      (next !== null && d.target !== null && JSON.stringify(next) === JSON.stringify(d.target));
     d.target = next;
-    setTarget(next);
+    if (!same) setTarget(next);
   }, []);
 
   const startGhost = useCallback(() => {

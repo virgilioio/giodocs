@@ -123,7 +123,7 @@ function LoginPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1.5 block w-full rounded-lg border border-line bg-track px-3 py-2 text-ui text-body outline-none transition-colors focus:border-accent"
+              className="mt-1.5 block w-full rounded-lg border border-line bg-track px-3 py-2 text-ui text-body outline-none focus:border-accent"
             />
             <DomainHint state={domain} />
           </div>
@@ -141,7 +141,7 @@ function LoginPage() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="block w-full rounded-lg border border-line bg-track px-3 py-2 pr-16 text-ui text-body outline-none transition-colors focus:border-accent"
+                className="block w-full rounded-lg border border-line bg-track px-3 py-2 pr-16 text-ui text-body outline-none focus:border-accent"
               />
               <button
                 type="button"

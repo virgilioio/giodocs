@@ -1,5 +1,6 @@
 import {
   createContext,
+  memo,
   useCallback,
   useContext,
   useEffect,
@@ -9,6 +10,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { edgeVelocity } from "@/lib/drag-scroll";
 import { useNavigate } from "@tanstack/react-router";
 import { primaryMod } from "@/lib/platform";
 import { nanoid } from "nanoid";
@@ -177,6 +179,7 @@ import {
   calloutLabel,
 } from "@/lib/callout-color";
 import type { IconKey } from "@/lib/menu-icons";
+import { exitRef } from "@/lib/exit-motion";
 
 
 /** Module-local bridge: nested ColumnStack keystrokes set this before
@@ -465,6 +468,56 @@ export function EditableTitle({
 
 /* ────────────── Public: EditableBody ────────────── */
 
+
+/* Stable per-block callbacks. Each render records the LATEST handlers for a
+ * block; the functions handed to <BlockRow> are created once per block id and
+ * forward to those latest handlers. BlockRow is memoised, so typing in one
+ * block re-renders that block only — not every block on the page — while
+ * every callback still sees current state. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyFn = (...args: any[]) => any;
+function useStableRowHandlers() {
+  const latest = useRef(new Map<string, Record<string, AnyFn | undefined>>());
+  const cache = useRef(new Map<string, Record<string, AnyFn>>());
+  // The ids handed out during THIS render (reset each time the owner
+  // renders). After the commit, blocks that weren't rendered (deleted) are
+  // forgotten, so their closures and the blocks array they hold can be
+  // collected. Never cleared in the effect: StrictMode runs effects twice.
+  const seen = useRef(new Set<string>());
+  seen.current = new Set();
+  useEffect(() => {
+    const live = seen.current;
+    if (live.size === 0) return;
+    for (const id of latest.current.keys()) {
+      if (!live.has(id)) {
+        latest.current.delete(id);
+        cache.current.delete(id);
+      }
+    }
+  });
+  return useCallback(<T extends Record<string, AnyFn | undefined>>(id: string, handlers: T): T => {
+    seen.current.add(id);
+    latest.current.set(id, handlers);
+    let c = cache.current.get(id);
+    if (!c) {
+      c = {};
+      cache.current.set(id, c);
+    }
+    const out: Record<string, AnyFn | undefined> = {};
+    for (const k of Object.keys(handlers)) {
+      // A handler that is absent this render stays absent, so a row that
+      // checks `if (onX)` still sees the difference.
+      if (!handlers[k]) {
+        out[k] = undefined;
+        continue;
+      }
+      if (!c[k]) c[k] = (...args: unknown[]) => latest.current.get(id)?.[k]?.(...args);
+      out[k] = c[k];
+    }
+    return out as T;
+  }, []);
+}
+
 export function EditableBody({
   pageId,
   initialBlocks,
@@ -488,6 +541,7 @@ export function EditableBody({
   });
   // If the incoming server data changes for a different page, resync.
   const workspaceId = useWorkspaceId();
+  const rowHandlers = useStableRowHandlers();
   const navigate = useNavigate();
   const lastPage = useRef(pageId);
   useEffect(() => {
@@ -908,6 +962,19 @@ export function EditableBody({
    * is unambiguous at endDrag time, even when the pointer wanders across
    * multiple columns during the drag. */
 
+  // A press on the handle is only a drag once the pointer has moved 4px:
+  // a plain click still opens the block menu, and a real drag never also
+  // opens it on release.
+  const pendingDragRef = useRef<{
+    pointerId: number;
+    x: number;
+    y: number;
+    ids: string[];
+    sourceCol: ColumnRef | null;
+    handle: HTMLElement;
+  } | null>(null);
+  const ghostRef = useRef<{ el: HTMLElement; offX: number; offY: number } | null>(null);
+
   const beginDrag = useCallback(
     (
       id: string,
@@ -927,27 +994,108 @@ export function EditableBody({
         selectedIds.has(id) &&
         sameScope(selScopeRef.current, sourceCol);
       if (isMulti) dragIds = ids.filter((x) => selectedIds.has(x));
-      if (dragIds.length === 1) {
-        setSelectedIds(new Set());
-        setSelScope(null);
-        anchorId.current = null;
-      }
-      try {
-        ev.currentTarget.setPointerCapture(ev.pointerId);
-      } catch {
-        /* ignore */
-      }
-      document.body.style.userSelect = "none";
-      setDragging({
+      pendingDragRef.current = {
+        pointerId: ev.pointerId,
+        x: ev.clientX,
+        y: ev.clientY,
         ids: dragIds,
         sourceCol,
-        targetCol: sourceCol,
-        gap: null,
-        indicator: null,
-      });
+        handle: ev.currentTarget,
+      };
     },
     [scopedList, selectedIds],
   );
+
+  /** Turn a pending press into a real drag: pointer capture, no text
+   *  selection, and a ghost of the block(s) that follows the pointer. */
+  const activateDrag = useCallback((ev: PointerEvent) => {
+    const pd = pendingDragRef.current;
+    pendingDragRef.current = null;
+    if (!pd) return;
+    if (pd.ids.length === 1) {
+      setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
+      setSelScope(null);
+      anchorId.current = null;
+    }
+    try {
+      pd.handle.setPointerCapture(pd.pointerId);
+    } catch {
+      /* ignore */
+    }
+    window.getSelection()?.removeAllRanges();
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "grabbing";
+    const row = rowEls.current.get(pd.ids[0]);
+    if (row) {
+      const r = row.getBoundingClientRect();
+      const g = row.cloneNode(true) as HTMLElement;
+      g.removeAttribute("data-block-id");
+      g.querySelectorAll("[data-block-id]").forEach((n) => n.removeAttribute("data-block-id"));
+      g.querySelectorAll("[contenteditable]").forEach((n) => n.removeAttribute("contenteditable"));
+      g.querySelectorAll("[id]").forEach((n) => n.removeAttribute("id"));
+      Object.assign(g.style, {
+        position: "fixed",
+        left: "0px",
+        top: "0px",
+        width: `${r.width}px`,
+        maxHeight: "180px",
+        overflow: "hidden",
+        margin: "0",
+        pointerEvents: "none",
+        zIndex: "9999",
+        opacity: "0.9",
+        background: "var(--color-surface)",
+        borderRadius: "8px",
+        boxShadow: "var(--shadow-popover)",
+        willChange: "transform",
+        transition: "none",
+      } as Partial<CSSStyleDeclaration>);
+      if (pd.ids.length > 1) {
+        const badge = document.createElement("div");
+        badge.textContent = String(pd.ids.length);
+        badge.className = "gio-drag-count";
+        g.appendChild(badge);
+      }
+      document.body.appendChild(g);
+      ghostRef.current = { el: g, offX: r.left - pd.x, offY: r.top - pd.y };
+      g.style.transform = `translate3d(${ev.clientX + ghostRef.current.offX}px, ${ev.clientY + ghostRef.current.offY}px, 0) scale(1.02)`;
+    }
+    const next = {
+      ids: pd.ids,
+      sourceCol: pd.sourceCol,
+      targetCol: pd.sourceCol,
+      gap: null,
+      indicator: null,
+    };
+    draggingRef.current = next;
+    setDragging(next);
+  }, []);
+
+  // While a press is pending, decide click vs drag.
+  useEffect(() => {
+    const onMove = (ev: PointerEvent) => {
+      const pd = pendingDragRef.current;
+      if (!pd || ev.pointerId !== pd.pointerId) return;
+      if (Math.hypot(ev.clientX - pd.x, ev.clientY - pd.y) < 4) return;
+      activateDrag(ev);
+    };
+    const onUp = (ev: PointerEvent) => {
+      const pd = pendingDragRef.current;
+      if (pd && ev.pointerId === pd.pointerId) pendingDragRef.current = null;
+      // A flick can start and release a drag within one frame, before the
+      // drag's own listeners are attached. End it here so it can't stay
+      // live with no button held. (endDrag is a no-op the second time.)
+      if (draggingRef.current) endDragRef.current(ev.type === "pointerup");
+    };
+    window.addEventListener("pointermove", onMove, true);
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointercancel", onUp, true);
+    return () => {
+      window.removeEventListener("pointermove", onMove, true);
+      window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("pointercancel", onUp, true);
+    };
+  }, [activateDrag]);
 
   const computeGap = useCallback(
     (
@@ -1197,79 +1345,138 @@ export function EditableBody({
   );
 
 
-  // Auto-scroll while dragging near edges.
+  // Auto-scroll while dragging near the top or bottom: proportional to how
+  // close the pointer is to the edge, and the drop line follows the
+  // content as it scrolls instead of freezing.
   const scrollContainerRef = useRef<HTMLElement | null>(null);
   const scrollRafRef = useRef<number | null>(null);
-  const scrollDirRef = useRef<0 | 1 | -1>(0);
-  const tickScroll = useCallback(() => {
-    const dir = scrollDirRef.current;
-    const el = scrollContainerRef.current;
-    if (!el || dir === 0) {
-      scrollRafRef.current = null;
-      return;
-    }
-    el.scrollTop += dir * 8;
-    scrollRafRef.current = requestAnimationFrame(tickScroll);
-  }, []);
-
   const dragLastClient = useRef<{ x: number; y: number } | null>(null);
+  const hitRafRef = useRef<number | null>(null);
+
+  const applyHit = useCallback(() => {
+    hitRafRef.current = null;
+    const lp = dragLastClient.current;
+    if (!draggingRef.current || !lp) return;
+    const hit = computeGap(lp.x, lp.y);
+    if (!hit) return;
+    const prev = draggingRef.current;
+    const same =
+      prev.gap === hit.gap &&
+      sameScope(prev.targetCol, hit.targetCol) &&
+      prev.indicator?.x === hit.indicator.x &&
+      prev.indicator?.y === hit.indicator.y &&
+      prev.indicator?.width === hit.indicator.width;
+    if (same) return; // nothing moved: don't re-render the page
+    const next = { ...prev, targetCol: hit.targetCol, gap: hit.gap, indicator: hit.indicator };
+    draggingRef.current = next;
+    setDragging(next);
+  }, [computeGap]);
+
+  const tickScroll = useCallback(() => {
+    scrollRafRef.current = null;
+    const el = scrollContainerRef.current;
+    const lp = dragLastClient.current;
+    if (!el || !lp || !draggingRef.current) return;
+    const v = edgeVelocity(lp, el.getBoundingClientRect());
+    if (v.dy) {
+      const before = el.scrollTop;
+      el.scrollTop = before + v.dy;
+      if (el.scrollTop !== before) applyHit();
+      scrollRafRef.current = requestAnimationFrame(tickScroll);
+    }
+  }, [applyHit]);
 
   const onPointerMove = useCallback(
     (ev: PointerEvent) => {
       if (!draggingRef.current) return;
       dragLastClient.current = { x: ev.clientX, y: ev.clientY };
+      const g = ghostRef.current;
+      if (g) {
+        g.el.style.transform = `translate3d(${ev.clientX + g.offX}px, ${ev.clientY + g.offY}px, 0) scale(1.02)`;
+      }
       if (!scrollContainerRef.current) {
         const c = containerRef.current;
         scrollContainerRef.current = c?.closest("main") ?? null;
       }
-      const sc = scrollContainerRef.current;
-      if (sc) {
-        const r = sc.getBoundingClientRect();
-        const near = 48;
-        if (ev.clientY < r.top + near) scrollDirRef.current = -1;
-        else if (ev.clientY > r.bottom - near) scrollDirRef.current = 1;
-        else scrollDirRef.current = 0;
-        if (scrollDirRef.current !== 0 && scrollRafRef.current == null) {
-          scrollRafRef.current = requestAnimationFrame(tickScroll);
-        }
-      }
-      const hit = computeGap(ev.clientX, ev.clientY);
-      if (!hit) return;
-      setDragging((prev) =>
-        prev
-          ? { ...prev, targetCol: hit.targetCol, gap: hit.gap, indicator: hit.indicator }
-          : prev,
-      );
+      if (scrollRafRef.current == null) scrollRafRef.current = requestAnimationFrame(tickScroll);
+      // Hit-testing measures every row: once per frame, not per event.
+      if (hitRafRef.current == null) hitRafRef.current = requestAnimationFrame(applyHit);
     },
-    [computeGap, tickScroll],
+    [applyHit, tickScroll],
   );
+
+  /** Measure every row's top, to animate rows from where they were to where
+   *  a drop puts them (FLIP). */
+  const snapshotRowTops = useCallback(() => {
+    const tops = new Map<string, number>();
+    rowEls.current.forEach((el, id) => tops.set(id, el.getBoundingClientRect().top));
+    return tops;
+  }, []);
+  const playSettle = useCallback((before: Map<string, number>, moved: Set<string>) => {
+    if (typeof window === "undefined") return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    requestAnimationFrame(() => {
+      rowEls.current.forEach((el, id) => {
+        const old = before.get(id);
+        if (old == null) return;
+        const dy = old - el.getBoundingClientRect().top;
+        if (Math.abs(dy) < 1) return;
+        el.animate(
+          moved.has(id)
+            ? [{ transform: `translateY(${dy}px)`, opacity: 0.6 }, { transform: "none", opacity: 1 }]
+            : [{ transform: `translateY(${dy}px)` }, { transform: "none" }],
+          { duration: moved.has(id) ? 240 : 200, easing: "cubic-bezier(0.23, 1, 0.32, 1)" },
+        );
+      });
+    });
+  }, []);
 
   const endDrag = useCallback(
     (commitDrop: boolean) => {
       const d = draggingRef.current;
+      draggingRef.current = null;
       document.body.style.userSelect = "";
-      scrollDirRef.current = 0;
-      if (scrollRafRef.current != null) {
-        cancelAnimationFrame(scrollRafRef.current);
-        scrollRafRef.current = null;
-      }
+      document.body.style.cursor = "";
+      if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current);
+      if (hitRafRef.current != null) cancelAnimationFrame(hitRafRef.current);
+      scrollRafRef.current = null;
+      hitRafRef.current = null;
+      ghostRef.current?.el.remove();
+      ghostRef.current = null;
       setDragging(null);
-      if (!commitDrop || !d || d.gap == null) return;
+      if (!d) return;
+      // A real drag ended: the release must not also "click" the handle
+      // (which would open the block menu).
+      const swallow = (e: MouseEvent) => {
+        e.stopPropagation();
+        e.preventDefault();
+      };
+      document.addEventListener("click", swallow, true);
+      const unswallow = () => {
+        window.removeEventListener("pointerup", afterRelease, true);
+        window.removeEventListener("pointerdown", unswallow, true);
+        document.removeEventListener("click", swallow, true);
+      };
+      const afterRelease = () => window.setTimeout(unswallow, 0);
+      if (commitDrop) {
+        // Ended by the release itself: its click follows immediately.
+        window.setTimeout(unswallow, 0);
+      } else {
+        // Cancelled (Esc, blur) with the button maybe still held: swallow
+        // the click that comes with the eventual release, and never a later
+        // press.
+        window.addEventListener("pointerup", afterRelease, true);
+        window.addEventListener("pointerdown", unswallow, true);
+      }
+      if (!commitDrop || d.gap == null) return;
       const froms: ReorderPath[] = d.ids.map((id) => {
         // Discover this id's source list from the registry so cross-list
-        // drags remain correct even if `sourceCol` is stale.
+        // drags remain correct even if `sourceCol` is stale. Columns AND
+        // callouts: the old column-only lookup left a callout child's
+        // index at -1, so dragging out of a callout silently did nothing.
         const colRef = rowColRefById.current.get(id) ?? d.sourceCol;
-        // Compute index inside its list.
-        let index = -1;
-        if (colRef === null) {
-          index = blocks.findIndex((b) => b.id === id);
-        } else {
-          const b = blocks.find((x) => x.id === colRef.blockId);
-          const ci = "colIndex" in colRef ? colRef.colIndex : -1;
-          if (b?.cols && Array.isArray(b.cols) && ci >= 0) {
-            index = (b.cols[ci] as Blk[]).findIndex((x) => x.id === id);
-          }
-        }
+        const list = colRef === null ? blocks : getContainerList(blocks, colRef);
+        const index = list ? list.findIndex((x) => x.id === id) : -1;
         return { col: colRef, index };
       });
       // Bail if any path failed to resolve.
@@ -1286,31 +1493,56 @@ export function EditableBody({
       // remain at an orphan level. reclampIndents walks the flat list
       // once and applies the parent+1 rule.
       const next = reclampIndents(next0);
+      const before = snapshotRowTops();
       commit(next);
+      playSettle(before, new Set(d.ids));
     },
-    [blocks, commit],
+    [blocks, commit, snapshotRowTops, playSettle],
   );
 
+  // One set of listeners per drag (not re-added on every pointer move).
+  const isDragging = dragging !== null;
+  const endDragRef = useRef(endDrag);
+  endDragRef.current = endDrag;
+  const onPointerMoveRef = useRef(onPointerMove);
+  onPointerMoveRef.current = onPointerMove;
   useEffect(() => {
-    if (!dragging) return;
-    const onMove = (e: PointerEvent) => onPointerMove(e);
-    const onUp = () => endDrag(true);
+    if (!isDragging) return;
+    const onMove = (e: PointerEvent) => onPointerMoveRef.current(e);
+    const onUp = () => endDragRef.current(true);
+    const onCancel = () => endDragRef.current(false);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
-        endDrag(false);
+        e.stopPropagation();
+        endDragRef.current(false);
       }
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", () => endDrag(false));
-    window.addEventListener("keydown", onKey);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("blur", onCancel);
+    window.addEventListener("keydown", onKey, true);
     return () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("blur", onCancel);
+      window.removeEventListener("keydown", onKey, true);
     };
-  }, [dragging, onPointerMove, endDrag]);
+  }, [isDragging]);
+  // Never leave a ghost or a locked cursor behind if the page unmounts
+  // mid-drag.
+  useEffect(
+    () => () => {
+      ghostRef.current?.el.remove();
+      if (draggingRef.current) {
+        document.body.style.userSelect = "";
+        document.body.style.cursor = "";
+      }
+    },
+    [],
+  );
 
   /* ────────── Scoped selection operations ──────────
    * Every consumer of a block selection goes through these two helpers, so
@@ -1646,7 +1878,10 @@ export function EditableBody({
       rows.sort((a, b) => a.top - b.top);
       const candidates = rowsInScope(scope, rows);
       const ids = new Set<string>(rowsInBand(candidates, y1, y2));
-      setSelectedIds(ids);
+      // Same rows as last move: keep the old set so nothing re-renders.
+      setSelectedIds((prev) =>
+        prev.size === ids.size && [...ids].every((id) => prev.has(id)) ? prev : ids,
+      );
       setSelScope(ids.size === 0 ? null : scope);
     },
     [],
@@ -1913,6 +2148,8 @@ export function EditableBody({
     at: number;
     x: number;
     y: number;
+    /** The block's top edge, for opening above it near the bottom. */
+    yTop: number;
   } | null>(null);
 
   const filteredMenu = useMemo(() => {
@@ -3017,32 +3254,35 @@ export function EditableBody({
       {blocks.map((b) => (
         <BlockRow
           key={b.id}
-          onEditorFocus={() => setFocusedId(b.id)}
-          onEditorBlur={() =>
-            setFocusedId((cur) => (cur === b.id ? null : cur))
-          }
           block={b}
           ordinal={b.type === "numbered" ? (ordinalMap.get(b.id) ?? 1) : undefined}
           locked={!!locked}
           selected={selectedIds.has(b.id)}
           dimmed={draggingIdSet.has(b.id)}
           registerRowEl={registerRowEl}
-          onHandlePointerDown={(ev) => beginDrag(b.id, ev)}
-          onHandleClick={(anchor) => {
+          {...rowHandlers(
+            b.id,
+            {
+              onEditorFocus: () => setFocusedId(b.id),
+              onEditorBlur: () =>
+            setFocusedId((cur) => (cur === b.id ? null : cur))
+          ,
+              onHandlePointerDown: (ev) => beginDrag(b.id, ev),
+              onHandleClick: (anchor) => {
             const initial = buildBlockHandleSpec(b.id, {
               setSpec: setHandleMenuSpec,
               close: closeHandleMenu,
             });
             setHandleMenu({ blockId: b.id, anchor, spec: initial });
-          }}
-          onHandleShiftClick={() => handleShiftClick(b.id)}
-          onBlur={onBlur}
-          registerRef={(el) => {
+          },
+              onHandleShiftClick: () => handleShiftClick(b.id),
+              onBlur: onBlur,
+              registerRef: (el) => {
             if (el) refs.current[b.id] = el;
             else delete refs.current[b.id];
-          }}
-          onChange={(patch) => updateBlock(b.id, patch)}
-          onInput={(val) => {
+          },
+              onChange: (patch) => updateBlock(b.id, patch),
+              onInput: (val) => {
             // Shortcut FIRST — on match, apply the structural op and skip
             // the text update, so a single keystroke produces exactly one
             // commit (one undo entry) and the caret lands per applyOp.
@@ -3063,12 +3303,13 @@ export function EditableBody({
                 at: trig.at,
                 x: rect ? rect.left : 200,
                 y: rect ? rect.bottom + 4 : 200,
+                yTop: rect ? rect.top - 4 : 200,
               });
             } else if (slash?.blockId === b.id) {
               setSlash(null);
             }
-          }}
-          onKeyDown={(e) => {
+          },
+              onKeyDown: (e) => {
             if (locked) return;
             // An accent or IME composition owns the keyboard until it ends.
             if (e.nativeEvent.isComposing || e.keyCode === 229) return;
@@ -3309,17 +3550,19 @@ export function EditableBody({
                 return;
               }
             }
-          }}
-          onAddBelow={() => { if (!locked) insertAfter(b.id); }}
-          onSetIcon={(icon) => updateBlock(b.id, { icon })}
-          onPaste={(e) => handlePaste(b.id, e)}
-          onDelete={() => {
+          },
+              onAddBelow: () => { if (!locked) insertAfter(b.id); },
+              onSetIcon: (icon) => updateBlock(b.id, { icon }),
+              onPaste: (e) => handlePaste(b.id, e),
+              onDelete: () => {
             if (locked) return;
             // The image file is NOT deleted here. ⌘Z brings the block back,
             // a duplicated block or a duplicated page can point at the same
             // file, and deleting it broke every one of those copies.
             applyOp(opsRemove(blocks, b.id, { ensureOne: true }));
-          }}
+          },
+            },
+          )}
         />
       ))}
 
@@ -3327,10 +3570,12 @@ export function EditableBody({
       {indicatorVisible ? (
         <div
           aria-hidden
+          className="gio-drop-line"
           style={{
             position: "absolute",
-            left: dragging!.indicator!.x,
-            top: dragging!.indicator!.y,
+            left: 0,
+            top: 0,
+            transform: `translate3d(${dragging!.indicator!.x}px, ${dragging!.indicator!.y}px, 0)`,
             width: dragging!.indicator!.width,
             height: 2,
             background: "var(--color-accentDot)",
@@ -3368,6 +3613,7 @@ export function EditableBody({
         <SlashMenu
           x={slash.x}
           y={slash.y}
+          yTop={slash.yTop}
           items={filteredMenu}
           activeIdx={menuIdx}
           onHover={setMenuIdx}
@@ -3448,7 +3694,8 @@ export function EditableBody({
 
 /* ────────────── One row: gutter + block ────────────── */
 
-function BlockRow({
+const BlockRow = memo(BlockRowImpl);
+function BlockRowImpl({
   block,
   ordinal,
   locked,
@@ -4292,6 +4539,7 @@ function ColumnStack({
     return () => bridge?.registerTrack(colRef, null);
   }, [bridge, colRef]);
 
+  const rowHandlers = useStableRowHandlers();
   const refs = useRef<Record<string, HTMLElement | null>>({});
   const [focusRequest, setFocusRequest] = useState<{
     id: string;
@@ -4305,6 +4553,8 @@ function ColumnStack({
     at: number;
     x: number;
     y: number;
+    /** The block's top edge, for opening above it near the bottom. */
+    yTop: number;
   } | null>(null);
   const [menuIdx, setMenuIdx] = useState(0);
   useEffect(() => setMenuIdx(0), [slash?.query]);
@@ -4572,28 +4822,31 @@ function ColumnStack({
           locked={locked}
           selected={bridge?.selectedIds.has(b.id) ?? false}
           dimmed={false}
-          onEditorFocus={() => setFocusedId(b.id)}
-          onEditorBlur={() =>
-            setFocusedId((cur) => (cur === b.id ? null : cur))
-          }
           registerRowEl={(id, el) => bridge?.registerRow(colRef, id, el)}
-          onHandlePointerDown={(ev) => {
+          {...rowHandlers(
+            b.id,
+            {
+              onEditorFocus: () => setFocusedId(b.id),
+              onEditorBlur: () =>
+            setFocusedId((cur) => (cur === b.id ? null : cur))
+          ,
+              onHandlePointerDown: (ev) => {
             if (bridge) bridge.beginDrag(b.id, ev, colRef);
-          }}
-          onHandleClick={(anchor) => {
+          },
+              onHandleClick: (anchor) => {
             const initial = buildColMenuSpec(b.id, {
               setSpec: setHandleMenuSpec,
               close: closeHandleMenu,
             });
             setHandleMenu({ blockId: b.id, anchor, spec: initial });
-          }}
-          onHandleShiftClick={() => bridge?.shiftClick(b.id, colRef)}
-          registerRef={(el) => {
+          },
+              onHandleShiftClick: () => bridge?.shiftClick(b.id, colRef),
+              registerRef: (el) => {
             if (el) refs.current[b.id] = el;
             else delete refs.current[b.id];
-          }}
-          onChange={(patch) => updateBlock(b.id, patch)}
-          onInput={(val) => {
+          },
+              onChange: (patch) => updateBlock(b.id, patch),
+              onInput: (val) => {
             // Same single-commit shape as top-level: shortcut first, then
             // the text update. Column scope goes through the same pure
             // op so the two paths cannot drift.
@@ -4617,12 +4870,13 @@ function ColumnStack({
                 at: trig.at,
                 x: rect ? rect.left : 200,
                 y: rect ? rect.bottom + 4 : 200,
+                yTop: rect ? rect.top - 4 : 200,
               });
             } else if (slash?.blockId === b.id) {
               setSlash(null);
             }
-          }}
-          onKeyDown={(e) => {
+          },
+              onKeyDown: (e) => {
             if (locked) return;
             // An accent or IME composition owns the keyboard until it ends.
             if (e.nativeEvent.isComposing || e.keyCode === 229) return;
@@ -4827,23 +5081,26 @@ function ColumnStack({
                 return;
               }
             }
-          }}
-          onAddBelow={() => {
+          },
+              onAddBelow: () => {
             if (!locked) applyOp(opsInsertAfter(blocks, b.id));
-          }}
-          onSetIcon={(icon) => updateBlock(b.id, { icon })}
-          onPaste={(e) => handlePaste(b.id, e)}
-          onDelete={() => {
+          },
+              onSetIcon: (icon) => updateBlock(b.id, { icon }),
+              onPaste: (e) => handlePaste(b.id, e),
+              onDelete: () => {
             if (locked) return;
             // Image files are kept: see the top-level delete.
             applyOp(opsRemove(blocks, b.id, { ensureOne: true }));
-          }}
+          },
+            },
+          )}
         />
       ))}
       {slash ? (
         <SlashMenu
           x={slash.x}
           y={slash.y}
+          yTop={slash.yTop}
           items={filteredMenu}
           activeIdx={menuIdx}
           onHover={setMenuIdx}
@@ -6509,6 +6766,7 @@ function AddPill({
 function SlashMenu({
   x,
   y,
+  yTop,
   items,
   activeIdx,
   onHover,
@@ -6517,6 +6775,7 @@ function SlashMenu({
 }: {
   x: number;
   y: number;
+  yTop: number;
   items: MenuItem[];
   activeIdx: number;
   onHover: (i: number) => void;
@@ -6528,7 +6787,28 @@ function SlashMenu({
   const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
   const vh = typeof window !== "undefined" ? window.innerHeight : 800;
   const left = Math.max(12, Math.min(vw - 324 - 12, x));
+  // Open below the block; near the bottom of the window, open above it so
+  // the menu never covers the line being typed. Decided once on open and
+  // kept while filtering, anchored by its bottom edge so it hugs the block.
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [above, setAbove] = useState<boolean | null>(null);
+  useLayoutEffect(() => {
+    const h = panelRef.current?.offsetHeight ?? 420;
+    setAbove(y + h + 12 > vh && yTop - h >= 12);
+    // Only on open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const top = Math.max(12, Math.min(vh - 420 - 12, y));
+  const placement: React.CSSProperties = above
+    ? { left, bottom: vh - yTop, transformOrigin: "bottom left" }
+    : { left, top, transformOrigin: "top left", visibility: above === null ? "hidden" : undefined };
+
+  // Keep the highlighted row in view when moving with the arrow keys.
+  const listRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const row = listRef.current?.querySelector<HTMLElement>('[data-active="true"]');
+    row?.scrollIntoView({ block: "nearest" });
+  }, [activeIdx]);
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -6542,12 +6822,13 @@ function SlashMenu({
 
   return createPortal(
     <div
+      ref={exitRef("pop", panelRef)}
       data-slash-menu
       className="fixed z-50 animate-popIn rounded-xl border border-line bg-surface shadow-popover"
-      style={{ left, top, width: 324, maxHeight: 420 }}
+      style={{ ...placement, width: 324, maxHeight: 420 }}
     >
       <div className="px-3 pb-1 pt-2 text-label uppercase text-faint">Blocks</div>
-      <div className="max-h-[340px] overflow-y-auto py-1">
+      <div ref={listRef} className="max-h-[340px] overflow-y-auto py-1">
         {items.length === 0 ? (
           <div className="px-3 py-2 text-meta text-muted">No matches.</div>
         ) : (
@@ -6555,6 +6836,7 @@ function SlashMenu({
             <button
               key={m.type + (m.count != null ? `-${m.count}` : "")}
               type="button"
+              data-active={i === activeIdx ? "true" : undefined}
               onMouseEnter={() => onHover(i)}
               onMouseDown={(e) => {
                 e.preventDefault();

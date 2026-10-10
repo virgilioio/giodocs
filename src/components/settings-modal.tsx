@@ -43,6 +43,7 @@ import {
   useDeleteCustomEmoji,
   useUpdateCustomEmoji,
 } from "@/hooks/use-custom-emoji";
+import { exitOnly } from "@/lib/exit-motion";
 
 export type SettingsPane = "profile" | "preferences" | "general" | "people" | "emoji";
 
@@ -138,7 +139,8 @@ export function SettingsModal({
       role="dialog"
       aria-modal="true"
       aria-label="Settings"
-      className="fixed inset-0 flex items-center justify-center"
+      ref={exitOnly("dialog")}
+      className="fixed inset-0 flex items-center justify-center animate-fadeIn"
       style={{
         zIndex: "var(--z-modal)",
         background: "rgba(13,13,9,.32)",
@@ -150,7 +152,8 @@ export function SettingsModal({
       }}
     >
       <div
-        className="flex bg-surface shadow-modal animate-palIn"
+        data-motion-card
+        className="flex bg-surface shadow-modal animate-dialogIn"
         style={{
           width: 1000,
           maxWidth: "100%",
@@ -389,7 +392,7 @@ function Segmented<T extends string>({
               borderLeft: i === 0 ? "none" : "1px solid var(--color-line)",
             }}
           >
-            {o.label}
+            <span className="gio-stable-bold" data-label={o.label}>{o.label}</span>
           </button>
         );
       })}
@@ -423,7 +426,7 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
           background: "var(--color-surface)",
           borderRadius: 999,
           boxShadow: "0 1px 3px rgba(13,13,9,.2)",
-          transition: "transform 150ms ease",
+          transition: "transform var(--dur-switch) var(--ease-out)",
           transform: value ? "translateX(18px)" : "translateX(0)",
         }}
       />
@@ -568,7 +571,7 @@ function GeneralPane() {
             onKeyDown={(e) => {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             }}
-            className="w-full max-w-sm rounded-md border border-line bg-surface focus:outline-none disabled:opacity-60"
+            className="w-full max-w-sm rounded-md border border-line bg-surface focus:border-accent focus:outline-none disabled:opacity-60"
             style={{ padding: "8px 12px", fontSize: 14 }}
           />
         </Row>
@@ -586,6 +589,7 @@ function GeneralPane() {
             </button>
             {iconOpen && (
               <div
+                ref={exitOnly("pop")}
                 className="absolute z-10 mt-1 bg-surface border border-line shadow-popover animate-popIn"
                 style={{ borderRadius: 12, padding: 6, width: 240 }}
               >
@@ -682,7 +686,7 @@ function GeneralPane() {
                   value={newDomain}
                   onChange={(e) => setNewDomain(e.target.value)}
                   placeholder="add domain…"
-                  className="rounded-md border border-dashed border-lineStrong bg-surface focus:outline-none"
+                  className="rounded-md border border-dashed border-lineStrong bg-surface focus:border-solid focus:border-accent focus:outline-none"
                   style={{ width: 160, padding: "3px 8px", fontSize: 13 }}
                 />
               </form>
@@ -873,7 +877,9 @@ function PeoplePane({
                   fontWeight: active ? 700 : 400,
                 }}
               >
-                {t === "members" ? "Members" : "Guests"}{" "}
+                <span className="gio-stable-bold" data-label={t === "members" ? "Members" : "Guests"}>
+                  {t === "members" ? "Members" : "Guests"}
+                </span>{" "}
                 <span className="text-whisper tnum">{count}</span>
               </button>
             );
@@ -1183,6 +1189,7 @@ function RolePicker({
       </button>
       {open && (
         <div
+          ref={exitOnly("pop")}
           className="absolute left-0 top-full z-10 mt-1 bg-surface border border-line shadow-popover animate-popIn"
           style={{ borderRadius: 8, padding: 4, width: 140 }}
         >
@@ -1371,7 +1378,7 @@ function EmojiPane() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search…"
-            className="border border-line bg-surface rounded-md focus:outline-none"
+            className="border border-line bg-surface rounded-md focus:border-accent focus:outline-none"
             style={{ padding: "5px 10px", fontSize: 13.5, width: 180 }}
           />
           <button

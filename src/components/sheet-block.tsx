@@ -635,6 +635,26 @@ export function SheetBlockView({
     [editable, sheet.cells],
   );
 
+  // A range, fill or reference drag that ends OUTSIDE the grid still ends:
+  // the grid's own onPointerUp never sees that release, which left the
+  // selection following the mouse and applied a pending fill on the next
+  // click anywhere in the grid.
+  const endFillRef = useRef(endFill);
+  endFillRef.current = endFill;
+  useEffect(() => {
+    const release = () => {
+      dragging.current = false;
+      pickDrag.current = null;
+      if (fillDrag.current) endFillRef.current();
+    };
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    return () => {
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+    };
+  }, []);
+
   /* ─────────────────── Structure (chunk 4) ───────────────────
    * Every mutation is a MODEL call. This code decides nothing about the
    * grid's shape — sheet-structure.ts does, and sheet-model.ts enforces
@@ -1732,7 +1752,11 @@ export function SheetBlockView({
                           return;
                         }
                         if (!dragging.current) return;
-                        setSel((prev) => (prev ? { ...prev, fr: r, fc: c } : selAt(r, c)));
+                        // Same cell as last move: keep the same object, so the
+                        // grid doesn't re-render on every pixel.
+                        setSel((prev) =>
+                          prev ? (prev.fr === r && prev.fc === c ? prev : { ...prev, fr: r, fc: c }) : selAt(r, c),
+                        );
                       }}
                       onDoubleClick={() => beginEdit(r, c, null, true)}
                       style={{

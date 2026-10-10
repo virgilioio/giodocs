@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
@@ -1274,6 +1274,27 @@ export function PageEditor({ pageId }: { pageId: string }) {
     };
   }, [flushTitle]);
 
+  // The conflict banner floats at the bottom edge. If it lands on the line
+  // you're typing in, scroll that line up above it.
+  const conflictRef = useRef<HTMLDivElement | null>(null);
+  const hasConflict = !!conflict;
+  useLayoutEffect(() => {
+    const banner = conflictRef.current;
+    if (!hasConflict || !banner) return;
+    const sel = window.getSelection();
+    const caretRect =
+      sel && sel.rangeCount > 0 ? sel.getRangeAt(0).getBoundingClientRect() : null;
+    const at = caretRect && caretRect.height > 0
+      ? caretRect
+      : (document.activeElement as HTMLElement | null)?.getBoundingClientRect();
+    if (!at) return;
+    const overlap = at.bottom + 12 - banner.getBoundingClientRect().top;
+    if (overlap <= 0) return;
+    let sc: HTMLElement | null = banner.parentElement;
+    while (sc && !/(auto|scroll)/.test(getComputedStyle(sc).overflowY)) sc = sc.parentElement;
+    (sc ?? document.scrollingElement)?.scrollBy({ top: overlap });
+  }, [hasConflict]);
+
   const keepMine = useCallback(() => {
     if (!conflict) return;
     knownRef.current.force = true;
@@ -1357,7 +1378,11 @@ export function PageEditor({ pageId }: { pageId: string }) {
     >
       {/* 1+2. Title row: emoji + editable title, side-by-side, height 51. */}
       <div
-        style={{ display: "flex", alignItems: "center", height: 51, gap: 13 }}
+        // minHeight, not height: a title that wraps to a second line grows
+        // the row instead of spilling over the permissions row below it.
+        // Top-aligned (offsets keep the single-line layout exactly as it
+        // was) so the icon sits beside the first line of a long title.
+        style={{ display: "flex", alignItems: "flex-start", minHeight: 51, gap: 13 }}
       >
         <Popover
           width={264}
@@ -1369,7 +1394,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
               aria-label="Change page icon"
               aria-expanded={open}
               className="grid select-none place-items-center rounded-md hover:bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-              style={{ width: 42, height: 42, fontSize: 34, lineHeight: 1, flex: "none" }}
+              style={{ width: 42, height: 42, fontSize: 34, lineHeight: 1, flex: "none", marginTop: 4.5 }}
             >
               <Ico icon={page.icon || "📄"} size={34} />
             </button>
@@ -1385,7 +1410,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
           )}
         </Popover>
 
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1" style={{ paddingTop: 3.5 }}>
           <EditableTitle
             value={titleValue}
             onChange={onTitleChange}
@@ -1472,10 +1497,25 @@ export function PageEditor({ pageId }: { pageId: string }) {
         }}
       >
 
+        <EditableBody
+          key={editorKey}
+          pageId={page.id}
+          initialBlocks={blocks}
+          onChange={onBlocksChange}
+          onBlur={onBodyBlur}
+          locked={app.locked}
+          editedRel={page.edited_at ? relTime(page.edited_at) : null}
+          editorFirstName={editorName}
+        />
         {conflict ? (
+          // After the last block, sticky to the bottom of the window: on a
+          // long page it floats at the bottom edge where you can reach it;
+          // on a short one it sits under the last line. Nothing above moves.
           <div
+            ref={conflictRef}
             role="alert"
-            className="mb-3 mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-amberRing bg-amberTint px-3 py-2 text-row text-amberInk"
+            className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-amberRing bg-amberTint px-3 py-2 text-row text-amberInk shadow-toast animate-cardIn"
+            style={{ position: "sticky", bottom: 16, zIndex: 30 }}
           >
             <span className="min-w-0 flex-1">
               Someone else changed this page while you were editing. Your latest edits aren't saved yet.
@@ -1498,16 +1538,6 @@ export function PageEditor({ pageId }: { pageId: string }) {
             </button>
           </div>
         ) : null}
-        <EditableBody
-          key={editorKey}
-          pageId={page.id}
-          initialBlocks={blocks}
-          onChange={onBlocksChange}
-          onBlur={onBodyBlur}
-          locked={app.locked}
-          editedRel={page.edited_at ? relTime(page.edited_at) : null}
-          editorFirstName={editorName}
-        />
       </div>
       <PermissionsPopoverHost
         page={page}

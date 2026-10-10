@@ -2840,6 +2840,10 @@ function BoardBody({
 }) {
   const navigate = useNavigate();
   const setOrigin = useSetPageOrigin();
+  // Drag feedback: the card being dragged fades, the column under it lights
+  // up. Dropping a card back in its own column does nothing.
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overCol, setOverCol] = useState<string | null>(null);
 
   const def = propDefs.find((d) => d.key === groupBy);
   const opts =
@@ -2873,13 +2877,38 @@ function BoardBody({
       {columns.map((col) => (
         <div
           key={col.value}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => {
-            const id = e.dataTransfer.getData("text/pageId");
-            if (id) onMove(id, col.value);
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+            if (overCol !== col.value) setOverCol(col.value);
           }}
-          className="shrink-0 rounded-xl bg-rail p-[10px]"
-          style={{ width: "var(--container-boardCol)" }}
+          onDragLeave={(e) => {
+            // Only when leaving the column itself, not moving between cards.
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+              setOverCol((cur) => (cur === col.value ? null : cur));
+            }
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            const id = e.dataTransfer.getData("text/pageId");
+            setOverCol(null);
+            setDragId(null);
+            if (!id) return;
+            if (col.pages.some((x) => x.id === id)) return; // same column
+            onMove(id, col.value);
+          }}
+          className="shrink-0 rounded-xl bg-rail p-[10px] transition-[box-shadow,background-color] duration-150"
+          style={{
+            width: "var(--container-boardCol)",
+            boxShadow:
+              overCol === col.value && dragId && !col.pages.some((x) => x.id === dragId)
+                ? "inset 0 0 0 2px var(--color-accentRing)"
+                : undefined,
+            background:
+              overCol === col.value && dragId && !col.pages.some((x) => x.id === dragId)
+                ? "var(--color-railHover)"
+                : undefined,
+          }}
         >
           <div className="mb-2 flex items-center gap-2 px-1 text-meta">
             <span
@@ -2903,7 +2932,16 @@ function BoardBody({
                 <div
                   key={p.id}
                   draggable
-                  onDragStart={(e) => e.dataTransfer.setData("text/pageId", p.id)}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData("text/pageId", p.id);
+                    e.dataTransfer.effectAllowed = "move";
+                    setDragId(p.id);
+                  }}
+                  onDragEnd={() => {
+                    setDragId(null);
+                    setOverCol(null);
+                  }}
+                  style={{ opacity: dragId === p.id ? 0.45 : undefined }}
                   onClick={(e) => {
                     // Skip when the click originated inside the checkbox or menu.
                     const t = e.target as HTMLElement;

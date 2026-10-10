@@ -24,6 +24,7 @@ import { safeUrl } from "@/lib/inline-markdown";
 import { htmlToInlineMarkdown } from "@/lib/inline-tokens";
 import { readCaret } from "@/lib/caret-shim";
 import { commitSourceToEditable } from "@/lib/link-commit";
+import { exitRef } from "@/lib/exit-motion";
 
 type Sel = {
   el: HTMLElement;
@@ -363,6 +364,8 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
     alignItems: "center",
     gap: 2,
     animation: "var(--animate-popIn)",
+    // Grow from the selection: the bar sits above it unless flipped below.
+    transformOrigin: pos.flipped ? "top center" : "bottom center",
   };
 
   const divider = (
@@ -380,7 +383,7 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
 
   return createPortal(
     <div
-      ref={barRef}
+      ref={exitRef("pop", barRef)}
       role="toolbar"
       aria-label="Formatting"
       data-flipped={pos.flipped ? "true" : "false"}
