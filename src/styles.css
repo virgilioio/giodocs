@@ -152,6 +152,25 @@
   .animate-skShimmer { animation: none }
 }
 
+/* Tooltips (src/lib/tooltips.ts): every `title` on a control, and on text
+   only while it is cut off. 400ms delay; neighbours open instantly. */
+.gio-tooltip {
+  position: fixed; z-index: 150; pointer-events: none;
+  max-width: 280px; padding: 4px 8px; border-radius: 6px;
+  background: var(--color-btn); color: var(--color-btnFg);
+  font: 400 var(--text-caption)/1.4 var(--font-sans);
+  white-space: pre-line; overflow-wrap: anywhere;
+  box-shadow: 0 6px 18px rgba(13,13,9,.18);
+  opacity: 0; transform: scale(.97); visibility: hidden;
+  transition: opacity 100ms var(--ease-out), transform 100ms var(--ease-out), visibility 0s linear 100ms;
+}
+.gio-tooltip[data-open="true"] {
+  opacity: 1; transform: none; visibility: visible;
+  transition: opacity var(--dur-tooltip) var(--ease-out), transform var(--dur-tooltip) var(--ease-out), visibility 0s;
+}
+.gio-tooltip[data-instant="true"] { transition: none; }
+@media (prefers-reduced-motion: reduce) { .gio-tooltip { transform: none; } }
+
 /* Block drag: the drop line glides between gaps instead of jumping, and a
    multi-block ghost carries a count. */
 .gio-drop-line { transition: transform 90ms cubic-bezier(.23,1,.32,1); }
