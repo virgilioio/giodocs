@@ -37,6 +37,23 @@ create index comments_thread on public.comments (thread_id) where thread_id is n
 
 alter table public.comments enable row level security;
 
+-- Is the first comment of this thread still there? (A policy can't query
+-- its own table, so this reads it as the owner.)
+create or replace function public.comment_thread_open(p_thread uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (select 1 from public.comments r
+                  where r.id = p_thread and r.removed_at is null);
+$$;
+
+revoke all on function public.comment_thread_open(uuid) from public, anon;
+grant execute on function public.comment_thread_open(uuid) to authenticated;
+grant execute on function public.comment_thread_open(uuid) to service_role;
+
 -- Read: the page is readable, the comment isn't removed, and neither is
 -- the first comment of its thread.
 create policy comments_read on public.comments
@@ -44,9 +61,7 @@ create policy comments_read on public.comments
   using (
     removed_at is null
     and public.can_read_page(page_id)
-    and (thread_id is null
-         or exists (select 1 from public.comments r
-                     where r.id = comments.thread_id and r.removed_at is null))
+    and (thread_id is null or public.comment_thread_open(thread_id))
   );
 
 revoke all on public.comments from anon, authenticated;
