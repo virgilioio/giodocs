@@ -356,11 +356,13 @@ export type Database = {
           blocks: Json
           created_at: string
           created_by: string | null
+          database_id: string | null
           deleted_at: string | null
           edited_at: string
           edited_by: string | null
           icon: string
           id: string
+          is_database: boolean
           parent_id: string | null
           props: Json
           search_tsv: unknown
@@ -377,11 +379,13 @@ export type Database = {
           blocks?: Json
           created_at?: string
           created_by?: string | null
+          database_id?: string | null
           deleted_at?: string | null
           edited_at?: string
           edited_by?: string | null
           icon?: string
           id?: string
+          is_database?: boolean
           parent_id?: string | null
           props?: Json
           search_tsv?: unknown
@@ -398,11 +402,13 @@ export type Database = {
           blocks?: Json
           created_at?: string
           created_by?: string | null
+          database_id?: string | null
           deleted_at?: string | null
           edited_at?: string
           edited_by?: string | null
           icon?: string
           id?: string
+          is_database?: boolean
           parent_id?: string | null
           props?: Json
           search_tsv?: unknown
@@ -490,6 +496,7 @@ export type Database = {
           config: Json
           created_at: string
           created_by: string | null
+          database_id: string
           id: string
           is_system: boolean
           key: string
@@ -505,6 +512,7 @@ export type Database = {
           config?: Json
           created_at?: string
           created_by?: string | null
+          database_id?: string
           id?: string
           is_system?: boolean
           key: string
@@ -520,6 +528,7 @@ export type Database = {
           config?: Json
           created_at?: string
           created_by?: string | null
+          database_id?: string
           id?: string
           is_system?: boolean
           key?: string
@@ -551,6 +560,7 @@ export type Database = {
         Row: {
           config: Json
           created_at: string
+          database_id: string
           filter: Json
           group_by: string | null
           icon: string | null
@@ -566,6 +576,7 @@ export type Database = {
         Insert: {
           config?: Json
           created_at?: string
+          database_id?: string
           filter?: Json
           group_by?: string | null
           icon?: string | null
@@ -581,6 +592,7 @@ export type Database = {
         Update: {
           config?: Json
           created_at?: string
+          database_id?: string
           filter?: Json
           group_by?: string | null
           icon?: string | null
@@ -861,6 +873,10 @@ export type Database = {
         Returns: boolean
       }
       can_manage_page_access: { Args: { p_page: string }; Returns: boolean }
+      can_edit_page: {
+        Args: { p_page: string }
+        Returns: boolean
+      }
       can_read_page: { Args: { p_page: string }; Returns: boolean }
       comment_thread_open: { Args: { p_thread: string }; Returns: boolean }
       create_workspace_invite: {
