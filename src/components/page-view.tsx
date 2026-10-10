@@ -60,7 +60,8 @@ import { RelationEditor } from "./relation-editor";
 import { BUILT_IN_LABELS, BUILT_IN_TYPES } from "@/lib/view-config";
 import { CALC_LABELS, calcsFor } from "@/lib/view-calc";
 import { isTypedString, PROPERTY_KINDS, kindLabel, type PropertyType } from "@/lib/property-kinds";
-import { useAddPropertyOption, useCreateProperty } from "@/hooks/use-property-mutations";
+import { useAddPropertyOption } from "@/hooks/use-property-mutations";
+import { seedFor, useNewPropertyFlow } from "./new-property-flow";
 import { formatTimestamp } from "@/lib/format";
 
 import { EditableBody, EditableTitle } from "./page-editor-body";
@@ -778,6 +779,7 @@ const TYPE_LABEL: Record<string, string> = {
 function AddPropertyPopover({
   databaseId,
   propDefs,
+  allPropDefs,
   present,
   databases,
   onAdd,
@@ -785,6 +787,7 @@ function AddPropertyPopover({
   /** The database the page is a row of: new properties are made there. */
   databaseId: string;
   propDefs: PropDef[];
+  allPropDefs: PropDef[];
   present: Set<string>;
   /** Databases a relation can link to. */
   databases: Array<{ id: string; title: string | null; icon: string | null }>;
@@ -793,201 +796,28 @@ function AddPropertyPopover({
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   // null = the root list; otherwise a submenu swapped in place.
   const [sub, setSub] = useState<MenuSpec | null>(null);
-  const createProperty = useCreateProperty();
   const defsByKey = new Map(propDefs.map((d) => [d.key, d]));
   const candidates = propDefs
     .filter((d) => !present.has(d.key))
-    .filter((d) => d.key !== "area" && d.key !== "owner")
+    .filter((d) => !d.archived_at)
     // A rollup shows by itself once its relation links somewhere; a far
     // side whose near side was archived has nothing to add.
     .filter((d) => d.type !== "rollup")
     .filter((d) => d.type !== "relation" || relationUsable(d, defsByKey));
-
-  const seedFor = (t: string): unknown => {
-    switch (t) {
-      case "multi_select":
-      case "links":
-      case "relation":
-        return [];
-      case "checkbox":
-        return false;
-      case "text":
-        return "";
-      default:
-        return null;
-    }
-  };
 
   const close = () => {
     setAnchor(null);
     setSub(null);
   };
 
-  const create = (
-    label: string,
-    type: PropertyType,
-    config?: Record<string, unknown>,
-    backLabel?: string,
-  ) =>
-    createProperty.mutate(
-      { databaseId, label, type, config, backLabel },
-      { onSuccess: (def) => onAdd(def.key, seedFor(def.type), true) },
-    );
-
-  // Step 2: name it. Creating adds it to the workspace and to this page.
-  const nameSpec = (
-    type: PropertyType,
-    then?: (label: string) => void,
-    back: MenuSpec = typeSpec,
-  ): MenuSpec => ({
-    title: `New ${kindLabel(type).toLowerCase()} property`,
-    rows: [],
-    onBack: () => setSub(back),
-    footer: "Every row of this database gets it. Only owners can archive it.",
-    input: {
-      placeholder: "Name it, then press Enter",
-      onCommit: (label) => (then ? then(label) : create(label, type)),
-      // A relation's name leads to "one way or both".
-      keepOpen: type === "relation",
-    },
+  const { typeSpec } = useNewPropertyFlow({
+    databaseId,
+    allPropDefs,
+    databases,
+    setSub,
+    rootBack: null,
+    onCreated: (def) => onAdd(def.key, seedFor(def.type), true),
   });
-
-  /* Relation: which database it links to, its name, then one way or both. */
-  const relationScopeSpec = (): MenuSpec => ({
-    title: "Link to rows of",
-    onBack: () => setSub(typeSpec),
-    footer: "A relation links to the rows of one database.",
-    rows: databases.map<MenuRow>((d) => ({
-      kind: "row",
-      label: d.title?.trim() || "Untitled",
-      icon: d.id === databaseId ? "M4 5h16v14H4zM4 10h16M10 5v14" : "M4 5h16v14H4zM4 10h16",
-      hint: d.id === databaseId ? { text: "this database" } : undefined,
-      onPick: () => setSub(relationName(d.id)),
-    })),
-  });
-  const relationName = (targetId: string): MenuSpec =>
-    nameSpec("relation", (label) => setSub(relationSides(label, targetId)), relationScopeSpec());
-  const relationSides = (label: string, targetId: string): MenuSpec => ({
-    title: label,
-    onBack: () => setSub(relationName(targetId)),
-    rows: [
-      {
-        kind: "row",
-        label: "Only here",
-        hint: { text: "One way" },
-        onPick: () => create(label, "relation", { database_id: targetId }),
-      },
-      {
-        kind: "row",
-        label: "Also on the linked rows…",
-        hint: { text: "Two way" },
-        onPick: () =>
-          setSub({
-            title: "On the linked rows",
-            rows: [],
-            onBack: () => setSub(relationSides(label, targetId)),
-            footer: `A row this one links to with ${label} shows it under this name, and links can be made from either side.`,
-            input: {
-              placeholder: "Name it there, then press Enter",
-              onCommit: (back) => create(label, "relation", { database_id: targetId }, back),
-            },
-          }),
-      },
-    ],
-  });
-
-  /* Rollup: a relation, a property of the pages it links to, a calculation. */
-  const relationDefs = propDefs.filter((d) => d.type === "relation");
-  const rollupRelationSpec = (): MenuSpec => ({
-    title: "Roll up through",
-    onBack: () => setSub(typeSpec),
-    footer: relationDefs.length
-      ? undefined
-      : "Make a relation first: a rollup works across the pages it links to.",
-    rows: relationDefs.map<MenuRow>((d) => ({
-      kind: "row",
-      label: d.label,
-      icon: PROPERTY_KINDS.find((k) => k.type === "relation")?.icon,
-      onPick: () => setSub(rollupTargetSpec(d.key)),
-    })),
-  });
-  const rollupTargetSpec = (relation: string): MenuSpec => ({
-    title: "Of their",
-    onBack: () => setSub(rollupRelationSpec()),
-    rows: [
-      {
-        kind: "row",
-        label: "Pages (title)",
-        onPick: () => setSub(rollupCalcSpec(relation, "title", "title")),
-      },
-      ...propDefs
-        .filter((d) => d.type !== "rollup" && d.type !== "links")
-        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-        .map<MenuRow>((d) => ({
-          kind: "row",
-          label: d.label,
-          hint: { text: kindLabel(d.type) },
-          onPick: () => setSub(rollupCalcSpec(relation, d.key, d.type)),
-        })),
-      ...Object.entries(BUILT_IN_LABELS).map<MenuRow>(([k, l]) => ({
-        kind: "row",
-        label: l,
-        onPick: () => setSub(rollupCalcSpec(relation, k, BUILT_IN_TYPES[k])),
-      })),
-    ],
-  });
-  const rollupCalcSpec = (relation: string, target: string, type: string): MenuSpec => ({
-    title: "Show",
-    onBack: () => setSub(rollupTargetSpec(relation)),
-    rows: [
-      ...(type === "title" ||
-      type === "select" ||
-      type === "status" ||
-      type === "person" ||
-      type === "text" ||
-      type === "multi_select" ||
-      type === "relation"
-        ? [
-            {
-              kind: "row" as const,
-              label: "Their values",
-              onPick: () => setSub(rollupName(relation, target, "show", type)),
-            },
-          ]
-        : []),
-      ...calcsFor(type === "title" ? "text" : type).map<MenuRow>((c) => ({
-        kind: "row",
-        label: CALC_LABELS[c],
-        onPick: () => setSub(rollupName(relation, target, c, type)),
-      })),
-    ],
-  });
-  const rollupName = (relation: string, target: string, calc: string, type: string): MenuSpec =>
-    nameSpec(
-      "rollup",
-      (label) => create(label, "rollup", { relation, target, calc }),
-      rollupCalcSpec(relation, target, type),
-    );
-
-  // Step 1: pick a type.
-  const typeSpec: MenuSpec = {
-    title: "New property",
-    onBack: () => setSub(null),
-    rows: PROPERTY_KINDS.map((k) => ({
-      kind: "row" as const,
-      label: k.label,
-      icon: k.icon,
-      hint: { text: k.hint },
-      onPick: () =>
-        setSub(
-          k.type === "relation"
-            ? relationScopeSpec()
-            : k.type === "rollup"
-              ? rollupRelationSpec()
-              : nameSpec(k.type),
-        ),
-    })),
-  };
 
   const rows: MenuRow[] = candidates.map((d) => ({
     kind: "row" as const,
@@ -1510,6 +1340,7 @@ function PropertyStrip({
       <AddPropertyPopover
         databaseId={databaseId}
         propDefs={propDefs}
+        allPropDefs={allPropDefs}
         present={shown}
         databases={databases}
         onAdd={(key, seed) => {

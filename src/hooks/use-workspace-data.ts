@@ -1,3 +1,4 @@
+import type { Database } from "@/integrations/supabase/types";
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { qk } from "@/lib/query-keys";
@@ -52,7 +53,9 @@ async function fetchViews(ws: string) {
     .from("views")
     .select("*")
     .eq("workspace_id", ws)
-    .limit(200);
+    // Every database has its own views; don't cut them off at a few dozen
+    // databases.
+    .limit(2000);
   if (error) throw error;
   return data ?? [];
 }
@@ -72,29 +75,45 @@ async function fetchMembers(ws: string) {
   }));
 }
 
+/** Every database brings its own properties, so a workspace can hold
+ *  more than one request returns: read them a page of 1000 at a time
+ *  instead of cutting off at a fixed count. */
+const PROP_PAGE = 1000;
+
 /** Live properties only: archived ones are hidden from pages, views,
  *  filters and pickers (their values stay on the pages). */
 async function fetchPropDefs(ws: string) {
-  const { data, error } = await supabase
-    .from("property_defs")
-    .select("*")
-    .eq("workspace_id", ws)
-    .is("archived_at", null)
-    .limit(200);
-  if (error) throw error;
-  return data ?? [];
+  const out: Database["public"]["Tables"]["property_defs"]["Row"][] = [];
+  for (let from = 0; ; from += PROP_PAGE) {
+    const { data, error } = await supabase
+      .from("property_defs")
+      .select("*")
+      .eq("workspace_id", ws)
+      .is("archived_at", null)
+      .order("position", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + PROP_PAGE - 1);
+    if (error) throw error;
+    out.push(...(data ?? []));
+    if (!data || data.length < PROP_PAGE) return out;
+  }
 }
 
 /** Every property, archived included — for Settings › Properties. */
 async function fetchAllPropDefs(ws: string) {
-  const { data, error } = await supabase
-    .from("property_defs")
-    .select("*")
-    .eq("workspace_id", ws)
-    .order("position", { ascending: true })
-    .limit(300);
-  if (error) throw error;
-  return data ?? [];
+  const out: Database["public"]["Tables"]["property_defs"]["Row"][] = [];
+  for (let from = 0; ; from += PROP_PAGE) {
+    const { data, error } = await supabase
+      .from("property_defs")
+      .select("*")
+      .eq("workspace_id", ws)
+      .order("position", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + PROP_PAGE - 1);
+    if (error) throw error;
+    out.push(...(data ?? []));
+    if (!data || data.length < PROP_PAGE) return out;
+  }
 }
 
 export function useAllPropDefs(ws: string | undefined) {

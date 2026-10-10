@@ -45,21 +45,26 @@ export function PropertiesPaneBody() {
   const ws = useWorkspaceId();
   const { user } = useAuth();
   const shell = useWorkspaceShell(ws);
-  const all = (useAllPropDefs(ws).data ?? []) as PropDef[];
+  const allData = useAllPropDefs(ws).data;
+  const all = useMemo(() => (allData ?? []) as PropDef[], [allData]);
   const pagesData = shell.pages.data as PageListItem[] | undefined;
   const members = (shell.members.data ?? []) as Array<{ user_id: string; role: string }>;
   const isOwner = members.some((m) => m.user_id === user?.id && m.role === "owner");
 
+  // Counted per database: a property's values live on its own rows, and a
+  // value left on a page that isn't a row there doesn't count.
   const usedOn = useMemo(() => {
     const m = new Map<string, number>();
+    const dbOf = new Map(all.map((d) => [d.key, d.database_id]));
     for (const p of pagesData ?? []) {
       for (const [k, v] of Object.entries((p.props ?? {}) as Record<string, unknown>)) {
+        if (!p.database_id || dbOf.get(k) !== p.database_id) continue;
         if (v === null || v === undefined || v === "" || (Array.isArray(v) && v.length === 0)) continue;
         m.set(k, (m.get(k) ?? 0) + 1);
       }
     }
     return m;
-  }, [pagesData]);
+  }, [pagesData, all]);
 
   const live = all.filter((d) => !d.archived_at);
   const archived = all.filter((d) => d.archived_at);
@@ -116,11 +121,26 @@ export function PropertiesPaneBody() {
           <p className="mt-1 text-meta text-muted">
             Hidden from pages, views and filters. Every value is still on its page; restoring brings it all back.
           </p>
-          <div className="mt-2 overflow-hidden rounded-xl border border-line">
-            {archived.map((d) => (
-              <PropertyRow key={d.id} def={d} isOwner={isOwner} count={usedOn.get(d.key) ?? 0} />
+          {/* Grouped by the database each belongs to. */}
+          {[...databases, { id: "", title: "Archived or deleted databases", icon: null }]
+            .map((db) => ({
+              db,
+              own: archived.filter((d) => {
+                const home = databases.some((x) => x.id === d.database_id) ? d.database_id : "";
+                return home === db.id;
+              }),
+            }))
+            .filter((g) => g.own.length > 0)
+            .map(({ db, own }) => (
+              <div key={db.id || "none"}>
+                <div className="mt-3 text-meta text-muted">{db.title}</div>
+                <div className="mt-1 overflow-hidden rounded-xl border border-line">
+                  {own.map((d) => (
+                    <PropertyRow key={d.id} def={d} isOwner={isOwner} count={usedOn.get(d.key) ?? 0} />
+                  ))}
+                </div>
+              </div>
             ))}
-          </div>
         </>
       ) : null}
     </div>

@@ -54,7 +54,9 @@ export function useCreateProperty() {
         .from("property_defs")
         .select("key, position")
         .eq("workspace_id", ws)
-        .limit(300);
+        // Keys and positions only: small rows, and every database's
+        // properties count (keys are unique across the workspace).
+        .limit(10000);
       if (e1) throw e1;
       const rows = all ?? [];
       const taken = rows.map((r) => r.key);

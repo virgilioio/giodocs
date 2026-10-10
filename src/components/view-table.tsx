@@ -48,6 +48,9 @@ import type { Database } from "@/integrations/supabase/types";
 import { Ico } from "./emoji-icon";
 import { Popover } from "./popover";
 import { RowMenu, SpecMenuTrigger, type MenuRow, type MenuSpec } from "./row-menu";
+import { useNewPropertyFlow } from "./new-property-flow";
+import { useWorkspaceShell } from "@/hooks/use-workspace-data";
+import { useWorkspaceId } from "@/lib/workspace-context";
 import { RelatedLinks } from "./related-links";
 import {
   AreaPicker,
@@ -886,6 +889,67 @@ function PropHeading({
   );
 }
 
+/** "+" at the end of the heading row: a new property for this database,
+ *  shown in this view as soon as it's made. Same flow as a row's
+ *  "Add a property" (new-property-flow.tsx). */
+function AddPropertyButton({
+  databaseId,
+  onCreated,
+}: {
+  databaseId: string;
+  onCreated: (key: string) => void;
+}) {
+  const ws = useWorkspaceId();
+  const shell = useWorkspaceShell(ws);
+  const allPropDefs = useMemo(() => (shell.propDefs.data ?? []) as PropDef[], [shell.propDefs.data]);
+  const databases = useMemo(
+    () =>
+      ((shell.pages.data ?? []) as PageListItem[])
+        .filter((p) => p.is_database && !p.archived_at)
+        .map((p) => ({ id: p.id, title: p.title, icon: p.icon }))
+        .sort((a, b) => (a.title ?? "").localeCompare(b.title ?? "")),
+    [shell.pages.data],
+  );
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const [sub, setSub] = useState<MenuSpec | null>(null);
+  const close = () => {
+    setAnchor(null);
+    setSub(null);
+  };
+  const { typeSpec } = useNewPropertyFlow({
+    databaseId,
+    allPropDefs,
+    databases,
+    setSub: (s) => (s ? setSub(s) : close()),
+    rootBack: null,
+    onCreated: (def) => {
+      onCreated(def.key);
+      close();
+    },
+  });
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="New property"
+        title="New property"
+        aria-expanded={!!anchor}
+        onClick={(e) => {
+          setSub(null);
+          setAnchor(e.currentTarget);
+        }}
+        className={`grid place-items-center rounded-md text-whisper hover:bg-railHover hover:text-strong ${anchor ? "bg-railHover" : ""}`}
+        style={{ width: 22, height: 22, marginRight: 2 }}
+      >
+        <svg viewBox="0 0 24 24" width={13} height={13} aria-hidden fill="none">
+          <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" />
+        </svg>
+      </button>
+      <RowMenu spec={anchor ? (sub ?? typeSpec) : null} anchor={anchor} onClose={close} />
+    </>
+  );
+}
+
 /** Show and hide properties, from the end of the heading row. */
 function PropertiesMenu({
   shown,
@@ -1275,6 +1339,7 @@ export function ViewTable({
   onNewRow,
   relations,
   selectable = true,
+  databaseId,
   rowLimit,
   onShowAll,
 }: {
@@ -1306,6 +1371,9 @@ export function ViewTable({
   relations?: TableRelations;
   /** False hides the selection boxes (a view inside a page). */
   selectable?: boolean;
+  /** The database the rows belong to: "+" in the heading makes a new
+   *  property there (only where the view can be arranged). */
+  databaseId?: string;
   /** Show at most this many rows (per group), then "Show all". */
   rowLimit?: number;
   onShowAll?: () => void;
@@ -1690,6 +1758,12 @@ export function ViewTable({
             className={HEAD_CLASS + " sticky right-0 z-[1] justify-end"}
             style={{ padding: "6px 0 2px" }}
           >
+            {canArrange && databaseId ? (
+              <AddPropertyButton
+                databaseId={databaseId}
+                onCreated={(key) => onConfig({ ...config, props: showProp(shown, key) })}
+              />
+            ) : null}
             {canArrange ? (
               <PropertiesMenu
                 shown={shown}

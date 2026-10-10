@@ -254,6 +254,17 @@ export function relationWrite(
   };
 }
 
+/** The database whose rows a relation links to: its own target, or for a
+ *  far side, the database its near side lives in. */
+export function relationTargetDatabase(
+  def: RelDefLike,
+  defs: ReadonlyMap<string, RelDefLike>,
+): string | null {
+  const { databaseId, of } = relationConfig(def);
+  if (!of) return databaseId;
+  return defs.get(of)?.database_id ?? null;
+}
+
 /** The pages a relation can link to from this page: the rows of the
  *  database it points at (a far side links to rows of the near side's own
  *  database), never the page itself. By title. */

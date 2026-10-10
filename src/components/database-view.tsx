@@ -892,6 +892,7 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
         groupKey={tableGroup}
         onNewRow={canEditDb ? onNewRow : undefined}
         relations={tableRelations}
+        databaseId={canEditDb ? databaseId : undefined}
       />
     );
 
