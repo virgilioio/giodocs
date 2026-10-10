@@ -216,6 +216,13 @@ provider Virgilio already has; don't build them until asked.
   page; each reader sees the pages they can open; only page editors change
   it. Exports leave it out.
 
+## Decisions (Allan, 2026-10-10: diagrams)
+- A diagram is a code block in Mermaid: `lang: "mermaid"`, or no language
+  and a first line that opens a Mermaid diagram (src/lib/diagram.ts, the
+  one rule). "/diagram" makes one; choosing Code (`lang: ""`) keeps any
+  text as code. Mermaid (pinned) loads only when a page has a diagram and
+  runs in strict mode. Markdown keeps it as a ```mermaid fence both ways.
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.

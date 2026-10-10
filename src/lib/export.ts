@@ -11,6 +11,7 @@
  * No new dependencies. See CHUNK 5 spec §8.
  */
 
+import { isDiagramBlock } from "./diagram";
 import type { Block } from "./types";
 import { numberedOrdinals } from "./blocks";
 import { columnsGridTemplatePlain, normalizeColumnWidths } from "./column-widths";
@@ -327,7 +328,7 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
     case "divider":
       return "---";
     case "code": {
-      const lang = typeof b.lang === "string" ? (b.lang as string) : "";
+      const lang = typeof b.lang === "string" && b.lang ? (b.lang as string) : isDiagramBlock(b) ? "mermaid" : "";
       return "```" + lang + "\n" + text + "\n```";
     }
     case "table": {
@@ -676,7 +677,7 @@ function blockHtml(b: Block, ordinal = 1): string {
     case "divider":
       return `<hr/>`;
     case "code": {
-      const lang = typeof b.lang === "string" ? (b.lang as string) : "";
+      const lang = typeof b.lang === "string" && b.lang ? (b.lang as string) : isDiagramBlock(b) ? "mermaid" : "";
       return `<pre><code${
         lang ? ` class="language-${esc(lang)}"` : ""
       }>${esc(text)}</code></pre>`;

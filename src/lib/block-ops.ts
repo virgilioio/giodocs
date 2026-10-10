@@ -91,7 +91,9 @@ export type Blk = {
    *  behaviour); `headerCol` absent === false. */
   headerRow?: boolean;
   headerCol?: boolean;
-  language?: string;
+  /** Only meaningful when type === "code": the fence language
+   *  ("```mermaid"). "mermaid" renders the block as a diagram. */
+  lang?: string;
   /** Only meaningful when type === "toggle". Absent = today's plain toggle. */
   level?: ToggleLevel;
   /** Only meaningful when type === "callout". Absent === "neutral" (today's

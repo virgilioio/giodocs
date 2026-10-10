@@ -182,6 +182,8 @@ import {
 } from "@/lib/callout-color";
 import type { IconKey } from "@/lib/menu-icons";
 import { exitRef } from "@/lib/exit-motion";
+import { MermaidBlock, MERMAID_STARTER } from "@/components/mermaid-block";
+import { isDiagramBlock } from "@/lib/diagram";
 
 
 /** Module-local bridge: nested ColumnStack keystrokes set this before
@@ -261,7 +263,18 @@ type MenuItem = {
   kw?: string;
   /** For "columns" entries only: the column count to create. */
   count?: number;
+  /** For a code entry: the language it starts in ("mermaid" = Diagram). */
+  lang?: string;
 };
+
+/** A code block written in Mermaid is drawn as a diagram (src/lib/diagram.ts). */
+function isDiagram(b: Blk | undefined): boolean {
+  return isDiagramBlock(b);
+}
+
+/** Diagrams made from the slash menu in this session open with their
+ *  source showing. */
+const FRESH_DIAGRAMS = new Set<string>();
 
 const BLOCK_MENU: MenuItem[] = [
   { type: "text", name: "Text", desc: "Plain writing. The default.", icon: "Aa", ic: "bText" },
@@ -283,6 +296,15 @@ const BLOCK_MENU: MenuItem[] = [
   },
   { type: "divider", name: "Divider", desc: "A visual breath.", icon: "—", ic: "bDivider" },
   { type: "code", name: "Code", desc: "Monospace, verbatim.", icon: "<>", ic: "bCode" },
+  {
+    type: "code",
+    lang: "mermaid",
+    name: "Diagram",
+    desc: "A flowchart, sequence or timeline, drawn from Mermaid text.",
+    icon: "\u25C7",
+    ic: "bCode",
+    kw: "diagram mermaid flowchart flow chart graph sequence gantt timeline mindmap",
+  },
   { type: "table", name: "Table", desc: "Simple rows and columns.", icon: "▦", ic: "bTable" },
   {
     type: "sheet",
@@ -350,7 +372,7 @@ function blockIconKey(b: Blk | undefined): IconKey {
     if (lvl === "h3") return "bToggleH3";
     return "bToggle";
   }
-  return BLOCK_MENU.find((m) => m.type === b.type)?.ic ?? "bText";
+  return BLOCK_MENU.find((m) => m.type === b.type && !m.lang)?.ic ?? "bText";
 }
 
 /** Name for whatever a block currently IS, toggle levels included. */
@@ -360,7 +382,8 @@ function blockTypeName(b: Blk | undefined): string {
     if (lvl === "h1" || lvl === "h2" || lvl === "h3")
       return `Toggle heading ${lvl.slice(1)}`;
   }
-  return BLOCK_MENU.find((m) => m.type === b?.type)?.name ?? b?.type ?? "Block";
+  if (isDiagram(b)) return "Diagram";
+  return BLOCK_MENU.find((m) => m.type === b?.type && !m.lang)?.name ?? b?.type ?? "Block";
 }
 
 const COLUMNS_MENU: MenuItem[] = [
@@ -2183,7 +2206,7 @@ export function EditableBody({
   const closeSlash = useCallback(() => setSlash(null), []);
 
   const applyType = useCallback(
-    (blockId: string, type: BlockType, count?: number) => {
+    (blockId: string, type: BlockType, count?: number, lang?: string) => {
       const idx = blocks.findIndex((b) => b.id === blockId);
       if (idx === -1) return;
       const prev = blocks[idx];
@@ -2207,6 +2230,14 @@ export function EditableBody({
       }
 
       const nb: Blk = { ...prev, type, text: stripped };
+      if (type === "code") {
+        if (lang) nb.lang = lang;
+        else nb.lang = "";
+        if (lang === "mermaid") {
+          FRESH_DIAGRAMS.add(blockId);
+          if (!nb.text) nb.text = MERMAID_STARTER;
+        }
+      }
       if (type === "todo" && nb.checked == null) nb.checked = false;
       if (type === "toggle" && nb.open == null) nb.open = false;
       if (type === "callout") applyCalloutDefaults(nb);
@@ -2662,9 +2693,10 @@ export function EditableBody({
           checked:
             !isMulti &&
             target?.type === m.type &&
+            (m.type !== "code" || isDiagram(target) === (m.lang === "mermaid")) &&
             !(m.type === "toggle" && typeof curLevel === "string"),
           onPick: () => {
-            runTurnInto(blockId, m.type);
+            runTurnInto(blockId, m.type, m.type === "code" ? { lang: m.lang ?? "" } : undefined);
             mctx.close();
           },
         })),
@@ -3364,7 +3396,7 @@ export function EditableBody({
               if (e.key === "Enter") {
                 e.preventDefault();
                 const picked = filteredMenu[menuIdx];
-                if (picked) applyType(b.id, picked.type, picked.count);
+                if (picked) applyType(b.id, picked.type, picked.count, picked.lang);
                 return;
               }
               if (e.key === "Escape") {
@@ -3677,7 +3709,7 @@ export function EditableBody({
           items={filteredMenu}
           activeIdx={menuIdx}
           onHover={setMenuIdx}
-          onPick={(t, count) => applyType(slash.blockId, t, count)}
+          onPick={(t, count, lang) => applyType(slash.blockId, t, count, lang)}
           onClose={closeSlash}
         />
       ) : null}
@@ -4101,6 +4133,24 @@ function BlockContent({
         locked={locked}
         onChange={(patch) => onChange(patch as Partial<Blk>)}
         onBlur={onBlur}
+      />
+    );
+  }
+
+  if (t === "code" && isDiagram(block)) {
+    // A diagram: a code block in Mermaid, drawn as a picture. The source
+    // stays the same literal textarea as any code block.
+    return (
+      <MermaidBlock
+        source={block.text ?? ""}
+        locked={locked}
+        startOpen={FRESH_DIAGRAMS.has(block.id)}
+        editor={
+          <GrowText
+            {...textareaProps}
+            className="w-full resize-none border-0 bg-transparent p-0 font-mono text-meta text-body outline-none"
+          />
+        }
       />
     );
   }
@@ -4685,6 +4735,15 @@ function ColumnStack({
     setBlocks(blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)));
   }
 
+  /** A code entry's language, for applyTypeLocal (Diagram vs Code). */
+  function codeExtra(blockId: string, type: BlockType, lang?: string): Partial<Blk> | undefined {
+    if (type !== "code") return undefined;
+    if (lang !== "mermaid") return { lang: "" };
+    FRESH_DIAGRAMS.add(blockId);
+    const cur = (blocks.find((x) => x.id === blockId)?.text ?? "").replace(/\/\S*$/, "").trim();
+    return cur ? { lang } : { lang, text: MERMAID_STARTER };
+  }
+
   function applyTypeLocal(blockId: string, type: BlockType, extra?: Partial<Blk>) {
     // Columns never nest — refuse the "columns" type even though the
     // in-column slash menu doesn't offer it.
@@ -4695,7 +4754,7 @@ function ColumnStack({
     const t = prev.text ?? "";
     const at = slash && slash.blockId === blockId ? slash.at : t.lastIndexOf("/");
     const stripped = at >= 0 ? stripSlash(t, at, slash?.query ?? "") : t;
-    const nb: Blk = { ...prev, type, text: stripped, ...(extra ?? {}) };
+    const nb: Blk = { ...prev, type, ...(extra ?? {}), text: extra?.text ?? stripped };
     if (type === "todo" && nb.checked == null) nb.checked = false;
     if (type === "toggle" && nb.open == null) nb.open = false;
     if (type === "callout") applyCalloutDefaults(nb);
@@ -4788,9 +4847,10 @@ function ColumnStack({
           icon: m.ic,
           checked:
             target?.type === m.type &&
+            (m.type !== "code" || isDiagram(target) === (m.lang === "mermaid")) &&
             !(m.type === "toggle" && typeof curLevel === "string"),
           onPick: () => {
-            applyTypeLocal(bid, m.type);
+            applyTypeLocal(bid, m.type, m.type === "code" ? { lang: m.lang ?? "" } : undefined);
             mctx.close();
           },
         })),
@@ -4976,7 +5036,7 @@ function ColumnStack({
               if (e.key === "Enter") {
                 e.preventDefault();
                 const picked = filteredMenu[menuIdx];
-                if (picked) applyTypeLocal(b.id, picked.type);
+                if (picked) applyTypeLocal(b.id, picked.type, codeExtra(b.id, picked.type, picked.lang));
                 return;
               }
               if (e.key === "Escape") {
@@ -5194,7 +5254,7 @@ function ColumnStack({
           items={filteredMenu}
           activeIdx={menuIdx}
           onHover={setMenuIdx}
-          onPick={(t) => applyTypeLocal(slash.blockId, t)}
+          onPick={(t, _count, lang) => applyTypeLocal(slash.blockId, t, codeExtra(slash.blockId, t, lang))}
           onClose={() => setSlash(null)}
         />
       ) : null}
@@ -6869,7 +6929,7 @@ function SlashMenu({
   items: MenuItem[];
   activeIdx: number;
   onHover: (i: number) => void;
-  onPick: (t: BlockType, count?: number) => void;
+  onPick: (t: BlockType, count?: number, lang?: string) => void;
 
   onClose: () => void;
 }) {
@@ -6924,13 +6984,13 @@ function SlashMenu({
         ) : (
           items.map((m, i) => (
             <button
-              key={m.type + (m.count != null ? `-${m.count}` : "")}
+              key={m.type + (m.count != null ? `-${m.count}` : "") + (m.lang ? `-${m.lang}` : "")}
               type="button"
               data-active={i === activeIdx ? "true" : undefined}
               onMouseEnter={() => onHover(i)}
               onMouseDown={(e) => {
                 e.preventDefault();
-                onPick(m.type, m.count);
+                onPick(m.type, m.count, m.lang);
               }}
 
               className={

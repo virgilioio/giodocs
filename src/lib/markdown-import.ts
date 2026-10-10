@@ -64,7 +64,8 @@ export function parseMarkdown(text: string): Blk[] {
       continue;
     }
 
-    // Fenced code — join enclosed lines, ignore language tag.
+    // Fenced code — join enclosed lines; the language tag is kept
+    // ("```mermaid" makes a diagram).
     const fence = line.match(/^```(.*)$/);
     if (fence) {
       flushParagraph();
@@ -75,7 +76,13 @@ export function parseMarkdown(text: string): Blk[] {
         i++;
       }
       if (i < lines.length) i++; // consume closing fence
-      out.push({ id: nanoid(10), type: "code", text: codeLines.join("\n") });
+      const lang = (fence[1] ?? "").trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+      out.push({
+        id: nanoid(10),
+        type: "code",
+        text: codeLines.join("\n"),
+        ...(/^[\w+#.-]{1,24}$/.test(lang) ? { lang } : {}),
+      });
       continue;
     }
 
