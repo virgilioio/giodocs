@@ -305,7 +305,7 @@ export function CommandPalette({
       <div
         role="dialog"
         aria-label="Search"
-        className="animate-palIn rounded-card bg-surface shadow-modal"
+        className="rounded-card bg-surface shadow-modal"
         style={{ width: "var(--container-palette)", maxWidth: "100%" }}
         onKeyDown={onKeyDown}
       >

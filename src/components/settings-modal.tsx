@@ -43,6 +43,7 @@ import {
   useDeleteCustomEmoji,
   useUpdateCustomEmoji,
 } from "@/hooks/use-custom-emoji";
+import { exitOnly } from "@/lib/exit-motion";
 
 export type SettingsPane = "profile" | "preferences" | "general" | "people" | "emoji";
 
@@ -138,7 +139,8 @@ export function SettingsModal({
       role="dialog"
       aria-modal="true"
       aria-label="Settings"
-      className="fixed inset-0 flex items-center justify-center"
+      ref={exitOnly("dialog")}
+      className="fixed inset-0 flex items-center justify-center animate-fadeIn"
       style={{
         zIndex: "var(--z-modal)",
         background: "rgba(13,13,9,.32)",
@@ -150,7 +152,8 @@ export function SettingsModal({
       }}
     >
       <div
-        className="flex bg-surface shadow-modal animate-palIn"
+        data-motion-card
+        className="flex bg-surface shadow-modal animate-dialogIn"
         style={{
           width: 1000,
           maxWidth: "100%",
@@ -586,6 +589,7 @@ function GeneralPane() {
             </button>
             {iconOpen && (
               <div
+                ref={exitOnly("pop")}
                 className="absolute z-10 mt-1 bg-surface border border-line shadow-popover animate-popIn"
                 style={{ borderRadius: 12, padding: 6, width: 240 }}
               >
@@ -1183,6 +1187,7 @@ function RolePicker({
       </button>
       {open && (
         <div
+          ref={exitOnly("pop")}
           className="absolute left-0 top-full z-10 mt-1 bg-surface border border-line shadow-popover animate-popIn"
           style={{ borderRadius: 8, padding: 4, width: 140 }}
         >

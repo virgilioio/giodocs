@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "@/lib/toast";
 import { useSendInvites } from "@/hooks/use-invites";
+import { exitOnly } from "@/lib/exit-motion";
 
 export type InviteRole = "Member" | "Owner";
 
@@ -267,7 +268,8 @@ export function AddMembersModal({
       role="dialog"
       aria-modal="true"
       aria-label="Add members"
-      className="fixed inset-0 flex items-center justify-center"
+      ref={exitOnly("dialog")}
+      className="fixed inset-0 flex items-center justify-center animate-fadeIn"
       style={{
         zIndex: "calc(var(--z-modal) + 5)",
         background: "rgba(13,13,9,.32)",
@@ -279,7 +281,8 @@ export function AddMembersModal({
       }}
     >
       <div
-        className="bg-surface shadow-modal animate-palIn"
+        data-motion-card
+        className="bg-surface shadow-modal animate-dialogIn"
         style={{
           width: 460,
           maxWidth: "100%",

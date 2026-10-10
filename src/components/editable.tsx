@@ -47,6 +47,7 @@ import { readCaretSource, writeCaretSource } from "@/lib/ce-offsets";
 import { searchEmoji, shouldOpenEmojiTrigger, type Emoji } from "@/lib/emoji-data";
 import { useInlineEmojiSet, type InlineEmoji } from "@/lib/emoji-registry";
 import { EmojiGrid } from "./emoji-picker";
+import { exitOnly } from "@/lib/exit-motion";
 
 /* The ":" trigger lists the workspace's CUSTOM emoji first — they are
  * the vocabulary a team actually types. Picking one inserts ":name:",
@@ -413,6 +414,7 @@ function TriggerPopup({
 
   return (
     <div
+      ref={exitOnly("pop")}
       // Prevent the editable's blur from firing when clicking the panel.
       onMouseDown={(e) => e.preventDefault()}
       style={{

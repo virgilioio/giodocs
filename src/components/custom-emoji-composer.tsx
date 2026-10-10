@@ -19,6 +19,7 @@ import {
 } from "@/lib/custom-emoji";
 import { isImageMime } from "@/lib/image-ops";
 import { useToast } from "@/lib/toast";
+import { exitOnly } from "@/lib/exit-motion";
 
 const W = 344;
 const EST_H = 470;
@@ -142,6 +143,7 @@ export function CustomEmojiComposer({
 
   return (
     <div
+      ref={exitOnly("pop")}
       role="dialog"
       aria-label={editing ? "Edit custom emoji" : "Add custom emoji"}
       className="fixed bg-surface border border-line shadow-popover animate-popIn"

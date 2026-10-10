@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { createPortal } from "react-dom";
 import type { PageAppearance, PageFont } from "@/lib/page-appearance";
 import type { PageAccessRow, PageFull } from "@/lib/types";
+import { exitOnly, exitRef } from "@/lib/exit-motion";
 
 /* ────────────── Icons ────────────── */
 
@@ -225,15 +226,19 @@ function DeleteConfirm({
   return createPortal(
     <>
       <div
+        ref={exitOnly("fade")}
+        className="animate-fadeIn"
         onClick={onCancel}
         style={{ position: "fixed", inset: 0, background: "rgba(13,13,9,.35)", zIndex: 90 }}
       />
       <div
+        ref={exitOnly("dialog")}
         role="dialog"
         aria-modal
+        className="animate-dialogIn"
         style={{
           position: "fixed", top: "50%", left: "50%",
-          transform: "translate(-50%,-50%)", zIndex: 91,
+          translate: "-50% -50%", zIndex: 91,
           width: 420, background: "var(--color-surface)", borderRadius: 12,
           border: "1px solid var(--color-line)",
           boxShadow: "0 24px 64px rgba(13,13,9,.22)",
@@ -391,7 +396,7 @@ export function PageActionsMenu({
         style={{ position: "fixed", inset: 0, zIndex: 80 }}
       />
       <div
-        ref={panelRef}
+        ref={exitRef("pop", panelRef)}
         role="menu"
         onClick={(e) => e.stopPropagation()}
         style={{
@@ -399,7 +404,8 @@ export function PageActionsMenu({
           width: 302, background: "var(--color-surface)",
           border: "1px solid var(--color-line)", borderRadius: 12,
           boxShadow: "0 18px 48px rgba(13,13,9,.16)",
-          padding: 5, animation: "popIn .12s ease-out",
+          padding: 5, animation: "var(--animate-popIn)",
+          transformOrigin: "top right",
         }}
       >
         {screen === "area" ? (

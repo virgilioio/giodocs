@@ -84,6 +84,7 @@ import { useDrafts, patchDraft as storePatchDraft } from "@/lib/view-drafts-stor
 import { useAllowedDomains, useMembers, usePropDefs } from "@/hooks/use-workspace-data";
 import { usePrefs } from "@/lib/preferences";
 import { isTypingTarget } from "@/lib/is-typing";
+import { exitOnly } from "@/lib/exit-motion";
 
 
 type Selection =
@@ -2102,11 +2103,13 @@ function FooterAccount({
             aria-hidden
           />
           <div
+            ref={exitOnly("pop")}
             className="fixed bg-surface animate-popIn"
             style={{
               zIndex: 96,
               left: 10,
               bottom: 56,
+              transformOrigin: "bottom left",
               width: 268,
               border: "1px solid var(--color-line)",
               borderRadius: 12,

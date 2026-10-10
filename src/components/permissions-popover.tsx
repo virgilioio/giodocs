@@ -32,6 +32,7 @@ import {
   type NormAccess,
   type MemberInfo,
 } from "@/lib/share-panel";
+import { exitRef } from "@/lib/exit-motion";
 
 /* ────────────── Store ────────────── */
 
@@ -587,7 +588,7 @@ export function PermissionsPopoverHost({
         }}
       />
       <div
-        ref={panelRef}
+        ref={exitRef("pop", panelRef)}
         role="dialog"
         aria-label="Who can see this page"
         onMouseDown={(e) => e.stopPropagation()}

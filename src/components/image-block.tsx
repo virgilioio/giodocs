@@ -75,7 +75,9 @@ const BAR: React.CSSProperties = {
   position: "absolute",
   top: 8,
   left: "50%",
-  transform: "translateX(-50%)",
+  // translate, not transform, so the pop-in scale doesn't knock it off centre.
+  translate: "-50% 0",
+  transformOrigin: "top center",
   zIndex: 6,
   background: "var(--color-btn)",
   borderRadius: 9,

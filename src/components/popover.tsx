@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { exitRef } from "@/lib/exit-motion";
 
 /**
  * Popover — a trigger button plus a portalled panel.
@@ -43,6 +44,7 @@ export function Popover({
   const [pos, setPos] = useState<{
     top: number;
     left: number;
+    above: boolean;
   } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -76,13 +78,15 @@ export function Popover({
 
       // Vertical: prefer below, flip above when there is no room.
       let top = r.bottom + gap;
+      let above = false;
       if (
         top + panelH + margin > window.innerHeight &&
         r.top - gap - panelH > margin
       ) {
         top = r.top - gap - panelH;
+        above = true;
       }
-      setPos({ top, left });
+      setPos({ top, left, above });
     };
     place();
     window.addEventListener("resize", place);
@@ -120,7 +124,7 @@ export function Popover({
       {open && typeof document !== "undefined"
         ? createPortal(
             <div
-              ref={panelRef}
+              ref={exitRef("pop", panelRef)}
               style={{
                 position: "fixed",
                 top: pos?.top ?? -9999,
@@ -128,6 +132,8 @@ export function Popover({
                 width,
                 zIndex: 90,
                 visibility: pos ? "visible" : "hidden",
+                // Grow from the trigger.
+                transformOrigin: `${pos?.above ? "bottom" : "top"} ${align === "end" ? "right" : "left"}`,
               }}
               className="rounded-lg border border-line bg-surface p-1 shadow-popover animate-popIn"
             >
