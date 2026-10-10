@@ -70,14 +70,37 @@ async function fetchMembers(ws: string) {
   }));
 }
 
+/** Live properties only: archived ones are hidden from pages, views,
+ *  filters and pickers (their values stay on the pages). */
 async function fetchPropDefs(ws: string) {
   const { data, error } = await supabase
     .from("property_defs")
     .select("*")
     .eq("workspace_id", ws)
+    .is("archived_at", null)
     .limit(200);
   if (error) throw error;
   return data ?? [];
+}
+
+/** Every property, archived included — for Settings › Properties. */
+async function fetchAllPropDefs(ws: string) {
+  const { data, error } = await supabase
+    .from("property_defs")
+    .select("*")
+    .eq("workspace_id", ws)
+    .order("position", { ascending: true })
+    .limit(300);
+  if (error) throw error;
+  return data ?? [];
+}
+
+export function useAllPropDefs(ws: string | undefined) {
+  return useQuery({
+    queryKey: ws ? qk.propDefsAll(ws) : ["propDefsAll", "none"],
+    queryFn: () => fetchAllPropDefs(ws!),
+    enabled: !!ws,
+  });
 }
 
 async function fetchWorkspace(ws: string) {

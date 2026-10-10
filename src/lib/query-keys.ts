@@ -5,6 +5,8 @@ export const qk = {
   members: (ws: string) => ["members", ws] as const,
   invites: (ws: string) => ["invites", ws] as const,
   propDefs: (ws: string) => ["propDefs", ws] as const,
+  /** Every property, archived ones included (Settings › Properties). */
+  propDefsAll: (ws: string) => ["propDefsAll", ws] as const,
   page: (id: string) => ["page", id] as const,
   customEmoji: (ws: string) => ["customEmoji", ws] as const,
   pageAccess: (id: string) => ["pageAccess", id] as const,
