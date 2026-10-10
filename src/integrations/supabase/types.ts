@@ -487,6 +487,7 @@ export type Database = {
       property_defs: {
         Row: {
           archived_at: string | null
+          config: Json
           created_at: string
           created_by: string | null
           id: string
@@ -501,6 +502,7 @@ export type Database = {
         }
         Insert: {
           archived_at?: string | null
+          config?: Json
           created_at?: string
           created_by?: string | null
           id?: string
@@ -515,6 +517,7 @@ export type Database = {
         }
         Update: {
           archived_at?: string | null
+          config?: Json
           created_at?: string
           created_by?: string | null
           id?: string
@@ -1118,6 +1121,8 @@ export type Database = {
         | "url"
         | "email"
         | "phone"
+        | "relation"
+        | "rollup"
       view_layout: "table" | "board" | "list" | "calendar"
       view_scope: "personal" | "team"
     }
@@ -1261,6 +1266,8 @@ export const Constants = {
         "url",
         "email",
         "phone",
+        "relation",
+        "rollup",
       ],
       view_layout: ["table", "board", "list", "calendar"],
       view_scope: ["personal", "team"],
