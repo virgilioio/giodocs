@@ -9,6 +9,7 @@ const teamBase: ViewBase = {
   filter: [{ op: "eq", prop: "status", value: "shipped" }],
   sort: { prop: "edited", dir: "desc" },
   group_by: null,
+  config: {},
 };
 
 describe("currentView", () => {
@@ -65,5 +66,17 @@ describe("areaBaseView", () => {
     expect(cv.sort).toEqual({ prop: "title", dir: "asc" });
     // Area filter is still present at index 0
     expect(cv.filter[0]).toEqual({ op: "eq", prop: "area", value: "Ops" });
+  });
+});
+
+describe("currentView and table settings", () => {
+  it("a draft that only resizes properties isn't a change to the view", () => {
+    const c = currentView(teamBase, { v1: { config: { widths: { due: 200 } } } });
+    expect(c._modified).toBe(false);
+    expect(c.config.widths).toEqual({ due: 200 });
+  });
+  it("hiding or moving a property is", () => {
+    const c = currentView(teamBase, { v1: { config: { props: ["due"] } } });
+    expect(c._modified).toBe(true);
   });
 });

@@ -1,4 +1,5 @@
 import type { Filter, SortSpec } from "./run-view";
+import { sameIgnoringWidths, type ViewConfig } from "./view-config";
 
 export type ViewLayout = "table" | "board" | "list" | "calendar";
 export type ViewScope = "personal" | "team" | "area";
@@ -11,9 +12,13 @@ export type ViewBase = {
   filter: Filter[];
   sort: SortSpec;
   group_by: string | null;
+  /** How the view shows its pages: properties, widths, calculations. */
+  config: ViewConfig;
 };
 
-export type ViewDraft = Partial<Pick<ViewBase, "layout" | "filter" | "sort" | "group_by">>;
+export type ViewDraft = Partial<
+  Pick<ViewBase, "layout" | "filter" | "sort" | "group_by" | "config">
+>;
 
 export type CurrentView = ViewBase & { _base: ViewBase; _modified: boolean };
 
@@ -22,7 +27,13 @@ export function currentView(
   drafts: Record<string, ViewDraft>,
 ): CurrentView {
   const d = drafts[base.id];
-  return { ...base, ...(d ?? {}), _base: base, _modified: !!d };
+  // A draft that only resizes properties isn't a change to the view.
+  const modified =
+    !!d &&
+    Object.keys(d).some((k) =>
+      k === "config" ? !sameIgnoringWidths(d.config ?? {}, base.config) : true,
+    );
+  return { ...base, ...(d ?? {}), _base: base, _modified: modified };
 }
 
 export function areaBaseView(area: string): ViewBase {
@@ -34,6 +45,7 @@ export function areaBaseView(area: string): ViewBase {
     filter: [{ op: "eq", prop: "area", value: area }],
     sort: { prop: "edited", dir: "desc" },
     group_by: null,
+    config: {},
   };
 }
 

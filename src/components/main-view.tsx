@@ -2,13 +2,15 @@ import React, { memo, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { primaryMod } from "@/lib/platform";
 import { toClipboard } from "@/lib/clipboard";
 import { usePrefs } from "@/lib/preferences";
-import { formatTimestamp } from "@/lib/format";
+import { setViewDateMode, viewTime } from "@/lib/view-time";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useAllPropDefs, useWorkspaceShell, pageQuery } from "@/hooks/use-workspace-data";
-import { runView, type Filter, type SortSpec } from "@/lib/run-view";
+import { runView, sortsOf, type Filter, type SortSpec } from "@/lib/run-view";
+import { readConfig, type ViewConfig } from "@/lib/view-config";
+import { ViewTable, RowCheckbox } from "./view-table";
 import { applyFilterReplacement, filterLabel } from "@/lib/filter-label";
 import { PageOriginContext, useSetPageOrigin } from "@/lib/page-origin";
 import { areaBaseView, currentView, type ViewBase, type ViewDraft } from "@/lib/view-drafts";
@@ -76,7 +78,6 @@ import { isTypingTarget } from "@/lib/is-typing";
 type Layout = "table" | "board" | "list" | "calendar";
 
 
-
 type PropDef = Database["public"]["Tables"]["property_defs"]["Row"];
 type ViewRow = Database["public"]["Tables"]["views"]["Row"];
 type MemberRow = {
@@ -91,24 +92,11 @@ type MemberRow = {
   } | null;
 };
 
+const EMPTY_CONFIG: ViewConfig = {};
+
 export type Selection =
   | { kind: "view"; id: string }
   | { kind: "area"; area: string };
-
-const TINTS: Array<{ tint: string; ink: string }> = [
-  { tint: "accentTint", ink: "accent" },
-  { tint: "amberTint", ink: "amberInk" },
-  { tint: "blueTint", ink: "blueInk" },
-  { tint: "purpleTint", ink: "purple" },
-  { tint: "pinkTint", ink: "pinkInk" },
-  { tint: "yellowTint", ink: "yellowInk" },
-];
-
-function hashTag(s: string) {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return TINTS[h % TINTS.length];
-}
 
 function propsOf(p: PageListItem): Record<string, unknown> {
   return p.props && typeof p.props === "object" && !Array.isArray(p.props)
@@ -116,12 +104,11 @@ function propsOf(p: PageListItem): Record<string, unknown> {
     : {};
 }
 
-let _dateMode: "relative" | "absolute" = "relative";
 export function setDateModeForMainView(m: "relative" | "absolute") {
-  _dateMode = m;
+  setViewDateMode(m);
 }
 function relTime(iso: string): string {
-  return formatTimestamp(iso, _dateMode);
+  return viewTime(iso);
 }
 
 
@@ -151,7 +138,6 @@ function Glyph({ path, className }: { path: string; className?: string }) {
 
 /* describeFilter — REMOVED. Every filter chip text now flows through
  * filterLabel() in @/lib/filter-label. See B1 spec §1. */
-
 
 
 /* ─────────────────────────── View header ─────────────────────────── */
@@ -270,8 +256,6 @@ function ViewHeader({
     </div>
   );
 }
-
-
 
 
 /* ─────────────────────────── Query toolbar ─────────────────────────── */
@@ -1170,416 +1154,7 @@ function CheckIcon() {
   );
 }
 
-function StatusChip({ label, tint, ink }: { label: string; tint: string; ink: string }) {
-  return (
-    <span
-      className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-caption"
-      style={{ background: `var(--color-${tint})`, color: `var(--color-${ink})` }}
-    >
-      <span
-        className="h-1.5 w-1.5 rounded-full"
-        style={{ background: `var(--color-${ink})` }}
-      />
-      {label}
-    </span>
-  );
-}
-
-
 /* ─────────────────────────── Table cells ─────────────────────────── */
-
-function PageTitleCell({
-  page,
-  onSave,
-}: {
-  page: PageListItem;
-  onSave: (title: string) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(page.title ?? "");
-  const inputRef = useRef<HTMLInputElement>(null);
-  const navigate = useNavigate();
-  const qc = useQueryClient();
-  const setOrigin = useSetPageOrigin();
-
-  return (
-    <div className="flex min-w-0 items-center gap-1">
-      <Ico icon={page.icon || "📄"} size={19} />
-      {editing ? (
-        <input
-          ref={inputRef}
-          autoFocus
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onBlur={() => {
-            setEditing(false);
-            if (value !== page.title) onSave(value);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-            if (e.key === "Escape") {
-              setValue(page.title ?? "");
-              setEditing(false);
-            }
-          }}
-          className="min-w-0 flex-1 bg-transparent text-row font-bold focus:outline-none"
-        />
-      ) : (
-        <>
-          <button
-            type="button"
-            className="min-w-0 flex-1 truncate text-left text-row font-bold hover:underline"
-            onClick={() => {
-              setOrigin(page.id);
-              navigate({ to: "/p/$pageId", params: { pageId: page.id } });
-            }}
-
-            onMouseEnter={() => {
-              qc.prefetchQuery(pageQuery(page.id));
-            }}
-            onDoubleClick={(e) => {
-              e.preventDefault();
-              setValue(page.title ?? "");
-              setEditing(true);
-            }}
-            title="Click to open · double-click to rename"
-          >
-            {page.title || <span className="text-faint italic">Untitled</span>}
-          </button>
-          <button
-            type="button"
-            aria-label="Rename"
-            onClick={() => {
-              setValue(page.title ?? "");
-              setEditing(true);
-            }}
-            className="shrink-0 rounded-sm px-1 text-caption text-faint opacity-0 hover:bg-rail hover:text-muted group-hover:opacity-100"
-          >
-            ✎
-          </button>
-        </>
-      )}
-    </div>
-  );
-}
-
-
-function StatusCell({
-  page,
-  def,
-  onPick,
-}: {
-  page: PageListItem;
-  def: PropDef | undefined;
-  onPick: (value: string | null) => void;
-}) {
-  if (!def) return <span className="text-faint">—</span>;
-  const opts =
-    (def.options as unknown as SelectOption[]) ?? [];
-  const v = propsOf(page)[def.key];
-  const cur = opts.find((o) => o.value === v);
-  return (
-    <SelectPicker
-      value={typeof v === "string" ? v : null}
-      options={opts}
-      onPick={onPick}
-      trigger={({ onClick, ref }) => (
-        <button ref={ref} type="button" onClick={onClick} className="text-left">
-          {cur ? (
-            <StatusChip label={cur.label} tint={cur.tint} ink={cur.ink} />
-          ) : (
-            <span className="text-faint">—</span>
-          )}
-        </button>
-      )}
-    />
-  );
-}
-
-function OwnerCell({
-  page,
-  members,
-  onPick,
-}: {
-  page: PageListItem;
-  members: MemberRow[];
-  onPick: (userId: string | null) => void;
-}) {
-  const owner = propsOf(page)["owner"];
-  const current = members.find((m) => m.user_id === owner);
-  return (
-    <OwnerPicker
-      value={typeof owner === "string" ? owner : null}
-      members={members}
-      onPick={onPick}
-      trigger={({ onClick, ref }) => (
-        <button
-          ref={ref}
-          type="button"
-          onClick={onClick}
-          className="flex min-w-0 items-center gap-2 text-left"
-        >
-          {current ? (
-            <>
-              <MiniAvatar profile={current.profiles} />
-              <span className="min-w-0 truncate text-meta text-body hidden md:inline">
-                {current.profiles?.full_name}
-              </span>
-            </>
-          ) : (
-            <span className="text-faint">No owner</span>
-          )}
-        </button>
-      )}
-    />
-  );
-}
-
-function AreaCell({
-  page,
-  areas,
-  onPick,
-}: {
-  page: PageListItem;
-  areas: string[];
-  onPick: (v: string | null) => void;
-}) {
-  const value = propsOf(page)["area"];
-  return (
-    <AreaPicker
-      value={typeof value === "string" ? value : null}
-      areas={areas}
-      onPick={onPick}
-      trigger={({ onClick, ref }) => (
-        <button
-          ref={ref}
-          type="button"
-          onClick={onClick}
-          className="text-left text-meta"
-        >
-          {typeof value === "string" && value ? (
-            value
-          ) : (
-            <span className="text-faint">—</span>
-          )}
-        </button>
-      )}
-    />
-  );
-}
-
-function TagsCell({
-  page,
-  onSet,
-  pages,
-  allOverride,
-}: {
-  page: PageListItem;
-  onSet: (tags: string[]) => void;
-  pages: PageListItem[];
-  allOverride?: string[];
-}) {
-  const raw = propsOf(page)["tags"];
-  const tags = Array.isArray(raw) ? raw.map(String) : [];
-  const derived = useMemo(() => {
-    if (allOverride) return allOverride;
-    const s = new Set<string>();
-    for (const p of pages) {
-      const t = propsOf(p)["tags"];
-      if (Array.isArray(t)) t.forEach((x) => s.add(String(x)));
-    }
-    return [...s].sort();
-  }, [pages, allOverride]);
-  const shown = tags.slice(0, 2);
-  const extra = tags.length - shown.length;
-  return (
-    <TagsPicker
-      value={tags}
-      options={derived}
-      onSet={onSet}
-      trigger={({ onClick, ref }) => (
-        <button
-          ref={ref}
-          type="button"
-          onClick={onClick}
-          className="flex flex-nowrap items-center gap-1 overflow-hidden"
-        >
-          {shown.map((t) => {
-            const c = hashTag(t);
-            return (
-              <span
-                key={t}
-                className="rounded-sm px-1.5 py-0.5 text-caption"
-                style={{
-                  background: `var(--color-${c.tint})`,
-                  color: `var(--color-${c.ink})`,
-                }}
-              >
-                {t}
-              </span>
-            );
-          })}
-          {extra > 0 && (
-            <span
-              className="rounded-sm px-1.5 py-0.5 text-caption"
-              style={{ color: "var(--color-whisper)" }}
-            >
-              +{extra}
-            </span>
-          )}
-          {tags.length === 0 && <span className="text-faint">—</span>}
-        </button>
-      )}
-    />
-  );
-}
-
-
-/* Extra property columns — value types that are not one of the fixed table
- * columns. They render through the SAME shared editors the page properties
- * strip uses, so a Due date behaves identically in both places. The
- * built-in selects, people and tags already have their own dedicated
- * columns, so they are deliberately not repeated here.
- *
- * Date, number, text and checkbox properties always get a column, as they
- * always have. The newer kinds (link, email, phone, and selects/statuses
- * the team made) get one once any page uses them, so tables don't fill with
- * empty columns as the team adds properties; `sticky` keeps a column that
- * has appeared, so clearing its last value doesn't pull it from under you. */
-const ALWAYS_CELL_TYPES = new Set(["date", "number", "text", "checkbox"]);
-const FIXED_KEYS = new Set(["area", "owner", "status", "tags"]);
-
-function isNewKindColumn(d: PropDef): boolean {
-  return (
-    d.type === "url" ||
-    d.type === "email" ||
-    d.type === "phone" ||
-    (!d.is_system && (d.type === "select" || d.type === "status"))
-  );
-}
-
-export function extraColumnDefs(
-  propDefs: PropDef[],
-  pages?: PageListItem[],
-  sticky?: Set<string>,
-): PropDef[] {
-  const used = pages
-    ? new Set(
-        pages.flatMap((p) =>
-          Object.entries(propsOf(p))
-            .filter(([, v]) => v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0))
-            .map(([k]) => k),
-        ),
-      )
-    : null;
-  return [...propDefs]
-    .filter((d) => {
-      if (FIXED_KEYS.has(d.key)) return false;
-      if (ALWAYS_CELL_TYPES.has(d.type)) return true;
-      if (!isNewKindColumn(d)) return false;
-      return !used || used.has(d.key) || !!sticky?.has(d.key);
-    })
-    .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
-}
-
-function PropCell({
-  page,
-  def,
-  onSet,
-}: {
-  page: PageListItem;
-  def: PropDef;
-  onSet: (value: unknown) => void;
-}) {
-  const raw = propsOf(page)[def.key];
-  if (def.type === "checkbox")
-    return (
-      <CheckboxToggle
-        value={raw}
-        onSet={onSet}
-        label={def.label}
-        variant="cell"
-      />
-    );
-  if (def.type === "number")
-    return (
-      <NumberEditor
-        value={raw}
-        onSet={onSet}
-        variant="cell"
-        triggerClassName="text-left"
-      />
-    );
-  if (def.type === "date")
-    return (
-      <DatePicker
-        value={raw}
-        onSet={onSet}
-        variant="cell"
-        terminal={isTerminalStatus(propsOf(page)["status"])}
-        triggerClassName="min-w-0 text-left"
-      />
-    );
-  if (isTypedString(def.type))
-    return (
-      <TypedValueEditor
-        type={def.type}
-        value={raw}
-        onSet={onSet}
-        variant="cell"
-        triggerClassName="text-left"
-      />
-    );
-  if (def.type === "select" || def.type === "status")
-    return <OptionCell page={page} def={def} onSet={onSet} />;
-  return (
-    <TextEditor
-      value={raw}
-      onSet={onSet}
-      variant="cell"
-      triggerClassName="text-left"
-    />
-  );
-}
-
-/** A team-made select or status in a table cell: pick, or add an option. */
-function OptionCell({
-  page,
-  def,
-  onSet,
-}: {
-  page: PageListItem;
-  def: PropDef;
-  onSet: (value: unknown) => void;
-}) {
-  const addOption = useAddPropertyOption();
-  const opts = (def.options as unknown as SelectOption[]) ?? [];
-  const v = propsOf(page)[def.key];
-  const cur = opts.find((o) => o.value === v);
-  return (
-    <SelectPicker
-      value={typeof v === "string" ? v : null}
-      options={opts}
-      onPick={onSet}
-      onCreate={async (label) => {
-        try {
-          return (await addOption.mutateAsync({ id: def.id, label })).value;
-        } catch {
-          return null;
-        }
-      }}
-      trigger={({ onClick, ref }) => (
-        <button ref={ref} type="button" onClick={onClick} className="min-w-0 text-left">
-          {cur ? (
-            <StatusChip label={cur.label} tint={cur.tint} ink={cur.ink} />
-          ) : (
-            <span className="text-faint">—</span>
-          )}
-        </button>
-      )}
-    />
-  );
-}
 
 /* ─────────────────────────── Main view ─────────────────────────── */
 
@@ -1644,6 +1219,7 @@ export function MainView({ selection }: { selection: Selection }) {
         filter: (view.filter ?? []) as Filter[],
         sort: (view.sort as SortSpec | null) ?? { prop: "edited", dir: "desc" },
         group_by: view.group_by ?? null,
+        config: readConfig(view.config),
       };
     return null;
   }, [selection, view]);
@@ -1672,6 +1248,7 @@ export function MainView({ selection }: { selection: Selection }) {
         sort: base.sort,
         layout: base.layout,
         group_by: base.group_by,
+        config: base.config,
       });
     } else {
       storePatchDraft(id, patch);
@@ -1782,6 +1359,7 @@ export function MainView({ selection }: { selection: Selection }) {
       if ("sort" in patch) dbPatch.sort = patch.sort ?? { prop: "edited", dir: "desc" };
       if ("layout" in patch) dbPatch.layout = patch.layout as ViewBase["layout"];
       if ("group_by" in patch) dbPatch.group_by = patch.group_by ?? null;
+      if ("config" in patch) dbPatch.config = patch.config ?? {};
       updateView.mutate({ id: view.id, patch: dbPatch });
     } else {
       patchDraft(base.id, patch);
@@ -1792,6 +1370,8 @@ export function MainView({ selection }: { selection: Selection }) {
   const onChangeSort = (s: SortSpec) => persistOrDraft({ sort: s });
   const onChangeLayout = (l: Layout) => persistOrDraft({ layout: l });
   const onChangeGroupBy = (g: string) => persistOrDraft({ group_by: g });
+  const viewConfig: ViewConfig = current?.config ?? EMPTY_CONFIG;
+  const onChangeConfig = (next: ViewConfig) => persistOrDraft({ config: next });
 
   const statusDef = propDefs.find((d) => d.key === "status");
 
@@ -1846,6 +1426,7 @@ export function MainView({ selection }: { selection: Selection }) {
         sort,
         layout,
         groupBy: layout === "board" || layout === "calendar" ? groupBy || null : null,
+        config: viewConfig,
       },
       {
         onSuccess: (row) => {
@@ -1900,6 +1481,7 @@ export function MainView({ selection }: { selection: Selection }) {
         layout: view.layout as Layout,
         // Keep what a board groups by / a calendar places by.
         groupBy: view.group_by ?? null,
+        config: readConfig(view.config),
       },
       {
         onSuccess: (row) =>
@@ -1918,6 +1500,7 @@ export function MainView({ selection }: { selection: Selection }) {
         layout: view.layout as Layout,
         // Keep what a board groups by / a calendar places by.
         groupBy: view.group_by ?? null,
+        config: readConfig(view.config),
       },
       {
         onSuccess: (row) =>
@@ -2136,12 +1719,11 @@ export function MainView({ selection }: { selection: Selection }) {
     );
   else
     body = (
-      <TableBody
+      <ViewTable
         rows={rows}
         pages={pages}
         members={members}
         areas={areas}
-        statusDef={statusDef}
         staleThreshold={staleThreshold}
         rename={rename}
         setProp={setProp}
@@ -2152,6 +1734,11 @@ export function MainView({ selection }: { selection: Selection }) {
         onHeaderCheckboxClick={onHeaderCheckboxClick}
         getPageMenuBuild={getPageMenuBuild}
         propDefs={propDefs}
+        config={viewConfig}
+        onConfig={onChangeConfig}
+        canArrange={editable}
+        sorts={sortsOf(sort)}
+        onSort={onChangeSort}
       />
     );
 
@@ -2746,298 +2333,6 @@ function buildViewToolbarSpec(
 
 /* ─────────────────────────── Table body ─────────────────────────── */
 
-function useStableStringArray(arr: string[]): string[] {
-  const ref = useRef(arr);
-  const prev = ref.current;
-  if (prev.length !== arr.length || prev.some((x, i) => x !== arr[i])) {
-    ref.current = arr;
-  }
-  return ref.current;
-}
-
-type SetPropFn = ReturnType<typeof useSetPageProperty>["mutate"];
-type RenameFn = ReturnType<typeof useRenamePage>["mutate"];
-
-const TableRow = memo(function TableRow({
-  p,
-  isStale,
-  areas,
-  allTags,
-  members,
-  statusDef,
-  rename,
-  setProp,
-  pagesForTitleCell,
-  selected,
-  anySelection,
-  onCheckboxClick,
-  buildMenu,
-  extraDefs,
-}: {
-  p: PageListItem;
-  isStale: boolean;
-  areas: string[];
-  allTags: string[];
-  members: MemberRow[];
-  statusDef: PropDef | undefined;
-  rename: RenameFn;
-  setProp: SetPropFn;
-  pagesForTitleCell: PageListItem[];
-  selected: boolean;
-  anySelection: boolean;
-  onCheckboxClick: (id: string, shift: boolean) => void;
-  buildMenu: (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
-  extraDefs: PropDef[];
-}) {
-  return (
-    <RowGroup pageId={p.id} selected={selected}>
-      <Cell edge>
-        <RowCheckbox
-          checked={selected}
-          alwaysVisible={anySelection}
-          onClick={(shift) => onCheckboxClick(p.id, shift)}
-        />
-      </Cell>
-      <Cell>
-        <PageTitleCell
-          page={p}
-          onSave={(t) => rename({ pageId: p.id, title: t })}
-        />
-      </Cell>
-      <Cell className="gio-tbl-area">
-        <AreaCell
-          page={p}
-          areas={areas}
-          onPick={(v) => setProp({ pageId: p.id, key: "area", value: v })}
-        />
-      </Cell>
-      <Cell>
-        <OwnerCell
-          page={p}
-          members={members}
-          onPick={(uid) => setProp({ pageId: p.id, key: "owner", value: uid })}
-        />
-      </Cell>
-      <Cell>
-        <StatusCell
-          page={p}
-          def={statusDef}
-          onPick={(v) => setProp({ pageId: p.id, key: "status", value: v })}
-        />
-      </Cell>
-      <Cell className="gio-tbl-tags">
-        <TagsCellMemo
-          page={p}
-          allTags={allTags}
-          onSet={(tags) => setProp({ pageId: p.id, key: "tags", value: tags })}
-        />
-      </Cell>
-      <Cell className="gio-tbl-verified">
-        {isStale ? (
-          <span className="inline-flex items-center gap-1 font-bold text-amberInk">
-            ⚠ {relTime(p.verified_at)}
-          </span>
-        ) : (
-          <span className="text-meta text-muted">{relTime(p.verified_at)}</span>
-        )}
-      </Cell>
-      <Cell>
-        <span className="text-meta text-muted">{relTime(p.edited_at)}</span>
-      </Cell>
-      {extraDefs.map((d) => (
-        <Cell key={d.key}>
-          <PropCell
-            page={p}
-            def={d}
-            onSet={(v) => setProp({ pageId: p.id, key: d.key, value: v })}
-          />
-        </Cell>
-      ))}
-      <Cell edge data-row-more>
-        <SpecMenuTrigger
-          build={buildMenu}
-          size="sm"
-          ariaLabel="Page actions"
-          className="opacity-0 group-hover:opacity-100 focus:opacity-100"
-        />
-      </Cell>
-      {/* keep prop referenced so lint stays quiet — hover prefetch lives in PageTitleCell */}
-      <span hidden data-count={pagesForTitleCell.length} />
-    </RowGroup>
-  );
-});
-
-/** Tag cell that takes a stable options list instead of the whole pages array. */
-const TagsCellMemo = memo(function TagsCellMemo({
-  page,
-  allTags,
-  onSet,
-}: {
-  page: PageListItem;
-  allTags: string[];
-  onSet: (tags: string[]) => void;
-}) {
-  return <TagsCell page={page} onSet={onSet} pages={[]} allOverride={allTags} />;
-});
-
-function TableBody({
-  rows,
-  pages,
-  members,
-  areas,
-  statusDef,
-  staleThreshold,
-  rename,
-  setProp,
-  selectedSet,
-  anySelection,
-  onCheckboxClick,
-  selectAllState,
-  onHeaderCheckboxClick,
-  getPageMenuBuild,
-  propDefs,
-}: {
-  rows: PageListItem[];
-  pages: PageListItem[];
-  members: MemberRow[];
-  areas: string[];
-  statusDef: PropDef | undefined;
-  staleThreshold: number;
-  rename: ReturnType<typeof useRenamePage>;
-  setProp: ReturnType<typeof useSetPageProperty>;
-  selectedSet: Set<string>;
-  anySelection: boolean;
-  onCheckboxClick: (id: string, shift: boolean) => void;
-  selectAllState: "none" | "some" | "all";
-  onHeaderCheckboxClick: () => void;
-  getPageMenuBuild: (p: PageListItem) => (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
-  propDefs: PropDef[];
-}) {
-  // Columns that have appeared stay for the session.
-  const stickyCols = useRef(new Set<string>());
-  // Keyed on WHICH columns show, so a value edit (a new pages array) doesn't
-  // hand every memoised row a new extraDefs array.
-  const shownNow = extraColumnDefs(propDefs, pages, stickyCols.current);
-  shownNow.forEach((d) => stickyCols.current.add(d.key));
-  const extraKeys = shownNow.map((d) => d.key).join(",");
-  const extraDefs = useMemo(
-    () => extraColumnDefs(propDefs, pages, stickyCols.current),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [propDefs, extraKeys],
-  );
-  // Stable tag options: recompute from pages, but keep the same array ref
-  // when contents are unchanged so memoized rows don't re-render.
-  const tagsRaw = useMemo(() => {
-    const s = new Set<string>();
-    for (const p of pages) {
-      const t = (p.props && typeof p.props === "object" && !Array.isArray(p.props)
-        ? (p.props as Record<string, unknown>)["tags"]
-        : undefined);
-      if (Array.isArray(t)) t.forEach((x) => s.add(String(x)));
-    }
-    return [...s].sort();
-  }, [pages]);
-  const allTags = useStableStringArray(tagsRaw);
-  const stableAreas = useStableStringArray(areas);
-  const renameMutate = rename.mutate;
-  const setPropMutate = setProp.mutate;
-
-  // Click delegation — while a selection is active, clicking a row body
-  // toggles that row instead of opening the page. Without this, one stray
-  // mid-selection click navigates away and the selection is lost. Skip
-  // clicks that originate on the checkbox or the ⋯ button — those handle
-  // themselves.
-  const onGridClickCapture = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!anySelection) return;
-    const target = e.target as HTMLElement;
-    if (target.closest("[data-row-checkbox]") || target.closest("[data-row-more]") || target.closest('[aria-label="Page actions"]')) return;
-    const cell = target.closest("[data-page-id]") as HTMLElement | null;
-    const id = cell?.getAttribute("data-page-id");
-    if (!id) return;
-    e.preventDefault();
-    e.stopPropagation();
-    onCheckboxClick(id, e.shiftKey);
-  };
-
-  return (
-    <div className="overflow-x-auto gio-tbl-cq">
-      {/*
-        SINGLE SOURCE OF TRUTH for the table grid. Header cells and row
-        cells share this via `display:contents` on RowGroup, so they can
-        never drift. The leading 16px checkbox track and the trailing
-        24px ⋯ menu track are FIXED-WIDTH and never shrink; every flexible
-        column uses minmax(0, …) so text ellipsises rather than forcing
-        the grid wider than its container.
-
-        RESPONSIVE DROPS: gated by CONTAINER queries (see .gio-tbl-cq /
-        .gio-tbl-grid in styles.css), NOT viewport media queries. The
-        table therefore reacts to the space it actually has — the
-        sidebar collapse, a resized window, or the print column — with
-        no JS and no coupling to the sidebar state. `display:none` on a
-        grid child removes it from auto-placement and shifts every
-        following cell up one track; the grid-template drops the same
-        tracks at the same thresholds so the ⋯ stays pinned to the
-        right edge. Order of drops: Verified (below 768) → Tags (below
-        640) → Area (below 480). Checkbox and ⋯ are the last two things
-        to give up space — they never squeeze.
-      */}
-      <div
-        role="table"
-        className="min-w-full text-row grid gio-tbl-grid"
-        style={{
-          // The lead var carries every fixed track EXCEPT the trailing 24px
-          // ⋯ track, so extra property columns slot in before it and the
-          // menu stays pinned to the right edge at every breakpoint.
-          gridTemplateColumns: `var(--gio-tbl-lead) ${extraDefs
-            .map((d) => (d.type === "checkbox" ? "34px" : "minmax(0, 0.9fr)"))
-            .join(" ")} 24px`,
-        }}
-        onClickCapture={onGridClickCapture}
-      >
-        <HeaderCell edge>
-          <HeaderSelectAll
-            state={selectAllState}
-            count={rows.length}
-            onClick={onHeaderCheckboxClick}
-          />
-        </HeaderCell>
-        <HeaderCell>Page</HeaderCell>
-        <HeaderCell className="gio-tbl-area">Area</HeaderCell>
-        <HeaderCell>Owner</HeaderCell>
-        <HeaderCell>Status</HeaderCell>
-        <HeaderCell className="gio-tbl-tags">Tags</HeaderCell>
-        <HeaderCell className="gio-tbl-verified">Verified</HeaderCell>
-        <HeaderCell>Edited</HeaderCell>
-        {extraDefs.map((d) => (
-          <HeaderCell key={d.key}>{d.label}</HeaderCell>
-        ))}
-        <HeaderCell edge> </HeaderCell>
-
-        {rows.map((p) => (
-          <TableRow
-            key={p.id}
-            p={p}
-            isStale={new Date(p.verified_at).getTime() < staleThreshold}
-            areas={stableAreas}
-            allTags={allTags}
-            members={members}
-            statusDef={statusDef}
-            rename={renameMutate}
-            setProp={setPropMutate}
-            pagesForTitleCell={pages}
-            selected={selectedSet.has(p.id)}
-            anySelection={anySelection}
-            onCheckboxClick={onCheckboxClick}
-            buildMenu={getPageMenuBuild(p)}
-            extraDefs={extraDefs}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-
 /* ─────────────────────────── Board body ─────────────────────────── */
 
 function BoardBody({
@@ -3375,198 +2670,3 @@ function ListBody({
 }
 
 /* ─────────────────────────── Selection primitives ─────────────────────────── */
-
-function RowCheckbox({
-  checked,
-  alwaysVisible,
-  onClick,
-}: {
-  checked: boolean;
-  alwaysVisible: boolean;
-  onClick: (shift: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      data-row-checkbox
-      aria-checked={checked}
-      role="checkbox"
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onClick(e.shiftKey);
-      }}
-      onMouseDown={(e) => e.stopPropagation()}
-      className={
-        "grid place-items-center rounded-[4px] " +
-        (alwaysVisible || checked ? "visible " : "invisible group-hover:visible ")
-      }
-      style={{
-        width: 16,
-        height: 16,
-        border: "1.6px solid var(--color-rule)",
-        background: checked ? "var(--color-accent)" : "var(--color-surface)",
-        borderColor: checked ? "var(--color-accent)" : "var(--color-rule)",
-      }}
-    >
-      {checked && (
-        <svg viewBox="0 0 24 24" width={10} height={10} aria-hidden fill="none">
-          <path
-            d="M20 6 9 17l-5-5"
-            stroke="white"
-            strokeWidth={3.4}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      )}
-    </button>
-  );
-}
-
-function HeaderSelectAll({
-  state,
-  count,
-  onClick,
-}: {
-  state: "none" | "some" | "all";
-  count: number;
-  onClick: () => void;
-}) {
-  const filled = state !== "none";
-  return (
-    <button
-      type="button"
-      title={
-        state === "none"
-          ? `Select all ${count}`
-          : state === "all"
-            ? "Clear selection"
-            : "Clear selection"
-      }
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onClick();
-      }}
-      onMouseDown={(e) => e.stopPropagation()}
-      className="grid place-items-center rounded-[4px]"
-      style={{
-        width: 16,
-        height: 16,
-        border: "1.6px solid " + (filled ? "var(--color-accent)" : "var(--color-rule)"),
-        background: filled ? "var(--color-accent)" : "var(--color-surface)",
-      }}
-    >
-      {state === "some" && (
-        <svg viewBox="0 0 24 24" width={10} height={10} aria-hidden fill="none">
-          <path d="M6 12h12" stroke="white" strokeWidth={3.4} strokeLinecap="round" />
-        </svg>
-      )}
-      {state === "all" && (
-        <svg viewBox="0 0 24 24" width={10} height={10} aria-hidden fill="none">
-          <path
-            d="M20 6 9 17l-5-5"
-            stroke="white"
-            strokeWidth={3.4}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      )}
-    </button>
-  );
-}
-
-
-function HeaderCell({
-  children,
-  className,
-  edge,
-}: {
-  children: ReactNode;
-  className?: string;
-  edge?: boolean;
-}) {
-  return (
-    <div
-      className={
-        "flex items-center border-b border-line bg-canvas text-label uppercase text-faint " +
-        (edge
-          ? "justify-center px-0 "
-          : "px-[11px] overflow-hidden ") +
-        (className ?? "")
-      }
-      style={{ padding: edge ? "12px 0 6px" : "12px 11px 6px", lineHeight: "11px" }}
-    >
-      {children}
-    </div>
-  );
-}
-
-
-function Cell({
-  children,
-  className,
-  pageId,
-  selected,
-  edge,
-  ...rest
-}: {
-  children: ReactNode;
-  className?: string;
-  pageId?: string;
-  selected?: boolean;
-  edge?: boolean;
-  [key: string]: unknown;
-}) {
-  return (
-    <div
-      data-page-id={pageId}
-      data-row-more={rest["data-row-more"] as string | undefined}
-      className={
-        "min-w-0 border-b border-lineSoft gio-cell-pad flex items-center whitespace-nowrap " +
-        (edge
-          ? "justify-center px-0 "
-          : "px-[11px] overflow-hidden ") +
-        (selected ? "bg-blueTint group-hover:bg-blueWash " : "group-hover:bg-sunken ") +
-        (className ?? "")
-      }
-    >
-      {children}
-    </div>
-  );
-}
-
-function RowGroup({
-  children,
-  pageId,
-  selected,
-}: {
-  children: ReactNode;
-  pageId: string;
-  selected: boolean;
-}) {
-  // grid subrow — contents so cells become direct grid children. Pass
-  // pageId+selected down to each Cell so the row can carry click delegation
-  // and the selected background without a wrapper element (a wrapper would
-  // break the grid).
-  const injected = (
-    (Array.isArray(children) ? children : [children]) as Array<React.ReactNode>
-  ).map((child, i) => {
-    if (
-      typeof child === "object" &&
-      child !== null &&
-      "type" in (child as object) &&
-      (child as React.ReactElement).type === Cell
-    ) {
-      return React.cloneElement(child as React.ReactElement<Record<string, unknown>>, {
-        pageId,
-        selected,
-        key: (child as React.ReactElement).key ?? i,
-      } as Record<string, unknown>);
-    }
-    return child;
-  });
-  return <div className="contents group">{injected}</div>;
-}

@@ -21,6 +21,7 @@
 import { useSyncExternalStore } from "react";
 import type { Filter, SortSpec } from "./run-view";
 import type { ViewDraft, ViewLayout } from "./view-drafts";
+import type { ViewConfig } from "./view-config";
 
 type DraftMap = Record<string, ViewDraft>;
 
@@ -41,6 +42,7 @@ export function patchDraft(
     sort?: SortSpec;
     layout?: ViewLayout;
     group_by?: string | null;
+    config?: ViewConfig;
   },
 ): void {
   const merged: ViewDraft = { ...(state[id] ?? {}), ...patch };
@@ -62,6 +64,11 @@ export function patchDraft(
       (merged.group_by ?? null) === (pruneAgainst.group_by ?? null)
     )
       delete merged.group_by;
+    if (
+      "config" in merged &&
+      JSON.stringify(merged.config ?? {}) === JSON.stringify(pruneAgainst.config ?? {})
+    )
+      delete merged.config;
   }
   const next: DraftMap = { ...state };
   if (Object.keys(merged).length === 0) delete next[id];

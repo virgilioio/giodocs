@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { jsonEqual } from "@/lib/json-equal";
 import { qk } from "@/lib/query-keys";
 import { runView, type Filter, type SortSpec } from "@/lib/run-view";
+import type { ViewConfig } from "@/lib/view-config";
 import { useToast } from "@/lib/toast";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
@@ -244,6 +245,7 @@ type ViewFull = {
   sort: unknown;
   icon: string | null;
   group_by: string | null;
+  config?: unknown;
 };
 
 
@@ -260,6 +262,7 @@ export function useCreateView() {
       sort?: SortSpec;
       layout?: "table" | "board" | "list" | "calendar";
       groupBy?: string | null;
+      config?: ViewConfig;
       _tempId?: string;
     }) => {
       const { data, error } = await supabase
@@ -274,6 +277,7 @@ export function useCreateView() {
           sort: (v.sort ?? { prop: "edited", dir: "desc" }) as never,
           icon: v.icon ?? null,
           group_by: v.groupBy ?? null,
+          config: (v.config ?? {}) as never,
         })
         .select("*")
         .single();
@@ -298,6 +302,7 @@ export function useCreateView() {
         sort: (v.sort ?? { prop: "edited", dir: "desc" }) as unknown,
         icon: v.icon ?? null,
         group_by: v.groupBy ?? null,
+        config: v.config ?? {},
       };
       qc.setQueryData<ViewFull[]>(qk.views(ws), (prev) =>
         prev ? [...prev, optimistic] : [optimistic],
@@ -331,7 +336,10 @@ export function useUpdateView() {
     mutationFn: async (v: {
       id: string;
       patch: Partial<
-        Pick<ViewFull, "name" | "icon" | "filter" | "sort" | "layout" | "group_by" | "scope">
+        Pick<
+          ViewFull,
+          "name" | "icon" | "filter" | "sort" | "layout" | "group_by" | "scope" | "config"
+        >
       >;
     }) => {
       const { error } = await supabase
@@ -398,6 +406,7 @@ export function useForkView() {
       sort: SortSpec;
       layout: "table" | "board" | "list" | "calendar";
       groupBy?: string | null;
+      config?: ViewConfig;
       _tempId?: string;
     }) => {
       const { data, error } = await supabase.rpc("fork_view", {
@@ -409,13 +418,17 @@ export function useForkView() {
       });
       if (error) throw error;
       const row = data as unknown as ViewFull;
-      if (v.groupBy !== undefined) {
+      // fork_view copies filter, sort and layout; the rest follows.
+      const extra: { group_by?: string | null; config?: ViewConfig } = {};
+      if (v.groupBy !== undefined) extra.group_by = v.groupBy;
+      if (v.config !== undefined) extra.config = v.config;
+      if (Object.keys(extra).length) {
         const { error: e2 } = await supabase
           .from("views")
-          .update({ group_by: v.groupBy } as never)
+          .update(extra as never)
           .eq("id", row.id);
         if (e2) throw e2;
-        row.group_by = v.groupBy;
+        Object.assign(row, extra);
       }
       return row;
     },
@@ -437,6 +450,7 @@ export function useForkView() {
         sort: v.sort as unknown,
         icon: null,
         group_by: v.groupBy ?? null,
+        config: v.config ?? {},
       };
       qc.setQueryData<ViewFull[]>(qk.views(ws), (prev) =>
         prev ? [...prev, optimistic] : [optimistic],

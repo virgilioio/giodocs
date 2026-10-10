@@ -703,60 +703,34 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
 }
 
 
-/* ─────────────────────────── TABLE VIEW: CONTAINER QUERIES ───────────────────────────
- *
- * The table's responsive column set responds to the WIDTH OF ITS OWN
- * CONTAINER, not the viewport. This is what makes the table give back
- * columns automatically when the sidebar collapses (or when the window
- * resizes, or when a print stylesheet narrows the page column — same
- * mechanism, no JS, no coupling to any sidebar flag).
- *
- * Container thresholds mirror Tailwind's viewport breakpoints only
- * because the original design used them; nothing about container
- * queries requires the two to agree.
- *
- * Track order matches the DOM: [16px checkbox], Page, [Area?], Owner,
- * Status, [Tags?], [Verified?], Edited, [24px menu]. The bracketed
- * columns drop in reverse discovery order — verified → tags → area —
- * so the checkbox and menu tracks are the LAST to give up space.
- */
-.gio-tbl-cq { container-type: inline-size; container-name: tbl; }
-
-.gio-tbl-grid {
-  /* --gio-tbl-lead is every FIXED track except the trailing 24px menu
-     track. Extra property columns are appended after the lead and before
-     the menu track by the table itself, so the ⋯ never leaves the right
-     edge. --gio-tbl-cols is the same list WITH the menu track, kept for
-     any consumer that has no extra columns. */
-  --gio-tbl-lead:
-    16px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.9fr);
-  --gio-tbl-cols: var(--gio-tbl-lead) 24px;
+/* View tables: a property's heading has a resize handle on its right edge.
+ * It follows the pointer with no transition; the line shows on hover, on
+ * keyboard focus and while dragging. */
+.gio-prop-resize {
+  position: absolute;
+  top: 6px;
+  bottom: 0;
+  right: -4px;
+  width: 8px;
+  z-index: 2;
+  cursor: col-resize;
+  touch-action: none;
 }
-.gio-tbl-area { display: none; }
-.gio-tbl-tags { display: none; }
-.gio-tbl-verified { display: none; }
-
-@container tbl (min-width: 480px) {
-  .gio-tbl-grid {
-    --gio-tbl-lead:
-      16px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)
-      minmax(0, 0.9fr);
-  }
-  .gio-tbl-area { display: block; }
+.gio-prop-resize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--color-accent);
+  opacity: 0;
+  transition: opacity var(--dur-hover) var(--ease-out);
 }
-@container tbl (min-width: 640px) {
-  .gio-tbl-grid {
-    --gio-tbl-lead:
-      16px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)
-      minmax(0, 1.2fr) minmax(0, 0.9fr);
-  }
-  .gio-tbl-tags { display: block; }
+@media (hover: hover) and (pointer: fine) {
+  .gio-prop-resize:hover::after { opacity: 0.45; }
 }
-@container tbl (min-width: 768px) {
-  .gio-tbl-grid {
-    --gio-tbl-lead:
-      16px minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)
-      minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 0.9fr);
-  }
-  .gio-tbl-verified { display: block; }
-}
+.gio-prop-resize:focus-visible::after,
+.gio-prop-resize:active::after { opacity: 1; transition: none; }
+[data-resizing] { cursor: col-resize; user-select: none; }

@@ -83,6 +83,7 @@ import {
 } from "@/lib/page-row-spec";
 import { personalViewFooter } from "@/lib/personal-view-footer";
 import { layoutOf, type ViewLayout } from "@/lib/view-drafts";
+import { readConfig } from "@/lib/view-config";
 import { useDrafts, patchDraft as storePatchDraft } from "@/lib/view-drafts-store";
 
 
@@ -1248,6 +1249,7 @@ function MyViewRow({
             sort,
             layout: v.layout,
             groupBy: v.group_by ?? null,
+            config: readConfig((v as { config?: unknown }).config),
           });
           mctx.close();
         },
@@ -1494,6 +1496,7 @@ function TeamViewRow({
             sort,
             layout: v.layout,
             groupBy: v.group_by ?? null,
+            config: readConfig((v as { config?: unknown }).config),
           });
           mctx.close();
         },
@@ -2522,6 +2525,7 @@ function NewPersonalViewPopover({
         sort: seedSort,
         layout: seedLayout,
         groupBy: (currentView as { group_by?: string | null } | null | undefined)?.group_by ?? null,
+        config: readConfig((currentView as { config?: unknown } | null | undefined)?.config),
       });
       onClose();
       navigate({ to: "/v/$viewId", params: { viewId: created.id } });
