@@ -571,7 +571,7 @@ function GeneralPane() {
             onKeyDown={(e) => {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             }}
-            className="w-full max-w-sm rounded-md border border-line bg-surface focus:outline-none disabled:opacity-60"
+            className="w-full max-w-sm rounded-md border border-line bg-surface focus:border-accent focus:outline-none disabled:opacity-60"
             style={{ padding: "8px 12px", fontSize: 14 }}
           />
         </Row>
@@ -686,7 +686,7 @@ function GeneralPane() {
                   value={newDomain}
                   onChange={(e) => setNewDomain(e.target.value)}
                   placeholder="add domain…"
-                  className="rounded-md border border-dashed border-lineStrong bg-surface focus:outline-none"
+                  className="rounded-md border border-dashed border-lineStrong bg-surface focus:border-solid focus:border-accent focus:outline-none"
                   style={{ width: 160, padding: "3px 8px", fontSize: 13 }}
                 />
               </form>
@@ -1376,7 +1376,7 @@ function EmojiPane() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search…"
-            className="border border-line bg-surface rounded-md focus:outline-none"
+            className="border border-line bg-surface rounded-md focus:border-accent focus:outline-none"
             style={{ padding: "5px 10px", fontSize: 13.5, width: 180 }}
           />
           <button

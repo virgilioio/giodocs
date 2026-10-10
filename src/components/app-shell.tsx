@@ -2503,7 +2503,7 @@ function NewPersonalViewPopover({
         }}
         maxLength={60}
         placeholder="View name"
-        className="w-full rounded-sm border border-rule bg-canvas px-2 py-1.5 text-ui text-strong placeholder:text-faint focus:border-brand focus:outline-none"
+        className="w-full rounded-sm border border-rule bg-canvas px-2 py-1.5 text-ui text-strong placeholder:text-faint focus:border-accent focus:outline-none"
       />
       <p className="mt-1.5 text-caption text-faint">
         {currentView
@@ -2605,7 +2605,7 @@ function NewAreaPopover({
         maxLength={60}
         placeholder="Area name"
         aria-invalid={duplicate}
-        className="w-full rounded-sm border border-rule bg-canvas px-2 py-1.5 text-ui text-strong placeholder:text-faint focus:border-brand focus:outline-none"
+        className="w-full rounded-sm border border-rule bg-canvas px-2 py-1.5 text-ui text-strong placeholder:text-faint focus:border-accent focus:outline-none"
       />
       <p className="mt-1.5 text-caption text-faint">
         {duplicate
