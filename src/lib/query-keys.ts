@@ -14,4 +14,6 @@ export const qk = {
   pageVersions: (id: string) => ["pageVersions", id] as const,
   /** One version ready to preview: its blocks rendered to a document. */
   pageVersionPreview: (id: string) => ["pageVersionPreview", id] as const,
+  /** The pages that mention, link to or embed a page ("Linked from"). */
+  backlinks: (id: string) => ["backlinks", id] as const,
 };

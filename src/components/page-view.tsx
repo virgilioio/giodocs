@@ -59,6 +59,7 @@ import {
 } from "./permissions-popover";
 import { RowMenu, type MenuRow, type MenuSpec } from "./row-menu";
 import { PageHistoryHost } from "./page-history";
+import { LinkedFrom } from "./linked-from";
 import type { RestoredPage } from "@/hooks/use-page-history";
 import { clearUndoStore } from "@/lib/undo-store";
 import { normAccess, panelCopy } from "@/lib/share-panel";
@@ -1815,6 +1816,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
           </div>
         ) : null}
       </div>
+      <LinkedFrom pageId={page.id} />
       <PageHistoryHost
         page={page}
         members={members}
