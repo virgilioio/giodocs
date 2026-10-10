@@ -345,7 +345,10 @@ export function CommandPalette({
               </div>
               <ul>
                 {items.map(({ row, index }) => (
-                  <li key={`${group}-${index}`}>
+                  <li
+                    key={`${group}-${index}`}
+                    ref={index === cursor ? keepInView : undefined}
+                  >
                     <PaletteRow
                       row={row}
                       active={index === cursor}
@@ -478,4 +481,9 @@ function PaletteRow({
       <span className="text-ui text-body">{row.label}</span>
     </button>
   );
+}
+
+/** Arrow keys move the highlight; keep it in view without animating. */
+function keepInView(el: HTMLLIElement | null) {
+  el?.scrollIntoView({ block: "nearest" });
 }

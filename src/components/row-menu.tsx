@@ -25,6 +25,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { IC } from "@/lib/menu-icons";
+import { exitRef } from "@/lib/exit-motion";
 
 /* ═══════════════════════ SPEC TYPES (declarative API) ═══════════════════════ */
 
@@ -103,6 +104,8 @@ function usePlacement(
   anchor: HTMLElement | null,
   width: number,
   align: MenuAlign,
+  /** The panel's real height once it has rendered; 320 until then. */
+  height: number | null,
 ): { top: number; left: number; flipped: boolean } | null {
   const [pos, setPos] = useState<
     { top: number; left: number; flipped: boolean } | null
@@ -120,7 +123,7 @@ function usePlacement(
       if (left < margin) left = margin;
       const maxLeft = window.innerWidth - width - margin;
       if (left > maxLeft) left = maxLeft;
-      const estHeight = 320;
+      const estHeight = height ?? 320;
       let top_ = r.bottom + gap;
       let flipped = false;
       if (
@@ -130,7 +133,11 @@ function usePlacement(
         top_ = Math.max(margin, r.top - gap - estHeight);
         flipped = true;
       }
-      setPos({ top: top_, left, flipped });
+      setPos((prev) =>
+        prev && prev.top === top_ && prev.left === left && prev.flipped === flipped
+          ? prev
+          : { top: top_, left, flipped },
+      );
     };
     place();
     window.addEventListener("resize", place);
@@ -139,7 +146,7 @@ function usePlacement(
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [anchor, width, align]);
+  }, [anchor, width, align, height]);
   return pos;
 }
 
@@ -160,7 +167,26 @@ function MenuShell({
   children: ReactNode;
   align?: MenuAlign;
 }) {
-  const pos = usePlacement(anchor, width, align);
+  // Measure the panel so a menu near the bottom flips by its real height,
+  // and re-place it when a submenu swap changes that height. Runs before
+  // paint, so the panel never shows in the wrong spot.
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [height, setHeight] = useState<number | null>(null);
+  const pos = usePlacement(anchor, width, align, height);
+  const shown = !!anchor && !!pos;
+  useLayoutEffect(() => {
+    const el = panelRef.current;
+    if (!shown || !el) {
+      setHeight(null);
+      return;
+    }
+    const measure = () => setHeight(el.offsetHeight);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [shown]);
   if (!anchor || !pos) return null;
   return createPortal(
     <>
@@ -171,6 +197,7 @@ function MenuShell({
         style={{ position: "fixed", inset: 0, zIndex: "var(--z-menu)" }}
       />
       <div
+        ref={exitRef("pop", panelRef)}
         role="menu"
         onMouseDown={(e) => e.stopPropagation()}
         className="animate-popIn"

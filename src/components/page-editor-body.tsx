@@ -179,6 +179,7 @@ import {
   calloutLabel,
 } from "@/lib/callout-color";
 import type { IconKey } from "@/lib/menu-icons";
+import { exitRef } from "@/lib/exit-motion";
 
 
 /** Module-local bridge: nested ColumnStack keystrokes set this before
@@ -2093,6 +2094,8 @@ export function EditableBody({
     at: number;
     x: number;
     y: number;
+    /** The block's top edge, for opening above it near the bottom. */
+    yTop: number;
   } | null>(null);
 
   const filteredMenu = useMemo(() => {
@@ -3246,6 +3249,7 @@ export function EditableBody({
                 at: trig.at,
                 x: rect ? rect.left : 200,
                 y: rect ? rect.bottom + 4 : 200,
+                yTop: rect ? rect.top - 4 : 200,
               });
             } else if (slash?.blockId === b.id) {
               setSlash(null);
@@ -3555,6 +3559,7 @@ export function EditableBody({
         <SlashMenu
           x={slash.x}
           y={slash.y}
+          yTop={slash.yTop}
           items={filteredMenu}
           activeIdx={menuIdx}
           onHover={setMenuIdx}
@@ -4494,6 +4499,8 @@ function ColumnStack({
     at: number;
     x: number;
     y: number;
+    /** The block's top edge, for opening above it near the bottom. */
+    yTop: number;
   } | null>(null);
   const [menuIdx, setMenuIdx] = useState(0);
   useEffect(() => setMenuIdx(0), [slash?.query]);
@@ -4809,6 +4816,7 @@ function ColumnStack({
                 at: trig.at,
                 x: rect ? rect.left : 200,
                 y: rect ? rect.bottom + 4 : 200,
+                yTop: rect ? rect.top - 4 : 200,
               });
             } else if (slash?.blockId === b.id) {
               setSlash(null);
@@ -5038,6 +5046,7 @@ function ColumnStack({
         <SlashMenu
           x={slash.x}
           y={slash.y}
+          yTop={slash.yTop}
           items={filteredMenu}
           activeIdx={menuIdx}
           onHover={setMenuIdx}
@@ -6703,6 +6712,7 @@ function AddPill({
 function SlashMenu({
   x,
   y,
+  yTop,
   items,
   activeIdx,
   onHover,
@@ -6711,6 +6721,7 @@ function SlashMenu({
 }: {
   x: number;
   y: number;
+  yTop: number;
   items: MenuItem[];
   activeIdx: number;
   onHover: (i: number) => void;
@@ -6722,7 +6733,28 @@ function SlashMenu({
   const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
   const vh = typeof window !== "undefined" ? window.innerHeight : 800;
   const left = Math.max(12, Math.min(vw - 324 - 12, x));
+  // Open below the block; near the bottom of the window, open above it so
+  // the menu never covers the line being typed. Decided once on open and
+  // kept while filtering, anchored by its bottom edge so it hugs the block.
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [above, setAbove] = useState<boolean | null>(null);
+  useLayoutEffect(() => {
+    const h = panelRef.current?.offsetHeight ?? 420;
+    setAbove(y + h + 12 > vh && yTop - h >= 12);
+    // Only on open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const top = Math.max(12, Math.min(vh - 420 - 12, y));
+  const placement: React.CSSProperties = above
+    ? { left, bottom: vh - yTop, transformOrigin: "bottom left" }
+    : { left, top, transformOrigin: "top left", visibility: above === null ? "hidden" : undefined };
+
+  // Keep the highlighted row in view when moving with the arrow keys.
+  const listRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const row = listRef.current?.querySelector<HTMLElement>('[data-active="true"]');
+    row?.scrollIntoView({ block: "nearest" });
+  }, [activeIdx]);
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -6736,12 +6768,13 @@ function SlashMenu({
 
   return createPortal(
     <div
+      ref={exitRef("pop", panelRef)}
       data-slash-menu
       className="fixed z-50 animate-popIn rounded-xl border border-line bg-surface shadow-popover"
-      style={{ left, top, width: 324, maxHeight: 420 }}
+      style={{ ...placement, width: 324, maxHeight: 420 }}
     >
       <div className="px-3 pb-1 pt-2 text-label uppercase text-faint">Blocks</div>
-      <div className="max-h-[340px] overflow-y-auto py-1">
+      <div ref={listRef} className="max-h-[340px] overflow-y-auto py-1">
         {items.length === 0 ? (
           <div className="px-3 py-2 text-meta text-muted">No matches.</div>
         ) : (
@@ -6749,6 +6782,7 @@ function SlashMenu({
             <button
               key={m.type + (m.count != null ? `-${m.count}` : "")}
               type="button"
+              data-active={i === activeIdx ? "true" : undefined}
               onMouseEnter={() => onHover(i)}
               onMouseDown={(e) => {
                 e.preventDefault();
