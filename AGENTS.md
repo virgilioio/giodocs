@@ -41,34 +41,66 @@ before proceeding.
 - TanStack Query for all reads. No fetching inside useEffect. List
   queries never select("*") — blocks is fetched only by usePage(id).
 
-## Product model (the thesis — protect it)
-- ONE content object: Page. No page_type, no kind, no is_database, no
-  per-content-type tables, ever.
-- A "database" is a saved query (a view). A view stores a filter, never
-  a list of page ids.
-- There is NO folder tree. A page's location is its area property. Areas
-  are derived from page properties — never a table, never authored.
-- "Placed in": a page can sit inside another page (pages.parent_id), at
-  most three levels deep, guarded by guard_page_parent. Deleting a page
-  un-places its children; it never deletes them. This is placement, not a
-  folder tree: the sidebar and views still organise by properties.
+## Product model (Notion's structure — decided by Allan, 2026-10-10)
+
+Superseded that day: the earlier thesis (one global pool of pages, views
+as workspace-wide saved filters, areas as the organising axis, no tree).
+It made a table impossible to own its rows, and two organising systems at
+once. The decisions below replace it wherever an older section disagrees.
+
+- ONE content object: Page. Everything is a page, including a database.
+- The page tree is the navigation. pages.parent_id, any depth (cycle
+  guard only). The sidebar shows the tree in two sections: Private (pages
+  only you can open) and Workspace. There are no areas, no My views /
+  Team views sections, no /a routes.
+- A database is a page with is_database = true. Its direct children are
+  its rows. It owns its properties (property_defs.database_id) and its
+  views (views.database_id). A row belongs to exactly one database; a row
+  is a full page and can hold child pages and inline databases of its own.
+- pages.database_id is kept by trigger: the parent's id when the parent
+  is a database, else null. A plain page (database_id null) has NO
+  properties beyond the built-ins (Verified, Created, Edited); its props
+  stay {}. validate_page_props checks a row's values against ITS
+  database's properties, by (database_id, key).
+- Property keys are unique per database, not per workspace. Two databases
+  can both have "status". Everything that reads a property must know the
+  page's database (src/lib/relations.ts keys its index by database).
+- Views belong to a database. Opening a database page shows its views as
+  tabs (/p/<id>?v=<viewId>); /v/<id> redirects there. A view can be
+  shared (scope "team": everyone who can open the database) or personal.
+  Anyone who can edit the database page adds shared views; workspace
+  owners can also change anyone's. This replaces "only owners publish".
+- Views are still saved queries over the database's rows (filter, sort,
+  config), never lists of page ids, and view filtering happens in EXACTLY
+  one place: src/lib/run-view.ts.
+- A database inside a page: a "view" block names a database_id. "/table"
+  in a page makes a new child database and places it inline; "/view"
+  places a linked view of an existing database.
+- Children inherit access from their parent on creation: a row added to a
+  shared database is visible to everyone who can open the database. A
+  top-level page is private to its creator until shared.
+- Deleting a page (soft, deleted_at) deletes its subtree with it, in one
+  moment; restoring brings back what went with it. Deleting a database
+  deletes its rows. There is deliberately no DELETE policy on pages.
 - Freshness is first-class: verified_at is never touched by an edit;
   edited_at is never touched by a verification. The touch_page trigger's
   WHEN clause (title, blocks, props, icon) is what guarantees this.
-- View filtering happens in EXACTLY one place: src/lib/run-view.ts.
-  Never add a server-side filter compiler or a second engine.
-- Deleting a page is soft (deleted_at). There is deliberately no DELETE
-  policy on pages. Do not add one.
 - Images live in the private page-images Supabase bucket, addressed by
   storage path. Access goes through can_read_page, so image permissions
   can never drift from page permissions. Never store a signed URL,
   base64 or a blob in the blocks column.
-- Only workspace owners publish team views — enforced by views_update
-  RLS and publish_view(). Members fork to personal copies instead.
+- Relations point at a database (config.database_id), both sides live in
+  their own databases; rollups roll over a relation. Templates are rows
+  of a database with template_at set.
+- Migration of existing content (2026-10-10): one database "Pages" holds
+  every page that was at the top level, with the old workspace-wide
+  properties and views; pages placed inside others stay where they are
+  as plain pages.
 
 ## Scope (exclusions — do not build)
-Folder trees, AI features, public sharing on the open web, real-time
-co-editing cursors, dark mode, multi-workspace UI.
+AI features, public sharing on the open web, real-time co-editing
+cursors, dark mode, multi-workspace UI. (Folder trees were excluded until
+2026-10-10; the page tree is now the navigation.)
 
 Lifted by Allan on 2026-10-09: @mentions (people and pages), comments,
 in-app notifications (an inbox) and templates are now in scope. Email
@@ -178,9 +210,10 @@ provider Virgilio already has; don't build them until asked.
 - Finish every task by listing exactly which files changed, then stop.
 - If something fails, report the exact error and stop — do not work
   around it silently.
-- Vocabulary in code and UI: Page, Property, View, Area, Block,
-  Verified, Team view. Never: doc, record, field, column, database,
-  folder, space, element, approved.
+- Vocabulary in code and UI: Page, Database, Row, Property, View, Block,
+  Verified. "Database" and "table" are fine since 2026-10-10 (a table is
+  a database shown as a table). Never: doc, record, field, column, folder,
+  space, element, approved, area.
 
 ## Motion and feel (2026-10-10)
 Gio Docs follows the Gio motion standard shared with Gio Sales and Gio ATS
