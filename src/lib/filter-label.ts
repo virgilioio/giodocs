@@ -30,6 +30,8 @@ export type FilterLabelCtx = {
   /** When given, properties read by their name and options by their
    *  label ("hiring manager is Ana", "priority is “High”"). */
   defs?: DefForFilterLabel[];
+  /** A page's title, for relations ("project includes Website"). */
+  pageTitle?: (id: string) => string;
 };
 
 function optionLabel(def: DefForFilterLabel | undefined, v: unknown): string {
@@ -88,6 +90,8 @@ export function filterLabel(f: Filter, ctx: FilterLabelCtx): string {
         return String(f.value) === "true" ? `${name} is checked` : `${name} is not checked`;
       return `${def ? name : f.prop} is \u201C${def ? optionLabel(def, f.value) : f.value}\u201D`;
     case "includes":
+      if (def?.type === "relation")
+        return `${name} includes ${ctx.pageTitle?.(String(f.value)) ?? "a page"}`;
       if (f.prop === "tags" || !def) return `tagged \u201C${f.value}\u201D`;
       return `${name} includes \u201C${f.value}\u201D`;
     case "is_me":
@@ -102,6 +106,8 @@ export function filterLabel(f: Filter, ctx: FilterLabelCtx): string {
         return `${name} isn\u2019t ${person(f.value)}`;
       return `${name} isn\u2019t \u201C${def ? optionLabel(def, f.value) : f.value}\u201D`;
     case "not_includes":
+      if (def?.type === "relation")
+        return `${name} doesn\u2019t include ${ctx.pageTitle?.(String(f.value)) ?? "a page"}`;
       return `${name} doesn\u2019t include \u201C${f.value}\u201D`;
     case "contains":
       return `${name} contains \u201C${f.value ?? ""}\u201D`;

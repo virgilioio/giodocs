@@ -93,7 +93,17 @@ export type RunViewCtx = {
   props?: ReadonlyMap<string, PropInfo>;
   /** A person's name, for sorting and grouping by person. */
   nameOf?: (userId: string) => string;
+  /** A page's title, for sorting by a relation. */
+  titleOf?: (pageId: string) => string;
+  /** How to read a value when some properties are worked out rather than
+   *  stored (relations' far sides, rollups): see relations.ts readValueWith. */
+  readValue?: (page: PageListItem, key: string) => unknown;
 };
+
+function valueIn(ctx: Pick<RunViewCtx, "readValue">, page: PageListItem, key: string): unknown {
+  // Not "valueOf": every object already has one (Object.prototype).
+  return ctx.readValue ? ctx.readValue(page, key) : propValue(page, key);
+}
 
 /* ─────────────────────────── Values ─────────────────────────── */
 
@@ -265,39 +275,37 @@ export function matches(page: PageListItem, f: Filter, ctx: RunViewCtx): boolean
   const now = ctx.now ?? new Date();
   switch (f.op) {
     case "eq": {
-      const v = propValue(page, requireProp(f));
+      const v = valueIn(ctx, page, requireProp(f));
       return v != null && String(v) === String(f.value);
     }
     case "neq": {
-      const v = propValue(page, requireProp(f));
+      const v = valueIn(ctx, page, requireProp(f));
       return v == null || String(v) !== String(f.value);
     }
     case "includes": {
-      const v = propValue(page, requireProp(f));
+      const v = valueIn(ctx, page, requireProp(f));
       return Array.isArray(v) && v.map(String).includes(String(f.value));
     }
     case "not_includes": {
-      const v = propValue(page, requireProp(f));
+      const v = valueIn(ctx, page, requireProp(f));
       return !(Array.isArray(v) && v.map(String).includes(String(f.value)));
     }
     case "is_me": {
-      const v = propValue(page, requireProp(f));
+      const v = valueIn(ctx, page, requireProp(f));
       if (Array.isArray(v)) return v.map(String).includes(ctx.me);
       return v != null && String(v) === ctx.me;
     }
     case "not_empty": {
-      const key = requireProp(f);
-      if (!key.startsWith("@") && !(key in propsOf(page))) return false;
-      return !isEmptyValue(propValue(page, key));
+      return !isEmptyValue(valueIn(ctx, page, requireProp(f)));
     }
     case "empty":
-      return isEmptyValue(propValue(page, requireProp(f)));
+      return isEmptyValue(valueIn(ctx, page, requireProp(f)));
     case "contains":
     case "not_contains": {
       const needle = String(f.value ?? "")
         .trim()
         .toLowerCase();
-      const hay = asText(propValue(page, requireProp(f))).toLowerCase();
+      const hay = asText(valueIn(ctx, page, requireProp(f))).toLowerCase();
       const has = needle === "" ? true : hay.includes(needle);
       return f.op === "contains" ? has : !has;
     }
@@ -305,7 +313,7 @@ export function matches(page: PageListItem, f: Filter, ctx: RunViewCtx): boolean
     case "gte":
     case "lt":
     case "lte": {
-      const v = asNumber(propValue(page, requireProp(f)));
+      const v = asNumber(valueIn(ctx, page, requireProp(f)));
       const t = asNumber(f.value);
       if (v === null || t === null) return false;
       if (f.op === "gt") return v > t;
@@ -320,7 +328,7 @@ export function matches(page: PageListItem, f: Filter, ctx: RunViewCtx): boolean
       // A range is before a day if it starts before it, after a day if it
       // ends after it.
       const key = requireProp(f);
-      const span = spanOfValue(propValue(page, key), key);
+      const span = spanOfValue(valueIn(ctx, page, key), key);
       const t = targetDay(f.value, now);
       if (!span || !t) return false;
       if (f.op === "before") return span.start < t;
@@ -330,7 +338,7 @@ export function matches(page: PageListItem, f: Filter, ctx: RunViewCtx): boolean
     }
     case "date_is": {
       const key = requireProp(f);
-      const span = spanOfValue(propValue(page, key), key);
+      const span = spanOfValue(valueIn(ctx, page, key), key);
       if (!span) return false;
       if (f.value === "overdue") {
         // Overdue once its last day has passed; an overdue date on a
@@ -347,7 +355,7 @@ export function matches(page: PageListItem, f: Filter, ctx: RunViewCtx): boolean
       return t !== null && span.start <= t && t <= span.end;
     }
     case "unchecked": {
-      const v = propValue(page, requireProp(f));
+      const v = valueIn(ctx, page, requireProp(f));
       return v !== true && v !== "true";
     }
     case "stale": {
@@ -391,7 +399,7 @@ type Key = { empty: boolean; v: number | string; t?: string };
 
 function sortKey(page: PageListItem, key: string, ctx: RunViewCtx): Key {
   if (key === "@title") return { empty: false, v: (page.title ?? "").toLowerCase() };
-  const raw = propValue(page, key);
+  const raw = valueIn(ctx, page, key);
   if (key === "@created" || key === "@edited" || key === "@verified") {
     const t = typeof raw === "string" ? new Date(raw).getTime() : NaN;
     return Number.isNaN(t) ? { empty: true, v: 0 } : { empty: false, v: t };
@@ -429,6 +437,19 @@ function sortKey(page: PageListItem, key: string, ctx: RunViewCtx): Key {
     }
     case "person":
       return { empty: false, v: (ctx.nameOf?.(String(raw)) ?? String(raw)).toLowerCase() };
+    case "relation": {
+      // By the linked pages' titles, in order.
+      const ids = Array.isArray(raw) ? raw.map(String) : [];
+      if (ids.length === 0) return { empty: true, v: "" };
+      return {
+        empty: false,
+        v: ids.map((id) => (ctx.titleOf?.(id) ?? id).toLowerCase()).join(", "),
+      };
+    }
+    case "rollup": {
+      if (typeof raw === "number") return { empty: false, v: raw };
+      return { empty: false, v: asText(raw).toLowerCase() };
+    }
     default:
       return { empty: false, v: asText(raw).toLowerCase() };
   }
@@ -512,13 +533,13 @@ export type RowGroup = { value: string | null; label: string; pages: PageListIte
 export function groupRows(
   rows: PageListItem[],
   key: string,
-  ctx: Pick<RunViewCtx, "props" | "nameOf">,
+  ctx: Pick<RunViewCtx, "props" | "nameOf" | "readValue">,
 ): RowGroup[] {
   const info = ctx.props?.get(key);
   const isCheckbox = info?.type === "checkbox";
   const buckets = new Map<string | null, PageListItem[]>();
   for (const p of rows) {
-    const raw = propValue(p, key);
+    const raw = valueIn(ctx, p, key);
     const v = isCheckbox
       ? raw === true || raw === "true"
         ? "true"

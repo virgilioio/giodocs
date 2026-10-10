@@ -138,3 +138,18 @@ describe("filterLabel — comparisons (2026-10-10)", () => {
     expect(dayWords("2027-01-02", now)).toBe("Jan 2, 2027");
   });
 });
+
+describe("filterLabel — relations", () => {
+  it("names the linked page", () => {
+    const ctx = {
+      people: [],
+      staleDays: 30,
+      defs: [{ key: "project", label: "Project", type: "relation" }],
+      pageTitle: (id: string) => (id === "p1" ? "Website" : "Private page"),
+    };
+    expect(filterLabel({ op: "includes", prop: "project", value: "p1" }, ctx)).toBe(
+      "project includes Website",
+    );
+    expect(filterLabel({ op: "empty", prop: "project" }, ctx)).toBe("no project");
+  });
+});
