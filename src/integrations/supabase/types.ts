@@ -850,6 +850,10 @@ export type Database = {
           user_id: string
         }[]
       }
+      can_edit_page_row: {
+        Args: { p: Database["public"]["Tables"]["pages"]["Row"] }
+        Returns: boolean
+      }
       can_manage_page_access: { Args: { p_page: string }; Returns: boolean }
       can_read_page: { Args: { p_page: string }; Returns: boolean }
       comment_thread_open: { Args: { p_thread: string }; Returns: boolean }
