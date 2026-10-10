@@ -111,6 +111,7 @@
   --animate-toastUp: toastUp 400ms ease;
   --animate-shake: shake 300ms linear;
   --animate-skShimmer: skShimmer 1.2s linear infinite;
+  --animate-drawerIn: drawerIn 360ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /* Durations and delays — plain custom properties, read by CSS and by
@@ -131,6 +132,8 @@
 @keyframes dialogOut{ from { opacity:1; transform:none } to { opacity:0; transform:scale(.96) } }
 @keyframes cardIn   { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:none } }
 @keyframes fadeIn   { from { opacity:0 } to { opacity:1 } }
+@keyframes drawerIn { from { transform:translateX(100%) } to { transform:none } }
+@keyframes drawerOut{ from { transform:none } to { transform:translateX(100%) } }
 @keyframes fadeOut  { from { opacity:1 } to { opacity:0 } }
 @keyframes toastUp  { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:none } }
 @keyframes shake    { 0%,100% { transform:translateX(0) } 20% { transform:translateX(-6px) } 40% { transform:translateX(5px) } 60% { transform:translateX(-3px) } 80% { transform:translateX(2px) } }
@@ -148,6 +151,7 @@
     --animate-cardIn: fadeIn 220ms cubic-bezier(0.23, 1, 0.32, 1);
     --animate-toastUp: fadeIn 400ms ease;
     --animate-shake: none;
+    --animate-drawerIn: fadeIn 220ms cubic-bezier(0.23, 1, 0.32, 1);
     --dur-sidebar: 0ms;
     --dur-switch: 0ms;
   }
@@ -206,6 +210,10 @@ button:is([class~="bg-btn"], [class~="border-line"][class~="bg-surface"], .gio-p
 }
 .gio-mention[data-missing="true"] { color: var(--color-muted); cursor: default; text-decoration: none; }
 .gio-mention::selection { background: var(--color-accentWash); }
+
+/* A block the comments panel points at flashes once. */
+@keyframes gioFlash { from { background-color: var(--color-highlight) } to { background-color: transparent } }
+.gio-flash { animation: gioFlash var(--dur-flash) var(--ease-out); border-radius: 6px; }
 
 .gio-stable-bold { display: inline-grid; }
 .gio-stable-bold::after {

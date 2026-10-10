@@ -20,19 +20,22 @@
  *            is a scrim that contains the card, mark the card with
  *            data-motion-card and the scrim fades while the card scales.
  *   fade   — scrims, bars, anything that should only fade.
+ *   drawer — a side panel: slides back out to the right (240ms).
  *
  * Reduced motion keeps the fade and drops the scale.
  */
 
-export type ExitKind = "pop" | "dialog" | "fade";
+export type ExitKind = "pop" | "dialog" | "fade" | "drawer";
 
-const EXIT: Record<ExitKind, { name: string; ms: number }> = {
+const EASE_OUT = "cubic-bezier(0.23, 1, 0.32, 1)";
+const EASE_DRAWER = "cubic-bezier(0.32, 0.72, 0, 1)";
+
+const EXIT: Record<ExitKind, { name: string; ms: number; ease?: string }> = {
   pop: { name: "popOut", ms: 120 },
   dialog: { name: "dialogOut", ms: 150 },
   fade: { name: "fadeOut", ms: 120 },
+  drawer: { name: "drawerOut", ms: 240, ease: EASE_DRAWER },
 };
-
-const EASE_OUT = "cubic-bezier(0.23, 1, 0.32, 1)";
 
 function reducedMotion(): boolean {
   return (
@@ -42,8 +45,8 @@ function reducedMotion(): boolean {
   );
 }
 
-function play(el: HTMLElement, name: string, ms: number) {
-  el.style.animation = `${name} ${ms}ms ${EASE_OUT} forwards`;
+function play(el: HTMLElement, name: string, ms: number, ease = EASE_OUT) {
+  el.style.animation = `${name} ${ms}ms ${ease} forwards`;
 }
 
 /** Put a copy of `node` back in `parent` and play its exit. */
@@ -80,7 +83,7 @@ export function playExit(
     play(ghost, "fadeOut", spec.ms);
     play(card, reduce ? "fadeOut" : "dialogOut", spec.ms);
   } else {
-    play(ghost, reduce ? "fadeOut" : spec.name, spec.ms);
+    play(ghost, reduce ? "fadeOut" : spec.name, spec.ms, spec.ease);
   }
 
   let done = false;

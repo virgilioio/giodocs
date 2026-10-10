@@ -24,7 +24,8 @@ import { setInlineEmojiSet } from "@/lib/emoji-registry";
 import { mentionPage, setMentionDirectory } from "@/lib/mention-directory";
 import { InboxButton } from "./inbox";
 import { useInboxRealtime } from "@/hooks/use-inbox";
-import { describeNotification } from "@/lib/inbox-text";
+import { describeNotification, openNotificationTarget } from "@/lib/inbox-text";
+import { openComments } from "@/lib/comments-store";
 import { resolvePageIdParam } from "@/lib/slug";
 
 import {
@@ -170,12 +171,7 @@ export function AppShell() {
       message: `${d.who} ${d.what} ${d.page}`,
       action: {
         label: "Open",
-        onClick: () =>
-          void inboxNavigate({
-            to: "/p/$pageId",
-            params: { pageId: n.page_id },
-            hash: n.block_id ? `block-${n.block_id}` : undefined,
-          }),
+        onClick: () => openNotificationTarget(n, inboxNavigate, openComments),
       },
     });
   });

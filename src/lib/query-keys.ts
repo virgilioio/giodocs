@@ -18,4 +18,6 @@ export const qk = {
   backlinks: (id: string) => ["backlinks", id] as const,
   /** This person's notifications, newest first. */
   inbox: (userId: string) => ["inbox", userId] as const,
+  /** A page's comments, oldest first. */
+  comments: (pageId: string) => ["comments", pageId] as const,
 };

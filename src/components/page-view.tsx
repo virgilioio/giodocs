@@ -60,6 +60,9 @@ import {
 import { RowMenu, type MenuRow, type MenuSpec } from "./row-menu";
 import { PageHistoryHost } from "./page-history";
 import { LinkedFrom } from "./linked-from";
+import { CommentMarkers, CommentsHost } from "./comments-panel";
+import { useCommentsLive } from "@/hooks/use-comments";
+import { closeComments, getCommentsPanel } from "@/lib/comments-store";
 import type { RestoredPage } from "@/hooks/use-page-history";
 import { clearUndoStore } from "@/lib/undo-store";
 import { normAccess, panelCopy } from "@/lib/share-panel";
@@ -1622,6 +1625,30 @@ export function PageEditor({ pageId }: { pageId: string }) {
     return [...s].sort();
   }, [shell.pages.data]);
 
+  // Comments stay live while the page is open; the panel closes on leaving.
+  useCommentsLive(pageId);
+  useEffect(
+    () => () => {
+      if (getCommentsPanel()?.pageId === pageId) closeComments();
+    },
+    [pageId],
+  );
+  // Block ids in page order, so threads list in the order they appear.
+  const blockOrder = useMemo(() => {
+    const out: string[] = [];
+    const walk = (list: unknown) => {
+      if (!Array.isArray(list)) return;
+      for (const b of list as Array<Record<string, unknown>>) {
+        if (!b || typeof b !== "object") continue;
+        if (typeof b.id === "string") out.push(b.id);
+        walk(b.children);
+        if (Array.isArray(b.cols)) for (const c of b.cols) walk(c);
+      }
+    };
+    walk(page?.blocks);
+    return out;
+  }, [page?.blocks]);
+
   const pagePending = pageQ.isPending && !pageQ.data;
   const showPageSkeleton = useDelayedPending(pagePending);
   if (pagePending) {
@@ -1768,12 +1795,14 @@ export function PageEditor({ pageId }: { pageId: string }) {
       <div
         id="page-body"
         style={{
+          position: "relative",
           marginTop: 22,
           borderTop: "1px solid var(--color-line)",
           paddingTop: 8,
         }}
       >
 
+        <CommentMarkers pageId={page.id} />
         <EditableBody
           key={editorKey}
           pageId={page.id}
@@ -1817,6 +1846,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
         ) : null}
       </div>
       <LinkedFrom pageId={page.id} />
+      <CommentsHost pageId={page.id} blockOrder={blockOrder} />
       <PageHistoryHost
         page={page}
         members={members}

@@ -3115,6 +3115,7 @@ export function EditableBody({
     <div
       ref={containerRef}
       data-gio-page-body
+      data-page-id={pageId}
       className="gio-page-body relative"
       onDragOver={(e) => {
         // Only claim the drag when it actually carries files; block drags

@@ -6,7 +6,8 @@ import { useSetPageOrigin } from "@/lib/page-origin";
 import { mentionPage, useMentionDirectoryVersion } from "@/lib/mention-directory";
 import { avatarInitials } from "@/lib/mention-trigger-ui";
 import { useInbox, useMarkRead, type InboxItem } from "@/hooks/use-inbox";
-import { describeNotification } from "@/lib/inbox-text";
+import { describeNotification, openNotificationTarget } from "@/lib/inbox-text";
+import { openComments } from "@/lib/comments-store";
 import { Popover } from "./popover";
 import { Ico } from "./emoji-icon";
 
@@ -40,11 +41,7 @@ export function InboxButton() {
     if (!n.read_at) markRead.mutate([n.id]);
     close();
     setOrigin(n.page_id);
-    void navigate({
-      to: "/p/$pageId",
-      params: { pageId: n.page_id },
-      hash: n.block_id ? `block-${n.block_id}` : undefined,
-    });
+    openNotificationTarget(n, navigate, openComments);
   };
 
   return (

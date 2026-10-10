@@ -18,6 +18,7 @@ import { primaryMod } from "@/lib/platform";
 import { snapSelection, linkCovering } from "@/lib/paste-link";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { openComments } from "@/lib/comments-store";
 import { toggleWrap, isWrapped } from "@/lib/toggle-wrap";
 import type { MarkPair } from "@/lib/block-format";
 import { safeUrl } from "@/lib/inline-markdown";
@@ -545,9 +546,37 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
             }
           />
           ) : null}
+          {sel && commentTarget(sel) ? (
+          <Btn
+            label="Comment"
+            title="Comment  ⌘⇧M"
+            active={false}
+            onPick={() => {
+              const t = commentTarget(sel!);
+              if (!t) return;
+              hide();
+              openComments(t.pageId, { draft: { blockId: t.blockId, quote: t.quote } });
+            }}
+            render={
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M20 12a8 8 0 0 1-11.8 7L4 20l1.1-3.9A8 8 0 1 1 20 12z" />
+              </svg>
+            }
+          />
+          ) : null}
         </>
       )}
     </div>,
     document.body,
   );
+}
+
+/** The block and the words selected in it, for a new comment thread. */
+function commentTarget(sel: Sel): { pageId: string; blockId: string; quote: string } | null {
+  const body = sel.el.closest<HTMLElement>("[data-gio-page-body]");
+  const pageId = body?.getAttribute("data-page-id");
+  const blockId = sel.el.closest<HTMLElement>("[data-block-id]")?.getAttribute("data-block-id");
+  if (!pageId || !blockId) return null;
+  const quote = (window.getSelection()?.toString() ?? "").replace(/\s+/g, " ").trim().slice(0, 500);
+  return { pageId, blockId, quote };
 }

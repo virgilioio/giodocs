@@ -18,6 +18,8 @@ import { getPageOrigin } from "@/lib/page-origin";
 import { PageActionsMenu, PageMoreButton } from "./page-actions-menu";
 import { openPermissionsPopover } from "./permissions-popover";
 import { openPageHistory } from "@/lib/page-history-store";
+import { openComments, toggleComments, useCommentsPanel } from "@/lib/comments-store";
+import { toThreads, useComments } from "@/hooks/use-comments";
 import { usePageAppearance } from "@/lib/page-appearance";
 import {
   useArchivePage,
@@ -142,6 +144,51 @@ function EditedStamp({
 }
 
 /* ────────────── Icon button ────────────── */
+
+/** Comments: the open-thread count, and the panel toggle (⌘⇧M). */
+function CommentsButton({ pageId }: { pageId: string }) {
+  const q = useComments(pageId);
+  const panel = useCommentsPanel();
+  const open = (q.data ? toThreads(q.data) : []).filter((t) => !t.root.resolved_at).length;
+  const isOpen = panel?.pageId === pageId;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (primaryMod(e) && e.shiftKey && !e.altKey && e.code === "KeyM") {
+        e.preventDefault();
+        // Words selected on the page: start a thread on them.
+        const selection = window.getSelection();
+        const node = selection && !selection.isCollapsed ? selection.anchorNode : null;
+        const el = node ? (node.nodeType === 1 ? (node as Element) : node.parentElement) : null;
+        const blockId = el?.closest("[data-gio-page-body] [data-block-id]")?.getAttribute("data-block-id");
+        if (blockId) {
+          const quote = selection!.toString().replace(/\s+/g, " ").trim().slice(0, 500);
+          openComments(pageId, { draft: { blockId, quote } });
+          return;
+        }
+        toggleComments(pageId);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pageId]);
+  const label = open ? `Comments, ${open} open` : "Comments";
+  return (
+    <button
+      type="button"
+      onClick={() => toggleComments(pageId)}
+      title={`${label}  ⌘⇧M`}
+      aria-label={label}
+      aria-pressed={isOpen}
+      className={`flex shrink-0 items-center rounded-md text-muted hover:bg-sunken hover:text-strong ${isOpen ? "bg-sunken text-strong" : ""}`}
+      style={{ height: 26, minWidth: 26, padding: open ? "0 6px 0 5px" : 0, justifyContent: "center", gap: 4 }}
+    >
+      <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M20 12a8 8 0 0 1-11.8 7L4 20l1.1-3.9A8 8 0 1 1 20 12z" />
+      </svg>
+      {open ? <span className="tnum text-meta">{open}</span> : null}
+    </button>
+  );
+}
 
 function IconButton({
   onClick,
@@ -418,6 +465,8 @@ export function PageTopbarActions({
       >
         <Glyph path={linkIcon} />
       </IconButton>
+
+      {page ? <CommentsButton pageId={page.id} /> : null}
 
       <PageMoreButton
         open={menuOpen}

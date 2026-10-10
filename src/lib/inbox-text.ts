@@ -7,9 +7,30 @@ export function describeNotification(n: Pick<InboxItem, "actor_id" | "kind" | "p
   const page = mentionPage(n.page_id);
   return {
     who,
-    what: n.kind === "page_mention" ? "mentioned you in" : "updated",
+    what:
+      n.kind === "page_mention"
+        ? "mentioned you in"
+        : n.kind === "comment_mention"
+          ? "mentioned you in a comment on"
+          : n.kind === "comment_reply"
+            ? "replied to a comment on"
+            : "updated",
     page: page?.title || "Untitled",
     icon: page?.icon || "📄",
   };
 }
 
+
+/** Where a notification takes you: the page, at its block or comment. */
+export function openNotificationTarget(
+  n: Pick<InboxItem, "page_id" | "block_id" | "comment_id">,
+  navigate: (opts: { to: "/p/$pageId"; params: { pageId: string }; hash?: string }) => unknown,
+  openComments: (pageId: string, opts: { focusThread: string }) => void,
+): void {
+  void navigate({
+    to: "/p/$pageId",
+    params: { pageId: n.page_id },
+    hash: !n.comment_id && n.block_id ? `block-${n.block_id}` : undefined,
+  });
+  if (n.comment_id) openComments(n.page_id, { focusThread: n.comment_id });
+}

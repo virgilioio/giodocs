@@ -12,6 +12,7 @@ export type InboxItem = {
   kind: string;
   page_id: string;
   block_id: string | null;
+  comment_id: string | null;
   actor_id: string | null;
   excerpt: string;
   created_at: string;
@@ -21,7 +22,7 @@ export type InboxItem = {
 async function fetchInbox(): Promise<InboxItem[]> {
   const { data, error } = await supabase
     .from("notifications")
-    .select("id, kind, page_id, block_id, actor_id, excerpt, created_at, read_at")
+    .select("id, kind, page_id, block_id, comment_id, actor_id, excerpt, created_at, read_at")
     .order("created_at", { ascending: false })
     .limit(60);
   if (error) throw error;
