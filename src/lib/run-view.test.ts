@@ -115,46 +115,80 @@ const sortEditedDesc: ViewSpec["sort"] = { prop: "edited", dir: "desc" };
 
 describe("runView filter ops", () => {
   it("eq matches by prop equality", () => {
-    const r = runView(pages, { filter: [{ prop: "area", op: "eq", value: "Engineering" }], sort: sortEditedDesc }, ctx);
+    const r = runView(
+      pages,
+      { filter: [{ prop: "area", op: "eq", value: "Engineering" }], sort: sortEditedDesc },
+      ctx,
+    );
     expect(r.map((p) => p.id).sort()).toEqual(["p1", "p3", "p7"]);
   });
 
   it("includes matches when array contains value", () => {
-    const r = runView(pages, { filter: [{ prop: "tags", op: "includes", value: "urgent" }], sort: sortEditedDesc }, ctx);
+    const r = runView(
+      pages,
+      { filter: [{ prop: "tags", op: "includes", value: "urgent" }], sort: sortEditedDesc },
+      ctx,
+    );
     expect(r.map((p) => p.id).sort()).toEqual(["p1", "p6", "p7"]);
   });
 
   it("is_me matches on the me id", () => {
-    const r = runView(pages, { filter: [{ prop: "owner", op: "is_me" }], sort: sortEditedDesc }, ctx);
+    const r = runView(
+      pages,
+      { filter: [{ prop: "owner", op: "is_me" }], sort: sortEditedDesc },
+      ctx,
+    );
     expect(r.map((p) => p.id).sort()).toEqual(["p1", "p3", "p5"]);
   });
 
   it("is_me with a different me returns a different set", () => {
-    const r = runView(pages, { filter: [{ prop: "owner", op: "is_me" }], sort: sortEditedDesc }, { ...ctx, me: OTHER });
+    const r = runView(
+      pages,
+      { filter: [{ prop: "owner", op: "is_me" }], sort: sortEditedDesc },
+      { ...ctx, me: OTHER },
+    );
     expect(r.map((p) => p.id).sort()).toEqual(["p2", "p4", "p7"]);
   });
 
   it("not_empty rejects missing, null, empty string, and empty array", () => {
-    const r = runView(pages, { filter: [{ prop: "tags", op: "not_empty" }], sort: sortEditedDesc }, ctx);
+    const r = runView(
+      pages,
+      { filter: [{ prop: "tags", op: "not_empty" }], sort: sortEditedDesc },
+      ctx,
+    );
     expect(r.map((p) => p.id).sort()).toEqual(["p1", "p2", "p6", "p7"]);
   });
 
   it("stale respects a custom staleDays", () => {
     const r90 = runView(pages, { filter: [{ op: "stale" }], sort: sortEditedDesc }, ctx);
     expect(r90.map((p) => p.id).sort()).toEqual(["p2", "p3", "p5"]);
-    const r150 = runView(pages, { filter: [{ op: "stale" }], sort: sortEditedDesc }, { ...ctx, staleDays: 150 });
+    const r150 = runView(
+      pages,
+      { filter: [{ op: "stale" }], sort: sortEditedDesc },
+      { ...ctx, staleDays: 150 },
+    );
     expect(r150.map((p) => p.id).sort()).toEqual(["p3", "p5"]);
   });
 
   it("edited_within uses numeric day window", () => {
-    const r = runView(pages, { filter: [{ op: "edited_within", value: 7 }], sort: sortEditedDesc }, ctx);
+    const r = runView(
+      pages,
+      { filter: [{ op: "edited_within", value: 7 }], sort: sortEditedDesc },
+      ctx,
+    );
     expect(r.map((p) => p.id).sort()).toEqual(["p1", "p3", "p5", "p6", "p7", "p8"]);
   });
 
   it("ANDs multiple filters", () => {
     const r = runView(
       pages,
-      { filter: [{ prop: "area", op: "eq", value: "Engineering" }, { prop: "owner", op: "is_me" }], sort: sortEditedDesc },
+      {
+        filter: [
+          { prop: "area", op: "eq", value: "Engineering" },
+          { prop: "owner", op: "is_me" },
+        ],
+        sort: sortEditedDesc,
+      },
       ctx,
     );
     expect(r.map((p) => p.id).sort()).toEqual(["p1", "p3"]);
@@ -202,7 +236,11 @@ describe("groupPages", () => {
 
 /* ─────────── 2026-10-10: comparing filters, any-property sorts, grouping ─────────── */
 
-function item(id: string, props: Record<string, unknown>, extra: Partial<PageListItem> = {}): PageListItem {
+function item(
+  id: string,
+  props: Record<string, unknown>,
+  extra: Partial<PageListItem> = {},
+): PageListItem {
   return {
     id,
     title: id,
@@ -289,7 +327,10 @@ describe("comparing filters", () => {
 
 describe("sorting by any property", () => {
   const props = new Map<string, PropInfo>([
-    ["status", { type: "status", options: [{ value: "todo" }, { value: "doing" }, { value: "done" }] }],
+    [
+      "status",
+      { type: "status", options: [{ value: "todo" }, { value: "doing" }, { value: "done" }] },
+    ],
     ["n", { type: "number" }],
     ["done", { type: "checkbox" }],
     ["due", { type: "date" }],
@@ -321,7 +362,13 @@ describe("sorting by any property", () => {
     ];
     const r = runView(
       tied,
-      { filter: [], sort: [{ prop: "p:done", dir: "desc" }, { prop: "p:n", dir: "desc" }] },
+      {
+        filter: [],
+        sort: [
+          { prop: "p:done", dir: "desc" },
+          { prop: "p:n", dir: "desc" },
+        ],
+      },
       c,
     );
     expect(ids(r)).toEqual(["y", "x", "z"]);
@@ -343,7 +390,16 @@ describe("sorting by any property", () => {
 
 describe("groupRows", () => {
   const props = new Map<string, PropInfo>([
-    ["status", { type: "status", options: [{ value: "todo", label: "To do" }, { value: "done", label: "Done" }] }],
+    [
+      "status",
+      {
+        type: "status",
+        options: [
+          { value: "todo", label: "To do" },
+          { value: "done", label: "Done" },
+        ],
+      },
+    ],
     ["ok", { type: "checkbox" }],
   ]);
   const rows = [
@@ -368,11 +424,38 @@ describe("groupRows", () => {
     ]);
   });
   it("people group by name", () => {
-    const g = groupRows(
-      [item("a", { owner: ME }), item("b", { owner: OTHER })],
-      "owner",
-      { props: new Map([["owner", { type: "person" }]]), nameOf: (id) => (id === ME ? "Zoe" : "Adam") },
-    );
+    const g = groupRows([item("a", { owner: ME }), item("b", { owner: OTHER })], "owner", {
+      props: new Map([["owner", { type: "person" }]]),
+      nameOf: (id) => (id === ME ? "Zoe" : "Adam"),
+    });
     expect(g.map((x) => x.label)).toEqual(["Adam", "Zoe"]);
+  });
+});
+
+describe("review fixes (2026-10-10)", () => {
+  it("values that aren't listed options follow the options, in text order", () => {
+    const props = new Map<string, PropInfo>([
+      ["area", { type: "select", options: [{ value: "Ops" }] }],
+    ]);
+    const r = runView(
+      [item("1", { area: "Sales" }), item("2", { area: "Design" }), item("3", { area: "Ops" })],
+      { filter: [], sort: { prop: "p:area", dir: "asc" } },
+      { ...wctx, props },
+    );
+    expect(ids(r)).toEqual(["3", "2", "1"]);
+  });
+  it("a date property stored as a timestamp keeps its written day", () => {
+    const rows = [
+      item("t", { due: "2026-10-14T00:00:00Z" }),
+      item("u", { due: "2026-10-13T23:30:00Z" }),
+    ];
+    expect(only(rows, { prop: "due", op: "date_is", value: "2026-10-14" })).toEqual(["t"]);
+  });
+  it("overdue leaves out finished pages", () => {
+    const rows = [
+      item("open", { due: "2026-10-01" }),
+      item("done", { due: "2026-10-01", status: "done" }),
+    ];
+    expect(only(rows, { prop: "due", op: "date_is", value: "overdue" })).toEqual(["open"]);
   });
 });

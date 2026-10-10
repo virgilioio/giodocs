@@ -1,4 +1,4 @@
-import { dayKey, isEmptyValue, propValue } from "./run-view";
+import { dayOfValue, isEmptyValue, propValue } from "./run-view";
 import { dayWords } from "./filter-label";
 import type { PageListItem } from "./types";
 
@@ -182,7 +182,7 @@ export function calculate(
     case "latest":
     case "date_range": {
       const days = values
-        .map((v) => dayKey(v))
+        .map((v) => dayOfValue(v, key))
         .filter((d): d is string => !!d)
         .sort();
       if (days.length === 0) return "";

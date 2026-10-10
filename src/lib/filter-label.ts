@@ -71,6 +71,10 @@ export function dayWords(v: unknown, now: Date = new Date()): string {
   return y === now.getFullYear() ? base : `${base}, ${y}`;
 }
 
+function isPersonBuiltIn(prop: string | undefined): boolean {
+  return prop === "@created_by" || prop === "@edited_by";
+}
+
 export function filterLabel(f: Filter, ctx: FilterLabelCtx): string {
   const def = ctx.defs?.find((d) => d.key === f.prop);
   const builtIn = f.prop ? BUILT_IN_LABELS[f.prop] : undefined;
@@ -79,7 +83,7 @@ export function filterLabel(f: Filter, ctx: FilterLabelCtx): string {
   switch (f.op) {
     case "eq":
       if (f.prop === "owner") return `owner is ${person(f.value)}`;
-      if (def?.type === "person") return `${name} is ${person(f.value)}`;
+      if (def?.type === "person" || isPersonBuiltIn(f.prop)) return `${name} is ${person(f.value)}`;
       if (def?.type === "checkbox")
         return String(f.value) === "true" ? `${name} is checked` : `${name} is not checked`;
       return `${def ? name : f.prop} is \u201C${def ? optionLabel(def, f.value) : f.value}\u201D`;
@@ -94,7 +98,8 @@ export function filterLabel(f: Filter, ctx: FilterLabelCtx): string {
     case "empty":
       return `no ${name}`;
     case "neq":
-      if (def?.type === "person") return `${name} isn\u2019t ${person(f.value)}`;
+      if (def?.type === "person" || isPersonBuiltIn(f.prop))
+        return `${name} isn\u2019t ${person(f.value)}`;
       return `${name} isn\u2019t \u201C${def ? optionLabel(def, f.value) : f.value}\u201D`;
     case "not_includes":
       return `${name} doesn\u2019t include \u201C${f.value}\u201D`;
@@ -131,12 +136,25 @@ export function filterLabel(f: Filter, ctx: FilterLabelCtx): string {
   }
 }
 
-/**
- * Adding a filter removes any existing filter with the same prop+op —
- * EXCEPT op "includes", which accumulates. Exact rule per B1 spec §3.
- */
+/* Ops that say what a property IS — picking a new one for the same
+ * property replaces the old (status is Done → status is To do; checked →
+ * not checked). Comparisons add up, so a range is two filters (above 3 and
+ * at most 8; after Oct 1 and before Oct 31); a repeated comparison
+ * replaces itself. Tags ("includes") always add up. */
+const IS_FAMILY = new Set<Filter["op"]>([
+  "eq",
+  "neq",
+  "empty",
+  "not_empty",
+  "unchecked",
+  "is_me",
+  "date_is",
+]);
+
 export function applyFilterReplacement(prev: Filter[], picked: Filter): Filter[] {
-  return prev
-    .filter((f) => !(f.prop === picked.prop && f.op === picked.op) || f.op === "includes")
-    .concat([picked]);
+  if (picked.op === "includes") return prev.concat([picked]);
+  const clashes = (f: Filter) =>
+    f.prop === picked.prop &&
+    (f.op === picked.op || (IS_FAMILY.has(f.op) && IS_FAMILY.has(picked.op)));
+  return prev.filter((f) => !clashes(f)).concat([picked]);
 }

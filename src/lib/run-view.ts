@@ -1,4 +1,5 @@
 import type { PageListItem } from "./types";
+import { isTerminalStatus, toDueString } from "./due-date";
 
 /* The one place a view's filter, sort and grouping run (AGENTS.md: "View
  * filtering happens in EXACTLY one place"). Everything here is pure.
@@ -136,6 +137,15 @@ export function isEmptyValue(v: unknown): boolean {
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
+}
+
+/** The calendar day a property or built-in holds. A date property is a
+ *  calendar date, so an older stored timestamp keeps its written date part
+ *  (as its cell shows it); built-in timestamps (@created, @edited, …) are
+ *  moments, read as the reader's local day. */
+export function dayOfValue(v: unknown, key: string): string | null {
+  if (key.startsWith("@")) return dayKey(v);
+  return toDueString(v);
 }
 
 /** A local calendar day "YYYY-MM-DD" for a date value or a timestamp. */
@@ -297,7 +307,8 @@ export function matches(page: PageListItem, f: Filter, ctx: RunViewCtx): boolean
     case "after":
     case "on_or_before":
     case "on_or_after": {
-      const d = dayKey(propValue(page, requireProp(f)));
+      const key = requireProp(f);
+      const d = dayOfValue(propValue(page, key), key);
       const t = targetDay(f.value, now);
       if (!d || !t) return false;
       if (f.op === "before") return d < t;
@@ -306,8 +317,11 @@ export function matches(page: PageListItem, f: Filter, ctx: RunViewCtx): boolean
       return d >= t;
     }
     case "date_is": {
-      const d = dayKey(propValue(page, requireProp(f)));
+      const key = requireProp(f);
+      const d = dayOfValue(propValue(page, key), key);
       if (!d) return false;
+      // An overdue date on a finished page is noise, as in its cell.
+      if (f.value === "overdue" && isTerminalStatus(propsOf(page).status)) return false;
       const r = rangeOf(String(f.value ?? ""), now);
       if (r) return d >= r[0] && d <= r[1];
       const t = dayKey(f.value);
@@ -354,7 +368,7 @@ export function sortProp(prop: string): string {
   return prop;
 }
 
-type Key = { empty: boolean; v: number | string };
+type Key = { empty: boolean; v: number | string; t?: string };
 
 function sortKey(page: PageListItem, key: string, ctx: RunViewCtx): Key {
   if (key === "@title") return { empty: false, v: (page.title ?? "").toLowerCase() };
@@ -381,14 +395,18 @@ function sortKey(page: PageListItem, key: string, ctx: RunViewCtx): Key {
     case "checkbox":
       return { empty: false, v: raw === true || raw === "true" ? 1 : 0 };
     case "date": {
-      const d = dayKey(raw);
+      const d = dayOfValue(raw, key);
       return d ? { empty: false, v: d } : { empty: true, v: "" };
     }
     case "select":
     case "status": {
       // In the order the options are set up (To do → Done), like Notion.
+      // Values that aren't listed options (an area typed on a page) follow
+      // the listed ones, in text order.
       const i = info.options?.findIndex((o) => o.value === raw) ?? -1;
-      return i >= 0 ? { empty: false, v: i } : { empty: false, v: 1e6 };
+      return i >= 0
+        ? { empty: false, v: i }
+        : { empty: false, v: 1e6, t: asText(raw).toLowerCase() };
     }
     case "person":
       return { empty: false, v: (ctx.nameOf?.(String(raw)) ?? String(raw)).toLowerCase() };
@@ -401,7 +419,11 @@ function compareKeys(a: Key, b: Key, dir: 1 | -1): number {
   // Pages without a value always go last, whichever way you sort.
   if (a.empty !== b.empty) return a.empty ? 1 : -1;
   if (a.empty) return 0;
-  if (typeof a.v === "number" && typeof b.v === "number") return (a.v - b.v) * dir;
+  if (typeof a.v === "number" && typeof b.v === "number") {
+    if (a.v !== b.v) return (a.v - b.v) * dir;
+    if (a.t === undefined && b.t === undefined) return 0;
+    return (a.t ?? "").localeCompare(b.t ?? "", undefined, { numeric: true }) * dir;
+  }
   const sa = String(a.v);
   const sb = String(b.v);
   return sa.localeCompare(sb, undefined, { numeric: true, sensitivity: "base" }) * dir;

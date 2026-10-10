@@ -72,10 +72,33 @@ describe("applyFilterReplacement — the ship-exact rule", () => {
     expect(applyFilterReplacement([a], b)).toEqual([a, b]);
   });
 
-  it("same prop, different op coexists (eq vs not_empty)", () => {
+  it("a new pick of what a property is replaces the old (2026-10-10)", () => {
     const a: Filter = { op: "not_empty", prop: "stage" };
     const b: Filter = { op: "eq", prop: "stage", value: "review" };
+    expect(applyFilterReplacement([a], b)).toEqual([b]);
+    const checked: Filter = { op: "eq", prop: "done", value: "true" };
+    const not: Filter = { op: "unchecked", prop: "done" };
+    expect(applyFilterReplacement([checked], not)).toEqual([not]);
+  });
+
+  it("comparisons add up into a range; the same comparison replaces itself", () => {
+    const a: Filter = { op: "gte", prop: "effort", value: 3 };
+    const b: Filter = { op: "lte", prop: "effort", value: 8 };
+    const c: Filter = { op: "lte", prop: "effort", value: 5 };
     expect(applyFilterReplacement([a], b)).toEqual([a, b]);
+    expect(applyFilterReplacement([a, b], c)).toEqual([a, c]);
+    const today: Filter = { op: "date_is", prop: "due", value: "today" };
+    const before: Filter = { op: "before", prop: "due", value: "2026-10-31" };
+    expect(applyFilterReplacement([today], before)).toEqual([today, before]);
+  });
+
+  it("built-in people read by name", () => {
+    expect(
+      filterLabel(
+        { op: "eq", prop: "@created_by", value: "u1" },
+        { people: [{ id: "u1", full_name: "Ana" }], staleDays: 30, defs: [] },
+      ),
+    ).toBe("created by is Ana");
   });
 });
 
