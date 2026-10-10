@@ -502,12 +502,13 @@ function DetailsRow({
           style={{
             position: "absolute",
             top: 2,
-            left: value ? 15 : 2,
+            left: 2,
             width: 13,
             height: 13,
             borderRadius: 999,
             background: "var(--color-surface)",
-            transition: "left 150ms ease",
+            transform: value ? "translateX(13px)" : "none",
+            transition: "transform var(--dur-switch) var(--ease-out)",
             boxShadow: "0 1px 2px rgba(13,13,9,.22)",
           }}
         />

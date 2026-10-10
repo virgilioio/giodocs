@@ -185,11 +185,12 @@ function TogglePill({ on, onChange }: { on: boolean; onChange: () => void }) {
       }}
     >
       <span style={{
-        position: "absolute", top: 2, left: on ? 15 : 2,
+        position: "absolute", top: 2, left: 2,
         width: 13, height: 13, borderRadius: "50%",
         background: "var(--color-surface)",
         boxShadow: "0 1px 2px rgba(30,24,12,.28)",
-        transition: "left .15s",
+        transform: on ? "translateX(13px)" : "none",
+        transition: "transform var(--dur-switch) var(--ease-out)",
       }} />
     </button>
   );

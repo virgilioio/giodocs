@@ -426,7 +426,7 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
           background: "var(--color-surface)",
           borderRadius: 999,
           boxShadow: "0 1px 3px rgba(13,13,9,.2)",
-          transition: "transform 150ms ease",
+          transition: "transform var(--dur-switch) var(--ease-out)",
           transform: value ? "translateX(18px)" : "translateX(0)",
         }}
       />

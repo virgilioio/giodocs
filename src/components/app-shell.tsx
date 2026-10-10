@@ -416,7 +416,7 @@ export function AppShell() {
       <div
         style={{
           width: sidebarOpen ? "var(--gio-sidebar-w)" : 0,
-          transition: resizing ? "none" : "width 180ms ease",
+          transition: resizing ? "none" : "width var(--dur-sidebar) var(--ease-in-out)",
         }}
         className="relative shrink-0 overflow-hidden border-r border-line bg-rail"
       >
