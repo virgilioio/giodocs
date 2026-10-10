@@ -6,20 +6,7 @@
  * from these, so the two sites can never disagree about what "overdue"
  * means. */
 
-const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** A status whose page is finished — an overdue date on it is noise. */
 const TERMINAL_STATUS = new Set([
@@ -59,6 +46,73 @@ export function toDueString(value: unknown): string | null {
   return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
+/* ── Date ranges ──
+ * A date property holds one day, "2026-10-12", or a range written as ISO
+ * 8601 start/end, "2026-10-12/2026-10-15" (validate_page_props checks the
+ * end is on or after the start). Everything that reads a date as one day
+ * (dueParts, toDueString) reads a range's START, so sorting and placing by
+ * start needs no change. */
+
+export type DateSpan = { start: string; end: string };
+
+/** The first and last day a value covers; a single day is both. */
+export function dateSpan(value: unknown): DateSpan | null {
+  if (typeof value !== "string") return null;
+  const [a, b] = value.trim().split("/");
+  const start = toDueString(a);
+  if (!start) return null;
+  const end = b !== undefined ? toDueString(b) : null;
+  if (!end || end === start) return { start, end: start };
+  return end < start ? { start: end, end: start } : { start, end };
+}
+
+export function isDateRange(value: unknown): boolean {
+  const s = dateSpan(value);
+  return !!s && s.end !== s.start;
+}
+
+/** What to store: one day, or "start/end" (ends put in order). */
+export function toDateValue(start: string, end?: string | null): string {
+  const a = toDueString(start) ?? start;
+  const b = end ? (toDueString(end) ?? end) : null;
+  if (!b || b === a) return a;
+  return a < b ? `${a}/${b}` : `${b}/${a}`;
+}
+
+function addDaysKey(key: string, n: number): string {
+  const p = dueParts(key)!;
+  const d = new Date(p[0], p[1] - 1, p[2] + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** Whole days from one day key to another (local calendar days). */
+export function daysBetweenKeys(a: string, b: string): number {
+  const pa = dueParts(a);
+  const pb = dueParts(b);
+  if (!pa || !pb) return 0;
+  return Math.round(
+    (Date.UTC(pb[0], pb[1] - 1, pb[2]) - Date.UTC(pa[0], pa[1] - 1, pa[2])) / 86_400_000,
+  );
+}
+
+/** Move a value so it starts on `start`, keeping a range's length. */
+export function moveDateValue(value: unknown, start: string): string {
+  const s = dateSpan(value);
+  if (!s || s.end === s.start) return start;
+  return toDateValue(start, addDaysKey(start, daysBetweenKeys(s.start, s.end)));
+}
+
+/** Every day a value covers, in order, at most `max` of them. */
+export function daysOfSpan(span: DateSpan, max = 62): string[] {
+  const out: string[] = [];
+  let k = span.start;
+  while (k <= span.end && out.length < max) {
+    out.push(k);
+    k = addDaysKey(k, 1);
+  }
+  return out;
+}
+
 /** Local midnight of a stored due date. */
 export function dueMidnight(value: unknown): number | null {
   const p = dueParts(value);
@@ -68,15 +122,7 @@ export function dueMidnight(value: unknown): number | null {
 
 /** Local midnight of "now" — the other side of every comparison. */
 export function todayMidnight(now: Date = new Date()): number {
-  return new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-    0,
-    0,
-    0,
-    0,
-  ).getTime();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
 }
 
 export type DueState = "empty" | "overdue" | "today" | "future";
@@ -86,17 +132,30 @@ export function dueState(
   now: Date = new Date(),
   opts: { terminal?: boolean } = {},
 ): DueState {
-  const due = dueMidnight(value);
-  if (due === null) return "empty";
+  const span = dateSpan(value);
+  if (!span) return "empty";
+  const start = dueMidnight(span.start)!;
+  const end = dueMidnight(span.end)!;
   const today = todayMidnight(now);
-  if (due > today) return "future";
-  if (due === today) return "today";
+  if (start > today) return "future";
+  // A range that has started and not ended is "today" (in progress).
+  if (end >= today) return "today";
   return opts.terminal ? "future" : "overdue";
 }
 
 /** "Mar 14", or "Mar 14, 2027" when the year differs from now. The year
  * guard stays: a bare month-day in another year is ambiguous. */
 export function formatDue(value: unknown, now: Date = new Date()): string {
+  const span = dateSpan(value);
+  if (span && span.end !== span.start) {
+    const a = dueParts(span.start)!;
+    const b = dueParts(span.end)!;
+    const sameYear = a[0] === b[0];
+    const yearShown = !sameYear || a[0] !== now.getFullYear();
+    const left = `${MONTHS[a[1] - 1]} ${a[2]}${!sameYear ? `, ${a[0]}` : ""}`;
+    const right = sameYear && a[1] === b[1] ? `${b[2]}` : `${MONTHS[b[1] - 1]} ${b[2]}`;
+    return `${left} \u2192 ${right}${yearShown ? `, ${b[0]}` : ""}`;
+  }
   const p = dueParts(value);
   if (!p) return "";
   const [y, m, d] = p;
@@ -106,10 +165,7 @@ export function formatDue(value: unknown, now: Date = new Date()): string {
 
 /** Whole calendar days from today to the stored date: 0 today, 1 tomorrow,
  * -1 yesterday. Both sides are local midnight, so 4pm never shifts it. */
-export function dueDeltaDays(
-  value: unknown,
-  now: Date = new Date(),
-): number | null {
+export function dueDeltaDays(value: unknown, now: Date = new Date()): number | null {
   const due = dueMidnight(value);
   if (due === null) return null;
   return Math.round((due - todayMidnight(now)) / 86400000);
@@ -159,11 +215,12 @@ export function dueLabel(
 ): { state: DueState; text: string } {
   const state = dueState(value, now, opts);
   if (state === "empty") return { state, text: "" };
-  if (state === "today") return { state, text: "Today" };
+  const range = isDateRange(value);
+  if (state === "today") return { state, text: range ? formatDue(value, now) : "Today" };
   if (state === "overdue")
     return {
       state,
-      text: `${formatDue(value, now)} · ${dueAgeLabel(value, now)}`,
+      text: `${formatDue(value, now)} · ${dueAgeLabel(range ? dateSpan(value)!.end : value, now)}`,
     };
   return { state, text: formatDue(value, now) };
 }

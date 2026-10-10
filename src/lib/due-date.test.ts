@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   dueParts,
+  dateSpan,
+  toDateValue,
+  moveDateValue,
+  daysOfSpan,
   toDueString,
   dueState,
   formatDue,
@@ -123,5 +127,44 @@ describe("isTerminalStatus", () => {
     expect(isTerminalStatus("shipped")).toBe(true);
     expect(isTerminalStatus("in_progress")).toBe(false);
     expect(isTerminalStatus(null)).toBe(false);
+  });
+});
+
+describe("date ranges (2026-10-10)", () => {
+  const now = new Date(2026, 9, 14, 16);
+  it("reads a day or a range; a backwards range is put in order", () => {
+    expect(dateSpan("2026-10-12")).toEqual({ start: "2026-10-12", end: "2026-10-12" });
+    expect(dateSpan("2026-10-12/2026-10-15")).toEqual({ start: "2026-10-12", end: "2026-10-15" });
+    expect(dateSpan("2026-10-15/2026-10-12")).toEqual({ start: "2026-10-12", end: "2026-10-15" });
+    expect(dateSpan("nope")).toBeNull();
+    expect(toDueString("2026-10-12/2026-10-15")).toBe("2026-10-12");
+  });
+  it("stores a day or start/end", () => {
+    expect(toDateValue("2026-10-12")).toBe("2026-10-12");
+    expect(toDateValue("2026-10-12", "2026-10-12")).toBe("2026-10-12");
+    expect(toDateValue("2026-10-15", "2026-10-12")).toBe("2026-10-12/2026-10-15");
+  });
+  it("moves a range keeping its length, across months", () => {
+    expect(moveDateValue("2026-10-30/2026-11-02", "2026-12-30")).toBe("2026-12-30/2027-01-02");
+    expect(moveDateValue("2026-10-12", "2026-10-20")).toBe("2026-10-20");
+    expect(daysOfSpan({ start: "2026-10-30", end: "2026-11-02" })).toEqual([
+      "2026-10-30",
+      "2026-10-31",
+      "2026-11-01",
+      "2026-11-02",
+    ]);
+  });
+  it("reads as words", () => {
+    expect(formatDue("2026-10-12/2026-10-15", now)).toBe("Oct 12 → 15");
+    expect(formatDue("2026-10-28/2026-11-03", now)).toBe("Oct 28 → Nov 3");
+    expect(formatDue("2026-12-28/2027-01-03", now)).toBe("Dec 28, 2026 → Jan 3, 2027");
+    expect(formatDue("2027-03-01/2027-03-04", now)).toBe("Mar 1 → 4, 2027");
+  });
+  it("a range under way is today; it's overdue once its end has passed", () => {
+    expect(dueState("2026-10-12/2026-10-15", now)).toBe("today");
+    expect(dueState("2026-10-01/2026-10-13", now)).toBe("overdue");
+    expect(dueState("2026-10-15/2026-10-20", now)).toBe("future");
+    expect(dueLabel("2026-10-12/2026-10-15", now).text).toBe("Oct 12 → 15");
+    expect(dueLabel("2026-10-01/2026-10-13", now).text).toBe("Oct 1 → 13 · yesterday");
   });
 });

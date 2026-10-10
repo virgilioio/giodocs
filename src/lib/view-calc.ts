@@ -1,4 +1,4 @@
-import { dayOfValue, isEmptyValue, propValue } from "./run-view";
+import { isEmptyValue, propValue, spanOfValue } from "./run-view";
 import { dayWords } from "./filter-label";
 import type { PageListItem } from "./types";
 
@@ -181,14 +181,16 @@ export function calculate(
     case "earliest":
     case "latest":
     case "date_range": {
-      const days = values
-        .map((v) => dayOfValue(v, key))
-        .filter((d): d is string => !!d)
-        .sort();
-      if (days.length === 0) return "";
-      if (calc === "earliest") return dayWords(days[0], now);
-      if (calc === "latest") return dayWords(days[days.length - 1], now);
-      const n = daysBetween(days[0], days[days.length - 1]);
+      // Ranges count from their first day (earliest) to their last (latest).
+      const spans = values
+        .map((v) => spanOfValue(v, key))
+        .filter((x): x is { start: string; end: string } => !!x);
+      if (spans.length === 0) return "";
+      const first = spans.map((x) => x.start).sort()[0];
+      const last = spans.map((x) => x.end).sort()[spans.length - 1];
+      if (calc === "earliest") return dayWords(first, now);
+      if (calc === "latest") return dayWords(last, now);
+      const n = daysBetween(first, last);
       return n === 1 ? "1 day" : `${NUM.format(n)} days`;
     }
     default:

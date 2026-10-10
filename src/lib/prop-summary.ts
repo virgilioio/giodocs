@@ -1,3 +1,5 @@
+import { formatDue, isDateRange } from "./due-date";
+
 /* One-line text for a property value, for the collapsed property strip.
  *
  * Pure: no React, no Supabase. Returns null when the value is empty, so the
@@ -58,6 +60,7 @@ export function summarizeProp(
       return personName(value);
     }
     case "date":
+      if (isDateRange(value)) return formatDue(value);
       return typeof value === "string" && value ? shortDate(value) : null;
     case "number":
       return typeof value === "number" ? value.toLocaleString() : null;

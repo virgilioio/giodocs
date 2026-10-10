@@ -1,5 +1,5 @@
 import type { PageListItem } from "./types";
-import { isTerminalStatus, toDueString } from "./due-date";
+import { dateSpan, isTerminalStatus, toDueString, type DateSpan } from "./due-date";
 
 /* The one place a view's filter, sort and grouping run (AGENTS.md: "View
  * filtering happens in EXACTLY one place"). Everything here is pure.
@@ -146,6 +146,16 @@ function pad(n: number): string {
 export function dayOfValue(v: unknown, key: string): string | null {
   if (key.startsWith("@")) return dayKey(v);
   return toDueString(v);
+}
+
+/** The days a property or built-in covers: a date range's start and end,
+ *  or one day as both. */
+export function spanOfValue(v: unknown, key: string): DateSpan | null {
+  if (key.startsWith("@")) {
+    const d = dayKey(v);
+    return d ? { start: d, end: d } : null;
+  }
+  return dateSpan(v);
 }
 
 /** A local calendar day "YYYY-MM-DD" for a date value or a timestamp. */
@@ -307,25 +317,34 @@ export function matches(page: PageListItem, f: Filter, ctx: RunViewCtx): boolean
     case "after":
     case "on_or_before":
     case "on_or_after": {
+      // A range is before a day if it starts before it, after a day if it
+      // ends after it.
       const key = requireProp(f);
-      const d = dayOfValue(propValue(page, key), key);
+      const span = spanOfValue(propValue(page, key), key);
       const t = targetDay(f.value, now);
-      if (!d || !t) return false;
-      if (f.op === "before") return d < t;
-      if (f.op === "after") return d > t;
-      if (f.op === "on_or_before") return d <= t;
-      return d >= t;
+      if (!span || !t) return false;
+      if (f.op === "before") return span.start < t;
+      if (f.op === "after") return span.end > t;
+      if (f.op === "on_or_before") return span.start <= t;
+      return span.end >= t;
     }
     case "date_is": {
       const key = requireProp(f);
-      const d = dayOfValue(propValue(page, key), key);
-      if (!d) return false;
-      // An overdue date on a finished page is noise, as in its cell.
-      if (f.value === "overdue" && isTerminalStatus(propsOf(page).status)) return false;
+      const span = spanOfValue(propValue(page, key), key);
+      if (!span) return false;
+      if (f.value === "overdue") {
+        // Overdue once its last day has passed; an overdue date on a
+        // finished page is noise, as in its cell.
+        if (isTerminalStatus(propsOf(page).status)) return false;
+        const r = rangeOf("overdue", now)!;
+        return span.end <= r[1];
+      }
+      // A range matches a period it overlaps ("this week" includes a range
+      // that runs through Tuesday), and a day it covers.
       const r = rangeOf(String(f.value ?? ""), now);
-      if (r) return d >= r[0] && d <= r[1];
+      if (r) return span.start <= r[1] && span.end >= r[0];
       const t = dayKey(f.value);
-      return t !== null && d === t;
+      return t !== null && span.start <= t && t <= span.end;
     }
     case "unchecked": {
       const v = propValue(page, requireProp(f));

@@ -459,3 +459,41 @@ describe("review fixes (2026-10-10)", () => {
     expect(only(rows, { prop: "due", op: "date_is", value: "overdue" })).toEqual(["open"]);
   });
 });
+
+describe("date ranges in views (2026-10-10)", () => {
+  const rows = [
+    item("r", { due: "2026-10-09/2026-10-13" }),
+    item("s", { due: "2026-10-15/2026-10-20" }),
+    item("d", { due: "2026-10-14" }),
+  ];
+  it("a range matches a period it overlaps and a day it covers", () => {
+    expect(only(rows, { prop: "due", op: "date_is", value: "this_week" })).toEqual(["d", "r", "s"]);
+    expect(only(rows, { prop: "due", op: "date_is", value: "last_week" })).toEqual(["r"]);
+    expect(only(rows, { prop: "due", op: "date_is", value: "2026-10-11" })).toEqual(["r"]);
+  });
+  it("overdue once its last day has passed", () => {
+    expect(only(rows, { prop: "due", op: "date_is", value: "overdue" })).toEqual(["r"]);
+    expect(
+      only([item("x", { due: "2026-10-10/2026-10-16" })], {
+        prop: "due",
+        op: "date_is",
+        value: "overdue",
+      }),
+    ).toEqual([]);
+  });
+  it("before compares the start, after the end", () => {
+    expect(only(rows, { prop: "due", op: "before", value: "2026-10-10" })).toEqual(["r"]);
+    expect(only(rows, { prop: "due", op: "after", value: "2026-10-12" })).toEqual(["d", "r", "s"]);
+  });
+  it("sorts by start", () => {
+    expect(
+      ids(
+        runView(
+          rows,
+          { filter: [], sort: { prop: "p:due", dir: "asc" } },
+          { ...wctx, props: new Map([["due", { type: "date" }]]) },
+        ),
+      ),
+    ).toEqual(["r", "d", "s"]);
+  });
+});

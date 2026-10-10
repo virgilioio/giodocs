@@ -71,3 +71,12 @@ describe("calcsFor", () => {
     expect(calcsFor("title")).toEqual(["count_all"]);
   });
 });
+
+describe("calculate with date ranges", () => {
+  const r = [pg("a", { due: "2026-10-09/2026-10-13" }), pg("b", { due: "2026-10-20" })];
+  it("earliest is a first day, latest a last day", () => {
+    expect(calculate("earliest", r, "due", NOW)).toBe("Oct 9");
+    expect(calculate("latest", r, "due", NOW)).toBe("Oct 20");
+    expect(calculate("date_range", [r[0]], "due", NOW)).toBe("4 days");
+  });
+});
