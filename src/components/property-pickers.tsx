@@ -9,6 +9,7 @@ import {
   toDueString,
 } from "@/lib/due-date";
 import { parseDateInput } from "@/lib/date-parse";
+import { checkTypedValue, displayFor, hrefFor } from "@/lib/property-kinds";
 
 
 /* Shared editing popovers, used by BOTH the table cells (main-view.tsx)
@@ -285,6 +286,7 @@ export function SelectPicker({
   trigger,
   width = 200,
   onOpenChange,
+  onCreate,
 }: {
   value: string | null;
   options: SelectOption[];
@@ -292,11 +294,19 @@ export function SelectPicker({
   trigger: TriggerFn;
   width?: number;
   onOpenChange?: (open: boolean) => void;
+  /** When given, the picker can add an option: resolves to the new value
+   *  (or null if it couldn't be added). */
+  onCreate?: (label: string) => Promise<string | null>;
 }) {
   return (
     <Popover width={width} trigger={trigger} onOpenChange={onOpenChange}>
       {(close) => (
         <div>
+          {options.length === 0 ? (
+            <div className="px-2 py-1 text-meta text-muted">
+              {onCreate ? "No options yet. Add the first one below." : "No options."}
+            </div>
+          ) : null}
           {options.map((o) => (
             <button
               key={o.value}
@@ -313,6 +323,17 @@ export function SelectPicker({
               ) : null}
             </button>
           ))}
+          {onCreate ? (
+            <AddOptionInput
+              onAdd={async (label) => {
+                const v = await onCreate(label);
+                if (v) {
+                  onPick(v);
+                  close();
+                }
+              }}
+            />
+          ) : null}
           <div className="my-1 border-t border-lineSoft" />
           <button
             type="button"
@@ -327,6 +348,37 @@ export function SelectPicker({
         </div>
       )}
     </Popover>
+  );
+}
+
+/** "Add an option" field at the foot of a select picker. Enter adds it. */
+function AddOptionInput({ onAdd }: { onAdd: (label: string) => Promise<void> }) {
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="px-1 pt-1">
+      <input
+        value={draft}
+        disabled={busy}
+        aria-label="Add an option"
+        placeholder="Add an option…"
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={async (e) => {
+          if (e.key !== "Enter") return;
+          e.preventDefault();
+          const label = draft.trim();
+          if (!label || busy) return;
+          setBusy(true);
+          try {
+            await onAdd(label);
+            setDraft("");
+          } finally {
+            setBusy(false);
+          }
+        }}
+        className="w-full rounded-md border border-line bg-track px-2 py-1 text-meta outline-none placeholder:text-faint focus:border-accent"
+      />
+    </div>
   );
 }
 
@@ -1050,6 +1102,162 @@ export function TextEditor({
         emptyNode(variant, emptyLabel)
       )}
     </button>
+  );
+}
+
+/* ── Link / Email / Phone ── like Text, but checked before it saves (the
+ * same rules as the database) and shown as something you can open. A bad
+ * value keeps the field open with the reason underneath; nothing is saved. */
+
+const OPEN_ICON: Record<string, { path: string; label: string }> = {
+  url: { path: "M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5", label: "Open link" },
+  email: { path: "M4 6h16v12H4zM4 7l8 6 8-6", label: "Write an email" },
+  phone: { path: "M6.6 3.5h2.8l1.4 4.2-2 1.4a11 11 0 0 0 6.1 6.1l1.4-2 4.2 1.4v2.8a2 2 0 0 1-2.2 2A16.6 16.6 0 0 1 4.6 5.7a2 2 0 0 1 2-2.2z", label: "Call" },
+};
+
+export function TypedValueEditor({
+  type,
+  value,
+  onSet,
+  variant = "strip",
+  emptyLabel = "Empty",
+  triggerClassName,
+  triggerStyle,
+  onOpenChange,
+}: {
+  type: "url" | "email" | "phone";
+  value: unknown;
+  onSet: (v: string | null) => void;
+  variant?: Variant;
+  emptyLabel?: string;
+  triggerClassName?: string;
+  triggerStyle?: React.CSSProperties;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const current = typeof value === "string" ? value : "";
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(current);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    onOpenChange?.(editing);
+  }, [editing, onOpenChange]);
+  useEffect(() => {
+    if (!editing) setDraft(current);
+  }, [current, editing]);
+
+  const cancel = () => {
+    setDraft(current);
+    setError(null);
+    setEditing(false);
+  };
+  const commit = () => {
+    if (draft.trim() === "") {
+      if (current) onSet(null);
+      setError(null);
+      setEditing(false);
+      return;
+    }
+    const r = checkTypedValue(type, draft);
+    if (!r.ok) {
+      setError(r.error);
+      return;
+    }
+    if (r.value !== current) onSet(r.value);
+    setError(null);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="min-w-0">
+        <input
+          autoFocus
+          value={draft}
+          type={type === "email" ? "email" : type === "phone" ? "tel" : "url"}
+          inputMode={type === "phone" ? "tel" : type === "email" ? "email" : "url"}
+          aria-label={type === "url" ? "Link" : type === "email" ? "Email address" : "Phone number"}
+          aria-invalid={error ? true : undefined}
+          placeholder={type === "url" ? "https://…" : type === "email" ? "name@company.com" : "+52 33 1234 5678"}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            if (error && checkTypedValue(type, e.target.value).ok) setError(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              cancel();
+            }
+          }}
+          onBlur={() => {
+            // Leaving with a bad value drops the edit rather than trapping
+            // the person in the field.
+            if (draft.trim() !== "" && !checkTypedValue(type, draft).ok) cancel();
+            else commit();
+          }}
+          className="w-full border bg-track"
+          style={{
+            fontSize: VALUE_FONT[variant],
+            borderRadius: 8,
+            padding: "3px 7px",
+            borderColor: error ? "var(--color-danger)" : "var(--color-line)",
+          }}
+        />
+        {error ? (
+          <div role="alert" className="text-caption text-danger" style={{ marginTop: 3 }}>
+            {error}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+  const href = hrefFor(type, current);
+  const open = OPEN_ICON[type];
+  return (
+    <div className="flex min-w-0 items-center" style={{ gap: 4 }}>
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className={(triggerClassName ?? "") + " min-w-0"}
+        style={triggerStyle}
+        title={current || undefined}
+      >
+        {current ? (
+          <span
+            className="min-w-0 truncate"
+            style={{
+              fontSize: VALUE_FONT[variant],
+              color: "var(--color-accent)",
+              textDecoration: "underline",
+              textDecorationColor: "var(--color-accentRing)",
+              textUnderlineOffset: 3,
+            }}
+          >
+            {displayFor(type, current)}
+          </span>
+        ) : (
+          emptyNode(variant, emptyLabel)
+        )}
+      </button>
+      {current && href ? (
+        <a
+          href={href}
+          target={type === "url" ? "_blank" : undefined}
+          rel={type === "url" ? "noopener noreferrer" : undefined}
+          aria-label={open.label}
+          title={open.label}
+          onClick={(e) => e.stopPropagation()}
+          className="grid shrink-0 place-items-center rounded-md text-faint hover:bg-sunken hover:text-secondary"
+          style={{ width: 22, height: 22 }}
+        >
+          <svg viewBox="0 0 24 24" width={13} height={13} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d={open.path} />
+          </svg>
+        </a>
+      ) : null}
+    </div>
   );
 }
 

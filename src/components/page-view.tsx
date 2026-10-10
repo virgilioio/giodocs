@@ -35,10 +35,13 @@ import {
   DatePicker,
   NumberEditor,
   TextEditor,
+  TypedValueEditor,
   CheckboxToggle,
 } from "./property-pickers";
 import { isPropSet, isTerminalStatus } from "@/lib/due-date";
 import { summarizeProp } from "@/lib/prop-summary";
+import { isTypedString, PROPERTY_KINDS, kindLabel, type PropertyType } from "@/lib/property-kinds";
+import { useAddPropertyOption, useCreateProperty } from "@/hooks/use-property-mutations";
 import { formatTimestamp } from "@/lib/format";
 
 import { EditableBody, EditableTitle } from "./page-editor-body";
@@ -328,6 +331,7 @@ function EditableValue({
   onOpenChange: (open: boolean) => void;
 }) {
   const navigate = useNavigate();
+  const addOption = useAddPropertyOption();
   const raw = propsOf(page)[propKey];
   const empty = <EmptyValue propKey={propKey} defType={def?.type} />;
   const allTags = useMemo(() => {
@@ -419,6 +423,20 @@ function EditableValue({
         options={opts}
         onPick={onSet}
         onOpenChange={onOpenChange}
+        // Team-made properties grow their own options; built-in ones keep
+        // the list they were set up with.
+        onCreate={
+          def.is_system
+            ? undefined
+            : async (label) => {
+                try {
+                  const r = await addOption.mutateAsync({ id: def.id, label });
+                  return r.value;
+                } catch {
+                  return null;
+                }
+              }
+        }
         trigger={({ onClick, ref }) => (
           <button
             ref={ref}
@@ -539,6 +557,21 @@ function EditableValue({
     );
   }
 
+  /* ── Link / Email / Phone ── checked like the database, opens out. */
+  if (isTypedString(def?.type)) {
+    return (
+      <TypedValueEditor
+        type={def!.type as "url" | "email" | "phone"}
+        value={raw}
+        onSet={onSet}
+        onOpenChange={onOpenChange}
+        emptyLabel={emptyCopy(propKey, def?.type)}
+        triggerClassName={VALUE_CELL_CLASS}
+        triggerStyle={VALUE_CELL_STYLE}
+      />
+    );
+  }
+
   /* ── Text / default ── */
   return (
     <TextEditor
@@ -616,7 +649,7 @@ const PROP_ICON_BY_KEY: Record<string, string> = {
 
 const TYPE_LABEL: Record<string, string> = {
   select: "Select",
-  status: "Select",
+  status: "Status",
   multi_select: "Multi-select",
   date: "Date",
   number: "Number",
@@ -624,6 +657,9 @@ const TYPE_LABEL: Record<string, string> = {
   checkbox: "Checkbox",
   text: "Text",
   links: "Links",
+  url: "Link",
+  email: "Email",
+  phone: "Phone",
 };
 
 function AddPropertyPopover({
@@ -636,6 +672,9 @@ function AddPropertyPopover({
   onAdd: (key: string, seed: unknown, focusAfter: boolean) => void;
 }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  // null = the root list; otherwise a submenu swapped in place.
+  const [sub, setSub] = useState<MenuSpec | null>(null);
+  const createProperty = useCreateProperty();
   const candidates = propDefs
     .filter((d) => !present.has(d.key))
     .filter((d) => d.key !== "area" && d.key !== "owner");
@@ -654,6 +693,41 @@ function AddPropertyPopover({
     }
   };
 
+  const close = () => {
+    setAnchor(null);
+    setSub(null);
+  };
+
+  // Step 2: name it. Creating adds it to the workspace and to this page.
+  const nameSpec = (type: PropertyType): MenuSpec => ({
+    title: `New ${kindLabel(type).toLowerCase()} property`,
+    rows: [],
+    onBack: () => setSub(typeSpec),
+    footer: "Everyone in the workspace can use it. Only owners can archive it.",
+    input: {
+      placeholder: "Name it, then press Enter",
+      onCommit: (label) => {
+        createProperty.mutate(
+          { label, type },
+          { onSuccess: (def) => onAdd(def.key, seedFor(def.type), true) },
+        );
+      },
+    },
+  });
+
+  // Step 1: pick a type.
+  const typeSpec: MenuSpec = {
+    title: "New property",
+    onBack: () => setSub(null),
+    rows: PROPERTY_KINDS.map((k) => ({
+      kind: "row" as const,
+      label: k.label,
+      icon: k.icon,
+      hint: { text: k.hint },
+      onPick: () => setSub(nameSpec(k.type)),
+    })),
+  };
+
   const rows: MenuRow[] = candidates.map((d) => ({
     kind: "row" as const,
     label: d.label,
@@ -664,16 +738,23 @@ function AddPropertyPopover({
     hint: { text: TYPE_LABEL[d.type] ?? d.type },
     onPick: () => {
       onAdd(d.key, seedFor(d.type), true);
-      setAnchor(null);
+      close();
     },
   }));
+  if (rows.length > 0) rows.push({ kind: "sep" });
+  rows.push({
+    kind: "row",
+    label: "New property…",
+    icon: "M12 5v14M5 12h14",
+    onPick: () => setSub(typeSpec),
+  });
 
-  const spec: MenuSpec = {
+  const spec: MenuSpec = sub ?? {
     title: `Add a property · ${candidates.length} left`,
     rows,
     footer:
       candidates.length === 0
-        ? "Every registered property is already on this page. The registry is deliberately short."
+        ? "Every property is already on this page. Make a new one for anything else."
         : "Adding one puts this page in every view that filters on it.",
   };
 
@@ -681,7 +762,10 @@ function AddPropertyPopover({
     <>
       <button
         type="button"
-        onClick={(e) => setAnchor(e.currentTarget)}
+        onClick={(e) => {
+          setSub(null);
+          setAnchor(e.currentTarget);
+        }}
         className="gio-prop-add flex w-full items-center rounded-md text-left"
         style={{
           gap: 6,
@@ -704,7 +788,7 @@ function AddPropertyPopover({
         spec={anchor ? spec : null}
         anchor={anchor}
         align="start"
-        onClose={() => setAnchor(null)}
+        onClose={close}
       />
     </>
   );
