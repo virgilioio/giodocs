@@ -151,6 +151,28 @@ provider Virgilio already has; don't build them until asked.
   name and the group it was added to (src/lib/view-seed.ts), so it lands
   in that view.
 
+## Decisions (Allan, 2026-10-10: Phase 2 — date ranges, relations, rollups, views in pages)
+- A date property holds one day "YYYY-MM-DD" or a range "YYYY-MM-DD/YYYY-MM-DD"
+  (validate_page_props checks it; the end is never before the start).
+  Anything that reads one day reads the start. Filters match a period a
+  range overlaps; before compares the start, after the end; a range is
+  overdue once its end has passed.
+- A relation property stores page ids. Its settings live in
+  property_defs.config (view_id: offer only that view's pages; back: its
+  two-way partner). The far side of a two-way relation (config.of) stores
+  nothing: it's worked out from the near side, so the two never disagree,
+  and a link made from the far side changes the other page. Both sides are
+  created in one insert and archived together. Unlinking never drops a link
+  to a page the reader can't open.
+- A rollup (config: relation, target, calc) is worked out from the related
+  pages and never stored. Worked-out values reach run-view through
+  ctx.readValue (src/lib/relations.ts readValueWith); filtering still
+  happens only in run-view.
+- A view inside a page is a "view" block holding its own query and
+  settings (src/lib/inline-view.ts), never page ids. It saves with the
+  page; each reader sees the pages they can open; only page editors change
+  it. Exports leave it out.
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.
