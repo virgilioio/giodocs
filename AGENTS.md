@@ -124,7 +124,13 @@ provider Virgilio already has; don't build them until asked.
   page: not a page kind. Templates leave views and page lists, stay in
   search, and are offered on a blank page and from the template banner.
   Starting from one copies blocks (new ids), icon, title and properties
-  (the page's own properties win).
+  (the page's own properties win), and copies its images and files into
+  the new page's storage folder so the new page's readers see them.
+- Who can change a page (pages_guard_edit / can_edit_page_row, every
+  path): a member on a workspace page shared to edit, a workspace owner,
+  or anyone with edit access on the page. A workspace page shared as
+  view-only is read-only for everyone else, and the app shows it
+  read-only ("View only"). Verifying stays open to readers.
 
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
