@@ -91,6 +91,10 @@ export type Blk = {
    *  behaviour); `headerCol` absent === false. */
   headerRow?: boolean;
   headerCol?: boolean;
+  /** Only meaningful when type === "table": Fit to page. The table spans
+   *  the page and `widths` act as proportions. A table without `widths`
+   *  already fits; one with `widths` and no `fit` keeps exact widths. */
+  fit?: boolean;
   /** Only meaningful when type === "code": the fence language
    *  ("```mermaid"). "mermaid" renders the block as a diagram. */
   lang?: string;

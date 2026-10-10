@@ -730,7 +730,11 @@ function blockHtml(b: Block, ordinal = 1): string {
         const finals = [...head, last];
         colgroup =
           `<colgroup>${finals.map((p) => `<col style="width:${p}%"/>`).join("")}</colgroup>`;
-        tableAttrs = ` style="table-layout:fixed;width:100%"`;
+        // Fit to page spans the paper. Exact widths keep the table's share
+        // of the editor's 780px body, so a narrow table stays narrow.
+        const fit = (b as { fit?: unknown }).fit === true;
+        const share = fit ? 100 : Math.min(100, Math.round((sum / 780) * 1000) / 10);
+        tableAttrs = ` style="table-layout:fixed;width:${share}%"`;
       }
 
       // Header flags are BLOCK attributes, not row data: `headerRow`

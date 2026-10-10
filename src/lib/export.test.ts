@@ -679,7 +679,7 @@ describe("table export wrapping and widths", () => {
   });
 
   it("emits a percentage colgroup summing to exactly 100 and width:100% on the table", () => {
-    const html = toHtml({ title: "T", blocks: [tblock({ widths: [300, 100] })] });
+    const html = toHtml({ title: "T", blocks: [tblock({ widths: [300, 100], fit: true })] });
     const cg = html.slice(html.indexOf("<colgroup>"), html.indexOf("</colgroup>"));
     expect(cg).toContain('<col style="width:');
     expect(cg).not.toContain("px");
@@ -687,6 +687,15 @@ describe("table export wrapping and widths", () => {
     const pcts = [...cg.matchAll(/width:([\d.]+)%/g)].map((m) => Number(m[1]));
     expect(pcts.length).toBe(2);
     expect(pcts.reduce((a, n) => a + n, 0)).toBe(100);
+  });
+
+  it("exact widths keep the table's share of the 780px body; Fit to page spans it", () => {
+    const narrow = toHtml({ title: "T", blocks: [tblock({ widths: [234, 156] })] });
+    expect(narrow).toContain('<table style="table-layout:fixed;width:50%">');
+    const wide = toHtml({ title: "T", blocks: [tblock({ widths: [900, 900] })] });
+    expect(wide).toContain('<table style="table-layout:fixed;width:100%">');
+    const fit = toHtml({ title: "T", blocks: [tblock({ widths: [234, 156], fit: true })] });
+    expect(fit).toContain('<table style="table-layout:fixed;width:100%">');
   });
 
   it("without widths emits no colgroup and no inline table-layout", () => {

@@ -110,6 +110,9 @@ import {
   normalizeWidths,
   WIDTH_MIN,
   WIDTH_MAX,
+  WIDTH_DEFAULT,
+  fitPercents,
+  resizeFitted,
 } from "@/lib/table-ops";
 // The shared block-editor primitives — ONE implementation used by both
 // EditableBody (top-level) and ColumnStack (per-column). See:
@@ -5345,6 +5348,10 @@ export function TableBlock({
         : undefined,
     [block.widths, nCols],
   );
+  // Fit to page: the table spans the page and widths are proportions. A
+  // table without widths already fits (equal shares); one with widths and
+  // no `fit` keeps its exact pixel widths.
+  const fit = block.fit === true || !widths;
   useEffect(() => {
     const rowsChanged =
       block.rows && JSON.stringify(block.rows) !== JSON.stringify(rows);
@@ -5415,6 +5422,7 @@ export function TableBlock({
     base: WidthList;
     pointerId: number;
     handle: HTMLElement;
+    fit: boolean;
   } | null>(null);
 
   // Horizontal-overflow fades — visible only when there is scroll to do
@@ -5519,9 +5527,11 @@ export function TableBlock({
     [onChange],
   );
 
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const closeMenu = useCallback(() => {
     setMenuAnchor(null);
     setMenuSpec(null);
+    setOptionsOpen(false);
   }, []);
 
   // Copy the current selection as text. Rows join with tabs so a paste into
@@ -6045,6 +6055,64 @@ export function TableBlock({
     suppressHint();
   }
 
+  // The table's own ⋯ (top-right corner): the switches that belong to the
+  // whole table. The menu stays open and redraws after each switch, so
+  // two of them can be flipped in one visit.
+  type TableOpts = { headerRow: boolean; headerCol: boolean; fit: boolean };
+  function buildOptionsSpec(o: TableOpts): MenuSpec {
+    const flip = (patch: Partial<Blk>, next: TableOpts) => {
+      onChange(patch);
+      setMenuSpec(buildOptionsSpec(next));
+    };
+    return {
+      title: "Table",
+      footer: `${nCols} column${nCols === 1 ? "" : "s"} · ${nRows} row${nRows === 1 ? "" : "s"}`,
+      rows: [
+        {
+          kind: "row",
+          label: "Header row",
+          icon: "freezeRow",
+          checked: o.headerRow,
+          onPick: () => flip({ headerRow: !o.headerRow }, { ...o, headerRow: !o.headerRow }),
+        },
+        {
+          kind: "row",
+          label: "Header column",
+          icon: "board",
+          checked: o.headerCol,
+          onPick: () => flip({ headerCol: !o.headerCol }, { ...o, headerCol: !o.headerCol }),
+        },
+        { kind: "sep" },
+        {
+          kind: "row",
+          label: "Fit to page",
+          icon: "layout",
+          checked: o.fit,
+          onPick: () => {
+            if (o.fit) {
+              // Off: exact widths. A table that never had widths gets the
+              // default width per column, so the change is visible.
+              flip(
+                { fit: undefined, widths: widths ?? Array.from({ length: nCols }, () => WIDTH_DEFAULT) },
+                { ...o, fit: false },
+              );
+            } else {
+              flip({ fit: true }, { ...o, fit: true });
+            }
+          },
+        },
+      ],
+    };
+  }
+
+  function openOptionsMenu(anchor: HTMLElement) {
+    setSel(null);
+    setMenuSpec(buildOptionsSpec({ headerRow, headerCol, fit }));
+    setMenuAnchor(anchor);
+    setOptionsOpen(true);
+    suppressHint();
+  }
+
   // Right-click chooser: two rows that swap the panel in place to the row
   // or column menu, sharing the anchor. Used by the cell context-menu path
   // where we do not yet know which axis the user wants.
@@ -6121,8 +6189,13 @@ export function TableBlock({
   // dragWidths (never persisted); otherwise the stored widths (or
   // undefined for auto layout).
   const effectiveWidths = dragWidths ?? widths;
-  const contentWidth = effectiveWidths
+  const contentWidth = effectiveWidths && !fit
     ? effectiveWidths.reduce((a, n) => a + n, 0)
+    : null;
+  const colWidths = effectiveWidths
+    ? fit
+      ? fitPercents(effectiveWidths).map((p) => `${p}%`)
+      : effectiveWidths
     : null;
 
   const beginResize = (e: React.PointerEvent<HTMLDivElement>, colIndex: number) => {
@@ -6132,11 +6205,13 @@ export function TableBlock({
     // reference the sealed `base` copy so the other columns don't
     // rebalance as this one grows.
     const measure = (i: number): number => {
-      const el = tableRef.current?.querySelector<HTMLElement>(`th[data-col="${i}"]`);
+      const el = tableRef.current?.querySelector<HTMLElement>(`tr > [data-col="${i}"]`);
       const w = el ? Math.round(el.getBoundingClientRect().width) : 160;
       return Math.max(WIDTH_MIN, Math.min(WIDTH_MAX, w));
     };
-    const base: WidthList = effectiveWidths
+    // Fit to page measures what's on screen (stored widths are only
+    // proportions there), so the border moves exactly with the pointer.
+    const base: WidthList = effectiveWidths && !fit
       ? effectiveWidths.slice()
       : Array.from({ length: nCols }, (_, i) => measure(i));
     const startWidth = base[colIndex] ?? 160;
@@ -6153,6 +6228,7 @@ export function TableBlock({
       base,
       pointerId: e.pointerId,
       handle: handleEl,
+      fit,
     };
     setDragWidths(base);
     e.preventDefault();
@@ -6162,6 +6238,10 @@ export function TableBlock({
     const d = dragRef.current;
     if (!d) return;
     const dx = e.clientX - d.startX;
+    if (d.fit) {
+      setDragWidths(resizeFitted(d.base, d.index, dx));
+      return;
+    }
     const nextW = Math.max(WIDTH_MIN, Math.min(WIDTH_MAX, d.startWidth + dx));
     const next = d.base.slice();
     next[d.index] = nextW;
@@ -6178,9 +6258,11 @@ export function TableBlock({
     const final = dragRef.current
       ? (dragWidths ?? d.base)
       : null;
+    const wasFit = d.fit;
     dragRef.current = null;
     setDragWidths(null);
-    if (final) onChange({ widths: final });
+    // A resize in Fit to page keeps fitting: the widths become proportions.
+    if (final) onChange(wasFit ? { widths: final, fit: true } : { widths: final });
     e.stopPropagation();
   };
   const resetColumn = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -6188,7 +6270,7 @@ export function TableBlock({
     e.stopPropagation();
     if (e.altKey) {
       // Alt: clear widths entirely — restore auto/equal layout.
-      onChange({ widths: undefined });
+      onChange({ widths: undefined, fit: undefined });
       return;
     }
     // Plain double-click: equal-share across all columns, using the
@@ -6363,17 +6445,15 @@ export function TableBlock({
         >
           <table
             ref={tableRef}
-            className={
-              "border-collapse text-meta " + (effectiveWidths ? "" : "w-full")
-            }
+            className={"border-collapse text-meta " + (fit ? "w-full" : "")}
             style={{
               tableLayout: "fixed",
               ...(contentWidth != null ? { width: contentWidth } : {}),
             }}
           >
-            {effectiveWidths && (
+            {colWidths && (
               <colgroup>
-                {effectiveWidths.map((w, ci) => (
+                {colWidths.map((w, ci) => (
                   <col key={ci} style={{ width: w }} />
                 ))}
               </colgroup>
@@ -6432,7 +6512,7 @@ export function TableBlock({
                           dataAttrs={{ "data-table-cell": `${ri},${ci}` }}
                           className="w-full px-2 py-1 outline-none"
                         />
-                        {ri === 0 && !locked && (
+                        {ri === 0 && !locked && !(fit && ci === nCols - 1) && (
                           // Resize grip on the right border of each
                           // header cell. 8px wide, centred on the
                           // border via translateX(4px). Pointer capture
@@ -6618,6 +6698,43 @@ export function TableBlock({
                   })}
                 </div>
               </div>
+
+              {/* Table options — the corner just past the table's top-right,
+                  above the +column pill. Shown on hover, while a cell has
+                  focus and while its menu is open. */}
+              <button
+                type="button"
+                aria-label="Table options"
+                title="Table options"
+                aria-haspopup="menu"
+                aria-expanded={optionsOpen}
+                data-table-options
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (optionsOpen) closeMenu();
+                  else openOptionsMenu(e.currentTarget);
+                }}
+                className={
+                  "absolute flex items-center justify-center rounded-md text-faint transition-opacity hover:bg-line hover:text-secondary focus-visible:opacity-100 group-hover/table:opacity-100 group-focus-within/table:opacity-100 " +
+                  (optionsOpen ? "bg-line opacity-100" : "opacity-0")
+                }
+                style={{
+                  top: 0,
+                  width: 21,
+                  height: 21,
+                  ...(metrics && metrics.cols.length
+                    ? { left: 23 + metrics.cols.reduce((a, c) => a + c.width, 0) + 1 }
+                    : { right: 1 }),
+                  zIndex: 3,
+                }}
+              >
+                <svg aria-hidden width={14} height={14} viewBox="0 0 24 24">
+                  <circle cx="5" cy="12" r="1.8" fill="currentColor" />
+                  <circle cx="12" cy="12" r="1.8" fill="currentColor" />
+                  <circle cx="19" cy="12" r="1.8" fill="currentColor" />
+                </svg>
+              </button>
 
               {/* +column pill on the right edge of the content wrapper. */}
               <AddPill

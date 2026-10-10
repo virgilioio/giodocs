@@ -96,6 +96,31 @@ export function setWidth(
   return next;
 }
 
+/** Fit to page: each width as a percentage of their sum. The last column
+ *  takes the rounding remainder, so the set always totals exactly 100. */
+export function fitPercents(widths: WidthList): number[] {
+  if (widths.length === 0) return [];
+  const sum = widths.reduce((a, n) => a + n, 0) || 1;
+  const head = widths.slice(0, -1).map((n) => Math.round((n / sum) * 100000) / 1000);
+  const last = Math.round((100 - head.reduce((a, n) => a + n, 0)) * 1000) / 1000;
+  return [...head, last];
+}
+
+/** Fit to page resize: the table's width is fixed, so a border moves
+ *  between two columns. Column `index` grows by `dx` and the one to its
+ *  right shrinks by the same amount (both kept ≥ WIDTH_MIN), so the sum
+ *  never changes. The last column has no border to move: unchanged. */
+export function resizeFitted(base: WidthList, index: number, dx: number): WidthList {
+  const next = base.slice();
+  if (index < 0 || index >= base.length - 1) return next;
+  const a = base[index];
+  const b = base[index + 1];
+  const d = Math.max(WIDTH_MIN - a, Math.min(b - WIDTH_MIN, Math.round(dx)));
+  next[index] = a + d;
+  next[index + 1] = b - d;
+  return next;
+}
+
 /** Force `rows` to a rectangle with at least 1×1 shape. Pads short rows
  *  with "", truncates long ones. If `align` is passed, it is normalised to
  *  match the resulting column count. Returns rows only (unchanged API);

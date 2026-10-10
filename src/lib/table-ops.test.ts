@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  fitPercents,
+  resizeFitted,
   addColumn,
   addAlign,
   addWidth,
@@ -471,6 +473,7 @@ describe("colgroup in HTML export", () => {
             ["1", "2"],
           ],
           widths: [200, 300],
+          fit: true,
         } as never,
       ],
     });
@@ -502,5 +505,25 @@ describe("colgroup in HTML export", () => {
       ],
     });
     expect(html).not.toContain("<colgroup>");
+  });
+});
+
+describe("Fit to page", () => {
+  it("fitPercents gives each width's share, totalling exactly 100", () => {
+    expect(fitPercents([200, 300])).toEqual([40, 60]);
+    const p = fitPercents([100, 100, 100]);
+    expect(p.reduce((a, n) => a + n, 0)).toBe(100);
+    expect(fitPercents([])).toEqual([]);
+  });
+  it("resizeFitted moves the border between two columns, keeping the sum", () => {
+    expect(resizeFitted([200, 300, 100], 0, 50)).toEqual([250, 250, 100]);
+    expect(resizeFitted([200, 300, 100], 1, -40)).toEqual([200, 260, 140]);
+  });
+  it("resizeFitted keeps both columns at least WIDTH_MIN", () => {
+    expect(resizeFitted([200, 100], 0, 500)).toEqual([244, 56]);
+    expect(resizeFitted([100, 200], 0, -500)).toEqual([56, 244]);
+  });
+  it("the last column has no border to move", () => {
+    expect(resizeFitted([200, 300], 1, 50)).toEqual([200, 300]);
   });
 });

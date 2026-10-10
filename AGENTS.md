@@ -223,6 +223,15 @@ provider Virgilio already has; don't build them until asked.
   way); Mermaid draws it, Plain text (`lang: ""`) keeps any text as code. Mermaid (pinned) loads only when a page has a diagram and
   runs in strict mode. Markdown keeps it as a ```mermaid fence both ways.
 
+## Decisions (Allan, 2026-10-10: simple tables, Notion parity)
+- `/table` is the simple grid (a "table" block: rows of inline-markdown
+  cells), as in Notion. Merging cells is deliberately not built.
+- The table's ⋯ (top-right corner) holds Header row, Header column and
+  Fit to page. Fit to page (`fit: true`) spans the page and treats
+  `widths` as proportions; a resize then moves the border between two
+  columns. A table without `widths` already fits; one with `widths` and no
+  `fit` keeps exact widths. Exports follow the same rule.
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.
