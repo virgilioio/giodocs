@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useSetPageOrigin } from "@/lib/page-origin";
-import { toDueString } from "@/lib/due-date";
+import { dateSpan, daysOfSpan, formatDue, moveDateValue, toDueString } from "@/lib/due-date";
 import { monthGrid, shiftMonth, todayKey, WEEKDAYS } from "@/lib/calendar-grid";
 import { Ico } from "./emoji-icon";
 import type { PageListItem } from "@/lib/types";
@@ -64,14 +64,17 @@ export function CalendarViewBody({
     const undated: PageListItem[] = [];
     if (!dateKey) return { byDay, undated };
     for (const p of rows) {
-      const k = toDueString(propsOf(p)[dateKey]);
-      if (!k) {
+      const span = dateSpan(propsOf(p)[dateKey]);
+      if (!span) {
         undated.push(p);
         continue;
       }
-      const list = byDay.get(k);
-      if (list) list.push(p);
-      else byDay.set(k, [p]);
+      // A range shows on every day it covers.
+      for (const k of daysOfSpan(span)) {
+        const list = byDay.get(k);
+        if (list) list.push(p);
+        else byDay.set(k, [p]);
+      }
     }
     return { byDay, undated };
   }, [rows, dateKey]);
@@ -87,8 +90,8 @@ export function CalendarViewBody({
         className="rounded-xl border border-line bg-surface text-meta text-muted"
         style={{ padding: "28px 24px", textAlign: "center" }}
       >
-        A calendar places pages by a date. Add a date property to a page (for
-        example Due), and this view will show them by day.
+        A calendar places pages by a date. Add a date property to a page (for example Due), and this
+        view will show them by day.
       </div>
     );
   }
@@ -108,7 +111,12 @@ export function CalendarViewBody({
         setOverDay(null);
       }}
       onClick={() => open(p.id)}
-      title={p.title || "Untitled"}
+      title={
+        (p.title || "Untitled") +
+        (dateSpan(propsOf(p)[dateKey!])?.end !== dateSpan(propsOf(p)[dateKey!])?.start
+          ? ` · ${formatDue(propsOf(p)[dateKey!])}`
+          : "")
+      }
       className="flex w-full min-w-0 items-center rounded-md border border-line bg-surface text-left shadow-card hover:shadow-cardHover"
       style={{
         gap: 5,
@@ -143,9 +151,10 @@ export function CalendarViewBody({
       if (!id) return;
       const page = rows.find((r) => r.id === id);
       if (!page) return;
-      // Dropping where it already is does nothing.
-      if ((toDueString(propsOf(page)[dateKey]) ?? "") === key) return;
-      onMove(id, key || null);
+      // Dropping where it already starts does nothing; a range moves whole.
+      const value = propsOf(page)[dateKey];
+      if ((toDueString(value) ?? "") === key) return;
+      onMove(id, key ? moveDateValue(value, key) : null);
     },
   });
 
@@ -173,7 +182,17 @@ export function CalendarViewBody({
           className="grid place-items-center rounded-md text-muted hover:bg-sunken hover:text-strong"
           style={{ width: 28, height: 28 }}
         >
-          <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <svg
+            viewBox="0 0 24 24"
+            width={15}
+            height={15}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
             <path d="M15 6l-6 6 6 6" />
           </svg>
         </button>
@@ -185,7 +204,17 @@ export function CalendarViewBody({
           className="grid place-items-center rounded-md text-muted hover:bg-sunken hover:text-strong"
           style={{ width: 28, height: 28 }}
         >
-          <svg viewBox="0 0 24 24" width={15} height={15} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <svg
+            viewBox="0 0 24 24"
+            width={15}
+            height={15}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
             <path d="M9 6l6 6-6 6" />
           </svg>
         </button>
@@ -230,7 +259,8 @@ export function CalendarViewBody({
                 gap: 3,
                 boxShadow: isOver ? "inset 0 0 0 2px var(--color-accentRing)" : undefined,
                 background: isOver ? "var(--color-accentTint)" : undefined,
-                transition: "box-shadow 150ms var(--ease-out), background-color 150ms var(--ease-out)",
+                transition:
+                  "box-shadow 150ms var(--ease-out), background-color 150ms var(--ease-out)",
               }}
             >
               <span
@@ -275,7 +305,10 @@ export function CalendarViewBody({
           className="mt-4 rounded-xl border border-line bg-rail"
           style={{
             padding: 10,
-            boxShadow: overDay === "" && dragId !== null ? "inset 0 0 0 2px var(--color-accentRing)" : undefined,
+            boxShadow:
+              overDay === "" && dragId !== null
+                ? "inset 0 0 0 2px var(--color-accentRing)"
+                : undefined,
           }}
         >
           <div className="mb-2 text-meta text-muted">

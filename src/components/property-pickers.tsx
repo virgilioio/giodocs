@@ -1,16 +1,18 @@
 import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Popover } from "./popover";
 import {
+  dateSpan,
   dueDeltaDays,
   dueLabel,
   dueParts,
   dueRelative,
   formatDue,
+  isDateRange,
+  toDateValue,
   toDueString,
 } from "@/lib/due-date";
 import { parseDateInput } from "@/lib/date-parse";
 import { checkTypedValue, displayFor, hrefFor } from "@/lib/property-kinds";
-
 
 /* Shared editing popovers, used by BOTH the table cells (main-view.tsx)
  * and the page properties strip (page-view.tsx). Callers supply the
@@ -61,15 +63,7 @@ export function hashTag(s: string) {
   return TAG_PAIRS[h % TAG_PAIRS.length];
 }
 
-export function StatusChip({
-  label,
-  tint,
-  ink,
-}: {
-  label: string;
-  tint: string;
-  ink: string;
-}) {
+export function StatusChip({ label, tint, ink }: { label: string; tint: string; ink: string }) {
   return (
     <span
       className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-caption"
@@ -78,10 +72,7 @@ export function StatusChip({
         color: `var(--color-${ink})`,
       }}
     >
-      <span
-        className="h-1.5 w-1.5 rounded-full"
-        style={{ background: `var(--color-${ink})` }}
-      />
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: `var(--color-${ink})` }} />
       {label}
     </span>
   );
@@ -127,14 +118,7 @@ export function AreaPicker({
 }) {
   return (
     <Popover width={width} trigger={trigger} onOpenChange={onOpenChange}>
-      {(close) => (
-        <AreaPickerBody
-          value={value}
-          areas={areas}
-          onPick={onPick}
-          close={close}
-        />
-      )}
+      {(close) => <AreaPickerBody value={value} areas={areas} onPick={onPick} close={close} />}
     </Popover>
   );
 }
@@ -255,9 +239,7 @@ export function OwnerPicker({
               <span className="text-meta">
                 {m.profiles?.full_name ?? m.profiles?.email ?? "Unknown"}
               </span>
-              {m.user_id === value ? (
-                <span className="ml-auto text-accent">✓</span>
-              ) : null}
+              {m.user_id === value ? <span className="ml-auto text-accent">✓</span> : null}
             </button>
           ))}
           <div className="my-1 border-t border-lineSoft" />
@@ -318,9 +300,7 @@ export function SelectPicker({
               }}
             >
               <StatusChip label={o.label} tint={o.tint} ink={o.ink} />
-              {o.value === value ? (
-                <span className="ml-auto text-accent">✓</span>
-              ) : null}
+              {o.value === value ? <span className="ml-auto text-accent">✓</span> : null}
             </button>
           ))}
           {onCreate ? (
@@ -401,14 +381,7 @@ export function TagsPicker({
 }) {
   return (
     <Popover width={width} trigger={trigger} onOpenChange={onOpenChange}>
-      {(close) => (
-        <TagsPickerBody
-          value={value}
-          options={options}
-          onSet={onSet}
-          close={close}
-        />
-      )}
+      {(close) => <TagsPickerBody value={value} options={options} onSet={onSet} close={close} />}
     </Popover>
   );
 }
@@ -440,9 +413,7 @@ function TagsPickerBody({
               key={t}
               type="button"
               className="flex w-full items-center justify-between rounded-sm px-2 py-1 text-left text-meta hover:bg-rail"
-              onClick={() =>
-                onSet(on ? value.filter((x) => x !== t) : [...value, t])
-              }
+              onClick={() => onSet(on ? value.filter((x) => x !== t) : [...value, t])}
             >
               <span>{t}</span>
               {on ? <span className="text-accent">✓</span> : null}
@@ -508,7 +479,8 @@ function emptyNode(variant: Variant, label: string) {
   );
 }
 
-/* ── Date ── stores "YYYY-MM-DD". Never a timestamptz. */
+/* ── Date ── stores "YYYY-MM-DD", or "YYYY-MM-DD/YYYY-MM-DD" for a range.
+ * Never a timestamptz. */
 
 export function DateValue({
   value,
@@ -537,13 +509,7 @@ export function DateValue({
       style={{ gap: 5, fontSize: VALUE_FONT[variant], color }}
     >
       {state === "overdue" ? (
-        <svg
-          viewBox="0 0 24 24"
-          width={13}
-          height={13}
-          aria-hidden
-          style={{ flex: "none" }}
-        >
+        <svg viewBox="0 0 24 24" width={13} height={13} aria-hidden style={{ flex: "none" }}>
           <path
             d="M12 3l10 18H2L12 3zM12 10v5M12 18h.01"
             fill="none"
@@ -578,7 +544,9 @@ export function DatePicker({
   triggerStyle?: React.CSSProperties;
   onOpenChange?: (open: boolean) => void;
 }) {
-  const stored = toDueString(value);
+  // One day, or a start/end range, in its canonical form.
+  const span = dateSpan(value);
+  const stored = span ? toDateValue(span.start, span.end) : null;
   return (
     <Popover
       width={272}
@@ -591,12 +559,7 @@ export function DatePicker({
           className={triggerClassName}
           style={triggerStyle}
         >
-          <DateValue
-            value={stored}
-            terminal={terminal}
-            variant={variant}
-            emptyLabel={emptyLabel}
-          />
+          <DateValue value={stored} terminal={terminal} variant={variant} emptyLabel={emptyLabel} />
         </button>
       )}
     >
@@ -733,6 +696,37 @@ export function CalendarBody({
   );
   const [cursor, setCursor] = useState(() => monthCursor(stored, today));
   const [draft, setDraft] = useState("");
+  // End date: the next two clicks pick a start and an end. Turning it on
+  // over a single day keeps that day as the start and asks for the end.
+  const span = dateSpan(stored);
+  const [withEnd, setWithEnd] = useState(() => isDateRange(stored));
+  const [pendingStart, setPendingStart] = useState<string | null>(null);
+  const [hoverDay, setHoverDay] = useState<string | null>(null);
+  const pickDay = (key: string) => {
+    if (!withEnd) return onCommit(key);
+    if (!pendingStart) {
+      setPendingStart(key);
+      return;
+    }
+    onCommit(toDateValue(pendingStart, key));
+  };
+  const toggleEnd = () => {
+    if (withEnd) {
+      setWithEnd(false);
+      setPendingStart(null);
+      // Turning it off keeps the start.
+      if (span && span.end !== span.start) onCommit(span.start);
+      return;
+    }
+    setWithEnd(true);
+    setPendingStart(span?.start ?? null);
+  };
+  // What the grid shows as chosen: the stored days, or the range being picked.
+  const shown = pendingStart
+    ? hoverDay
+      ? dateSpan(toDateValue(pendingStart, hoverDay))
+      : { start: pendingStart, end: pendingStart }
+    : span;
 
   const days = useMemo(() => gridDays(cursor), [cursor]);
   const { y, m } = ymOf(`${cursor}-01`);
@@ -745,15 +739,12 @@ export function CalendarBody({
     week: parseDateInput("+7", today),
   };
 
-  const past = stored ? (dueDeltaDays(stored, today) ?? 0) < 0 : false;
+  const past = stored ? (dueDeltaDays(dateSpan(stored)?.end ?? stored, today) ?? 0) < 0 : false;
 
   return (
     <div className="flex flex-col" style={{ gap: 6, padding: 2 }}>
       {/* HEADER */}
-      <div
-        className="flex items-center justify-between"
-        style={{ padding: "3px 3px 6px" }}
-      >
+      <div className="flex items-center justify-between" style={{ padding: "3px 3px 6px" }}>
         <span
           style={{
             fontFamily: "var(--font-display)",
@@ -788,9 +779,7 @@ export function CalendarBody({
       </div>
 
       {/* GRID */}
-      <div
-        style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 1 }}
-      >
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 1 }}>
         {WEEKDAYS.map((w, i) => (
           <div
             key={`w-${i}`}
@@ -809,7 +798,8 @@ export function CalendarBody({
           </div>
         ))}
         {days.map((d) => {
-          const selected = stored === d.key;
+          const selected = !!shown && (d.key === shown.start || d.key === shown.end);
+          const between = !!shown && d.key > shown.start && d.key < shown.end;
           const isToday = d.key === todayKey;
           const weekend = d.dow >= 5;
           const fg = selected
@@ -827,8 +817,12 @@ export function CalendarBody({
               type="button"
               data-day={d.key}
               aria-label={d.key}
-              onClick={() => onCommit(d.key)}
-              className={selected ? "grid place-items-center" : "grid place-items-center hover:bg-sunken"}
+              aria-pressed={selected || between}
+              onClick={() => pickDay(d.key)}
+              onMouseEnter={pendingStart ? () => setHoverDay(d.key) : undefined}
+              className={
+                selected ? "grid place-items-center" : "grid place-items-center hover:bg-sunken"
+              }
               style={{
                 height: 30,
                 boxSizing: "border-box",
@@ -839,7 +833,11 @@ export function CalendarBody({
                   isToday && !selected
                     ? "1.5px solid var(--color-accentRing)"
                     : "1.5px solid transparent",
-                background: selected ? "var(--color-accent)" : "transparent",
+                background: selected
+                  ? "var(--color-accent)"
+                  : between
+                    ? "var(--color-accentTint)"
+                    : "transparent",
                 color: fg,
                 cursor: "pointer",
               }}
@@ -848,6 +846,39 @@ export function CalendarBody({
             </button>
           );
         })}
+      </div>
+
+      {/* END DATE */}
+      <div className="flex items-center justify-between" style={{ padding: "2px 3px" }}>
+        <span className="text-caption text-secondary">
+          {withEnd ? (pendingStart ? "Now pick the end date" : "Pick the start date") : "End date"}
+        </span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={withEnd}
+          aria-label="End date"
+          onClick={toggleEnd}
+          className="relative shrink-0 rounded-full"
+          style={{
+            width: 30,
+            height: 17,
+            background: withEnd ? "var(--color-accent)" : "var(--color-lineStrong)",
+            transition: "background-color var(--dur-hover) var(--ease-out)",
+          }}
+        >
+          <span
+            className="absolute rounded-full bg-surface"
+            style={{
+              top: 2,
+              left: 2,
+              width: 13,
+              height: 13,
+              transform: withEnd ? "translateX(13px)" : "none",
+              transition: "transform var(--dur-switch) var(--ease-out)",
+            }}
+          />
+        </button>
       </div>
 
       {/* QUICK ROW */}
@@ -872,9 +903,7 @@ export function CalendarBody({
             onClick={() => onCommit(quick.week)}
           />
         </span>
-        {stored ? (
-          <QuickBtn label="Clear" danger onClick={() => onCommit(null)} />
-        ) : null}
+        {stored ? <QuickBtn label="Clear" danger onClick={() => onCommit(null)} /> : null}
       </div>
 
       {/* TYPED ENTRY */}
@@ -919,7 +948,9 @@ export function CalendarBody({
             color: past ? "var(--color-amberInk)" : "var(--color-secondary)",
           }}
         >
-          Due {dueRelative(stored, today)}
+          {span && span.end !== span.start
+            ? `${formatDue(stored, today)} · ends ${dueRelative(span.end, today)}`
+            : `Due ${dueRelative(stored, today)}`}
         </span>
       ) : null}
     </div>
@@ -935,7 +966,6 @@ function echoLabel(key: string): string {
   const dow = (new Date(p[0], p[1] - 1, p[2]).getDay() + 6) % 7;
   return `${ECHO_DOW[dow]}, ${formatDue(key, new Date(p[0], 0, 1))}`;
 }
-
 
 /* ── Number ── inline in place; stores a JSON number, never a string. */
 
@@ -1110,9 +1140,15 @@ export function TextEditor({
  * value keeps the field open with the reason underneath; nothing is saved. */
 
 const OPEN_ICON: Record<string, { path: string; label: string }> = {
-  url: { path: "M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5", label: "Open link" },
+  url: {
+    path: "M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5",
+    label: "Open link",
+  },
   email: { path: "M4 6h16v12H4zM4 7l8 6 8-6", label: "Write an email" },
-  phone: { path: "M6.6 3.5h2.8l1.4 4.2-2 1.4a11 11 0 0 0 6.1 6.1l1.4-2 4.2 1.4v2.8a2 2 0 0 1-2.2 2A16.6 16.6 0 0 1 4.6 5.7a2 2 0 0 1 2-2.2z", label: "Call" },
+  phone: {
+    path: "M6.6 3.5h2.8l1.4 4.2-2 1.4a11 11 0 0 0 6.1 6.1l1.4-2 4.2 1.4v2.8a2 2 0 0 1-2.2 2A16.6 16.6 0 0 1 4.6 5.7a2 2 0 0 1 2-2.2z",
+    label: "Call",
+  },
 };
 
 export function TypedValueEditor({
@@ -1179,7 +1215,13 @@ export function TypedValueEditor({
           aria-label={type === "url" ? "Link" : type === "email" ? "Email address" : "Phone number"}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? errorId : undefined}
-          placeholder={type === "url" ? "https://…" : type === "email" ? "name@company.com" : "+52 33 1234 5678"}
+          placeholder={
+            type === "url"
+              ? "https://…"
+              : type === "email"
+                ? "name@company.com"
+                : "+52 33 1234 5678"
+          }
           onChange={(e) => {
             setDraft(e.target.value);
             if (error && checkTypedValue(type, e.target.value).ok) setError(null);
@@ -1208,7 +1250,12 @@ export function TypedValueEditor({
           }}
         />
         {error ? (
-          <div id={errorId} role="alert" className="text-caption text-danger" style={{ marginTop: 3 }}>
+          <div
+            id={errorId}
+            role="alert"
+            className="text-caption text-danger"
+            style={{ marginTop: 3 }}
+          >
             {error}
           </div>
         ) : null}
@@ -1254,7 +1301,17 @@ export function TypedValueEditor({
           className="grid shrink-0 place-items-center rounded-md text-faint hover:bg-sunken hover:text-secondary"
           style={{ width: 22, height: 22 }}
         >
-          <svg viewBox="0 0 24 24" width={13} height={13} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <svg
+            viewBox="0 0 24 24"
+            width={13}
+            height={13}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
             <path d={open.path} />
           </svg>
         </a>
@@ -1278,9 +1335,7 @@ export function CheckboxToggle({
 }) {
   return (
     <label
-      className={
-        "flex items-center " + (variant === "cell" ? "justify-center w-full" : "")
-      }
+      className={"flex items-center " + (variant === "cell" ? "justify-center w-full" : "")}
       style={{ minHeight: 24, cursor: "pointer" }}
       aria-label={label}
     >
