@@ -479,17 +479,42 @@ type AnyFn = (...args: any[]) => any;
 function useStableRowHandlers() {
   const latest = useRef(new Map<string, Record<string, AnyFn | undefined>>());
   const cache = useRef(new Map<string, Record<string, AnyFn>>());
+  // The ids handed out during THIS render (reset each time the owner
+  // renders). After the commit, blocks that weren't rendered (deleted) are
+  // forgotten, so their closures and the blocks array they hold can be
+  // collected. Never cleared in the effect: StrictMode runs effects twice.
+  const seen = useRef(new Set<string>());
+  seen.current = new Set();
+  useEffect(() => {
+    const live = seen.current;
+    if (live.size === 0) return;
+    for (const id of latest.current.keys()) {
+      if (!live.has(id)) {
+        latest.current.delete(id);
+        cache.current.delete(id);
+      }
+    }
+  });
   return useCallback(<T extends Record<string, AnyFn | undefined>>(id: string, handlers: T): T => {
+    seen.current.add(id);
     latest.current.set(id, handlers);
     let c = cache.current.get(id);
     if (!c) {
       c = {};
       cache.current.set(id, c);
     }
+    const out: Record<string, AnyFn | undefined> = {};
     for (const k of Object.keys(handlers)) {
+      // A handler that is absent this render stays absent, so a row that
+      // checks `if (onX)` still sees the difference.
+      if (!handlers[k]) {
+        out[k] = undefined;
+        continue;
+      }
       if (!c[k]) c[k] = (...args: unknown[]) => latest.current.get(id)?.[k]?.(...args);
+      out[k] = c[k];
     }
-    return c as T;
+    return out as T;
   }, []);
 }
 
@@ -1057,6 +1082,10 @@ export function EditableBody({
     const onUp = (ev: PointerEvent) => {
       const pd = pendingDragRef.current;
       if (pd && ev.pointerId === pd.pointerId) pendingDragRef.current = null;
+      // A flick can start and release a drag within one frame, before the
+      // drag's own listeners are attached. End it here so it can't stay
+      // live with no button held. (endDrag is a no-op the second time.)
+      if (draggingRef.current) endDragRef.current(ev.type === "pointerup");
     };
     window.addEventListener("pointermove", onMove, true);
     window.addEventListener("pointerup", onUp, true);
@@ -1423,7 +1452,22 @@ export function EditableBody({
         e.preventDefault();
       };
       document.addEventListener("click", swallow, true);
-      window.setTimeout(() => document.removeEventListener("click", swallow, true), 0);
+      const unswallow = () => {
+        window.removeEventListener("pointerup", afterRelease, true);
+        window.removeEventListener("pointerdown", unswallow, true);
+        document.removeEventListener("click", swallow, true);
+      };
+      const afterRelease = () => window.setTimeout(unswallow, 0);
+      if (commitDrop) {
+        // Ended by the release itself: its click follows immediately.
+        window.setTimeout(unswallow, 0);
+      } else {
+        // Cancelled (Esc, blur) with the button maybe still held: swallow
+        // the click that comes with the eventual release, and never a later
+        // press.
+        window.addEventListener("pointerup", afterRelease, true);
+        window.addEventListener("pointerdown", unswallow, true);
+      }
       if (!commitDrop || d.gap == null) return;
       const froms: ReorderPath[] = d.ids.map((id) => {
         // Discover this id's source list from the registry so cross-list
@@ -1487,8 +1531,18 @@ export function EditableBody({
       window.removeEventListener("keydown", onKey, true);
     };
   }, [isDragging]);
-  // Never leave a ghost behind if the page unmounts mid-drag.
-  useEffect(() => () => ghostRef.current?.el.remove(), []);
+  // Never leave a ghost or a locked cursor behind if the page unmounts
+  // mid-drag.
+  useEffect(
+    () => () => {
+      ghostRef.current?.el.remove();
+      if (draggingRef.current) {
+        document.body.style.userSelect = "";
+        document.body.style.cursor = "";
+      }
+    },
+    [],
+  );
 
   /* ────────── Scoped selection operations ──────────
    * Every consumer of a block selection goes through these two helpers, so
