@@ -383,7 +383,8 @@ begin
                             or (old.config ->> 'of') is distinct from (new.config ->> 'of')) then
     raise exception 'The far side of a relation stays paired with its relation.' using errcode = '23514';
   end if;
-  if tg_op = 'UPDATE' and new.database_id is distinct from old.database_id then
+  if tg_op = 'UPDATE' and old.database_id is not null
+     and new.database_id is distinct from old.database_id then
     raise exception 'A property stays in its database.' using errcode = '23514';
   end if;
   return new;
@@ -491,8 +492,12 @@ begin
     update public.pages set parent_id = db
      where workspace_id = w.id and id <> db and parent_id is null;
     -- The workspace's properties and views now belong to it. The old
-    -- built-ins become ordinary properties, so they can be changed.
+    -- built-ins become ordinary properties, so they can be changed (the
+    -- guard that keeps is_system fixed is stepped around for this one
+    -- move; it's back on right after).
+    alter table public.property_defs disable trigger property_defs_guard;
     update public.property_defs set database_id = db, is_system = false where workspace_id = w.id;
+    alter table public.property_defs enable trigger property_defs_guard;
     update public.views set database_id = db where workspace_id = w.id;
     update public.property_defs
        set config = (config - 'view_id') || jsonb_build_object('database_id', db::text)
