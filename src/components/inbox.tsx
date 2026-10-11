@@ -1,11 +1,10 @@
-import { useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import { useFormatDate } from "@/lib/format";
 import { useSetPageOrigin } from "@/lib/page-origin";
-import { mentionPage, useMentionDirectoryVersion } from "@/lib/mention-directory";
 import { avatarInitials } from "@/lib/mention-trigger-ui";
-import { useInbox, useMarkRead, type InboxItem } from "@/hooks/use-inbox";
+import { useMarkRead, type InboxItem } from "@/hooks/use-inbox";
+import { useVisibleInbox } from "@/hooks/use-visible-inbox";
 import { describeNotification, openNotificationTarget } from "@/lib/inbox-text";
 import { openComments } from "@/lib/comments-store";
 import { Popover } from "./popover";
@@ -17,33 +16,8 @@ import { Ico } from "./emoji-icon";
 
 const BELL = "M6 9a6 6 0 1 1 12 0c0 4.5 1.8 6 1.8 6H4.2S6 13.5 6 9zM10 19a2 2 0 0 0 4 0";
 
-function useVisibleInbox(): { items: InboxItem[]; unread: number; loading: boolean } {
-  const { user } = useAuth();
-  const q = useInbox(user?.id);
-  const dirVersion = useMentionDirectoryVersion();
-  const items = useMemo(
-    () => (q.data ?? []).filter((n) => !!mentionPage(n.page_id)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [q.data, dirVersion],
-  );
-  return { items, unread: items.filter((n) => !n.read_at).length, loading: q.isPending };
-}
-
 export function InboxButton() {
-  const { user } = useAuth();
-  const { items, unread } = useVisibleInbox();
-  const markRead = useMarkRead(user?.id);
-  const navigate = useNavigate();
-  const setOrigin = useSetPageOrigin();
-  const fmt = useFormatDate();
-
-  const open = (n: InboxItem, close: () => void) => {
-    if (!n.read_at) markRead.mutate([n.id]);
-    close();
-    setOrigin(n.page_id);
-    openNotificationTarget(n, navigate, openComments);
-  };
-
+  const { unread } = useVisibleInbox();
   return (
     <Popover
       width={380}
@@ -71,7 +45,29 @@ export function InboxButton() {
         </button>
       )}
     >
-      {(close) => (
+      {(close) => <InboxPanel close={close} />}
+    </Popover>
+  );
+}
+
+/** The inbox list: in the sidebar's popover, or full screen on a phone
+ *  (`page`: no height cap, roomier rows). */
+export function InboxPanel({ close, page = false }: { close: () => void; page?: boolean }) {
+  const { user } = useAuth();
+  const { items, unread } = useVisibleInbox();
+  const markRead = useMarkRead(user?.id);
+  const navigate = useNavigate();
+  const setOrigin = useSetPageOrigin();
+  const fmt = useFormatDate();
+
+  const open = (n: InboxItem, close: () => void) => {
+    if (!n.read_at) markRead.mutate([n.id]);
+    close();
+    setOrigin(n.page_id);
+    openNotificationTarget(n, navigate, openComments);
+  };
+
+  return (
         <div role="dialog" aria-label="Inbox">
           <div className="flex items-center" style={{ padding: "6px 8px 6px 10px", gap: 8 }}>
             <span className="font-display text-strong" style={{ fontSize: 15, fontWeight: 700 }}>
@@ -94,7 +90,7 @@ export function InboxButton() {
               Nothing here yet. When someone mentions you on a page, it shows up here.
             </p>
           ) : (
-            <ul style={{ maxHeight: "min(520px, 70vh)", overflowY: "auto" }}>
+            <ul style={page ? undefined : { maxHeight: "min(520px, 70vh)", overflowY: "auto" }}>
               {items.map((n) => {
                 const d = describeNotification(n);
                 const unreadRow = !n.read_at;
@@ -104,7 +100,7 @@ export function InboxButton() {
                       type="button"
                       onClick={() => open(n, close)}
                       className="flex w-full items-start rounded-md text-left hover:bg-rail"
-                      style={{ gap: 10, padding: "8px 10px" }}
+                      style={{ gap: 10, padding: page ? "12px 10px" : "8px 10px" }}
                     >
                       <span
                         aria-hidden
@@ -156,7 +152,5 @@ export function InboxButton() {
             </ul>
           )}
         </div>
-      )}
-    </Popover>
   );
 }

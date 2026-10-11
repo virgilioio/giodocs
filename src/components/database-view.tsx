@@ -149,8 +149,9 @@ function DatabaseHeader({
     </span>
   );
   return (
-    <div className="mb-3 flex items-start justify-between gap-4">
-      <div className="flex min-w-0 items-center gap-2">
+    // On a narrow screen the layout switch and New wrap under the title.
+    <div className="mb-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+      <div className="flex min-w-[min(100%,240px)] flex-1 items-center gap-2">
         {canEdit ? (
           <Popover
             width={264}

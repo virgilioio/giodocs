@@ -129,10 +129,11 @@ export function toggleHidden(list: readonly string[], section: string): string[]
   return list.includes(section) ? list.filter((x) => x !== section) : [...list, section];
 }
 
-export type HomeSection = "recent" | "tasks" | "views" | "updated" | "templates";
+export type HomeSection = "recent" | "favorites" | "tasks" | "views" | "updated" | "templates";
 
 export const HOME_SECTIONS: Array<{ id: HomeSection; label: string }> = [
   { id: "recent", label: "Recently visited" },
+  { id: "favorites", label: "Favorites" },
   { id: "tasks", label: "My tasks" },
   { id: "views", label: "Pinned views" },
   { id: "updated", label: "Recently updated" },

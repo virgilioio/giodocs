@@ -7,6 +7,8 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { useIsPhone } from "@/lib/use-media";
+import { MenuSheetFrame } from "./menu-sheet";
 import { exitRef } from "@/lib/exit-motion";
 
 /**
@@ -50,6 +52,7 @@ export function Popover({
   const panelRef = useRef<HTMLDivElement>(null);
 
   const close = useCallback(() => setOpen(false), []);
+  const phone = useIsPhone();
 
   useEffect(() => {
     onOpenChange?.(open);
@@ -117,6 +120,22 @@ export function Popover({
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
+
+  if (phone) {
+    return (
+      <>
+        {trigger({ open, onClick: () => setOpen((v) => !v), ref: btnRef })}
+        {open && typeof document !== "undefined"
+          ? createPortal(
+              <MenuSheetFrame onClose={close} panelRef={panelRef} zIndex={90}>
+                <div data-popover-body style={{ padding: "0 12px" }}>{children(close)}</div>
+              </MenuSheetFrame>,
+              document.body,
+            )
+          : null}
+      </>
+    );
+  }
 
   return (
     <>

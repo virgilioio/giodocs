@@ -128,6 +128,8 @@
   --animate-shake: shake 300ms linear;
   --animate-skShimmer: skShimmer 1.2s linear infinite;
   --animate-drawerIn: drawerIn 360ms cubic-bezier(0.32, 0.72, 0, 1);
+  --animate-sheetIn: sheetIn 360ms cubic-bezier(0.32, 0.72, 0, 1);
+  --animate-railIn: railIn 360ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /* Durations and delays — plain custom properties, read by CSS and by
@@ -151,6 +153,10 @@
 @keyframes drawerIn { from { transform:translateX(100%) } to { transform:none } }
 @keyframes drawerOut{ from { transform:none } to { transform:translateX(100%) } }
 @keyframes fadeOut  { from { opacity:1 } to { opacity:0 } }
+@keyframes sheetIn  { from { transform:translateY(100%) } to { transform:none } }
+@keyframes sheetOut { from { transform:none } to { transform:translateY(100%) } }
+@keyframes railIn   { from { transform:translateX(-100%) } to { transform:none } }
+@keyframes railOut  { from { transform:none } to { transform:translateX(-100%) } }
 @keyframes toastUp  { from { opacity:0; transform:translateY(12px) } to { opacity:1; transform:none } }
 @keyframes shake    { 0%,100% { transform:translateX(0) } 20% { transform:translateX(-6px) } 40% { transform:translateX(5px) } 60% { transform:translateX(-3px) } 80% { transform:translateX(2px) } }
 @keyframes skShimmer { from { background-position: 100% 0 } to { background-position: -100% 0 } }
@@ -168,6 +174,8 @@
     --animate-toastUp: fadeIn 400ms ease;
     --animate-shake: none;
     --animate-drawerIn: fadeIn 220ms cubic-bezier(0.23, 1, 0.32, 1);
+    --animate-sheetIn: fadeIn 220ms cubic-bezier(0.23, 1, 0.32, 1);
+    --animate-railIn: fadeIn 220ms cubic-bezier(0.23, 1, 0.32, 1);
     --dur-sidebar: 0ms;
     --dur-switch: 0ms;
   }
@@ -780,3 +788,102 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
    truncate utilities. */
 [data-wrap] { white-space: normal; align-items: flex-start; }
 [data-wrap] .truncate { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
+
+/* ─────────────── Phone frame (2026-10-11) ───────────────
+ * Below 768px (src/lib/use-media.ts, phone-shell.tsx): top tabs, floating
+ * round buttons and bars, bottom sheets. Safe areas keep them clear of the
+ * notch and the home indicator (viewport-fit=cover in __root.tsx). */
+.gio-phone-float {
+  pointer-events: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-lineSoft);
+  box-shadow: 0 6px 20px rgba(13, 13, 9, 0.1);
+}
+.gio-phone-circle {
+  border: 1px solid var(--color-lineSoft);
+  box-shadow: 0 4px 14px rgba(13, 13, 9, 0.08);
+}
+.gio-phone-tabs {
+  gap: 10px;
+  padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+}
+.gio-phone-bottom {
+  gap: 12px;
+  padding: 0 16px calc(14px + env(safe-area-inset-bottom));
+}
+.gio-phone-top {
+  gap: 10px;
+  padding: calc(10px + env(safe-area-inset-top)) 16px 0;
+}
+.gio-phone-card {
+  left: 16px;
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  width: min(340px, calc(100vw - 32px));
+  background: var(--color-surface);
+  border: 1px solid var(--color-lineSoft);
+  box-shadow: 0 18px 48px rgba(13, 13, 9, 0.18);
+}
+.gio-sheet {
+  max-height: 92dvh;
+  background: var(--color-canvas);
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -12px 40px rgba(13, 13, 9, 0.16);
+  animation: var(--animate-sheetIn);
+}
+.gio-sheet-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 16px calc(24px + env(safe-area-inset-bottom));
+}
+.gio-sheet-body > * { flex-shrink: 0; }
+.gio-sheet-row {
+  min-height: 52px;
+  gap: 14px;
+  padding: 0 16px;
+  font-size: 17px;
+}
+.gio-sheet-group > * + * {
+  border-top: 1px solid var(--color-lineSoft);
+}
+/* Menus and popovers as sheets on phones (menu-sheet.tsx): the desktop
+   contents, at phone sizes, with room to scroll. */
+.gio-menu-sheet-body {
+  padding: 0 10px calc(20px + env(safe-area-inset-bottom));
+}
+.gio-menu-sheet [data-spec-body] { max-height: none !important; }
+.gio-menu-sheet [role="menuitem"] {
+  min-height: 48px;
+  padding: 10px 12px !important;
+  gap: 14px !important;
+}
+.gio-menu-sheet [role="menuitem"] > .truncate { font-size: 17px !important; }
+.gio-menu-sheet [role="menuitem"]:active { background: var(--color-rail); }
+.gio-menu-sheet input, .gio-menu-sheet textarea { font-size: 16px !important; }
+/* A popover's own contents (pickers) are drawn at desktop sizes; scaled up
+   whole so rows become thumb-sized without restyling each picker. */
+.gio-menu-sheet [data-popover-body] { zoom: 1.2; }
+.gio-menu-sheet [data-popover-body] input { font-size: 14px !important; }
+/* Inbox and Templates as phone tabs: the desktop panels at phone sizes. */
+.gio-phone-panel .text-meta { font-size: 15px; line-height: 1.45; }
+.gio-phone-panel .text-ui { font-size: 16px; line-height: 1.45; }
+.gio-phone-panel .text-caption { font-size: 13px; }
+/* Phone screens leave room under the floating bars. */
+.gio-phone-main {
+  padding-bottom: calc(96px + env(safe-area-inset-bottom));
+}
+.gio-phone-page {
+  padding-top: calc(64px + env(safe-area-inset-top));
+}
+/* The sidebar over the page on tablets. */
+.gio-rail-over {
+  animation: var(--animate-railIn);
+  box-shadow: 0 18px 48px rgba(13, 13, 9, 0.18);
+}
+/* Toasts sit above the phone's floating bar. */
+@media (max-width: 767px) {
+  .gio-toasts {
+    bottom: calc(86px + env(safe-area-inset-bottom));
+    padding: 0 16px;
+  }
+}

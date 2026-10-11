@@ -5,6 +5,16 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { COMPACT_QUERY, useIsCompact, useIsPhone } from "@/lib/use-media";
+import {
+  BottomSheet,
+  PhoneBottomBar,
+  PhoneTopTabs,
+  RecentsCard,
+  SheetGroup,
+  SheetRow,
+  type PhoneTab,
+} from "./phone-shell";
 import { primaryMod } from "@/lib/platform";
 import { toClipboard } from "@/lib/clipboard";
 import { Link, useNavigate, useParams, useRouterState } from "@tanstack/react-router";
@@ -13,7 +23,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { useRealtimeWorkspace } from "@/hooks/use-realtime";
-import { getPageOrigin } from "@/lib/page-origin";
+import { getPageOrigin, setPageOrigin } from "@/lib/page-origin";
 import { Ico } from "./emoji-icon";
 import { PageBreadcrumb } from "./page-breadcrumb";
 import { SidebarTreeView, useTreeExpanded, type TreeNode } from "./sidebar-tree";
@@ -22,8 +32,11 @@ import type { MoveTarget } from "@/lib/page-tree";
 import { useEmojiSet } from "@/hooks/use-custom-emoji";
 import { setInlineEmojiSet } from "@/lib/emoji-registry";
 import { mentionPage, setMentionDirectory } from "@/lib/mention-directory";
-import { InboxButton } from "./inbox";
-import { TemplatesButton } from "./templates-panel";
+import { InboxButton, InboxPanel } from "./inbox";
+import { useInboxUnread } from "@/hooks/use-visible-inbox";
+import { TemplatesButton, TemplatesPanel } from "./templates-panel";
+import { FavoritesList } from "./favorites-list";
+import { useFavoritePages } from "@/hooks/use-favorites";
 import { useInboxRealtime } from "@/hooks/use-inbox";
 import { describeNotification, openNotificationTarget } from "@/lib/inbox-text";
 import { openComments } from "@/lib/comments-store";
@@ -54,8 +67,8 @@ import { useAllowedDomains } from "@/hooks/use-workspace-data";
 import { isTypingTarget } from "@/lib/is-typing";
 import { exitOnly } from "@/lib/exit-motion";
 import { HomeView } from "./home-view";
-import { useHomePrefs, useRecentVisits, useRecordVisit } from "@/hooks/use-home";
-import { startTarget } from "@/lib/home";
+import { useHomePrefs, useRecentVisits, useRecordVisit, useToggleFavorite } from "@/hooks/use-home";
+import { recentPages, startTarget } from "@/lib/home";
 
 const HOME_GLYPH = "M3 11l9-7 9 7M5 10v10h5v-6h4v6h5V10";
 
@@ -208,6 +221,18 @@ export function AppShell() {
   const cancelInvite = useCancelInvite();
   const [sidebarPopover, setSidebarPopover] = useState<"new" | null>(null);
   const [pageMenuOpen, setPageMenuOpen] = useState(false);
+  // Phones get their own frame; tablets and narrow windows keep the
+  // desktop one with the sidebar over the page (closed until opened).
+  const phone = useIsPhone();
+  const compact = useIsCompact() && !phone;
+  const [railOpen, setRailOpen] = useState(false);
+  const [recentsOpen, setRecentsOpen] = useState(false);
+  const [accountSheet, setAccountSheet] = useState(false);
+  const phoneTab = useRouterState({
+    select: (s) => (s.location.search as { tab?: unknown }).tab,
+  }) as unknown;
+  const newPage = useCreatePageAndOpen();
+  const inboxUnread = useInboxUnread();
 
   const domainsQ = useAllowedDomains(workspaceId);
   const allowedDomains = domainsQ.data ?? [];
@@ -238,7 +263,8 @@ export function AppShell() {
         e.preventDefault();
         setSidebarPopover(null);
         setAccountMenu(false);
-        setSidebarOpen((v) => !v);
+        if (window.matchMedia?.(COMPACT_QUERY).matches) setRailOpen((v) => !v);
+        else setSidebarOpen((v) => !v);
         return;
       }
       if (e.key === "Escape") {
@@ -341,6 +367,14 @@ export function AppShell() {
 
 
 
+  // The sidebar over the page closes when a page opens.
+  const selectionKey = selection ? JSON.stringify(selection) : "";
+  useEffect(() => {
+    setRailOpen(false);
+    setRecentsOpen(false);
+    setPageMenuOpen(false);
+  }, [selectionKey]);
+
   async function handleSignOut() {
     await supabase.auth.signOut();
     navigate({ to: "/login", replace: true });
@@ -403,6 +437,186 @@ export function AppShell() {
     target.addEventListener("pointercancel", onUp);
   };
 
+  const sidebarProps = {
+    loading,
+    pages,
+    selection,
+    profile,
+    userEmail: user?.email ?? "",
+    initials,
+    workspaceName,
+    workspaceIcon: workspace?.icon ?? "📄",
+    memberCount,
+    accountMenu,
+    onOpenAccountMenu: () => setAccountMenu(true),
+    onCloseAccountMenu: () => setAccountMenu(false),
+    onSignOut: handleSignOut,
+    onOpenSettings: () => openSettings("preferences"),
+    onOpenInvite: () => {
+      setAccountMenu(false);
+      openSettings("people");
+      setMembersTab("members");
+      setInviteOpen(true);
+    },
+    onOpenPalette: () => setPaletteOpen(true),
+  };
+  const modals = (
+    <>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <SettingsModal
+        open={settingsOpen}
+        pane={settingsPane}
+        onPaneChange={setSettingsPane}
+        onClose={closeSettings}
+        pendingInvites={pendingInvites}
+        onRevokeInvite={(email) => cancelInvite.mutate(email)}
+        onOpenInvite={() => setInviteOpen(true)}
+        membersTab={membersTab}
+        onMembersTabChange={setMembersTab}
+      />
+      <AddMembersModal
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        workspaceName={workspaceName}
+        allowedDomains={allowedDomains}
+      />
+    </>
+  );
+
+  if (phone) {
+    const onPage = selection?.kind === "page" || selection?.kind === "database";
+    const tab: PhoneTab = phoneTab === "inbox" || phoneTab === "templates" ? phoneTab : "home";
+    return (
+      <RowMenuProvider>
+        <div className="flex h-dvh flex-col bg-surface" data-phone-shell>
+          {onPage ? null : (
+            <PhoneTopTabs
+              tab={tab}
+              unread={inboxUnread}
+              workspaceIcon={workspace?.icon ?? "📄"}
+              workspaceName={workspaceName}
+              onAccount={() => setAccountSheet(true)}
+            />
+          )}
+          <main
+            className={`gio-phone-main min-w-0 flex-1 overflow-y-auto bg-surface ${onPage ? "gio-phone-page" : ""}`}
+            data-phone-main
+          >
+            {selection?.kind === "database" ? (
+              <DatabaseView key={`d:${selection.id}`} selection={selection} />
+            ) : selection?.kind === "page" && pagesLoaded ? (
+              <PageEditor key={selection.id} pageId={selection.id} />
+            ) : selection?.kind === "home" ? (
+              tab === "inbox" ? (
+                <div className="gio-phone-panel px-3 pt-1">
+                  <InboxPanel close={() => undefined} page />
+                </div>
+              ) : tab === "templates" ? (
+                <div className="gio-phone-panel px-3 pt-1">
+                  <TemplatesPanel close={() => undefined} />
+                </div>
+              ) : pagesLoaded && pages.length === 0 ? (
+                <EmptyWorkspace />
+              ) : (
+                <SidebarBody {...sidebarProps} phone />
+              )
+            ) : showShellSkeleton ? (
+              <ViewSkeleton layout="table" />
+            ) : null}
+          </main>
+          {onPage && selection ? (
+            <PageTopbarActions
+              phone
+              pageId={selection.id}
+              menuOpen={pageMenuOpen}
+              onMenuOpen={() => setPageMenuOpen(true)}
+              onMenuClose={() => setPageMenuOpen(false)}
+            />
+          ) : null}
+          <PhoneBottomBar
+            onMenu={onPage ? () => setRecentsOpen(true) : undefined}
+            onSearch={() => setPaletteOpen(true)}
+            onNew={() => void newPage({ seedProps: {} })}
+          />
+          {recentsOpen ? (
+            <RecentsCard
+              onClose={() => setRecentsOpen(false)}
+              onSearch={() => setPaletteOpen(true)}
+              currentId={onPage && selection ? selection.id : undefined}
+            />
+          ) : null}
+          {accountSheet ? (
+            <BottomSheet title={workspaceName || "Workspace"} onClose={() => setAccountSheet(false)}>
+              <SheetGroup>
+                <div className="flex items-center" style={{ gap: 14, padding: "12px 16px" }}>
+                  <span
+                    className="grid shrink-0 place-items-center rounded-full"
+                    style={{
+                      width: 40,
+                      height: 40,
+                      fontSize: 14,
+                      fontWeight: 700,
+                      background: profile?.avatar_tint ? `var(--color-${profile.avatar_tint})` : "var(--color-sunken)",
+                      color: profile?.avatar_ink ? `var(--color-${profile.avatar_ink})` : "var(--color-strong)",
+                    }}
+                  >
+                    {initials}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-strong" style={{ fontSize: 17, fontWeight: 700 }}>
+                      {profile?.full_name || user?.email}
+                    </span>
+                    <span className="block truncate text-ui text-muted">
+                      {workspaceName} · {memberCount} {memberCount === 1 ? "person" : "people"}
+                    </span>
+                  </span>
+                </div>
+              </SheetGroup>
+              <SheetGroup>
+                <SheetRow
+                  icon="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"
+                  label="Settings"
+                  onClick={() => {
+                    setAccountSheet(false);
+                    openSettings("preferences");
+                  }}
+                />
+                <SheetRow
+                  icon="M9 3.6a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2zM2 20.4v-1.8a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v1.8M19 8v6M16 11h6"
+                  label="Invite people"
+                  onClick={() => {
+                    setAccountSheet(false);
+                    sidebarProps.onOpenInvite();
+                  }}
+                />
+              </SheetGroup>
+              <SheetGroup>
+                <SheetRow
+                  icon="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l5-5-5-5M15 12H3"
+                  label="Log out"
+                  danger
+                  onClick={() => {
+                    setAccountSheet(false);
+                    void handleSignOut();
+                  }}
+                />
+              </SheetGroup>
+            </BottomSheet>
+          ) : null}
+          {modals}
+        </div>
+      </RowMenuProvider>
+    );
+  }
+
+  const railShown = compact ? railOpen : sidebarOpen;
+  const toggleRail = () => {
+    setSidebarPopover(null);
+    setAccountMenu(false);
+    if (compact) setRailOpen((v) => !v);
+    else setSidebarOpen((v) => !v);
+  };
+
   return (
     <RowMenuProvider>
     <div
@@ -410,42 +624,40 @@ export function AppShell() {
       className="flex h-screen overflow-hidden bg-canvas"
       style={{ "--gio-sidebar-w": `${sidebarWidth}px` } as React.CSSProperties}
     >
+      {compact && railOpen ? (
+        <div
+          ref={exitOnly("fade")}
+          className="fixed inset-0 z-40 animate-fadeIn"
+          style={{ background: "rgba(13,13,9,.18)" }}
+          onClick={() => setRailOpen(false)}
+          aria-hidden
+        />
+      ) : null}
+      {compact && !railOpen ? null : (
       <div
-        style={{
-          width: sidebarOpen ? "var(--gio-sidebar-w)" : 0,
-          transition: resizing ? "none" : "width var(--dur-sidebar) var(--ease-in-out)",
-        }}
-        className="relative shrink-0 overflow-hidden border-r border-line bg-rail"
+        ref={compact ? exitOnly("rail") : undefined}
+        style={
+          compact
+            ? { width: "var(--gio-sidebar-w)" }
+            : {
+                width: sidebarOpen ? "var(--gio-sidebar-w)" : 0,
+                transition: resizing ? "none" : "width var(--dur-sidebar) var(--ease-in-out)",
+              }
+        }
+        data-sidebar={compact ? "over" : "beside"}
+        className={
+          compact
+            ? "gio-rail-over fixed inset-y-0 left-0 z-50 overflow-hidden border-r border-line bg-rail"
+            : "relative shrink-0 overflow-hidden border-r border-line bg-rail"
+        }
       >
         <div
           style={{ width: "var(--gio-sidebar-w)" }}
           className="flex h-screen flex-col"
         >
-          <SidebarBody
-            loading={loading}
-            pages={pages}
-            selection={selection}
-            profile={profile}
-            userEmail={user?.email ?? ""}
-            initials={initials}
-            workspaceName={workspaceName}
-            workspaceIcon={workspace?.icon ?? "📄"}
-            memberCount={memberCount}
-            accountMenu={accountMenu}
-            onOpenAccountMenu={() => setAccountMenu(true)}
-            onCloseAccountMenu={() => setAccountMenu(false)}
-            onSignOut={handleSignOut}
-            onOpenSettings={() => openSettings("preferences")}
-            onOpenInvite={() => {
-              setAccountMenu(false);
-              openSettings("people");
-              setMembersTab("members");
-              setInviteOpen(true);
-            }}
-            onOpenPalette={() => setPaletteOpen(true)}
-          />
+          <SidebarBody {...sidebarProps} />
         </div>
-        {sidebarOpen && (
+        {sidebarOpen && !compact && (
           <div
             role="separator"
             aria-orientation="vertical"
@@ -473,6 +685,7 @@ export function AppShell() {
           </div>
         )}
       </div>
+      )}
 
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -485,16 +698,12 @@ export function AppShell() {
               promise a direction the button does not deliver. */}
           <button
             type="button"
-            onClick={() => {
-              // Close popovers anchored to sidebar rows — their anchor is
-              // about to move or vanish.
-              setSidebarPopover(null);
-              setAccountMenu(false);
-              setSidebarOpen((v) => !v);
-            }}
-            aria-expanded={sidebarOpen}
-            aria-label={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
-            title={sidebarOpen ? "Hide sidebar  ⌘\\" : "Show sidebar  ⌘\\"}
+            // Close popovers anchored to sidebar rows — their anchor is
+            // about to move or vanish.
+            onClick={toggleRail}
+            aria-expanded={railShown}
+            aria-label={railShown ? "Hide sidebar" : "Show sidebar"}
+            title={railShown ? "Hide sidebar  ⌘\\" : "Show sidebar  ⌘\\"}
             className="inline-flex items-center justify-center rounded-md text-muted hover:bg-sunken hover:text-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             style={{ width: 26, height: 26, flex: "none", cursor: "pointer" }}
           >
@@ -562,24 +771,7 @@ export function AppShell() {
           ) : null}
         </main>
       </div>
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
-      <SettingsModal
-        open={settingsOpen}
-        pane={settingsPane}
-        onPaneChange={setSettingsPane}
-        onClose={closeSettings}
-        pendingInvites={pendingInvites}
-        onRevokeInvite={(email) => cancelInvite.mutate(email)}
-        onOpenInvite={() => setInviteOpen(true)}
-        membersTab={membersTab}
-        onMembersTabChange={setMembersTab}
-      />
-      <AddMembersModal
-        open={inviteOpen}
-        onClose={() => setInviteOpen(false)}
-        workspaceName={workspaceName}
-        allowedDomains={allowedDomains}
-      />
+      {modals}
 
     </div>
     </RowMenuProvider>
@@ -591,28 +783,33 @@ export function AppShell() {
 /* ─────────────────── Sidebar: the page tree ─────────────────── */
 
 type SectionKey = "private" | "workspace";
-type SectionState = Record<SectionKey, boolean>;
+type SectionState = Record<SectionKey | "favorites" | "recents", boolean>;
 
-function useSectionState(): [SectionState, (k: SectionKey) => void] {
+function useSectionState(): [SectionState, (k: SectionKey | "favorites" | "recents") => void] {
   const [state, setState] = useState<SectionState>(() => {
-    if (typeof window === "undefined") return { private: true, workspace: true };
+    if (typeof window === "undefined") return { private: true, workspace: true, favorites: true, recents: true };
     try {
       const raw = window.localStorage.getItem(SECTION_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<SectionState>;
-        return { private: parsed.private !== false, workspace: parsed.workspace !== false };
+        return {
+          private: parsed.private !== false,
+          workspace: parsed.workspace !== false,
+          favorites: parsed.favorites !== false,
+          recents: parsed.recents !== false,
+        };
       }
     } catch {
       /* ignore */
     }
-    return { private: true, workspace: true };
+    return { private: true, workspace: true, favorites: true, recents: true };
   });
   useEffect(() => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(SECTION_KEY, JSON.stringify(state));
     }
   }, [state]);
-  const toggle = (k: SectionKey) => setState((prev) => ({ ...prev, [k]: !prev[k] }));
+  const toggle = (k: SectionKey | "favorites" | "recents") => setState((prev) => ({ ...prev, [k]: !prev[k] }));
   return [state, toggle];
 }
 
@@ -675,7 +872,11 @@ function SidebarBody({
   onOpenSettings,
   onOpenInvite,
   onOpenPalette,
+  phone = false,
 }: {
+  /** The phone's Home tab: Recents, Favorites, Workspace and Private as
+   *  big touch rows, without the sidebar's search, links and account. */
+  phone?: boolean;
   loading: boolean;
   pages: PageListItem[];
   selection: Selection;
@@ -703,6 +904,9 @@ function SidebarBody({
   const movePage = useMovePage();
   const [expanded, toggleExpanded, openExpanded] = useTreeExpanded();
   const [headerOver, setHeaderOver] = useState<SectionKey | null>(null);
+  const favorites = useFavoritePages();
+  const favoriteIds = useHomePrefs().data?.favorite_pages ?? [];
+  const toggleFavorite = useToggleFavorite();
 
   /* A drag in the tree. Top level means the section's: a private page
    * dropped at the top of Workspace is shared with everyone; a shared page
@@ -860,6 +1064,15 @@ function SidebarBody({
         { kind: "sep" },
         {
           kind: "row",
+          label: favoriteIds.includes(p.id) ? "Remove from Favorites" : "Add to Favorites",
+          icon: "star",
+          onPick: () => {
+            toggleFavorite(p.id, p.title ?? "");
+            mctx.close();
+          },
+        },
+        {
+          kind: "row",
           label: "Copy link",
           icon: "link",
           onPick: () => {
@@ -901,7 +1114,16 @@ function SidebarBody({
 
   return (
     <>
-      <div className="flex-1 overflow-y-auto px-2 pb-2 pt-3">
+      <div className={phone ? "px-3 pb-4" : "flex-1 overflow-y-auto px-2 pb-2 pt-3"}>
+        {phone ? (
+          <PhoneRecents
+            open={sections.recents}
+            onToggle={() => toggleSection("recents")}
+            pages={pages}
+          />
+        ) : null}
+        {phone ? null : (
+          <>
         {/* Search */}
         <button
           type="button"
@@ -924,11 +1146,24 @@ function SidebarBody({
         </Link>
         <InboxButton />
         <TemplatesButton />
+          </>
+        )}
 
         {loading ? (
           <SkeletonList />
         ) : (
           <>
+            {favorites.length ? (
+              <>
+                <SectionHeader
+                  label="Favorites"
+                  open={sections.favorites}
+                  onToggle={() => toggleSection("favorites")}
+                  phone={phone}
+                />
+                {sections.favorites ? <FavoritesList activeId={activeId} phone={phone} /> : null}
+              </>
+            ) : null}
             <div
               data-section-drop="workspace"
               {...headerDrop("workspace")}
@@ -937,6 +1172,7 @@ function SidebarBody({
             >
               <SectionHeader
                 label="Workspace"
+                phone={phone}
                 open={sections.workspace}
                 onToggle={() => toggleSection("workspace")}
                 trailing={<NewTopLevelMenu section="workspace" onCreate={(k) => createTop("workspace", k)} />}
@@ -952,6 +1188,7 @@ function SidebarBody({
                 onAddInside={(p) => addInside(p)}
                 menuFor={menuFor}
                 empty={sectionEmpty("workspace")}
+                phone={phone}
                 onMove={(id, t) => onMove("workspace", id, t)}
                 onExpand={openExpanded}
               />
@@ -965,6 +1202,7 @@ function SidebarBody({
             >
               <SectionHeader
                 label="Private"
+                phone={phone}
                 open={sections.private}
                 onToggle={() => toggleSection("private")}
                 trailing={<NewTopLevelMenu section="private" onCreate={(k) => createTop("private", k)} />}
@@ -980,6 +1218,7 @@ function SidebarBody({
                 onAddInside={(p) => addInside(p)}
                 menuFor={menuFor}
                 empty={sectionEmpty("private")}
+                phone={phone}
                 onMove={(id, t) => onMove("private", id, t)}
                 onExpand={openExpanded}
               />
@@ -988,7 +1227,7 @@ function SidebarBody({
         )}
       </div>
 
-      <FooterAccount
+      {phone ? null : <FooterAccount
         profile={profile}
         userEmail={userEmail}
         initials={initials}
@@ -1001,12 +1240,54 @@ function SidebarBody({
         onSignOut={onSignOut}
         onOpenSettings={onOpenSettings}
         onOpenInvite={onOpenInvite}
-      />
+      />}
     </>
   );
 }
 
 /** The root URL with nothing to open yet. */
+/** The phone's Recents: the pages you opened last, newest first. */
+function PhoneRecents({
+  open,
+  onToggle,
+  pages,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  pages: PageListItem[];
+}) {
+  const ws = useWorkspaceId();
+  const visitsQ = useRecentVisits(ws);
+  const navigate = useNavigate();
+  const recent = useMemo(() => recentPages(visitsQ.data ?? [], pages, 8), [visitsQ.data, pages]);
+  if (recent.length === 0) return null;
+  return (
+    <>
+      <SectionHeader label="Recents" open={open} onToggle={onToggle} phone />
+      {open ? (
+        <ul aria-label="Recents">
+          {recent.map((p) => (
+            <li key={p.id}>
+              <button
+                type="button"
+                className="flex w-full items-center rounded-md text-left text-strong active:bg-sunken"
+                style={{ gap: 14, minHeight: 48, padding: "0 6px", fontSize: 17 }}
+                onClick={() => {
+                  setPageOrigin(p.id, { kind: "search" });
+                  void navigate({ to: "/p/$pageId", params: { pageId: p.id } });
+                }}
+              >
+                <Ico icon={p.icon || (p.is_database ? "🗂️" : "📄")} size={22} />
+                <span className="min-w-0 flex-1 truncate">{p.title?.trim() || "Untitled"}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </>
+  );
+}
+
 function EmptyWorkspace() {
   const createAndOpen = useCreatePageAndOpen();
   return (
@@ -1277,12 +1558,36 @@ function SectionHeader({
   open,
   onToggle,
   trailing,
+  phone = false,
 }: {
   label: string;
   open: boolean;
   onToggle: () => void;
   trailing?: ReactNode;
+  /** Notion's phone headers: normal case, 17px, chevron after the label. */
+  phone?: boolean;
 }) {
+  if (phone)
+    return (
+      <div className="mt-5 flex items-center justify-between px-1.5 pb-1">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          aria-label={open ? `Collapse ${label}` : `Expand ${label}`}
+          className="flex items-center gap-1.5 text-muted"
+          style={{ fontSize: 17, minHeight: 40 }}
+        >
+          {label}
+          <Glyph
+            path="M6 9l6 6 6-6"
+            className="h-4 w-4"
+            style={{ transform: open ? "rotate(0deg)" : "rotate(-90deg)" }}
+          />
+        </button>
+        {trailing}
+      </div>
+    );
   return (
     <div className="mt-4 flex items-center justify-between px-2 pb-1">
       <button

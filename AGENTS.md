@@ -396,6 +396,34 @@ provider Virgilio already has; don't build them until asked.
 - validate_page_props refuses stored values for formula and unique_id;
   guard_property_config checks each type's config shape.
 
+## Decisions (Allan, 2026-10-11: favorites and the phone layout)
+- Favorites: each person stars pages (home_prefs.favorite_pages, their
+  own row, newest last, at most 200), from the page ⋯ menu, with Undo. They
+  show in a Favorites section in the sidebar, on Home and on the phone's
+  Home tab; a page the reader can't open, or an archived one, doesn't show.
+- Screen sizes (src/lib/use-media.ts): below 768px is a phone, below
+  1120px is compact. Desktop (1120px and up) is unchanged.
+- Phones get their own frame (phone-shell.tsx, Notion's mobile layout):
+  - Top pill tabs: the workspace logo (opens an account sheet), Home ·
+    Inbox · Templates (/home?tab=…). The Home tab is the navigation:
+    Recents, Favorites, Workspace, Private. There is no sidebar.
+  - A floating bottom bar: Search (opens ⌘K's palette), New page, and on a
+    page ☰, which opens a card of recent pages with Home and Search.
+  - A page has no app bar: floating Back, Share (the phone's share sheet,
+    else Copy link) and ⋯, which opens the "Actions" sheet (fonts,
+    Favorites, Share, Copy link, Copy page contents, Duplicate, Move to,
+    Delete; Small text / Full width / Lock editing; Who can see this,
+    verify, comments, history, template, export, archive).
+  - Every RowMenu and Popover opens as a sheet from the bottom
+    (menu-sheet.tsx) with the same contents at phone sizes; a rename field
+    on top of a menu isn't focused until tapped, so the keyboard doesn't
+    cover the menu.
+  - Safe areas (viewport-fit=cover), 16px inputs in sheets.
+- Compact (768–1119px) keeps the desktop frame with the sidebar over the
+  page, closed until opened, closing when a page opens.
+- Not yet on phones: the keyboard toolbar, long-press block menus, tables
+  as lists, quick capture, offline reading (the plan's later steps).
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.

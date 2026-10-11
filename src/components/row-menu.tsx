@@ -24,6 +24,8 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { PHONE_QUERY, useIsPhone } from "@/lib/use-media";
+import { MenuSheetFrame } from "./menu-sheet";
 import { IC } from "@/lib/menu-icons";
 import { exitRef } from "@/lib/exit-motion";
 
@@ -179,7 +181,8 @@ function MenuShell({
   // paint, so the panel never shows in the wrong spot.
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [height, setHeight] = useState<number | null>(null);
-  const pos = usePlacement(anchor, width, align, height);
+  const phone = useIsPhone();
+  const pos = usePlacement(phone ? null : anchor, width, align, height);
   const shown = !!anchor && !!pos;
   useLayoutEffect(() => {
     const el = panelRef.current;
@@ -194,6 +197,14 @@ function MenuShell({
     ro.observe(el);
     return () => ro.disconnect();
   }, [shown]);
+  if (phone && anchor) {
+    return createPortal(
+      <MenuSheetFrame onClose={onClose} role="menu" zIndex="calc(var(--z-menu) + 1)">
+        {children}
+      </MenuSheetFrame>,
+      document.body,
+    );
+  }
   if (!anchor || !pos) return null;
   return createPortal(
     <>
@@ -495,7 +506,7 @@ function SpecBody({ spec, onClose }: { spec: MenuSpec; onClose: () => void }) {
     <SpecInput key={spec.title} input={spec.input} onClose={onClose} first={spec.inputFirst} />
   ) : null;
   return (
-    <div style={{ maxHeight: spec.maxHeight ?? 280, overflow: "auto" }}>
+    <div data-spec-body style={{ maxHeight: spec.maxHeight ?? 280, overflow: "auto" }}>
       <div
         className="flex items-center gap-1 truncate"
         style={{
@@ -583,10 +594,13 @@ function SpecInput({
     if (focused.current) return;
     const el = ref.current;
     if (!el) return;
+    // On a phone, a rename field on top of a menu waits for a tap: focusing
+    // it would raise the keyboard over the menu.
+    if (first && window.matchMedia?.(PHONE_QUERY).matches) return;
     el.focus();
     if (input.selectOnFocus) el.select();
     focused.current = true;
-  }, [input.selectOnFocus]);
+  }, [input.selectOnFocus, first]);
   return (
     <div
       style={

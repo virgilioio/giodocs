@@ -104,7 +104,11 @@ export function SidebarTreeView<P extends TreeNode>({
   empty,
   onMove,
   onExpand,
+  phone = false,
 }: {
+  /** The phone's Home tab: 46px rows, 17px type, bigger disclosure, no
+   *  hover actions and no drag (touch has neither). */
+  phone?: boolean;
   pages: readonly P[];
   expanded: Set<string>;
   activeId?: string;
@@ -139,7 +143,9 @@ export function SidebarTreeView<P extends TreeNode>({
       }
     }}>
       {rows.map((r) => {
-        const ramp = RAMP[Math.min(r.depth, RAMP.length - 1)]!;
+        const base = RAMP[Math.min(r.depth, RAMP.length - 1)]!;
+        const ramp = phone ? { ...base, height: 46, fontSize: 17 } : base;
+        const dragOn = !!onMove && !phone;
         const active = activeId === r.page.id;
         const title = String(r.page.title ?? "").trim() || "Untitled";
         const zone = over?.id === r.page.id ? over.zone : null;
@@ -151,9 +157,9 @@ export function SidebarTreeView<P extends TreeNode>({
             className="group relative flex items-stretch"
             data-tree-row={r.page.id}
             data-drop={zone ?? undefined}
-            draggable={!!onMove}
+            draggable={dragOn}
             onDragStart={(e) => {
-              if (!onMove) return;
+              if (!dragOn) return;
               setDraggedPage(r.page.id);
               e.dataTransfer.effectAllowed = "move";
               e.dataTransfer.setData(DRAG_TYPE, r.page.id);
@@ -217,10 +223,10 @@ export function SidebarTreeView<P extends TreeNode>({
                 aria-hidden
                 data-guide
                 style={{
-                  width: 11,
+                  width: phone ? 14 : 11,
                   flex: "none",
                   borderLeft: "1px solid var(--color-line)",
-                  marginLeft: 6,
+                  marginLeft: phone ? 13 : 6,
                 }}
               />
             ))}
@@ -234,12 +240,13 @@ export function SidebarTreeView<P extends TreeNode>({
                   onClick={() => onToggle(r.page.id)}
                   className="text-rule hover:text-secondary"
                   style={{
-                    width: 14,
+                    width: phone ? 28 : 14,
+                    height: phone ? 46 : undefined,
                     flex: "none",
                     border: 0,
                     background: "transparent",
                     padding: 0,
-                    fontSize: 9,
+                    fontSize: phone ? 13 : 9,
                     lineHeight: 1,
                     cursor: "pointer",
                   }}
@@ -247,7 +254,7 @@ export function SidebarTreeView<P extends TreeNode>({
                   {r.expanded ? "▾" : "▸"}
                 </button>
               ) : (
-                <span aria-hidden style={{ width: 14, flex: "none" }} />
+                <span aria-hidden style={{ width: phone ? 28 : 14, flex: "none" }} />
               )}
               <span
                 className="flex min-w-0 flex-1 items-center rounded-md hover:bg-railHover"
@@ -269,7 +276,7 @@ export function SidebarTreeView<P extends TreeNode>({
                   aria-current={active ? "page" : undefined}
                   className="flex min-w-0 flex-1 items-center"
                   style={{
-                    gap: 6,
+                    gap: phone ? 12 : 6,
                     height: ramp.height,
                     border: 0,
                     background: "transparent",
@@ -284,11 +291,11 @@ export function SidebarTreeView<P extends TreeNode>({
                   {r.page.is_database && !r.page.icon ? (
                     <DatabaseGlyph />
                   ) : (
-                    <Ico icon={r.page.icon} size={14} />
+                    <Ico icon={r.page.icon} size={phone ? 20 : 14} />
                   )}
                   <span className="min-w-0 flex-1 truncate">{title}</span>
                 </button>
-                {(menuFor || onAddInside) && (
+                {!phone && (menuFor || onAddInside) && (
                   <span
                     className="flex shrink-0 items-center opacity-0 group-hover:opacity-100 focus-within:opacity-100"
                     style={{ gap: 1 }}

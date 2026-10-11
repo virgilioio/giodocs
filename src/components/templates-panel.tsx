@@ -42,7 +42,8 @@ export function TemplatesButton() {
   );
 }
 
-function TemplatesPanel({ close }: { close: () => void }) {
+/** The templates list: in the sidebar's popover, or full screen on a phone. */
+export function TemplatesPanel({ close }: { close: () => void }) {
   const ws = useWorkspaceId();
   const q = useTemplates(ws);
   const shell = useWorkspaceShell(ws);

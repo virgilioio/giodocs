@@ -87,7 +87,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: "Gio Docs" },
       { name: "description", content: "Virgilio's knowledge, findable. No folders, no six-level nesting, no three competing sources of truth — just pages that tell you when they've gone stale." },
       { property: "og:title", content: "Gio Docs" },

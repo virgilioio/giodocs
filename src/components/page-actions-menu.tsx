@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 import type { PageAppearance, PageFont } from "@/lib/page-appearance";
 import type { PageAccessRow, PageFull } from "@/lib/types";
 import { exitOnly, exitRef } from "@/lib/exit-motion";
+import { BottomSheet, SheetGroup, SheetRow, SheetSwitch } from "./phone-shell";
 
 /* ────────────── Icons ────────────── */
 
@@ -43,6 +44,11 @@ const P = {
   history: "M3.5 12a8.5 8.5 0 1 0 2.5-6M3.5 4v4h4M12 7.5V12l3 2",
   template: "M5 4h14v5H5zM5 13h6v7H5zM15 13h4M15 17h4",
   tasks: "M4 5h4v4H4zM4 15h4v4H4zM11 7h9M11 17h9M5 7l1 1 2-2",
+  share: "M12 3v12M7.5 7.5 12 3l4.5 4.5M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7",
+  comment: "M20 12a8 8 0 0 1-11.8 7L4 20l1.1-3.9A8 8 0 1 1 20 12z",
+  clipboard: "M9 4h6v3H9zM9 5.5H6.5A1.5 1.5 0 0 0 5 7v12.5A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V7a1.5 1.5 0 0 0-1.5-1.5H15",
+  moveTo: "M4 17v-3a4 4 0 0 1 4-4h12M15.5 5.5 20 10l-4.5 4.5",
+  star: "M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z",
 };
 
 /* ────────────── The trigger button ────────────── */
@@ -233,7 +239,7 @@ function DeleteConfirm({
         ref={exitOnly("fade")}
         className="animate-fadeIn"
         onClick={onCancel}
-        style={{ position: "fixed", inset: 0, background: "rgba(13,13,9,.35)", zIndex: 90 }}
+        style={{ position: "fixed", inset: 0, background: "rgba(13,13,9,.35)", zIndex: 95 }}
       />
       <div
         ref={exitOnly("dialog")}
@@ -242,8 +248,8 @@ function DeleteConfirm({
         className="animate-dialogIn"
         style={{
           position: "fixed", top: "50%", left: "50%",
-          translate: "-50% -50%", zIndex: 91,
-          width: 420, background: "var(--color-surface)", borderRadius: 12,
+          translate: "-50% -50%", zIndex: 96,
+          width: "min(420px, calc(100vw - 32px))", background: "var(--color-surface)", borderRadius: 12,
           border: "1px solid var(--color-line)",
           boxShadow: "0 24px 64px rgba(13,13,9,.22)",
           padding: "20px 20px 16px",
@@ -294,12 +300,26 @@ export type PageActionsHandlers = {
   onDelete: () => void;
   onVerify: () => void;
   onOpenPermissions: () => void;      /* opens the existing permissions surface */
+  /** Star or unstar the page (Favorites, per person). */
+  onToggleFavorite: () => void;
+  /** Phones: the system share sheet (or Copy link where there's none). */
+  onShare?: () => void;
+  /** Phones: the comments panel (desktop has its own button). */
+  onComments?: () => void;
+  /** Phones: copy the page's text (Markdown) to the clipboard. */
+  onCopyContents?: () => void;
+  /** Phones: pick where the page lives (move_page). */
+  onMoveTo?: () => void;
 };
 
 export function PageActionsMenu({
   open, onClose, page, workspaceName, memberCount, access, appearance,
-  onAppearance, handlers,
+  onAppearance, handlers, favorite = false, sheet = false,
 }: {
+  /** Phones: an "Actions" sheet from the bottom instead of a menu. */
+  sheet?: boolean;
+  /** The page is in the person's Favorites. */
+  favorite?: boolean;
   open: boolean;
   onClose: () => void;
   page: PageFull;
@@ -344,6 +364,78 @@ export function PageActionsMenu({
     const d = new Date(page.verified_at); const n = new Date();
     return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
   })();
+
+  if (sheet) {
+    const pick = (fn?: () => void) => () => { onClose(); fn?.(); };
+    return (
+      <>
+        <BottomSheet title="Actions" onClose={onClose}>
+          <SheetGroup>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", padding: 6, gap: 4 }}>
+              <FontCard
+                glyph="Ag" label="Default"
+                family="'Poppins', system-ui, sans-serif"
+                size={24} weight={700} letterSpacing="-0.04em"
+                selected={appearance.font === "default"}
+                onClick={() => onAppearance("font", "default")}
+              />
+              <FontCard
+                glyph="Ag" label="Serif"
+                family="'Newsreader', Georgia, serif"
+                size={27} weight={600}
+                selected={appearance.font === "serif"}
+                onClick={() => onAppearance("font", "serif" as PageFont)}
+              />
+              <FontCard
+                glyph="Ag" label="Mono"
+                family="'Spline Sans Mono', ui-monospace, monospace"
+                size={24} weight={500}
+                selected={appearance.font === "mono"}
+                onClick={() => onAppearance("font", "mono" as PageFont)}
+              />
+            </div>
+          </SheetGroup>
+          <SheetGroup>
+            <SheetRow icon={P.star} label={favorite ? "Remove from Favorites" : "Add to Favorites"} onClick={pick(handlers.onToggleFavorite)} />
+            {handlers.onShare ? <SheetRow icon={P.share} label="Share" onClick={pick(handlers.onShare)} /> : null}
+            <SheetRow icon={P.link} label="Copy link" onClick={pick(handlers.onCopyLink)} />
+            {handlers.onCopyContents ? <SheetRow icon={P.clipboard} label="Copy page contents" onClick={pick(handlers.onCopyContents)} /> : null}
+            <SheetRow icon={P.copy} label="Duplicate" onClick={pick(handlers.onDuplicate)} />
+            {handlers.onMoveTo ? <SheetRow icon={P.moveTo} label="Move to" onClick={pick(handlers.onMoveTo)} /> : null}
+            <SheetRow icon={P.trash} label="Delete page" danger onClick={() => setConfirmDelete(true)} />
+          </SheetGroup>
+          <SheetGroup>
+            <SheetRow icon={P.small} label="Small text" onClick={() => onAppearance("small", !appearance.small)} trailing={<SheetSwitch on={appearance.small} />} />
+            <SheetRow icon={P.wide} label="Full width" onClick={() => onAppearance("wide", !appearance.wide)} trailing={<SheetSwitch on={appearance.wide} />} />
+            <SheetRow icon={P.lock} label="Lock editing" onClick={() => onAppearance("locked", !appearance.locked)} trailing={<SheetSwitch on={appearance.locked} />} />
+          </SheetGroup>
+          <SheetGroup>
+            <SheetRow icon={P.people} label="Who can see this" hint={whoLabel} onClick={pick(handlers.onOpenPermissions)} />
+            <SheetRow icon={P.shieldCheck} label={isVerifiedToday ? "Verified today" : "Mark verified today"} onClick={pick(handlers.onVerify)} />
+            {handlers.onComments ? <SheetRow icon={P.comment} label="Comments" onClick={pick(handlers.onComments)} /> : null}
+            <SheetRow icon={P.history} label="Page history" onClick={pick(handlers.onOpenHistory)} />
+            <SheetRow icon={P.template} label={page.template_at ? "Stop using as template" : "Use as template"} onClick={pick(handlers.onToggleTemplate)} />
+            <SheetRow icon={P.download} label="Export" onClick={pick(handlers.onExport)} />
+            {page.is_database ? (
+              <SheetRow icon={P.tasks} label={page.task_config ? "Task database settings" : "Turn into task database"} onClick={pick(handlers.onTaskDatabase)} />
+            ) : null}
+            <SheetRow
+              icon={P.box}
+              label={isArchived ? "Unarchive" : "Archive"}
+              onClick={pick(isArchived ? handlers.onUnarchive : handlers.onArchive)}
+            />
+          </SheetGroup>
+        </BottomSheet>
+        {confirmDelete && (
+          <DeleteConfirm
+            title={page.title}
+            onCancel={() => setConfirmDelete(false)}
+            onConfirm={() => { setConfirmDelete(false); onClose(); handlers.onDelete(); }}
+          />
+        )}
+      </>
+    );
+  }
 
   return createPortal(
     <>
@@ -417,6 +509,11 @@ export function PageActionsMenu({
 
             {/* GROUP 3 — Page actions */}
             <div>
+              <ActionRow
+                icon={P.star}
+                label={favorite ? "Remove from Favorites" : "Add to Favorites"}
+                onClick={() => { onClose(); handlers.onToggleFavorite(); }}
+              />
               <ActionRow
                 icon={P.people}
                 label="Who can see this"

@@ -1,10 +1,12 @@
 import { formulaResultOf, relationConfig, valueWords } from "@/lib/relations";
+import { PhoneMoreButton, PhonePageButtons } from "./phone-shell";
+import { useIsFavorite, useToggleFavorite } from "@/hooks/use-home";
 import { propValue } from "@/lib/run-view";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { primaryMod } from "@/lib/platform";
 import { toClipboard } from "@/lib/clipboard";
 import { useSaveStatus } from "@/lib/save-status";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import {
   useWorkspaceShell,
@@ -26,16 +28,20 @@ import { toThreads, useComments } from "@/hooks/use-comments";
 import { usePageAppearance } from "@/lib/page-appearance";
 import {
   useArchivePage,
+  useCreatePage,
   useDeletePage,
   useDuplicatePage,
   useRestorePage,
+  useSetPageParent,
   useSetPageProperty,
   useVerifyPage,
 } from "@/hooks/use-page-mutations";
 import type { PageListItem, PageFull, Block } from "@/lib/types";
 import { ExportDialog } from "./export-dialog";
 import { TaskDatabaseDialog } from "./task-database-dialog";
-import type { ExportContext } from "@/lib/export";
+import { toMarkdown, type ExportContext } from "@/lib/export";
+import { BottomSheet } from "./phone-shell";
+import { PlacePicker } from "./page-block";
 
 
 /* ────────────── Glyph ────────────── */
@@ -254,7 +260,10 @@ export function PageTopbarActions({
   menuOpen,
   onMenuOpen,
   onMenuClose,
+  phone = false,
 }: {
+  /** Phones: floating Back, Share and ⋯ buttons, and the Actions sheet. */
+  phone?: boolean;
   pageId: string;
   menuOpen: boolean;
   onMenuOpen: () => void;
@@ -266,6 +275,7 @@ export function PageTopbarActions({
   const accessQ = usePageAccess(pageId);
   const toast = useToast();
   const navigate = useNavigate();
+  const router = useRouter();
   const { app, set: setAppearance } = usePageAppearance(pageId);
 
   const pages = (shell.pages.data ?? []) as PageListItem[];
@@ -322,6 +332,8 @@ export function PageTopbarActions({
   const setTemplate = useSetTemplate();
   const del = useDeletePage();
   const restore = useRestorePage();
+  const favorite = useIsFavorite(pageId);
+  const toggleFavorite = useToggleFavorite();
 
   const doCopyLink = useCallback(async () => {
     if (!listRow) return;
@@ -404,6 +416,9 @@ export function PageTopbarActions({
   }, [listRow, doCopyLink, doDuplicate]);
 
   const [exportOpen, setExportOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const setParent = useSetPageParent();
+  const createPage = useCreatePage();
   const [tasksOpen, setTasksOpen] = useState(false);
 
   const exportCtx: ExportContext | null = useMemo(() => {
@@ -474,6 +489,136 @@ export function PageTopbarActions({
   const access = accessQ.data ?? [];
 
 
+  const doShare = () => {
+    const url = pageUrl(listRow.id, listRow.title);
+    const nav = typeof navigator !== "undefined" ? (navigator as Navigator & { share?: (d: ShareData) => Promise<void> }) : null;
+    if (nav?.share) {
+      nav.share({ title: listRow.title || "Untitled", url }).catch(() => undefined);
+      return;
+    }
+    void doCopyLink();
+  };
+  const goBack = () => {
+    // Back within the app only: a page opened from a link elsewhere goes
+    // to where it lives instead of leaving Gio Docs.
+    if (router.history.canGoBack()) {
+      router.history.back();
+      return;
+    }
+    if (listRow.parent_id) void navigate({ to: "/p/$pageId", params: { pageId: listRow.parent_id } });
+    else void navigate({ to: "/home" });
+  };
+
+  const menu = page ? (
+    <PageActionsMenu
+      open={menuOpen}
+      onClose={onMenuClose}
+      page={page}
+      workspaceName={workspaceName}
+      memberCount={memberCount}
+      access={access}
+      appearance={app}
+      onAppearance={setAppearance}
+      favorite={favorite}
+      sheet={phone}
+      handlers={{
+        onToggleFavorite: () => toggleFavorite(page.id, page.title ?? ""),
+        onShare: phone ? doShare : undefined,
+        onComments: phone ? () => toggleComments(page.id) : undefined,
+        onCopyContents: phone
+          ? () => {
+              if (!exportCtx) return;
+              toClipboard(toMarkdown({ ...exportCtx, includeDetails: false }));
+              toast.push("Page contents copied");
+            }
+          : undefined,
+        onMoveTo: phone ? () => setMoveOpen(true) : undefined,
+        onCopyLink: () => { void doCopyLink(); },
+        onExport: () => setExportOpen(true),
+        onTaskDatabase: () => setTasksOpen(true),
+        onDuplicate: () => { void doDuplicate(); },
+        onOpenHistory: () => openPageHistory(page.id),
+        onToggleTemplate: () =>
+          setTemplate.mutate({ pageId: page.id, title: page.title ?? "", on: !page.template_at }),
+        onArchive: () => archive.mutate({ pageId: page.id, archived: true }),
+        onUnarchive: () => archive.mutate({ pageId: page.id, archived: false }),
+        onDelete: doDelete,
+        onVerify: () => {
+          verify.mutate(page.id);
+          toast.push("Verified just now — thanks for keeping this fresh.");
+        },
+        onOpenPermissions: () => {
+          const btn = document.querySelector<HTMLElement>("[data-page-more]");
+          const rect = btn?.getBoundingClientRect();
+          if (rect) openPermissionsPopover(rect);
+        },
+      }}
+    />
+  ) : null;
+  const dialogs = (
+    <>
+      {moveOpen && page ? (
+        <BottomSheet title="Move to" onClose={() => setMoveOpen(false)}>
+          <div className="rounded-xl bg-surface" style={{ padding: 6 }}>
+            <PlacePicker
+              pages={pages}
+              thisPageId={page.id}
+              onPick={(p) => {
+                setMoveOpen(false);
+                const old = pages.find((x) => x.id === page.parent_id);
+                setParent.mutate({
+                  pageId: page.id,
+                  parentId: p.id,
+                  title: page.title ?? "",
+                  oldParentTitle: old?.title ?? null,
+                });
+              }}
+              onCreate={async (title) => {
+                // A new place made from here is a plain page, like Placed in.
+                setMoveOpen(false);
+                try {
+                  const row = await createPage.mutateAsync({ seedProps: {}, title: title.trim() });
+                  setParent.mutate({ pageId: page.id, parentId: row.id, title: page.title ?? "" });
+                } catch {
+                  /* the mutation's own toast explains */
+                }
+              }}
+            />
+          </div>
+        </BottomSheet>
+      ) : null}
+      {exportOpen && exportCtx && (
+        <ExportDialog ctx={exportCtx} onClose={() => setExportOpen(false)} />
+      )}
+      {tasksOpen && page?.is_database ? (
+        <TaskDatabaseDialog
+          databaseId={page.id}
+          title={page.title || "Untitled"}
+          onClose={() => setTasksOpen(false)}
+        />
+      ) : null}
+    </>
+  );
+
+  if (phone) {
+    return (
+      <>
+        <PhonePageButtons
+          onBack={goBack}
+          onShare={doShare}
+          more={
+            <PhoneMoreButton
+              open={menuOpen}
+              onClick={() => (menuOpen ? onMenuClose() : onMenuOpen())}
+            />
+          }
+        />
+        {menu}
+        {dialogs}
+      </>
+    );
+  }
+
   return (
     <>
       <EditedStamp
@@ -503,52 +648,8 @@ export function PageTopbarActions({
         }}
       />
 
-      {page && (
-        <PageActionsMenu
-          open={menuOpen}
-          onClose={onMenuClose}
-          page={page}
-          workspaceName={workspaceName}
-          memberCount={memberCount}
-          access={access}
-          appearance={app}
-          onAppearance={setAppearance}
-          handlers={{
-            onCopyLink: () => { void doCopyLink(); },
-            onExport: () => setExportOpen(true),
-            onTaskDatabase: () => setTasksOpen(true),
-            onDuplicate: () => { void doDuplicate(); },
-            onOpenHistory: () => openPageHistory(page.id),
-            onToggleTemplate: () =>
-              setTemplate.mutate({ pageId: page.id, title: page.title ?? "", on: !page.template_at }),
-            onArchive: () => archive.mutate({ pageId: page.id, archived: true }),
-            onUnarchive: () => archive.mutate({ pageId: page.id, archived: false }),
-            onDelete: doDelete,
-            onVerify: () => {
-              verify.mutate(page.id);
-              toast.push("Verified just now — thanks for keeping this fresh.");
-            },
-            onOpenPermissions: () => {
-              const btn = document.querySelector<HTMLElement>(
-                "[data-page-more]",
-              );
-              const rect = btn?.getBoundingClientRect();
-              if (rect) openPermissionsPopover(rect);
-            },
-          }}
-        />
-      )}
-
-      {exportOpen && exportCtx && (
-        <ExportDialog ctx={exportCtx} onClose={() => setExportOpen(false)} />
-      )}
-      {tasksOpen && page?.is_database ? (
-        <TaskDatabaseDialog
-          databaseId={page.id}
-          title={page.title || "Untitled"}
-          onClose={() => setTasksOpen(false)}
-        />
-      ) : null}
+      {menu}
+      {dialogs}
     </>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { STAR_GLYPH, useFavoritePages } from "@/hooks/use-favorites";
 import { useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
@@ -45,6 +46,7 @@ export function HomeView({
   const recent = useMemo(() => recentPages(visitsQ.data ?? [], pages), [visitsQ.data, pages]);
   const now = useNow();
   const hidden = useHidden();
+  const favorites = useFavoritePages();
 
   return (
     <div className="mx-auto w-full" style={{ maxWidth: 900, padding: "56px 48px 96px" }}>
@@ -84,6 +86,21 @@ export function HomeView({
                 <CardRow label={`Recently visited, ${recent.length} of up to ${RECENT_LIMIT} pages`}>
                   {recent.map((p) => (
                     <PageCard key={p.id} page={p} place={placeOf(p, pages)} visitedAt={p.visited_at} />
+                  ))}
+                </CardRow>
+              )}
+            </Section>
+          )}
+          {hidden("favorites") ? null : (
+            <Section title="Favorites" icon={STAR_GLYPH}>
+              {favorites.length === 0 ? (
+                <p className="text-meta text-muted">
+                  Star pages you come back to: open a page's ⋯ menu and choose Add to Favorites.
+                </p>
+              ) : (
+                <CardRow label={`Favorites, ${favorites.length} pages`}>
+                  {favorites.map((p) => (
+                    <PageCard key={p.id} page={p} place={placeOf(p, pages)} visitedAt={p.edited_at} />
                   ))}
                 </CardRow>
               )}

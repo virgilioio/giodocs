@@ -21,11 +21,13 @@
  *            data-motion-card and the scrim fades while the card scales.
  *   fade   — scrims, bars, anything that should only fade.
  *   drawer — a side panel: slides back out to the right (240ms).
+ *   sheet  — a bottom sheet (phones): slides back down (240ms).
+ *   rail   — the sidebar over the page (tablets): slides back left (240ms).
  *
  * Reduced motion keeps the fade and drops the scale.
  */
 
-export type ExitKind = "pop" | "dialog" | "fade" | "drawer";
+export type ExitKind = "pop" | "dialog" | "fade" | "drawer" | "sheet" | "rail";
 
 const EASE_OUT = "cubic-bezier(0.23, 1, 0.32, 1)";
 const EASE_DRAWER = "cubic-bezier(0.32, 0.72, 0, 1)";
@@ -35,6 +37,8 @@ const EXIT: Record<ExitKind, { name: string; ms: number; ease?: string }> = {
   dialog: { name: "dialogOut", ms: 150 },
   fade: { name: "fadeOut", ms: 120 },
   drawer: { name: "drawerOut", ms: 240, ease: EASE_DRAWER },
+  sheet: { name: "sheetOut", ms: 240, ease: EASE_DRAWER },
+  rail: { name: "railOut", ms: 240, ease: EASE_DRAWER },
 };
 
 function reducedMotion(): boolean {
