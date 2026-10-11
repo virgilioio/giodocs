@@ -292,7 +292,14 @@ provider Virgilio already has; don't build them until asked.
 - A database becomes a task database through pages.task_config: which of
   its own live properties says done (status, select or checkbox, plus
   the done values), the assignee (person) and the due date (date). The
-  guard_task_config trigger enforces it.
+  guard_task_config trigger enforces it. It's set from the database's ⋯
+  menu ("Turn into task database"), which can add a missing Status
+  (Not started, In progress, Done), Assignee or Due date property.
+- My tasks (Home) lists the open rows assigned to you in every task
+  database you can open, grouped Overdue / Today / Next 7 days / Later /
+  No date (src/lib/tasks.ts). Ticking one sets its done property (first
+  done value, or checked) with Undo; adding one creates a row assigned to
+  you in the chosen database.
 
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.

@@ -42,6 +42,7 @@ const P = {
   lock: "M5 11h14v9H5zM8 11V7a4 4 0 0 1 8 0v4",
   history: "M3.5 12a8.5 8.5 0 1 0 2.5-6M3.5 4v4h4M12 7.5V12l3 2",
   template: "M5 4h14v5H5zM5 13h6v7H5zM15 13h4M15 17h4",
+  tasks: "M4 5h4v4H4zM4 15h4v4H4zM11 7h9M11 17h9M5 7l1 1 2-2",
 };
 
 /* ────────────── The trigger button ────────────── */
@@ -286,6 +287,8 @@ export type PageActionsHandlers = {
   onDuplicate: () => void;
   onOpenHistory: () => void;
   onToggleTemplate: () => void;
+  /** A database: its task settings (My tasks on Home). */
+  onTaskDatabase: () => void;
   onArchive: () => void;
   onUnarchive: () => void;
   onDelete: () => void;
@@ -457,6 +460,14 @@ export function PageActionsMenu({
                 hint={page.template_at ? "back to a page" : "start pages from it"} hintKind="value"
                 onClick={() => { onClose(); handlers.onToggleTemplate(); }}
               />
+              {page.is_database ? (
+                <ActionRow
+                  icon={P.tasks}
+                  label={page.task_config ? "Task database settings" : "Turn into task database"}
+                  hint="My tasks on Home" hintKind="value"
+                  onClick={() => { onClose(); handlers.onTaskDatabase(); }}
+                />
+              ) : null}
               <ActionRow
                 icon={P.box}
                 label={isArchived ? "Unarchive" : "Archive"}

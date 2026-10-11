@@ -12,6 +12,7 @@ import { Popover } from "./popover";
 import { EmojiPicker } from "./emoji-picker";
 import { Ico } from "./emoji-icon";
 import { Sk } from "./sk";
+import { MyTasks } from "./home-tasks";
 
 /* Home (Notion's): a greeting and the pages you visited last. More
  * sections (My tasks, pinned views, templates) join it later. */
@@ -25,13 +26,15 @@ export function HomeView({ empty }: { empty?: ReactNode }) {
   const pages = useMemo(() => (shell.pages.data ?? []) as PageListItem[], [shell.pages.data]);
   const visitsQ = useRecentVisits(ws);
   const recent = useMemo(() => recentPages(visitsQ.data ?? [], pages), [visitsQ.data, pages]);
+  const now = useNow();
 
   return (
     <div className="mx-auto w-full" style={{ maxWidth: 900, padding: "56px 48px 96px" }}>
-      <Greeting />
+      <Greeting now={now} />
       {empty ? (
         <div className="mt-6">{empty}</div>
       ) : (
+        <>
         <Section title="Recently visited" icon={CLOCK}>
           {visitsQ.isLoading || !shell.pages.data ? (
             <div role="status" aria-busy="true">
@@ -59,6 +62,10 @@ export function HomeView({ empty }: { empty?: ReactNode }) {
             </CardRow>
           )}
         </Section>
+        <Section title="My tasks" icon={TASKS}>
+          <MyTasks now={now} />
+        </Section>
+        </>
       )}
     </div>
   );
@@ -75,11 +82,10 @@ function useNow(everyMs = 60_000): Date {
   return now;
 }
 
-function Greeting() {
+function Greeting({ now }: { now: Date }) {
   const { user, profile } = useAuth();
   const prefsQ = useHomePrefs();
   const save = useSaveHomePrefs();
-  const now = useNow();
   const prefs = prefsQ.data;
   const name = greetingName(prefs?.nickname, profile?.full_name, user?.email);
   const text = `${greetingFor(now)}${name ? `, ${name}` : ""}`;
@@ -213,6 +219,7 @@ function GreetingEditor({
 /* ─────────────── Sections and cards ─────────────── */
 
 const CLOCK = "M12 7v5l3 2M12 3a9 9 0 100 18 9 9 0 000-18z";
+const TASKS = "M4 5h4v4H4zM4 15h4v4H4zM11 7h9M11 17h9";
 
 function Section({ title, icon, children }: { title: string; icon: string; children: ReactNode }) {
   return (

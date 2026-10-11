@@ -27,6 +27,8 @@ export type PageListItem = Pick<
   is_database?: boolean;
   /** Order among siblings in the tree (pages.position). */
   position?: number | null;
+  /** A task database's settings (src/lib/tasks.ts), or null. */
+  task_config?: PageRow["task_config"];
 };
 
 export type PageFull = Omit<PageRow, "search_tsv"> & {

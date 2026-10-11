@@ -66,7 +66,7 @@ export function useSetPageProperty() {
   const views = (shell.views.data ?? []) as ViewRow[];
 
   return useMutation({
-    mutationFn: async (v: { pageId: string; key: string; value: unknown }) => {
+    mutationFn: async (v: { pageId: string; key: string; value: unknown; quiet?: boolean }) => {
       const { error } = await supabase.rpc("set_page_property", {
         p_page: v.pageId,
         p_key: v.key,
@@ -138,7 +138,8 @@ export function useSetPageProperty() {
       toast.push(`Couldn't save: ${msg}`);
     },
     onSuccess: (_data, v, ctx) => {
-      if (!ctx) return;
+      // The caller says what happened (My tasks offers Undo instead).
+      if (!ctx || v.quiet) return;
       const entered = [...ctx.after].filter((id) => !ctx.before.has(id));
       const left = [...ctx.before].filter((id) => !ctx.after.has(id));
       const nameOf = (id: string) => views.find((x) => x.id === id)?.name ?? "view";

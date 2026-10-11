@@ -33,6 +33,7 @@ import {
 } from "@/hooks/use-page-mutations";
 import type { PageListItem, PageFull, Block } from "@/lib/types";
 import { ExportDialog } from "./export-dialog";
+import { TaskDatabaseDialog } from "./task-database-dialog";
 import type { ExportContext } from "@/lib/export";
 
 
@@ -402,6 +403,7 @@ export function PageTopbarActions({
   }, [listRow, doCopyLink, doDuplicate]);
 
   const [exportOpen, setExportOpen] = useState(false);
+  const [tasksOpen, setTasksOpen] = useState(false);
 
   const exportCtx: ExportContext | null = useMemo(() => {
     if (!page) return null;
@@ -500,6 +502,7 @@ export function PageTopbarActions({
           handlers={{
             onCopyLink: () => { void doCopyLink(); },
             onExport: () => setExportOpen(true),
+            onTaskDatabase: () => setTasksOpen(true),
             onDuplicate: () => { void doDuplicate(); },
             onOpenHistory: () => openPageHistory(page.id),
             onToggleTemplate: () =>
@@ -525,6 +528,13 @@ export function PageTopbarActions({
       {exportOpen && exportCtx && (
         <ExportDialog ctx={exportCtx} onClose={() => setExportOpen(false)} />
       )}
+      {tasksOpen && page?.is_database ? (
+        <TaskDatabaseDialog
+          databaseId={page.id}
+          title={page.title || "Untitled"}
+          onClose={() => setTasksOpen(false)}
+        />
+      ) : null}
     </>
   );
 }
