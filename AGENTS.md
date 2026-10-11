@@ -354,6 +354,38 @@ provider Virgilio already has; don't build them until asked.
 - Wrap text is per view (views.config.wrap); a wrapped cell grows to its
   text. It counts as a view change like shown properties.
 
+## Decisions (Allan, 2026-10-11: Notion's full column menu)
+- A table heading's menu, top to bottom: the name field with the type's
+  icon (Change type) and ⓘ (Description) beside it; Edit property ›,
+  Property access ›, Change type ›; Filter, Sort › (A → Z / Z → A, 1 → 9,
+  Old → New), Group, Calculate › (None, Count ›, Percent ›, then the
+  type's own), Freeze, Hide, Wrap / Unwrap content, Move left / right,
+  Reset width; Insert left / right; Duplicate property, Delete property
+  (an archive, owners, restorable). AI Autofill is out of scope.
+- Edit property holds what a type sets: options, number format, ID
+  prefix, formula, and for a person Limit (config.limit = 1, or no limit),
+  Default (config.default: "me" = whoever adds the row, or a member; given
+  by the pages_0c_defaults trigger) and Notifications (config.notify,
+  on unless false: notify_person_added writes "person_added" to the inbox
+  of people added, never yourself, only people who can open the row).
+- A person value is a member id or a list of them (src/lib/person-value.ts,
+  person_ids in SQL); without a limit a pick adds or takes off.
+- Property access (config.access = "owners"): only workspace owners change
+  the property's values (validate_page_props; a new row may start with the
+  default); only owners set it (guard_property_access). It survives a
+  change of type.
+- Description: property_defs.description (≤ 280), the heading's tooltip.
+- Change type works with values: change_property_type converts every value
+  that reads in the new type (options made from the words for a select or
+  status, people matched by name or email…), clears the rest, and keeps
+  the old values in property_type_changes so undo_property_type_change
+  (the same person, within an hour) puts everything back. It refuses when
+  rows the person can't edit hold values. Relations, rollups, formulas and
+  IDs keep their type.
+- Freeze is per view (views.config.freeze = the last frozen property): the
+  title and properties up to it stay while the table scrolls sideways
+  (.gio-frozen, lefts measured from the headings).
+
 ## Decisions (Allan, 2026-10-11: page view of a database's rows)
 - pages.page_layout on a DATABASE says how its rows show their properties
   when opened as pages (src/lib/page-layout.ts): an order, and per

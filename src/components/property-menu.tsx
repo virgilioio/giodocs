@@ -1,7 +1,10 @@
-/* A property's column menu (Notion's): rename it, change its type, edit
- * its options (name, colour, order, remove an unused one), insert a new
- * property beside it, filter, wrap, duplicate, archive. The database
- * decides who may do each (guard_property_def, RLS, the option functions);
+/* A property's column menu (Notion's, 2026-10-11): the name field with the
+ * type's icon (Change type) and ⓘ (Description) beside it; Edit property
+ * (what the type has to set: options, number format, ID prefix, formula, a
+ * person's limit, default and notifications); Property access; Change type
+ * (values convert, with Undo); Insert left / right; Duplicate; Delete. The
+ * database decides who may do each (guard_property_def,
+ * guard_property_config, guard_property_access, change_property_type);
  * this only offers what the person can do and explains what they can't. */
 
 import { useCallback, useMemo, useRef } from "react";
@@ -21,10 +24,14 @@ import {
   useSetOptionColor,
   useSetOptionGroup,
   useSetPropertyArchived,
+  useChangePropertyType,
   useSetPropertyConfig,
+  useUndoPropertyTypeChange,
   useUpdateProperty,
   type OptionColor,
 } from "@/hooks/use-property-mutations";
+import { useToast } from "@/lib/toast";
+import { onePersonOnly } from "@/lib/person-value";
 import { PROPERTY_KINDS, kindLabel, type PropertyType } from "@/lib/property-kinds";
 import { GROUP_LABELS, groupOf, type StatusGroup } from "@/lib/status-groups";
 import {
@@ -56,11 +63,19 @@ const COLOR_NAMES: Record<OptionColor, string> = {
   red: "Red",
 };
 
-/** Types a property can be changed to from its menu (relations and
- *  rollups need settings: make those as new properties). */
-const RETYPE_TO = PROPERTY_KINDS.filter(
-  (k) => k.type !== "relation" && k.type !== "rollup" && k.type !== "formula",
+/** Types a property can be changed to from its menu, values and all
+ *  (change_property_type). Relations, rollups, formulas and IDs need
+ *  settings or numbering: make those as new properties. */
+const RETYPE_TO = PROPERTY_KINDS.filter((k) =>
+  ["text", "number", "select", "multi_select", "status", "date", "person", "files", "checkbox", "url", "email", "phone"].includes(k.type),
 );
+/** Types whose values only they can hold: they keep their type. */
+const FIXED_TYPES = new Set(["relation", "rollup", "formula", "unique_id", "links"]);
+
+const ICON_INFO = "M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17zM12 11v5M12 7.6v.4";
+const ICON_LOCK = "M7 11V8a5 5 0 0 1 10 0v3M5.5 11h13v9h-13z";
+const ICON_SETTINGS = "M4 7h10M18 7h2M4 17h4M12 17h8M14 4.5v5M8 14.5v5";
+const ICON_RETYPE = "M4 8h13l-3-3M20 16H7l3 3";
 
 function optionsOf(d: PropDef | undefined): Opt[] {
   return Array.isArray(d?.options) ? (d!.options as unknown as Opt[]).filter((o) => o && o.value) : [];
@@ -87,6 +102,9 @@ export function usePropertyEditing({
   const removeOption = useRemoveOption();
   const setGroup = useSetOptionGroup();
   const setConfig = useSetPropertyConfig();
+  const changeType = useChangePropertyType();
+  const undoType = useUndoPropertyTypeChange();
+  const toast = useToast();
   const shellDefs = () => (qc.getQueryData<PropDef[]>(qk.propDefs(ws)) ?? allPropDefs) as PropDef[];
 
   const pages = useMemo(() => (shell.pages.data ?? []) as PageListItem[], [shell.pages.data]);
@@ -121,10 +139,19 @@ export function usePropertyEditing({
 
   const editable = !!databaseId;
 
-  /** The rename field for the top of the menu, or undefined. */
-  const renameInput = (key: string, mctx: MenuBuildCtx): MenuSpec["input"] => {
+  /** Settings kept through a config change: who may change the values. */
+  const withAccess = (d: PropDef, cfg: Record<string, unknown>): Record<string, unknown> => {
+    const access = (d.config as { access?: unknown } | null)?.access;
+    return access ? { ...cfg, access } : cfg;
+  };
+
+  /** The rename field for the top of the menu, or undefined. With `back`,
+   *  the type's icon (Change type) and ⓘ (Description) sit beside it. */
+  const renameInput = (key: string, mctx: MenuBuildCtx, back?: () => MenuSpec): MenuSpec["input"] => {
     const d = defOf(key);
     if (!editable || !d || d.is_system) return undefined;
+    const icon = PROPERTY_KINDS.find((k) => k.type === d.type)?.icon ?? IC.dot;
+    const described = !!(d as { description?: string }).description;
     return {
       placeholder: "Property name",
       initial: d.label,
@@ -134,22 +161,106 @@ export function usePropertyEditing({
         if (label && label !== d.label) update.mutate({ id: d.id, patch: { label } });
         mctx.close();
       },
+      ...(back
+        ? {
+            lead: {
+              icon,
+              label: `${kindLabel(d.type)}: change type`,
+              onClick: () => mctx.setSpec(typeSpec(key, mctx, back)),
+            },
+            trail: {
+              icon: ICON_INFO,
+              label: described ? "Edit description" : "Add a description",
+              active: described,
+              onClick: () => mctx.setSpec(describeSpec(key, mctx, back)),
+            },
+          }
+        : null),
     };
+  };
+
+  const describeSpec = (key: string, mctx: MenuBuildCtx, back: () => MenuSpec): MenuSpec => {
+    const d = defOf(key)!;
+    const current = String((d as { description?: string }).description ?? "");
+    return {
+      title: "Description",
+      onBack: () => mctx.setSpec(back()),
+      inputFirst: true,
+      width: 300,
+      rows: current
+        ? [
+            {
+              kind: "row",
+              label: "Remove the description",
+              icon: IC.trash,
+              onPick: () => {
+                update.mutate({ id: d.id, patch: { description: "" } });
+                mctx.setSpec(back());
+              },
+            },
+          ]
+        : [],
+      input: {
+        placeholder: "What this property is for",
+        initial: current,
+        selectOnFocus: true,
+        keepOpen: true,
+        onCommit: (v) => {
+          update.mutate({ id: d.id, patch: { description: v } });
+          mctx.setSpec(back());
+        },
+      },
+      footer: "Shown when someone points at the property's heading. Up to 280 characters; Enter saves.",
+    };
+  };
+
+  const retype = (d: PropDef, type: PropertyType) => {
+    const from = kindLabel(d.type);
+    const to = kindLabel(type);
+    changeType.mutate(
+      { id: d.id, type },
+      {
+        onSuccess: (r) => {
+          const kept = r.converted ?? 0;
+          const cleared = r.cleared ?? 0;
+          const words =
+            kept + cleared === 0
+              ? `"${d.label}" is ${to} now.`
+              : `"${d.label}" is ${to} now: ${kept} ${kept === 1 ? "value" : "values"} kept` +
+                (cleared ? `, ${cleared} cleared (they didn't read as ${to.toLowerCase()}).` : ".");
+          toast.push({
+            message: words,
+            action: r.change_id
+              ? {
+                  label: "Undo",
+                  onClick: () =>
+                    undoType.mutate(r.change_id!, {
+                      onSuccess: () => toast.push(`"${d.label}" is ${from} again, with its values.`),
+                    }),
+                }
+              : undefined,
+            durationMs: 10000,
+          });
+        },
+        onError: (e) => toast.push(`Couldn't change the type: ${(e as Error).message}`),
+      },
+    );
   };
 
   const typeSpec = (key: string, mctx: MenuBuildCtx, back: () => MenuSpec): MenuSpec => {
     const d = defOf(key)!;
-    const used = rowsUsing(key);
-    if (used > 0) {
+    const fixed = FIXED_TYPES.has(d.type) || !!(d.config as { of?: string } | null)?.of;
+    if (fixed) {
       return {
-        title: "Type",
-        rows: [{ kind: "row", label: kindLabel(d.type), checked: true, icon: IC.dot, onPick: () => mctx.setSpec(back()) }],
+        title: "Change type",
+        rows: [{ kind: "row", label: kindLabel(d.type), checked: true, icon: PROPERTY_KINDS.find((k) => k.type === d.type)?.icon ?? IC.dot, onPick: () => mctx.setSpec(back()) }],
         onBack: () => mctx.setSpec(back()),
-        footer: `${used} ${used === 1 ? "row has" : "rows have"} a value for ${d.label}, so its type can't change. Duplicate it, or add a new property of the type you need.`,
+        footer: `A ${kindLabel(d.type).toLowerCase()} property keeps its type. Add a new property of the type you need.`,
       };
     }
+    const used = rowsUsing(key);
     return {
-      title: "Type",
+      title: "Change type",
       onBack: () => mctx.setSpec(back()),
       maxHeight: 460,
       rows: RETYPE_TO.map((k) => ({
@@ -158,11 +269,31 @@ export function usePropertyEditing({
         icon: k.icon,
         checked: k.type === d.type,
         onPick: () => {
-          if (k.type !== d.type) update.mutate({ id: d.id, patch: { type: k.type as PropertyType } });
-          mctx.close();
+          if (k.type === d.type) {
+            mctx.setSpec(back());
+            return;
+          }
+          if (used === 0) {
+            retype(d, k.type as PropertyType);
+            mctx.close();
+            return;
+          }
+          mctx.setSpec({
+            title: "Change type",
+            rows: [],
+            onBack: () => mctx.setSpec(typeSpec(key, mctx, back)),
+            confirm: {
+              title: `Change "${d.label}" to ${k.label}?`,
+              body: `${used} ${used === 1 ? "row has a value" : "rows have values"}. Values that read as ${k.label.toLowerCase()} are kept; the others are cleared. Undo puts every value back.`,
+              cta: "Change type",
+              onConfirm: () => retype(d, k.type as PropertyType),
+            },
+          });
         },
       })),
-      footer: "The type can change while no row has a value.",
+      footer: used
+        ? `${used} ${used === 1 ? "row has a value" : "rows have values"}: they're converted, and Undo puts them back.`
+        : undefined,
     };
   };
 
@@ -278,25 +409,17 @@ export function usePropertyEditing({
     };
   };
 
-  /** Rows that change the property itself: Type and Edit options. */
-  const editRows = (key: string, mctx: MenuBuildCtx, back: () => MenuSpec): MenuRow[] => {
+  /** What a type has to set, inside Edit property. */
+  const settingsRows = (key: string, mctx: MenuBuildCtx, back: () => MenuSpec): MenuRow[] => {
     const d = defOf(key);
-    if (!editable || !d || d.is_system) return [];
+    if (!d) return [];
     const rows: MenuRow[] = [];
-    if (d.type !== "relation" && d.type !== "rollup" && !(d.config as { of?: string } | null)?.of)
-      rows.push({
-        kind: "row",
-        label: "Type",
-        icon: PROPERTY_KINDS.find((k) => k.type === d.type)?.icon ?? IC.dot,
-        hint: { text: kindLabel(d.type) },
-        onPick: () => mctx.setSpec(typeSpec(key, mctx, back)),
-      });
     if (d.type === "select" || d.type === "status")
       rows.push({
         kind: "row",
         label: "Edit options",
         icon: IC.tag,
-        hint: { text: String(optionsOf(d).length) },
+        hint: { text: `${optionsOf(d).length} ›` },
         onPick: () => mctx.setSpec(optionsSpec(key, mctx, back)),
       });
     if (d.type === "number") {
@@ -305,7 +428,7 @@ export function usePropertyEditing({
         kind: "row",
         label: "Number format",
         icon: "M9 4 7 20M17 4l-2 16M4 9h16M3 15h16",
-        hint: { text: f.format === "currency" ? `${FORMAT_LABELS.currency} (${f.currency ?? "USD"})` : FORMAT_LABELS[f.format ?? "number"] },
+        hint: { text: (f.format === "currency" ? `${FORMAT_LABELS.currency} (${f.currency ?? "USD"})` : FORMAT_LABELS[f.format ?? "number"]) + " ›" },
         onPick: () => mctx.setSpec(numberSpec(key, mctx, back)),
       });
     }
@@ -315,7 +438,7 @@ export function usePropertyEditing({
         kind: "row",
         label: "ID prefix",
         icon: "M4 9h16M4 15h16M10 3 8 21M16 3l-2 18",
-        hint: { text: prefix ? `${prefix}-1` : "1, 2, 3…" },
+        hint: { text: (prefix ? `${prefix}-1` : "1, 2, 3…") + " ›" },
         onPick: () =>
           mctx.setSpec({
             title: "ID prefix",
@@ -329,7 +452,7 @@ export function usePropertyEditing({
               onCommit: (v) => {
                 const next = v.trim().toUpperCase();
                 if (!/^[A-Z0-9]{0,10}$/.test(next)) return;
-                setConfig.mutate({ id: d.id, config: next ? { prefix: next } : {} });
+                setConfig.mutate({ id: d.id, config: withAccess(d, next ? { prefix: next } : {}) });
               },
             },
             footer: "Every row gets the next number when it's made: REQ-1, REQ-2… Up to 10 letters and digits; leave it empty for plain numbers.",
@@ -342,10 +465,153 @@ export function usePropertyEditing({
         kind: "row",
         label: "Edit formula",
         icon: "M5 5h6M5 19c4 0 3-14 7-14M9 12h6M15 9l5 6M20 9l-5 6",
-        hint: { text: expr ? "set" : "empty" },
+        hint: { text: (expr ? "set" : "empty") + " ›" },
         onPick: () => mctx.setSpec(formulaSpec(key, mctx, back)),
       });
     }
+    if (d.type === "person") rows.push(...personRows(key, mctx, back));
+    return rows;
+  };
+
+  /** A person property: Limit, Default and Notifications (Notion's). */
+  const personRows = (key: string, mctx: MenuBuildCtx, back: () => MenuSpec): MenuRow[] => {
+    const d = defOf(key)!;
+    const cfg = { ...((d.config as Record<string, unknown> | null) ?? {}) };
+    const one = onePersonOnly(d);
+    const def = typeof cfg.default === "string" ? cfg.default : null;
+    const notify = cfg.notify !== false;
+    const members = (shell.members.data ?? []) as Array<{ user_id: string; profiles?: { full_name?: string | null; email?: string | null } | null }>;
+    const nameOfId = (id: string) => {
+      const m = members.find((x) => x.user_id === id);
+      return m?.profiles?.full_name || m?.profiles?.email || "Someone";
+    };
+    const save = (next: Record<string, unknown>, after: () => MenuSpec) =>
+      setConfig.mutate({ id: d.id, config: next }, { onSettled: () => mctx.setSpec(after()) });
+    const without = (k: string) => {
+      const c = { ...cfg };
+      delete c[k];
+      return c;
+    };
+    const here = () => ({ title: "Edit property", onBack: () => mctx.setSpec(back()), rows: settingsRows(key, mctx, back) }) as MenuSpec;
+    return [
+      {
+        kind: "row",
+        label: "Limit",
+        icon: "M5 7h2v10M11 9a2 2 0 1 1 4 0c0 2-4 3-4 8h4M19 7h-1",
+        hint: { text: (one ? "1 person" : "No limit") + " ›" },
+        onPick: () =>
+          mctx.setSpec({
+            title: "Limit",
+            onBack: () => mctx.setSpec(here()),
+            rows: [
+              { kind: "row", label: "No limit", checked: !one, onPick: () => save(without("limit"), here) },
+              { kind: "row", label: "1 person", checked: one, onPick: () => save({ ...cfg, limit: 1 }, here) },
+            ],
+            footer: "With a limit, picking someone replaces who was there. Rows that already have several people keep them until they're changed.",
+          }),
+      },
+      {
+        kind: "row",
+        label: "Default",
+        icon: "M12 3.4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 20.6v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2",
+        hint: { text: (def === "me" ? "Whoever adds it" : def ? nameOfId(def) : "No default") + " ›" },
+        onPick: () =>
+          mctx.setSpec({
+            title: "Default",
+            onBack: () => mctx.setSpec(here()),
+            maxHeight: 420,
+            rows: [
+              { kind: "row", label: "No default", checked: !def, onPick: () => save(without("default"), here) },
+              { kind: "row", label: "Whoever adds the row", checked: def === "me", onPick: () => save({ ...cfg, default: "me" }, here) },
+              { kind: "sep" },
+              ...members.map((m) => ({
+                kind: "row" as const,
+                label: nameOfId(m.user_id),
+                checked: def === m.user_id,
+                onPick: () => save({ ...cfg, default: m.user_id }, here),
+              })),
+            ],
+            footer: "New rows start with this person.",
+          }),
+      },
+      {
+        kind: "row",
+        label: "Notifications",
+        icon: "M6 9a6 6 0 1 1 12 0c0 4.5 1.8 6 1.8 6H4.2S6 13.5 6 9zM10 19a2 2 0 0 0 4 0",
+        hint: { text: (notify ? "People added" : "None") + " ›" },
+        onPick: () =>
+          mctx.setSpec({
+            title: "Notifications",
+            onBack: () => mctx.setSpec(here()),
+            rows: [
+              { kind: "row", label: "Notify people added", checked: notify, onPick: () => save(without("notify"), here) },
+              { kind: "row", label: "No notifications", checked: !notify, onPick: () => save({ ...cfg, notify: false }, here) },
+            ],
+            footer: "Someone added to this property hears about it in their Inbox (never for adding yourself).",
+          }),
+      },
+    ];
+  };
+
+  /** Who may change the values: anyone who can edit the row, or owners. */
+  const accessSpec = (key: string, mctx: MenuBuildCtx, back: () => MenuSpec): MenuSpec => {
+    const d = defOf(key)!;
+    const cfg = { ...((d.config as Record<string, unknown> | null) ?? {}) };
+    const owners = cfg.access === "owners";
+    const set = (toOwners: boolean) => {
+      const next = { ...cfg };
+      if (toOwners) next.access = "owners";
+      else delete next.access;
+      setConfig.mutate({ id: d.id, config: next }, { onSettled: () => mctx.setSpec(accessSpec(key, mctx, back)) });
+    };
+    return {
+      title: "Property access",
+      onBack: () => mctx.setSpec(back()),
+      rows: [
+        { kind: "row", label: "Anyone who can edit the row", checked: !owners, onPick: () => (isOwner ? set(false) : undefined) },
+        { kind: "row", label: "Only workspace owners", checked: owners, onPick: () => (isOwner ? set(true) : undefined) },
+      ],
+      footer: isOwner
+        ? `Who can change the values of "${d.label}". Everyone who can open a row still sees them.`
+        : `Only workspace owners decide who can change "${d.label}".`,
+    };
+  };
+
+  /** Rows that change the property itself: Edit property, Property access
+   *  and Change type. */
+  const editRows = (key: string, mctx: MenuBuildCtx, back: () => MenuSpec): MenuRow[] => {
+    const d = defOf(key);
+    if (!editable || !d || d.is_system) return [];
+    const rows: MenuRow[] = [];
+    const settings = settingsRows(key, mctx, back);
+    if (settings.length)
+      rows.push({
+        kind: "row",
+        label: "Edit property",
+        icon: ICON_SETTINGS,
+        hint: { text: "›" },
+        onPick: () =>
+          mctx.setSpec({
+            title: "Edit property",
+            onBack: () => mctx.setSpec(back()),
+            rows: settingsRows(key, mctx, back),
+          }),
+      });
+    const owners = (d.config as { access?: string } | null)?.access === "owners";
+    rows.push({
+      kind: "row",
+      label: "Property access",
+      icon: ICON_LOCK,
+      hint: { text: (owners ? "Owners" : "Everyone") + " ›" },
+      onPick: () => mctx.setSpec(accessSpec(key, mctx, back)),
+    });
+    rows.push({
+      kind: "row",
+      label: "Change type",
+      icon: ICON_RETYPE,
+      hint: { text: `${kindLabel(d.type)} ›` },
+      onPick: () => mctx.setSpec(typeSpec(key, mctx, back)),
+    });
     return rows;
   };
 
@@ -358,7 +624,7 @@ export function usePropertyEditing({
       if (next.format && next.format !== "number") cfg.format = next.format;
       if (next.format === "currency") cfg.currency = next.currency ?? "USD";
       if (next.decimals !== undefined) cfg.decimals = next.decimals;
-      setConfig.mutate({ id: d.id, config: cfg }, { onSettled: () => mctx.setSpec(here()) });
+      setConfig.mutate({ id: d.id, config: withAccess(d, cfg) }, { onSettled: () => mctx.setSpec(here()) });
     };
     const sample = formatNumber(1234.5, f);
     const rows: MenuRow[] = (Object.keys(FORMAT_LABELS) as NumberFormatKind[]).map((k) => ({
@@ -414,7 +680,7 @@ export function usePropertyEditing({
         selectOnFocus: false,
         onCommit: (v) => {
           const next = v.trim().replace(/^=/, "");
-          setConfig.mutate({ id: d.id, config: next ? { expression: next } : {} });
+          setConfig.mutate({ id: d.id, config: withAccess(d, next ? { expression: next } : {}) });
         },
       },
       footer:
@@ -488,7 +754,7 @@ export function usePropertyEditing({
     if (isOwner)
       rows.push({
         kind: "row",
-        label: "Archive property",
+        label: "Delete property",
         icon: IC.trash,
         danger: true,
         onPick: () =>
@@ -497,9 +763,9 @@ export function usePropertyEditing({
             rows: [],
             onBack: () => mctx.setSpec(back()),
             confirm: {
-              title: `Archive "${d.label}"?`,
-              body: "It leaves every view and page of this database. Its values stay, and Undo or Settings › Properties brings it back.",
-              cta: "Archive",
+              title: `Delete "${d.label}"?`,
+              body: "It leaves every view and page of this database. Its values are kept, so Undo or Settings › Properties brings it back.",
+              cta: "Delete property",
               danger: true,
               onConfirm: () => archive.mutate({ id: d.id, label: d.label, archived: true }),
             },
@@ -512,7 +778,7 @@ export function usePropertyEditing({
     const d = defOf(key);
     if (!d) return undefined;
     if (d.is_system) return "A built-in property: its name and type stay as they are.";
-    if (editable && !isOwner) return "Only workspace owners can archive a property.";
+    if (editable && !isOwner) return "Only workspace owners can delete a property.";
     return undefined;
   };
 

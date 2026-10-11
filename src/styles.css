@@ -799,6 +799,20 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
 .gio-db-tools[data-always] { opacity: 1; }
 @media (hover: none) { .gio-db-tools { opacity: 1; } }
 
+/* Frozen properties (a table's Freeze): they stay while the table scrolls
+   sideways. In the components layer so a row's hover and selection
+   colours (utilities) still paint over the surface behind them. */
+@layer components {
+  .gio-frozen {
+    position: sticky;
+    z-index: 1;
+    background-color: var(--color-surface);
+  }
+  .gio-frozen-edge {
+    box-shadow: inset -1px 0 0 var(--color-line);
+  }
+}
+
 /* ─────────────── Phone frame (2026-10-11) ───────────────
  * Below 768px (src/lib/use-media.ts, phone-shell.tsx): top tabs, floating
  * round buttons and bars, bottom sheets. Safe areas keep them clear of the

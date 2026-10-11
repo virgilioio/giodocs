@@ -17,6 +17,9 @@ export type ViewConfig = {
   group?: string | null;
   /** Properties whose cells wrap onto several lines instead of cutting off. */
   wrap?: string[];
+  /** Freeze: the table's properties up to and including this one stay put
+   *  while it scrolls sideways (Notion's Freeze). */
+  freeze?: string | null;
 };
 
 export type ConfigPropDef = {
@@ -151,6 +154,7 @@ export function readConfig(raw: unknown): ViewConfig {
     const w = [...new Set(r.wrap.filter((k): k is string => typeof k === "string" && !!k))];
     if (w.length) out.wrap = w;
   }
+  if (typeof r.freeze === "string" && r.freeze) out.freeze = r.freeze;
   return out;
 }
 

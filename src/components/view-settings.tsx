@@ -208,7 +208,7 @@ export function useViewSettings(args: ViewSettingsArgs) {
                 const one = (): MenuSpec => ({
                   title: d.label,
                   onBack: () => mctx.setSpec(list()),
-                  input: editing.renameInput(d.key, mctx),
+                  input: editing.renameInput(d.key, mctx, one),
                   inputFirst: true,
                   maxHeight: 420,
                   rows: [

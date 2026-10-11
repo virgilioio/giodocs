@@ -133,7 +133,7 @@ export function useUpdateProperty() {
       id: string;
       /** Options change one at a time: useAddPropertyOption /
        *  useRenamePropertyOption. */
-      patch: { label?: string; type?: PropertyType };
+      patch: { label?: string; type?: PropertyType; description?: string };
     }) => {
       const patch: Database["public"]["Tables"]["property_defs"]["Update"] = {};
       if (v.patch.label !== undefined) {
@@ -142,6 +142,7 @@ export function useUpdateProperty() {
         patch.label = label;
       }
       if (v.patch.type !== undefined) patch.type = v.patch.type;
+      if (v.patch.description !== undefined) patch.description = v.patch.description.trim().slice(0, 280);
       const { error } = await supabase.from("property_defs").update(patch).eq("id", v.id);
       if (error) throw error;
     },
@@ -156,6 +157,7 @@ export function useUpdateProperty() {
                 ...d,
                 ...(v.patch.label !== undefined ? { label: v.patch.label.trim() } : null),
                 ...(v.patch.type !== undefined ? { type: v.patch.type } : null),
+                ...(v.patch.description !== undefined ? { description: v.patch.description.trim().slice(0, 280) } : null),
               }
             : d,
         );
@@ -473,4 +475,40 @@ export function useSetOptionGroup() {
     (opts, v) => opts.map((o) => (o.value === v.value ? ({ ...o, group: v.group } as OptionRow) : o)),
     "Couldn't change the group",
   );
+}
+
+/** Change a property's type with its values (change_property_type): every
+ *  value that reads in the new type is kept, the rest cleared; the old
+ *  values are kept so the change can be undone for an hour. */
+export function useChangePropertyType() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  return useMutation({
+    mutationFn: async (v: { id: string; type: PropertyType }) => {
+      const { data, error } = await supabase.rpc("change_property_type", { p_def: v.id, p_type: v.type });
+      if (error) throw new Error(message(error));
+      return (data ?? {}) as { change_id?: string | null; converted?: number; cleared?: number };
+    },
+    onSettled: () => {
+      refresh(qc, ws);
+      void qc.invalidateQueries({ queryKey: qk.pages(ws) });
+    },
+  });
+}
+
+export function useUndoPropertyTypeChange() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (changeId: string) => {
+      const { error } = await supabase.rpc("undo_property_type_change", { p_change: changeId });
+      if (error) throw error;
+    },
+    onError: (err) => toast.push(`Couldn't undo: ${message(err)}`),
+    onSettled: () => {
+      refresh(qc, ws);
+      void qc.invalidateQueries({ queryKey: qk.pages(ws) });
+    },
+  });
 }

@@ -79,6 +79,10 @@ export type MenuSpec = {
     onCommit: (v: string) => void;
     /** Committing leads to another step (the caller swaps the spec). */
     keepOpen?: boolean;
+    /** A small square button before the field (a property's type icon). */
+    lead?: { icon: string; label: string; onClick: () => void };
+    /** A small button inside the field's end (a property's ⓘ). */
+    trail?: { icon: string; label: string; onClick: () => void; active?: boolean };
   };
   confirm?: {
     title: string;
@@ -692,6 +696,23 @@ function SpecInput({
           : { borderTop: "1px solid var(--color-lineSoft)", margin: 4, paddingTop: 5 }
       }
     >
+      <div className="flex items-center" style={{ gap: 6 }}>
+      {input.lead ? (
+        <button
+          type="button"
+          aria-label={input.lead.label}
+          title={input.lead.label}
+          data-menu-input-lead
+          onClick={input.lead.onClick}
+          className="grid shrink-0 place-items-center rounded-md border border-line bg-surface text-muted hover:bg-rail hover:text-strong"
+          style={{ width: 32, height: 32 }}
+        >
+          <svg viewBox="0 0 24 24" width={16} height={16} aria-hidden fill="none">
+            <path d={input.lead.icon} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      ) : null}
+      <div className="relative min-w-0 flex-1">
       <input
         ref={ref}
         value={value}
@@ -711,12 +732,29 @@ function SpecInput({
         className="w-full bg-rail focus:outline-none"
         style={{
           borderRadius: 7,
-          padding: "7px 10px",
+          padding: input.trail ? "7px 34px 7px 10px" : "7px 10px",
           fontSize: 14,
           color: "var(--color-body)",
           border: "none",
         }}
       />
+      {input.trail ? (
+        <button
+          type="button"
+          aria-label={input.trail.label}
+          title={input.trail.label}
+          data-menu-input-trail
+          onClick={input.trail.onClick}
+          className={`absolute grid place-items-center rounded-full hover:bg-railHover ${input.trail.active ? "text-strong" : "text-faint"}`}
+          style={{ right: 6, top: "50%", translate: "0 -50%", width: 24, height: 24 }}
+        >
+          <svg viewBox="0 0 24 24" width={16} height={16} aria-hidden fill="none">
+            <path d={input.trail.icon} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      ) : null}
+      </div>
+      </div>
     </div>
   );
 }

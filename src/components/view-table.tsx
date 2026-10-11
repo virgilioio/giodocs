@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { openPageSomewhere } from "@/lib/peek";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -77,6 +77,7 @@ import {
 } from "./property-pickers";
 import { IC } from "@/lib/menu-icons";
 import { useIsPhone } from "@/lib/use-media";
+import { onePersonOnly, personIds } from "@/lib/person-value";
 
 /* The table layout of a view. Which properties it shows, in which order and
  * how wide, come from the view's config (src/lib/view-config.ts); every
@@ -228,26 +229,55 @@ function PersonCell({
   value,
   members,
   emptyLabel,
+  multi,
   onPick,
 }: {
   value: unknown;
   members: TableMember[];
   emptyLabel: string;
-  onPick: (userId: string | null) => void;
+  /** No limit: several people. */
+  multi: boolean;
+  onPick: (next: string | string[] | null) => void;
 }) {
-  const current = members.find((m) => m.user_id === value);
+  const people = personIds(value)
+    .map((id) => members.find((m) => m.user_id === id))
+    .filter((m): m is TableMember => !!m);
   return (
     <OwnerPicker
-      value={typeof value === "string" ? value : null}
+      value={value}
+      multi={multi}
       members={members}
       onPick={onPick}
       emptyLabel={emptyLabel}
       trigger={({ onClick, ref }) => (
         <button ref={ref} type="button" onClick={onClick} className="flex min-w-0 flex-1 text-left">
-          {current ? <PersonView member={current} /> : <span className="text-faint">—</span>}
+          {people.length === 0 ? (
+            <span className="text-faint">—</span>
+          ) : people.length === 1 ? (
+            <PersonView member={people[0]} />
+          ) : (
+            <PeopleView members={people} />
+          )}
         </button>
       )}
     />
+  );
+}
+
+/** Several people in one cell: their faces overlapping, then the names. */
+function PeopleView({ members }: { members: TableMember[] }) {
+  const names = members.map((m) => m.profiles?.full_name || m.profiles?.email || "Unknown");
+  return (
+    <span className="flex min-w-0 items-center" style={{ gap: 6 }}>
+      <span className="flex shrink-0">
+        {members.slice(0, 3).map((m, i) => (
+          <span key={m.user_id} style={{ marginLeft: i ? -6 : 0, borderRadius: 999, boxShadow: "0 0 0 2px var(--color-surface)" }}>
+            <MiniAvatar profile={m.profiles} />
+          </span>
+        ))}
+      </span>
+      <span className="min-w-0 truncate text-meta text-body">{names.join(", ")}</span>
+    </span>
   );
 }
 
@@ -524,6 +554,7 @@ function ValueCell({ page, k, ctx }: { page: PageListItem; k: string; ctx: CellC
       return (
         <PersonCell
           value={raw}
+          multi={!onePersonOnly(def)}
           members={ctx.members}
           emptyLabel={k === "owner" ? "No owner" : "No one"}
           onPick={set}
@@ -585,6 +616,20 @@ function cellClass(selected: boolean, edge?: boolean, extra = ""): string {
   );
 }
 
+/** A frozen cell's class and its place from the left (Freeze): the
+ *  gutter ("") sits at 0, each frozen property at its measured left. */
+function frozenOf(frozen: readonly string[], k: string): { cls: string; style?: React.CSSProperties } {
+  if (frozen.length === 0) return { cls: "" };
+  if (k === "") return { cls: " gio-frozen sticky", style: { left: 0 } };
+  const i = frozen.indexOf(k);
+  if (i < 0) return { cls: "" };
+  return {
+    // "sticky" as a utility too: it outranks a heading's own "relative".
+    cls: " gio-frozen sticky" + (i === frozen.length - 1 ? " gio-frozen-edge" : ""),
+    style: { left: `var(--fz-${i}, 0px)` },
+  };
+}
+
 const TableRow = memo(function TableRow({
   p,
   shown,
@@ -598,9 +643,12 @@ const TableRow = memo(function TableRow({
   onEditDone,
   selectable,
   wrapped,
+  frozen,
 }: {
   p: PageListItem;
   shown: string[];
+  /** Freeze: the title and properties that stay while the table scrolls. */
+  frozen: readonly string[];
   ctx: CellCtx;
   rename: RenameFn;
   selected: boolean;
@@ -615,7 +663,7 @@ const TableRow = memo(function TableRow({
 }) {
   return (
     <div className="contents group" role="row">
-      <div data-page-id={p.id} className={cellClass(selected, true)}>
+      <div data-page-id={p.id} className={cellClass(selected, true) + frozenOf(frozen, "").cls} style={frozenOf(frozen, "").style}>
         {selectable ? (
           <RowCheckbox
             checked={selected}
@@ -624,7 +672,7 @@ const TableRow = memo(function TableRow({
           />
         ) : null}
       </div>
-      <div data-page-id={p.id} role="cell" data-wrap={wrapped.has(TITLE_KEY) || undefined} className={cellClass(selected)}>
+      <div data-page-id={p.id} role="cell" data-wrap={wrapped.has(TITLE_KEY) || undefined} className={cellClass(selected) + frozenOf(frozen, TITLE_KEY).cls} style={frozenOf(frozen, TITLE_KEY).style}>
         <PageTitleCell
           page={p}
           onSave={(t) => rename({ pageId: p.id, title: t })}
@@ -633,7 +681,7 @@ const TableRow = memo(function TableRow({
         />
       </div>
       {shown.map((k) => (
-        <div key={k} data-page-id={p.id} data-prop={k} role="cell" data-wrap={wrapped.has(k) || undefined} className={cellClass(selected)}>
+        <div key={k} data-page-id={p.id} data-prop={k} role="cell" data-wrap={wrapped.has(k) || undefined} className={cellClass(selected) + frozenOf(frozen, k).cls} style={frozenOf(frozen, k).style}>
           <ValueCell page={p} k={k} ctx={ctx} />
         </div>
       ))}
@@ -798,7 +846,13 @@ function PropHeading({
   onNudgeWidth,
   suppressClick,
   icon,
+  frozen,
+  description,
 }: {
+  /** Freeze: this heading's class and place. */
+  frozen?: { cls: string; style?: React.CSSProperties };
+  /** The property's description: the heading's tooltip. */
+  description?: string;
   /** The property type's icon (a path), or "Aa" for the title. */
   icon?: string;
   k: string;
@@ -821,11 +875,12 @@ function PropHeading({
       role="columnheader"
       aria-sort={sortDir === "asc" ? "ascending" : sortDir === "desc" ? "descending" : undefined}
       data-prop-header={k}
-      className={HEAD_CLASS}
-      style={{ ...HEAD_STYLE, opacity: dragging ? 0.45 : 1 }}
+      className={HEAD_CLASS + (frozen?.cls ?? "")}
+      style={{ ...HEAD_STYLE, ...frozen?.style, opacity: dragging ? 0.45 : 1 }}
     >
       <button
         type="button"
+        title={description || undefined}
         className="flex min-w-0 flex-1 items-center gap-1.5 rounded-sm text-left hover:text-strong"
         style={{
           padding: "0 11px",
@@ -1299,7 +1354,9 @@ function CalcRow({
   onPick,
   readValue,
   formatOf,
+  frozen = [],
 }: {
+  frozen?: readonly string[];
   /** A number property's format, for sums and averages. */
   formatOf?: (k: string) => NumberFormat | undefined;
   pages: PageListItem[];
@@ -1316,11 +1373,11 @@ function CalcRow({
   const cell = "flex min-w-0 items-center overflow-hidden border-b border-lineSoft";
   return (
     <div className="contents group/calc" role="row" data-calc-row>
-      <div className={cell} />
+      <div className={cell + frozenOf(frozen, "").cls} style={frozenOf(frozen, "").style} />
       {keys.map((k) => {
         const c = calcs?.[k];
         return (
-          <div key={k} className={cell} style={{ padding: "5px 7px", minHeight: 32 }} data-calc={k}>
+          <div key={k} className={cell + frozenOf(frozen, k).cls} style={{ padding: "5px 7px", minHeight: 32, ...frozenOf(frozen, k).style }} data-calc={k}>
             <CalcCell
               k={k}
               label={labelOf(k)}
@@ -1510,6 +1567,12 @@ export function ViewTable({
 
   const editing = usePropertyEditing({ databaseId, isOwner: !!isOwner });
   const wrapped = useMemo(() => new Set(config.wrap ?? []), [config.wrap]);
+  // Freeze: the title and the properties up to the frozen one.
+  const frozenKeys = useMemo(() => {
+    const all = [TITLE_KEY, ...shown];
+    const i = config.freeze ? all.indexOf(config.freeze) : -1;
+    return i >= 0 ? all.slice(0, i + 1) : [];
+  }, [config.freeze, shown]);
 
   const headingMenu = (k: string, mctx: MenuBuildCtx): MenuSpec => {
     // Every plain choice is final: do it, then close.
@@ -1521,74 +1584,145 @@ export function ViewTable({
       },
     });
     const back = () => headingMenu(k, mctx);
+    const sub = (title: string, rows: MenuRow[], footer?: string): MenuSpec => ({
+      title,
+      rows,
+      footer,
+      onBack: () => mctx.setSpec(back()),
+      width: 240,
+    });
     const isTitle = k === TITLE_KEY;
+    const type = isTitle ? "title" : (typeOf(k) ?? "text");
     const rowsOut: MenuRow[] = [];
+
+    // The property itself: Edit property, Property access, Change type.
     const edit = isTitle ? [] : editing.editRows(k, mctx, back);
     if (edit.length) rowsOut.push(...edit, { kind: "sep" });
+
+    // What this view does with it.
     if (onFilter && !isTitle)
       rowsOut.push(final({ kind: "row", label: "Filter", icon: "M4 6h16M7 12h10M10 18h4", onPick: () => onFilter(k) }));
-    rowsOut.push(
-      final({
-        kind: "row",
-        label: "Sort ascending",
-        icon: IC.chevUp,
-        checked: sortedKey === k && primary?.dir === "asc",
-        onPick: () => onSort({ prop: sortNameOf(k), dir: "asc" }),
-      }),
-      final({
-        kind: "row",
-        label: "Sort descending",
-        icon: IC.chevDown,
-        checked: sortedKey === k && primary?.dir === "desc",
-        onPick: () => onSort({ prop: sortNameOf(k), dir: "desc" }),
-      }),
-    );
+    const [up, down] =
+      type === "number" || type === "unique_id"
+        ? ["1 → 9", "9 → 1"]
+        : type === "date" || type === "timestamp"
+          ? ["Old → New", "New → Old"]
+          : type === "checkbox"
+            ? ["Unchecked first", "Checked first"]
+            : ["A → Z", "Z → A"];
+    const sortedHere = sortedKey === k ? primary?.dir : undefined;
+    rowsOut.push({
+      kind: "row",
+      label: "Sort",
+      icon: "M7 4v12m0 0-3-3m3 3 3-3M17 20V8m0 0-3 3m3-3 3 3",
+      hint: { text: (sortedHere === "asc" ? up : sortedHere === "desc" ? down : "") + " ›" },
+      onPick: () =>
+        mctx.setSpec(
+          sub("Sort", [
+            final({ kind: "row", label: `Sort ${up}`, icon: IC.chevUp, checked: sortedHere === "asc", onPick: () => onSort({ prop: sortNameOf(k), dir: "asc" }) }),
+            final({ kind: "row", label: `Sort ${down}`, icon: IC.chevDown, checked: sortedHere === "desc", onPick: () => onSort({ prop: sortNameOf(k), dir: "desc" }) }),
+          ]),
+        ),
+    });
     if (canArrange) {
-      const i = isTitle ? -1 : shown.indexOf(k);
-      rowsOut.push({ kind: "sep" });
-      rowsOut.push(
-        // The page title is always first: a new property goes to its right.
-        ...editing
-          .insertRows(i, mctx, back, (newKey, at) => onConfig({ ...config, props: insertProp(shown, newKey, at) }))
-          .filter((r) => !isTitle || (r.kind === "row" && r.label === "Insert right")),
-      );
-      if (!isTitle) {
-        if (i > 0)
-          rowsOut.push(
-            final({
-              kind: "row",
-              label: "Move left",
-              icon: "m15 18-6-6 6-6",
-              onPick: () => onConfig({ ...config, props: moveProp(shown, k, i - 1) }),
-            }),
-          );
-        if (i < shown.length - 1)
-          rowsOut.push(
-            final({
-              kind: "row",
-              label: "Move right",
-              icon: IC.open,
-              onPick: () => onConfig({ ...config, props: moveProp(shown, k, i + 1) }),
-            }),
-          );
+      const groupable =
+        !isTitle && (["select", "status", "person", "checkbox"].includes(type) || k === "@created_by" || k === "@edited_by");
+      if (groupable)
         rowsOut.push(
           final({
             kind: "row",
-            label: "Hide in this view",
+            label: groupKey === k ? "Ungroup" : "Group",
+            icon: "M4 5h16M4 12h10M4 19h7",
+            checked: groupKey === k,
+            onPick: () => onConfig({ ...config, group: groupKey === k ? null : k }),
+          }),
+        );
+
+      // Calculate › None, Count ›, Percent ›, then the type's own.
+      const ids = calcsFor(type);
+      const cur = config.calcs?.[k];
+      const setCalc = (c: CalcId | null) => {
+        const calcs = { ...(config.calcs ?? {}) };
+        if (c) calcs[k] = c;
+        else delete calcs[k];
+        onConfig({ ...config, calcs });
+      };
+      const calcRow = (c: CalcId): MenuRow => final({ kind: "row", label: CALC_LABELS[c], checked: cur === c, onPick: () => setCalc(c) });
+      const counts = ids.filter((c) => c.startsWith("count_") || c === "checked" || c === "unchecked");
+      const percents = ids.filter((c) => c.startsWith("percent_"));
+      const others = ids.filter((c) => !counts.includes(c) && !percents.includes(c));
+      const calcSpec = (): MenuSpec =>
+        sub("Calculate", [
+          final({ kind: "row", label: "None", checked: !isCalcId(cur), onPick: () => setCalc(null) }),
+          ...(counts.length > 1
+            ? [
+                {
+                  kind: "row" as const,
+                  label: "Count",
+                  checked: counts.includes(cur as CalcId),
+                  hint: { text: "›" },
+                  onPick: () => mctx.setSpec({ ...sub("Count", counts.map(calcRow)), onBack: () => mctx.setSpec(calcSpec()) }),
+                },
+              ]
+            : counts.map(calcRow)),
+          ...(percents.length
+            ? [
+                {
+                  kind: "row" as const,
+                  label: "Percent",
+                  checked: percents.includes(cur as CalcId),
+                  hint: { text: "›" },
+                  onPick: () => mctx.setSpec({ ...sub("Percent", percents.map(calcRow)), onBack: () => mctx.setSpec(calcSpec()) }),
+                },
+              ]
+            : []),
+          ...(others.length ? [{ kind: "sep" as const }, ...others.map(calcRow)] : []),
+        ], "Shown in the Calculate row under the table.");
+      rowsOut.push({
+        kind: "row",
+        label: "Calculate",
+        icon: "M18 5H6l6 7-6 7h12",
+        hint: { text: (isCalcId(cur) ? CALC_LABELS[cur] : "") + " ›" },
+        onPick: () => mctx.setSpec(calcSpec()),
+      });
+
+      rowsOut.push(
+        final({
+          kind: "row",
+          label: config.freeze === k ? "Unfreeze" : "Freeze",
+          icon: "M12 3v18M5 8l7 4 7-4M5 16l7-4 7 4",
+          checked: config.freeze === k,
+          onPick: () => onConfig({ ...config, freeze: config.freeze === k ? null : k }),
+        }),
+      );
+      const i = isTitle ? -1 : shown.indexOf(k);
+      if (!isTitle)
+        rowsOut.push(
+          final({
+            kind: "row",
+            label: "Hide",
             icon: IC.eyeOff,
             onPick: () => onConfig({ ...config, props: hideProp(shown, k) }),
           }),
         );
-      }
       rowsOut.push(
         final({
           kind: "row",
-          label: "Wrap text",
+          label: wrapped.has(k) ? "Unwrap content" : "Wrap content",
           icon: "M4 6h16M4 12h13a3 3 0 0 1 0 6h-4m0 0 2-2m-2 2 2 2M4 18h5",
-          checked: wrapped.has(k),
           onPick: () => onConfig(toggleWrap(config, k)),
         }),
       );
+      if (!isTitle) {
+        if (i > 0)
+          rowsOut.push(
+            final({ kind: "row", label: "Move left", icon: "m15 18-6-6 6-6", onPick: () => onConfig({ ...config, props: moveProp(shown, k, i - 1) }) }),
+          );
+        if (i < shown.length - 1)
+          rowsOut.push(
+            final({ kind: "row", label: "Move right", icon: IC.open, onPick: () => onConfig({ ...config, props: moveProp(shown, k, i + 1) }) }),
+          );
+      }
       if (config.widths?.[k] !== undefined)
         rowsOut.push(
           final({
@@ -1598,16 +1732,21 @@ export function ViewTable({
             onPick: () => onConfig(setWidth(config, k, null)),
           }),
         );
+      const insert = editing
+        .insertRows(i, mctx, back, (newKey, at) => onConfig({ ...config, props: insertProp(shown, newKey, at) }))
+        // The page title is always first: a new property goes to its right.
+        .filter((r) => !isTitle || (r.kind === "row" && r.label === "Insert right"));
+      if (insert.length) rowsOut.push({ kind: "sep" }, ...insert);
     }
     const tail = isTitle ? [] : editing.tailRows(k, mctx, back);
-    if (tail.length) rowsOut.push({ kind: "sep" }, ...tail);
+    if (tail.length) rowsOut.push(...(canArrange ? [] : [{ kind: "sep" as const }]), ...tail);
     return {
       title: labelOf(k),
       rows: rowsOut,
-      width: 240,
-      maxHeight: 460,
+      width: 260,
+      maxHeight: 520,
       inputFirst: true,
-      input: isTitle ? undefined : editing.renameInput(k, mctx),
+      input: isTitle ? undefined : editing.renameInput(k, mctx, back),
       footer: isTitle ? undefined : editing.ownerNote(k),
     };
   };
@@ -1702,6 +1841,30 @@ export function ViewTable({
   // React owns the template again after every render (a saved width, a
   // reset, a shown/hidden property).
   const template = templateWith();
+  // Where each frozen property starts, measured from its heading, so its
+  // cells stop there while the table scrolls sideways.
+  const frozenSig = frozenKeys.join("\u0000");
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    if (!grid || frozenKeys.length === 0) return;
+    const measure = () => {
+      frozenKeys.forEach((k, i) => {
+        const head = grid.querySelector<HTMLElement>(`[data-prop-header="${CSS.escape(k)}"]`);
+        // From the grid's own left edge, whatever positions the heading.
+        if (head)
+          grid.style.setProperty(
+            `--fz-${i}`,
+            `${Math.round(head.getBoundingClientRect().left - grid.getBoundingClientRect().left)}px`,
+          );
+      });
+    };
+    measure();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    ro?.observe(grid);
+    return () => ro?.disconnect();
+    // The keys are in frozenSig.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frozenSig, template]);
   useEffect(() => {
     if (gridRef.current) gridRef.current.style.gridTemplateColumns = template;
   }, [template]);
@@ -1764,6 +1927,7 @@ export function ViewTable({
         onEditDone={clearEdit}
         selectable={selectable}
         wrapped={wrapped}
+        frozen={frozenKeys}
       />
     );
   };
@@ -1782,6 +1946,7 @@ export function ViewTable({
       labelOf={labelOf}
       typeOf={typeOf}
       readValue={relations?.readValue}
+      frozen={frozenKeys}
       formatOf={(k) => (defs.get(k)?.type === "number" ? readNumberFormat(defs.get(k)?.config) : undefined)}
       onPick={(k, calc) => {
         const calcs = { ...(config.calcs ?? {}) };
@@ -1798,6 +1963,8 @@ export function ViewTable({
       k={k}
       label={labelOf(k)}
       icon={k === TITLE_KEY ? "Aa" : kindIcon(typeOf(k))}
+      frozen={frozenOf(frozenKeys, k)}
+      description={String((defs.get(k) as { description?: string } | undefined)?.description ?? "")}
       sortDir={sortedKey === k ? (primary?.dir ?? null) : null}
       dragging={drag?.key === k}
       canArrange={canArrange}
@@ -1827,12 +1994,12 @@ export function ViewTable({
       <div
         ref={gridRef}
         role="table"
-        className="grid text-row"
+        className="relative grid text-row"
         style={{ gridTemplateColumns: template, minWidth: minTableWidth }}
         onClickCapture={onGridClickCapture}
       >
         <div className="contents" role="row">
-          <div className={HEAD_CLASS + " justify-center"} style={HEAD_STYLE}>
+          <div className={HEAD_CLASS + " justify-center" + frozenOf(frozenKeys, "").cls} style={{ ...HEAD_STYLE, ...frozenOf(frozenKeys, "").style }}>
             {selectable ? (
               <HeaderSelectAll
                 state={selectAllState}
