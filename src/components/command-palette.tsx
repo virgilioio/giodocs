@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { placeOf } from "@/lib/page-place";
 import { useRecentVisits } from "@/hooks/use-home";
 import { recentPages } from "@/lib/home";
 import { useNavigate } from "@tanstack/react-router";
@@ -37,16 +38,6 @@ type SearchHit = {
   snippets: Array<{ id: string | null; text: string | null }>;
   rank: number;
 };
-
-/** Where a page lives, for a result's second line: its database, or the
- *  page it sits inside. Top-level pages need no note. */
-function placeOf(p: PageListItem | undefined, pages: PageListItem[]): string {
-  if (!p?.parent_id) return "";
-  const parent = pages.find((x) => x.id === p.parent_id);
-  if (!parent) return "";
-  const name = parent.title?.trim() || "Untitled";
-  return p.database_id ? name : `in ${name}`;
-}
 
 type Row =
   | { kind: "page"; page: SearchHit | PageListItem }

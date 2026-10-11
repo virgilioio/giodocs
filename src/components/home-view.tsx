@@ -6,6 +6,7 @@ import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { useHidden, useHomePrefs, useRecentVisits, useSaveHomePrefs } from "@/hooks/use-home";
 import { greetingFor, greetingName, recentPages, RECENT_LIMIT } from "@/lib/home";
 import { useFormatDate } from "@/lib/format";
+import { placeOf } from "@/lib/page-place";
 import { setPageOrigin } from "@/lib/page-origin";
 import type { PageListItem } from "@/lib/types";
 import { Popover } from "./popover";
@@ -82,7 +83,7 @@ export function HomeView({
               ) : (
                 <CardRow label={`Recently visited, ${recent.length} of up to ${RECENT_LIMIT} pages`}>
                   {recent.map((p) => (
-                    <PageCard key={p.id} page={p} visitedAt={p.visited_at} />
+                    <PageCard key={p.id} page={p} place={placeOf(p, pages)} visitedAt={p.visited_at} />
                   ))}
                 </CardRow>
               )}
@@ -298,7 +299,7 @@ function CardRow({ children, label }: { children: ReactNode; label?: string }) {
   );
 }
 
-function PageCard({ page, visitedAt }: { page: PageListItem; visitedAt: string }) {
+function PageCard({ page, place, visitedAt }: { page: PageListItem; place: string; visitedAt: string }) {
   const navigate = useNavigate();
   const fmt = useFormatDate();
   const title = page.title?.trim() || "Untitled";
@@ -320,7 +321,10 @@ function PageCard({ page, visitedAt }: { page: PageListItem; visitedAt: string }
         </div>
         <div className="flex min-h-0 flex-1 flex-col px-3.5 pb-3" style={{ paddingTop: 22 }}>
           <span className="line-clamp-2 text-ui font-bold text-strong">{title}</span>
-          <span className="mt-auto truncate text-caption text-faint">{fmt(visitedAt)}</span>
+          <span className="mt-auto truncate text-caption text-faint">
+            {place ? `${place} · ` : ""}
+            {fmt(visitedAt)}
+          </span>
         </div>
       </button>
     </div>
