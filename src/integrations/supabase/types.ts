@@ -585,6 +585,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           database_id: string
+          description: string
           id: string
           is_system: boolean
           key: string
@@ -601,6 +602,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           database_id: string
+          description?: string
           id?: string
           is_system?: boolean
           key: string
@@ -617,6 +619,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           database_id?: string
+          description?: string
           id?: string
           is_system?: boolean
           key?: string
@@ -650,6 +653,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      property_type_changes: {
+        Row: {
+          changed_by: string
+          created_at: string
+          def_id: string
+          id: string
+          new_type: Database["public"]["Enums"]["property_type"]
+          old_config: Json
+          old_open_values: boolean
+          old_options: Json
+          old_type: Database["public"]["Enums"]["property_type"]
+          old_values: Json
+          undone_at: string | null
+          workspace_id: string
+        }
+        Insert: {
+          changed_by?: string
+          created_at?: string
+          def_id: string
+          id?: string
+          new_type: Database["public"]["Enums"]["property_type"]
+          old_config?: Json
+          old_open_values?: boolean
+          old_options?: Json
+          old_type: Database["public"]["Enums"]["property_type"]
+          old_values?: Json
+          undone_at?: string | null
+          workspace_id: string
+        }
+        Update: {
+          changed_by?: string
+          created_at?: string
+          def_id?: string
+          id?: string
+          new_type?: Database["public"]["Enums"]["property_type"]
+          old_config?: Json
+          old_open_values?: boolean
+          old_options?: Json
+          old_type?: Database["public"]["Enums"]["property_type"]
+          old_values?: Json
+          undone_at?: string | null
+          workspace_id?: string
+        }
+        Relationships: []
       }
       views: {
         Row: {
@@ -1074,6 +1122,10 @@ export type Database = {
           page_count: number
         }[]
       }
+      change_property_type: {
+        Args: { p_def: string; p_type: string }
+        Returns: Json
+      }
       list_trash: {
         Args: { p_query?: string }
         Returns: {
@@ -1130,6 +1182,7 @@ export type Database = {
         Returns: undefined
       }
       option_palette: { Args: { p_color: string }; Returns: Json }
+      person_ids: { Args: { v: Json }; Returns: string[] }
       page_backlinks: {
         Args: { p_page: string }
         Returns: {
@@ -1272,6 +1325,7 @@ export type Database = {
         Returns: undefined
       }
       text_mentions: { Args: { p_text: string }; Returns: string[] }
+      undo_property_type_change: { Args: { p_change: string }; Returns: undefined }
       user_can_read_page: {
         Args: { p_page: string; p_user: string }
         Returns: boolean
