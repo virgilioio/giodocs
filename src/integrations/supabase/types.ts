@@ -152,6 +152,7 @@ export type Database = {
       home_prefs: {
         Row: {
           emoji: string | null
+          favorite_pages: string[]
           hidden: string[]
           nickname: string | null
           pinned_views: string[]
@@ -161,6 +162,7 @@ export type Database = {
         }
         Insert: {
           emoji?: string | null
+          favorite_pages?: string[]
           hidden?: string[]
           nickname?: string | null
           pinned_views?: string[]
@@ -170,6 +172,7 @@ export type Database = {
         }
         Update: {
           emoji?: string | null
+          favorite_pages?: string[]
           hidden?: string[]
           nickname?: string | null
           pinned_views?: string[]

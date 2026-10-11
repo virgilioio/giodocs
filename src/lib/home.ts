@@ -9,6 +9,8 @@ export type HomePrefs = {
   start_page: StartPage;
   hidden: string[];
   pinned_views: string[];
+  /** Pages the person starred, in the order they starred them. */
+  favorite_pages: string[];
 };
 
 export const DEFAULT_HOME_PREFS: HomePrefs = {
@@ -17,6 +19,7 @@ export const DEFAULT_HOME_PREFS: HomePrefs = {
   start_page: "home",
   hidden: [],
   pinned_views: [],
+  favorite_pages: [],
 };
 
 export type PageVisit = { page_id: string; visited_at: string };
@@ -98,12 +101,27 @@ export function readHomePrefs(row: Partial<Record<keyof HomePrefs, unknown>> | n
     start_page: row.start_page === "last" ? "last" : "home",
     hidden: strs(row.hidden),
     pinned_views: strs(row.pinned_views),
+    favorite_pages: strs(row.favorite_pages),
   };
 }
 
 /** Pins a view to Home, or unpins it. Newest pins go last. */
 export function togglePinned(list: readonly string[], id: string): string[] {
   return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+}
+
+/** Stars a page, or unstars it. Newest stars go last; at most 200. */
+export function toggleFavorite(list: readonly string[], id: string): string[] {
+  return list.includes(id) ? list.filter((x) => x !== id) : [...list, id].slice(-200);
+}
+
+/** The starred pages the person can open, in starred order. */
+export function favoritePages<P extends { id: string; archived_at?: string | null }>(
+  ids: readonly string[],
+  pages: readonly P[],
+): P[] {
+  const byId = new Map(pages.map((p) => [p.id, p]));
+  return ids.map((id) => byId.get(id)).filter((p): p is P => !!p && !p.archived_at);
 }
 
 /** Hides a Home section, or shows it again. */

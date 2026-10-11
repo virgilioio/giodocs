@@ -91,3 +91,14 @@ describe("pins, hidden sections and recent edits", () => {
     expect(recentlyUpdated(pages, 1).map((p) => p.id)).toEqual(["b"]);
   });
 });
+
+describe("favorites", () => {
+  it("toggles and lists the pages the person can open, in starred order", async () => {
+    const { toggleFavorite, favoritePages, readHomePrefs } = await import("./home");
+    expect(toggleFavorite(["a"], "b")).toEqual(["a", "b"]);
+    expect(toggleFavorite(["a", "b"], "a")).toEqual(["b"]);
+    const pages = [{ id: "a" }, { id: "b", archived_at: "x" }, { id: "c" }];
+    expect(favoritePages(["c", "gone", "b", "a"], pages).map((p) => p.id)).toEqual(["c", "a"]);
+    expect(readHomePrefs({ favorite_pages: ["a", 3] }).favorite_pages).toEqual(["a"]);
+  });
+});

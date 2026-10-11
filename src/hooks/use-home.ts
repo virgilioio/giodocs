@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { qk } from "@/lib/query-keys";
-import { readHomePrefs, withVisit, type HomePrefs, type HomeSection, type PageVisit } from "@/lib/home";
+import { useToast } from "@/lib/toast";
+import { readHomePrefs, toggleFavorite, withVisit, type HomePrefs, type HomeSection, type PageVisit } from "@/lib/home";
 
 /* Home's data: the person's own settings (home_prefs) and the pages they
  * visited (page_visits). RLS returns only their own rows; visits are
@@ -19,7 +20,7 @@ export function useHomePrefs() {
     queryFn: async (): Promise<HomePrefs> => {
       const { data, error } = await supabase
         .from("home_prefs")
-        .select("nickname, emoji, start_page, hidden, pinned_views")
+        .select("nickname, emoji, start_page, hidden, pinned_views, favorite_pages")
         .eq("user_id", uid!)
         .maybeSingle();
       if (error) throw error;
@@ -45,6 +46,7 @@ export function useSaveHomePrefs() {
         start_page: next.start_page,
         hidden: next.hidden,
         pinned_views: next.pinned_views,
+        favorite_pages: next.favorite_pages,
         updated_at: new Date().toISOString(),
       });
       if (error) throw error;
@@ -101,4 +103,33 @@ export function useHidden(): (s: HomeSection) => boolean {
   const prefsQ = useHomePrefs();
   const hidden = prefsQ.data?.hidden ?? [];
   return (s) => hidden.includes(s);
+}
+
+/** Stars or unstars a page for the person, with a toast and Undo. */
+export function useToggleFavorite() {
+  const prefsQ = useHomePrefs();
+  const save = useSaveHomePrefs();
+  const toast = useToast();
+  return (pageId: string, title: string) => {
+    const before = prefsQ.data?.favorite_pages ?? [];
+    const on = !before.includes(pageId);
+    save.mutate(
+      { favorite_pages: toggleFavorite(before, pageId) },
+      {
+        onSuccess: () =>
+          toast.push({
+            message: on
+              ? `Added “${title.trim() || "Untitled"}” to Favorites.`
+              : `Removed “${title.trim() || "Untitled"}” from Favorites.`,
+            action: { label: "Undo", onClick: () => save.mutate({ favorite_pages: before }) },
+          }),
+        onError: () => toast.push("Couldn't change your favorites. Try again."),
+      },
+    );
+  };
+}
+
+export function useIsFavorite(pageId: string | null | undefined): boolean {
+  const prefsQ = useHomePrefs();
+  return !!pageId && (prefsQ.data?.favorite_pages ?? []).includes(pageId);
 }
