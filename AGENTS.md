@@ -300,6 +300,11 @@ provider Virgilio already has; don't build them until asked.
   No date (src/lib/tasks.ts). Ticking one sets its done property (first
   done value, or checked) with Undo; adding one creates a row assigned to
   you in the chosen database.
+- Home also shows views pinned from a view's ⋯ menu (Pin to Home, only
+  you; home_prefs.pinned_views; each runs through run-view like the
+  database does), the workspace's most recently edited pages, templates
+  (start a page from one) and quick links. The ⋯ beside the greeting
+  shows or hides each section (home_prefs.hidden).
 
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { qk } from "@/lib/query-keys";
-import { readHomePrefs, withVisit, type HomePrefs, type PageVisit } from "@/lib/home";
+import { readHomePrefs, withVisit, type HomePrefs, type HomeSection, type PageVisit } from "@/lib/home";
 
 /* Home's data: the person's own settings (home_prefs) and the pages they
  * visited (page_visits). RLS returns only their own rows; visits are
@@ -94,4 +94,11 @@ export function useRecordVisit(ws: string | null | undefined, pageId: string | n
       () => undefined,
     );
   }, [ws, pageId, qc]);
+}
+
+/** Whether the person hid a Home section. */
+export function useHidden(): (s: HomeSection) => boolean {
+  const prefsQ = useHomePrefs();
+  const hidden = prefsQ.data?.hidden ?? [];
+  return (s) => hidden.includes(s);
 }

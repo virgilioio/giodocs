@@ -100,3 +100,34 @@ export function readHomePrefs(row: Partial<Record<keyof HomePrefs, unknown>> | n
     pinned_views: strs(row.pinned_views),
   };
 }
+
+/** Pins a view to Home, or unpins it. Newest pins go last. */
+export function togglePinned(list: readonly string[], id: string): string[] {
+  return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+}
+
+/** Hides a Home section, or shows it again. */
+export function toggleHidden(list: readonly string[], section: string): string[] {
+  return list.includes(section) ? list.filter((x) => x !== section) : [...list, section];
+}
+
+export type HomeSection = "recent" | "tasks" | "views" | "updated" | "templates";
+
+export const HOME_SECTIONS: Array<{ id: HomeSection; label: string }> = [
+  { id: "recent", label: "Recently visited" },
+  { id: "tasks", label: "My tasks" },
+  { id: "views", label: "Pinned views" },
+  { id: "updated", label: "Recently updated" },
+  { id: "templates", label: "Templates" },
+];
+
+/** The pages edited most recently in the workspace, newest first. */
+export function recentlyUpdated<P extends { id: string; edited_at?: string | null; is_database?: boolean }>(
+  pages: readonly P[],
+  limit = 6,
+): P[] {
+  return [...pages]
+    .filter((p) => !!p.edited_at)
+    .sort((a, b) => (b.edited_at ?? "").localeCompare(a.edited_at ?? ""))
+    .slice(0, limit);
+}

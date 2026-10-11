@@ -64,6 +64,8 @@ import type { ExportViewColumn, ExportViewRow } from "@/lib/export";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
 import { isTypingTarget } from "@/lib/is-typing";
+import { useHomePrefs, useSaveHomePrefs } from "@/hooks/use-home";
+import { togglePinned } from "@/lib/home";
 
 /* The database page: its title, its views as tabs, and the chosen view
  * over its rows. Replaces the old MainView (views over one pool
@@ -467,6 +469,9 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
   const archivePage = useArchivePage();
 
   const view = useMemo(() => pickView(views, selection.viewId), [views, selection.viewId]);
+  const homePrefs = useHomePrefs();
+  const saveHomePrefs = useSaveHomePrefs();
+  const pinnedViews = homePrefs.data?.pinned_views ?? [];
   const isTeamView = !!view && view.scope === "team";
   const isOwnerOfView = !!view && view.owner_id === me && view.scope === "personal";
   // Changes save straight to a view I own, or to a shared view of a database
@@ -1078,6 +1083,14 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
                 onUnpublish: doUnpublish,
                 onDelete: doDelete,
                 onExportView: () => setExportOpen(true),
+                pinned: view ? pinnedViews.includes(view.id) : undefined,
+                onTogglePin: view
+                  ? () => {
+                      const on = !pinnedViews.includes(view.id);
+                      saveHomePrefs.mutate({ pinned_views: togglePinned(pinnedViews, view.id) });
+                      toast.push(on ? `Pinned "${view.name}" to Home.` : `Unpinned "${view.name}" from Home.`);
+                    }
+                  : undefined,
               },
               mctx,
             )
@@ -1266,6 +1279,9 @@ function buildViewToolbarSpec(
     onUnpublish: () => void;
     onDelete: () => void;
     onExportView: () => void;
+    /** Pinned to the person's Home (saved views only). */
+    pinned?: boolean;
+    onTogglePin?: () => void;
   },
   mctx: { setSpec: (s: MenuSpec) => void; close: () => void },
 ): MenuSpec {
@@ -1356,6 +1372,18 @@ function buildViewToolbarSpec(
       mctx.close();
     },
   });
+  if (args.onTogglePin) {
+    rows.push({
+      kind: "row",
+      label: args.pinned ? "Unpin from Home" : "Pin to Home",
+      icon: "M12 17v4M8 3h8l-1 6 3 4H6l3-4z",
+      hint: { text: "only you" },
+      onPick: () => {
+        args.onTogglePin?.();
+        mctx.close();
+      },
+    });
+  }
 
   if (scope !== "none" && canManage) {
     rows.push({ kind: "sep" });

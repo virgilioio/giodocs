@@ -74,3 +74,20 @@ describe("readHomePrefs", () => {
     expect(readHomePrefs({ start_page: "last", emoji: "🌿" }).start_page).toBe("last");
   });
 });
+
+describe("pins, hidden sections and recent edits", () => {
+  it("toggles", async () => {
+    const { togglePinned, toggleHidden, recentlyUpdated } = await import("./home");
+    expect(togglePinned(["a"], "b")).toEqual(["a", "b"]);
+    expect(togglePinned(["a", "b"], "a")).toEqual(["b"]);
+    expect(toggleHidden([], "tasks")).toEqual(["tasks"]);
+    expect(toggleHidden(["tasks"], "tasks")).toEqual([]);
+    const pages = [
+      { id: "a", edited_at: "2026-10-01" },
+      { id: "b", edited_at: "2026-10-03" },
+      { id: "c", edited_at: null },
+    ];
+    expect(recentlyUpdated(pages).map((p) => p.id)).toEqual(["b", "a"]);
+    expect(recentlyUpdated(pages, 1).map((p) => p.id)).toEqual(["b"]);
+  });
+});

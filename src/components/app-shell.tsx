@@ -551,7 +551,11 @@ export function AppShell() {
           ) : selection?.kind === "page" && pagesLoaded ? (
             <PageEditor key={selection.id} pageId={selection.id} />
           ) : selection?.kind === "home" ? (
-            <HomeView empty={pagesLoaded && pages.length === 0 ? <EmptyWorkspace /> : undefined} />
+            <HomeView
+              empty={pagesLoaded && pages.length === 0 ? <EmptyWorkspace /> : undefined}
+              onOpenPalette={() => setPaletteOpen(true)}
+              onOpenSettings={() => openSettings("preferences")}
+            />
           ) : showShellSkeleton ? (
             <ViewSkeleton layout="table" />
           ) : null}

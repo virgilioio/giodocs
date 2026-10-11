@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell } from "@/hooks/use-workspace-data";
-import { useHomePrefs, useRecentVisits, useSaveHomePrefs } from "@/hooks/use-home";
+import { useHidden, useHomePrefs, useRecentVisits, useSaveHomePrefs } from "@/hooks/use-home";
 import { greetingFor, greetingName, recentPages, RECENT_LIMIT } from "@/lib/home";
 import { useFormatDate } from "@/lib/format";
 import { setPageOrigin } from "@/lib/page-origin";
@@ -13,58 +13,104 @@ import { EmojiPicker } from "./emoji-picker";
 import { Ico } from "./emoji-icon";
 import { Sk } from "./sk";
 import { MyTasks } from "./home-tasks";
+import {
+  CustomizeHome,
+  PinnedViews,
+  QuickLinks,
+  RecentlyUpdated,
+  TemplatesSection,
+} from "./home-sections";
 
-/* Home (Notion's): a greeting and the pages you visited last. More
- * sections (My tasks, pinned views, templates) join it later. */
+/* Home (Notion's): a greeting, the pages you visited last, your tasks,
+ * views you pinned, what changed lately, templates and quick links. Each
+ * section can be hidden from the ⋯ beside the greeting (home_prefs). */
 
 const CARD_W = 148;
 const CARD_H = 140;
 
-export function HomeView({ empty }: { empty?: ReactNode }) {
+export function HomeView({
+  empty,
+  onOpenPalette,
+  onOpenSettings,
+}: {
+  empty?: ReactNode;
+  onOpenPalette: () => void;
+  onOpenSettings: () => void;
+}) {
   const ws = useWorkspaceId();
   const shell = useWorkspaceShell(ws);
   const pages = useMemo(() => (shell.pages.data ?? []) as PageListItem[], [shell.pages.data]);
   const visitsQ = useRecentVisits(ws);
   const recent = useMemo(() => recentPages(visitsQ.data ?? [], pages), [visitsQ.data, pages]);
   const now = useNow();
+  const hidden = useHidden();
 
   return (
     <div className="mx-auto w-full" style={{ maxWidth: 900, padding: "56px 48px 96px" }}>
-      <Greeting now={now} />
+      <div className="relative">
+        <Greeting now={now} />
+        {empty ? null : (
+          <div className="absolute right-0 top-1/2 -translate-y-1/2">
+            <CustomizeHome />
+          </div>
+        )}
+      </div>
       {empty ? (
         <div className="mt-6">{empty}</div>
       ) : (
         <>
-        <Section title="Recently visited" icon={CLOCK}>
-          {visitsQ.isLoading || !shell.pages.data ? (
-            <div role="status" aria-busy="true">
-              <span className="sr-only">Loading…</span>
-              <CardRow>
-                {Array.from({ length: 5 }, (_, i) => (
-                  <Sk key={i} w={CARD_W} h={CARD_H} r={12} tone="soft" />
-                ))}
-              </CardRow>
-            </div>
-          ) : visitsQ.isError ? (
-            <p className="text-meta text-danger">
-              Couldn't load the pages you visited.{" "}
-              <button type="button" className="underline" onClick={() => void visitsQ.refetch()}>
-                Retry
-              </button>
-            </p>
-          ) : recent.length === 0 ? (
-            <p className="text-meta text-muted">Pages you open show up here, newest first.</p>
-          ) : (
-            <CardRow label={`Recently visited, ${recent.length} of up to ${RECENT_LIMIT} pages`}>
-              {recent.map((p) => (
-                <PageCard key={p.id} page={p} visitedAt={p.visited_at} />
-              ))}
-            </CardRow>
+          {hidden("recent") ? null : (
+            <Section title="Recently visited" icon={CLOCK}>
+              {visitsQ.isLoading || !shell.pages.data ? (
+                <div role="status" aria-busy="true">
+                  <span className="sr-only">Loading…</span>
+                  <CardRow>
+                    {Array.from({ length: 5 }, (_, i) => (
+                      <Sk key={i} w={CARD_W} h={CARD_H} r={12} tone="soft" />
+                    ))}
+                  </CardRow>
+                </div>
+              ) : visitsQ.isError ? (
+                <p className="text-meta text-danger">
+                  Couldn't load the pages you visited.{" "}
+                  <button type="button" className="underline" onClick={() => void visitsQ.refetch()}>
+                    Retry
+                  </button>
+                </p>
+              ) : recent.length === 0 ? (
+                <p className="text-meta text-muted">Pages you open show up here, newest first.</p>
+              ) : (
+                <CardRow label={`Recently visited, ${recent.length} of up to ${RECENT_LIMIT} pages`}>
+                  {recent.map((p) => (
+                    <PageCard key={p.id} page={p} visitedAt={p.visited_at} />
+                  ))}
+                </CardRow>
+              )}
+            </Section>
           )}
-        </Section>
-        <Section title="My tasks" icon={TASKS}>
-          <MyTasks now={now} />
-        </Section>
+          {hidden("tasks") ? null : (
+            <Section title="My tasks" icon={TASKS}>
+              <MyTasks now={now} />
+            </Section>
+          )}
+          {hidden("views") ? null : (
+            <Section title="Pinned views" icon={PIN}>
+              <PinnedViews />
+            </Section>
+          )}
+          {hidden("updated") ? null : (
+            <Section title="Recently updated" icon={PENCIL}>
+              <RecentlyUpdated />
+            </Section>
+          )}
+          {hidden("templates") ? null : (
+            <Section title="Templates" icon={TEMPLATE}>
+              <TemplatesSection />
+            </Section>
+          )}
+          <Section title="Quick links" icon={BOLT}>
+            <QuickLinks onOpenPalette={onOpenPalette} onOpenSettings={onOpenSettings} />
+          </Section>
         </>
       )}
     </div>
@@ -220,6 +266,10 @@ function GreetingEditor({
 
 const CLOCK = "M12 7v5l3 2M12 3a9 9 0 100 18 9 9 0 000-18z";
 const TASKS = "M4 5h4v4H4zM4 15h4v4H4zM11 7h9M11 17h9";
+const PIN = "M12 17v4M8 3h8l-1 6 3 4H6l3-4z";
+const PENCIL = "M4 20h4L19 9l-4-4L4 16v4z";
+const TEMPLATE = "M5 4h14v5H5zM5 13h6v7H5zM15 13h4M15 17h4";
+const BOLT = "M13 3L5 14h6l-1 7 8-11h-6z";
 
 function Section({ title, icon, children }: { title: string; icon: string; children: ReactNode }) {
   return (
