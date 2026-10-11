@@ -1203,7 +1203,7 @@ export function useSetPageParent() {
       // ends, the cycle guard, and a database's properties.
       const { error } = await supabase.rpc("move_page", {
         p_page: v.pageId,
-        p_parent: v.parentId,
+        p_parent: v.parentId as string,
       });
       if (error) throw error;
     },
@@ -1252,8 +1252,8 @@ export function useMovePage() {
     }) => {
       const { data, error } = await supabase.rpc("move_page", {
         p_page: v.pageId,
-        p_parent: v.target.parentId,
-        p_before: v.target.beforeId,
+        p_parent: v.target.parentId as string,
+        p_before: v.target.beforeId as string | undefined,
         ...(v.props !== undefined ? { p_props: v.props as never } : {}),
       });
       if (error) throw error;

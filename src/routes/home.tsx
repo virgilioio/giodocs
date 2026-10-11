@@ -16,7 +16,7 @@ export const Route = createFileRoute("/home")({
   }),
   component: HomeRoute,
   errorComponent: ({ error, reset }) => (
-    <RouteErrorFallback error={error} reset={reset} scope="home page" />
+    <RouteErrorFallback error={error as Error} reset={reset} scope="home page" />
   ),
 });
 

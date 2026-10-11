@@ -13,7 +13,7 @@ export const Route = createFileRoute("/a/$area")({
   }),
   component: AreaRoute,
   errorComponent: ({ error, reset }) => (
-    <RouteErrorFallback error={error} reset={reset} scope="area" />
+    <RouteErrorFallback error={error as Error} reset={reset} scope="area" />
   ),
   notFoundComponent: () => <RouteNotFound what="This area" />,
 });

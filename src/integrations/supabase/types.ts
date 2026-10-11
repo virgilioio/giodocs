@@ -509,6 +509,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "pages_database_id_fkey"
+            columns: ["database_id"]
+            isOneToOne: false
+            referencedRelation: "pages"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "pages_edited_by_fkey"
             columns: ["edited_by"]
             isOneToOne: false
@@ -593,7 +600,7 @@ export type Database = {
           config?: Json
           created_at?: string
           created_by?: string | null
-          database_id?: string
+          database_id: string
           id?: string
           is_system?: boolean
           key: string
@@ -629,6 +636,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "property_defs_database_id_fkey"
+            columns: ["database_id"]
+            isOneToOne: false
+            referencedRelation: "pages"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "property_defs_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
@@ -657,7 +671,7 @@ export type Database = {
         Insert: {
           config?: Json
           created_at?: string
-          database_id?: string
+          database_id: string
           filter?: Json
           group_by?: string | null
           icon?: string | null
@@ -687,6 +701,13 @@ export type Database = {
           workspace_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "views_database_id_fkey"
+            columns: ["database_id"]
+            isOneToOne: false
+            referencedRelation: "pages"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "views_owner_id_fkey"
             columns: ["owner_id"]
@@ -949,15 +970,12 @@ export type Database = {
           user_id: string
         }[]
       }
+      can_edit_page: { Args: { p_page: string }; Returns: boolean }
       can_edit_page_row: {
         Args: { p: Database["public"]["Tables"]["pages"]["Row"] }
         Returns: boolean
       }
       can_manage_page_access: { Args: { p_page: string }; Returns: boolean }
-      can_edit_page: {
-        Args: { p_page: string }
-        Returns: boolean
-      }
       can_read_page: { Args: { p_page: string }; Returns: boolean }
       comment_thread_open: { Args: { p_thread: string }; Returns: boolean }
       create_workspace_invite: {
@@ -998,8 +1016,8 @@ export type Database = {
       delete_page: { Args: { p_page: string }; Returns: undefined }
       domain_status: { Args: { p_email: string }; Returns: string }
       dup_view_json: { Args: { j: Json; m: Json }; Returns: Json }
-      duplicate_property: { Args: { p_def: string }; Returns: Json }
       duplicate_database: { Args: { p_database: string }; Returns: string }
+      duplicate_property: { Args: { p_def: string }; Returns: Json }
       edit_comment: {
         Args: { p_body: string; p_comment: string }
         Returns: undefined
@@ -1013,7 +1031,9 @@ export type Database = {
           p_view: string
         }
         Returns: {
+          config: Json
           created_at: string
+          database_id: string
           filter: Json
           group_by: string | null
           icon: string | null
@@ -1054,7 +1074,41 @@ export type Database = {
           page_count: number
         }[]
       }
+      lock_option_def: {
+        Args: { p_def: string }
+        Returns: {
+          archived_at: string | null
+          config: Json
+          created_at: string
+          created_by: string | null
+          database_id: string
+          id: string
+          is_system: boolean
+          key: string
+          label: string
+          open_values: boolean
+          options: Json
+          position: number
+          type: Database["public"]["Enums"]["property_type"]
+          workspace_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "property_defs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       mention_excerpt: { Args: { p_text: string }; Returns: string }
+      move_page: {
+        Args: {
+          p_before?: string
+          p_page: string
+          p_parent: string
+          p_props?: Json
+        }
+        Returns: Json
+      }
       move_property_option: {
         Args: { p_def: string; p_to: number; p_value: string }
         Returns: undefined
@@ -1080,7 +1134,9 @@ export type Database = {
       publish_view: {
         Args: { p_view: string }
         Returns: {
+          config: Json
           created_at: string
+          database_id: string
           filter: Json
           group_by: string | null
           icon: string | null
@@ -1100,6 +1156,11 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      record_page_visit: { Args: { p_page: string }; Returns: undefined }
+      remove_property_option: {
+        Args: { p_def: string; p_value: string }
+        Returns: undefined
+      }
       rename_custom_emoji: {
         Args: {
           p_desc: string
@@ -1110,10 +1171,6 @@ export type Database = {
         }
         Returns: number
       }
-      remove_property_option: {
-        Args: { p_def: string; p_value: string }
-        Returns: undefined
-      }
       rename_property_option: {
         Args: { p_def: string; p_label: string; p_value: string }
         Returns: undefined
@@ -1122,18 +1179,11 @@ export type Database = {
         Args: { p_resolved: boolean; p_thread: string }
         Returns: undefined
       }
-      move_page: {
-        Args: {
-          p_before?: string | null
-          p_page: string
-          p_parent: string | null
-          p_props?: Json | null
-        }
-        Returns: Json
-      }
-      record_page_visit: { Args: { p_page: string }; Returns: undefined }
       restore_page: { Args: { p_page: string }; Returns: undefined }
-      restore_page_from_version: { Args: { p_version: string }; Returns: string }
+      restore_page_from_version: {
+        Args: { p_version: string }
+        Returns: string
+      }
       restore_page_version: { Args: { p_version: string }; Returns: undefined }
       safe_uuid: { Args: { t: string }; Returns: string }
       search_pages: {
@@ -1146,14 +1196,6 @@ export type Database = {
           snippets: Json
           title: string
         }[]
-      }
-      set_property_option_group: {
-        Args: { p_def: string; p_group: string; p_value: string }
-        Returns: undefined
-      }
-      set_property_option_color: {
-        Args: { p_color: string; p_def: string; p_value: string }
-        Returns: undefined
       }
       set_comment_removed: {
         Args: { p_comment: string; p_removed: boolean }
@@ -1177,14 +1219,21 @@ export type Database = {
           blocks: Json
           created_at: string
           created_by: string | null
+          database_id: string | null
           deleted_at: string | null
           edited_at: string
           edited_by: string | null
           icon: string
           id: string
+          is_database: boolean
+          page_layout: Json | null
           parent_id: string | null
+          position: number | null
           props: Json
+          row_number: number | null
           search_tsv: unknown
+          task_config: Json | null
+          template_at: string | null
           title: string
           verified_at: string
           verified_by: string | null
@@ -1197,6 +1246,14 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      set_property_option_color: {
+        Args: { p_color: string; p_def: string; p_value: string }
+        Returns: undefined
+      }
+      set_property_option_group: {
+        Args: { p_def: string; p_group: string; p_value: string }
+        Returns: undefined
       }
       text_mentions: { Args: { p_text: string }; Returns: string[] }
       user_can_read_page: {
@@ -1211,14 +1268,21 @@ export type Database = {
           blocks: Json
           created_at: string
           created_by: string | null
+          database_id: string | null
           deleted_at: string | null
           edited_at: string
           edited_by: string | null
           icon: string
           id: string
+          is_database: boolean
+          page_layout: Json | null
           parent_id: string | null
+          position: number | null
           props: Json
+          row_number: number | null
           search_tsv: unknown
+          task_config: Json | null
+          template_at: string | null
           title: string
           verified_at: string
           verified_by: string | null

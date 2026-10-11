@@ -45,7 +45,8 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+function ErrorComponent({ error: raw, reset }: { error: unknown; reset: () => void }) {
+  const error = raw instanceof Error ? raw : new Error(String(raw));
   console.error(error);
   const router = useRouter();
   useEffect(() => {
@@ -89,6 +90,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: "Gio Docs" },
+      { name: "apple-mobile-web-app-title", content: "Gio Docs" },
       { name: "description", content: "Virgilio's knowledge, findable. No folders, no six-level nesting, no three competing sources of truth — just pages that tell you when they've gone stale." },
       { property: "og:title", content: "Gio Docs" },
       { property: "og:description", content: "Virgilio's knowledge, findable. No folders, no six-level nesting, no three competing sources of truth — just pages that tell you when they've gone stale." },
@@ -104,6 +106,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: appCss,
       },
+      { rel: "icon", href: "/favicon.ico" },
+      // iPhone "Add to Home Screen" reads this (180×180 PNG, opaque).
+      { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
     ],
   }),
   shellComponent: RootShell,
