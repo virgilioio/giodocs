@@ -19,6 +19,8 @@ import {
   useSetPageProperty,
 } from "@/hooks/use-page-mutations";
 import { useToast } from "@/lib/toast";
+import { useAddPropertyOption, useCreateProperty } from "@/hooks/use-property-mutations";
+import { CalendarViewBody } from "./calendar-view";
 import { useAuth } from "@/lib/auth-context";
 import { IC } from "@/lib/menu-icons";
 import { BoardBody, ListBody, QueryToolbar } from "./main-view";
@@ -41,6 +43,7 @@ const LAYOUT_CHOICES: Array<{ layout: InlineLayout; label: string; icon: string 
   { layout: "table", label: "Table", icon: IC.bTable },
   { layout: "board", label: "Board", icon: IC.board },
   { layout: "list", label: "List", icon: IC.list },
+  { layout: "calendar", label: "Calendar", icon: IC.calendar },
 ];
 
 function Glyph({ d }: { d: string }) {
@@ -67,7 +70,7 @@ export function ViewBlock({
     return locked ? null : (
       <StartFrom
         autoFocus={FRESH_VIEW_BLOCKS.has(block.id)}
-        autoNew={FRESH_NEW_DATABASES.has(block.id)}
+        autoNew={FRESH_NEW_DATABASES.get(block.id)}
         onPick={(v) => {
           FRESH_VIEW_BLOCKS.delete(block.id);
           FRESH_NEW_DATABASES.delete(block.id);
@@ -89,8 +92,9 @@ function StartFrom({
   onCancel,
 }: {
   autoFocus: boolean;
-  /** "Table view": make the new database at once. */
-  autoNew?: boolean;
+  /** "Table view", "Board view"…: make the new database at once, in this
+   *  layout ("table", "board", "list", "calendar"). */
+  autoNew?: string;
   onPick: (v: InlineView) => void;
   onCancel: () => void;
 }) {
@@ -108,7 +112,9 @@ function StartFrom({
     allViews.filter(
       (v) => v.database_id === id && (v.scope === "team" || v.owner_id === user?.id),
     );
-  const newDatabaseHere = async () => {
+  const createProperty = useCreateProperty();
+  const addOption = useAddPropertyOption();
+  const newDatabaseHere = async (layout: InlineLayout = "table") => {
     if (!hostPageId || busy) return;
     setBusy(true);
     try {
@@ -118,7 +124,18 @@ function StartFrom({
         isDatabase: true,
         quiet: true,
       });
-      onPick({ ...defaultInlineView(made.id), name: "" });
+      // A board needs a Status to group by, a calendar a Date to place
+      // rows on (like starting a database on a blank page).
+      let groupBy: string | null = null;
+      if (layout === "board") {
+        const def = await createProperty.mutateAsync({ databaseId: made.id, label: "Status", type: "status" });
+        for (const label of ["Not started", "In progress", "Done"]) await addOption.mutateAsync({ id: def.id, label });
+        groupBy = def.key;
+      } else if (layout === "calendar") {
+        const def = await createProperty.mutateAsync({ databaseId: made.id, label: "Date", type: "date" });
+        groupBy = def.key;
+      }
+      onPick({ ...defaultInlineView(made.id), name: "", layout, group_by: groupBy });
     } catch {
       setBusy(false);
     }
@@ -129,7 +146,9 @@ function StartFrom({
   useEffect(() => {
     if (!autoNew || autoRan.current || !hostPageId) return;
     autoRan.current = true;
-    void newDatabaseHere();
+    void newDatabaseHere(
+      (["table", "board", "list", "calendar"].includes(autoNew) ? autoNew : "table") as InlineLayout,
+    );
     // newDatabaseHere is recreated each render; running it once is the point.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoNew, hostPageId]);
@@ -345,6 +364,19 @@ function InlineViewBody({
           }
         />
       );
+  } else if (view.layout === "calendar") {
+    const dates = rt.propDefs.filter((d) => d.type === "date");
+    const dateDef = dates.find((d) => d.key === view.group_by) ?? dates[0];
+    body = (
+      <CalendarViewBody
+        rows={rows}
+        dateKey={dateDef?.key ?? null}
+        dateLabel={dateDef?.label ?? "Date"}
+        onMove={(pageId, date) => {
+          if (dateDef) setProp.mutate({ pageId, key: dateDef.key, value: date });
+        }}
+      />
+    );
   } else if (view.layout === "list") {
     const shown = showAll ? rows : rows.slice(0, ROW_LIMIT);
     body =

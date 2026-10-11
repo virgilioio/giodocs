@@ -28,7 +28,7 @@ describe("readInlineView", () => {
     });
   });
   it("falls back to a table sorted by newest edits, with no database yet", () => {
-    expect(readInlineView({ layout: "calendar", sort: [] })).toEqual({
+    expect(readInlineView({ layout: "gallery", sort: [] })).toEqual({
       ...defaultInlineView(),
       database_id: null,
       layout: "table",

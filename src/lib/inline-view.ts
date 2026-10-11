@@ -7,7 +7,7 @@ import { readConfig, type ViewConfig } from "./view-config";
  * reader of the page sees it, and shows the rows each reader can open.
  * Page editors change it in place; the change saves with the page. Pure. */
 
-export type InlineLayout = "table" | "board" | "list";
+export type InlineLayout = "table" | "board" | "list" | "calendar";
 
 export type InlineView = {
   /** The database whose rows it shows. Null only in blocks saved before
@@ -18,11 +18,12 @@ export type InlineView = {
   filter: Filter[];
   sort: SortSpec | SortSpec[];
   config: ViewConfig;
-  /** What a board groups by (a select or status). */
+  /** What a board groups by (a select or status), or the date a calendar
+   *  places rows on. */
   group_by: string | null;
 };
 
-const LAYOUTS: InlineLayout[] = ["table", "board", "list"];
+const LAYOUTS: InlineLayout[] = ["table", "board", "list", "calendar"];
 
 export function defaultInlineView(databaseId: string | null = null): InlineView {
   return {

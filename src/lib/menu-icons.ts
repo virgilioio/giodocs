@@ -107,6 +107,7 @@ export const IC = {
   /* A table with a filter funnel — a live view of pages. */
   bView:
     "M3 6.5A1.5 1.5 0 0 1 4.5 5h15A1.5 1.5 0 0 1 21 6.5V10M3 6.5v11A1.5 1.5 0 0 0 4.5 19H11M3 9.6h10M9 9.6V19M14 13h7l-2.8 3.3V20l-1.4-.8v-2.9z",
+  calendar: "M5 5h14v15H5zM5 10h14M9 3v4M15 3v4",
   bTable:
     "M4.5 5h15a1.5 1.5 0 0 1 1.5 1.5v11a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11A1.5 1.5 0 0 1 4.5 5zM3 10h18M9.5 10v9",
 } as const;

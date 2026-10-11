@@ -173,7 +173,7 @@ export const FRESH_VIEW_BLOCKS = new Set<string>();
 
 /** View blocks inserted as "Table view": they make a new database inside
  *  the page straight away instead of asking where rows come from. */
-export const FRESH_NEW_DATABASES = new Set<string>();
+export const FRESH_NEW_DATABASES = new Map<string, string>();
 
 export function newBlock(type: BlockType = "text", text = ""): Blk {
   const base: Blk = { id: nanoid(10), type, text };

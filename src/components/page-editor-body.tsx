@@ -226,6 +226,9 @@ import {
   calloutLabel,
 } from "@/lib/callout-color";
 import type { IconKey } from "@/lib/menu-icons";
+import { BlockPreview, type PreviewKey } from "./block-previews";
+import { SlashMenu } from "./slash-menu";
+import { slashEntries, rememberSlashPick, type SlashGroup } from "@/lib/slash-entries";
 import { exitRef } from "@/lib/exit-motion";
 import { MermaidBlock, MERMAID_STARTER } from "@/components/mermaid-block";
 import { CodeLangPicker } from "@/components/code-lang-picker";
@@ -298,18 +301,25 @@ type MenuItem = {
   type: BlockType;
   name: string;
   desc: string;
-  /** Mono glyph — the slash menu's only visual. Kept there; never shown
-   *  in Turn into, where a real icon already names the row. */
+  /** Mono glyph (kept for older call sites; the slash menu draws `ic`). */
   icon: string;
   /** THE single source of the 15px icon for this block type. The slash
    *  menu, the Turn-into submenu and the parent "Turn into" row all read
    *  it from here, so the three can never drift apart. */
   ic: IconKey;
+  /** The slash menu's section (Notion's grouping). */
+  group: SlashGroup;
+  /** The typing shortcut that makes this block, shown on the right. */
+  md?: string;
+  /** The preview card shown beside the row. */
+  pv: PreviewKey;
   /** Extra search terms for the slash menu, beyond name and type. */
   kw?: string;
   /** For "columns" entries only: the column count to create. */
   count?: number;
-  /** For a code entry: the language it starts in ("mermaid" = Diagram). */
+  /** For a code entry: the language it starts in ("mermaid" = Diagram).
+   *  For a view entry: "new" (a new database as a table) or
+   *  "new:<layout>" (board, list, calendar); none = a linked view. */
   lang?: string;
 };
 
@@ -322,89 +332,102 @@ function isDiagram(b: Blk | undefined): boolean {
  *  source showing. */
 const FRESH_DIAGRAMS = new Set<string>();
 
+/* The slash menu (2026-10-11, Notion's): sections in this order, one-line
+ * rows with the typing shortcut on the right and a preview card beside the
+ * highlighted row. Suggested (the person's recent picks) comes first when
+ * nothing is typed. */
 const BLOCK_MENU: MenuItem[] = [
-  { type: "text", name: "Text", desc: "Plain writing. The default.", icon: "Aa", ic: "bText" },
-  { type: "h1", name: "Heading 1", desc: "Big section title.", icon: "H1", ic: "bH1" },
-  { type: "h2", name: "Heading 2", desc: "Sub-section title.", icon: "H2", ic: "bH2" },
-  { type: "h3", name: "Heading 3", desc: "Smaller section title.", icon: "H3", ic: "bH3" },
-  { type: "bullet", name: "Bullet list", desc: "Unordered points.", icon: "•", ic: "bBullet" },
-  { type: "numbered", name: "Numbered list", desc: "Steps, in order.", icon: "1.", ic: "bNumbered" },
-  { type: "todo", name: "To-do", desc: "A checkbox that means it.", icon: "☑", ic: "bTodo" },
-  { type: "toggle", name: "Toggle", desc: "Details, tucked away.", icon: "▸", ic: "bToggle" },
-  { type: "quote", name: "Quote", desc: "Someone said it better.", icon: "\u201D", ic: "bQuote" },
-  { type: "caption", name: "Caption", desc: "A quiet note.", icon: "c", ic: "bCaption" },
-  {
-    type: "callout",
-    name: "Callout",
-    desc: "The thing people skim past — louder.",
-    icon: "💡",
-    ic: "bCallout",
-  },
-  { type: "divider", name: "Divider", desc: "A visual breath.", icon: "—", ic: "bDivider" },
-  {
-    type: "code",
-    name: "Code",
-    desc: "Monospace, verbatim. Pick Mermaid for a diagram.",
-    icon: "<>",
-    ic: "bCode",
-    kw: "code snippet mermaid diagram flowchart",
-  },
-  { type: "table", name: "Table", desc: "Simple rows and columns.", icon: "▦", ic: "bTable" },
-  {
-    type: "sheet",
-    name: "Sheet",
-    desc: "A calculating spreadsheet. Formulas, formats and totals.",
-    // Σ says "calculating" rather than "grid" — the one-glance difference
-    // between this and Table.
-    icon: "\u03A3",
-    ic: "bSheet",
-    kw: "sheet sheets spreadsheet formula calc sum total number grid",
-  },
-  { type: "image", name: "Image", desc: "A screenshot, diagram or photo.", icon: "🖼", ic: "bImage" },
-  {
-    type: "imagerow",
-    name: "Image row",
-    desc: "Two or three images side by side.",
-    icon: "▥",
-    ic: "bImageRow",
-  },
+  { type: "text", name: "Text", desc: "Plain writing. The default.", icon: "Aa", ic: "bText", group: "basic", pv: "text" },
+  { type: "h1", name: "Heading 1", desc: "Big section heading.", icon: "H1", ic: "bH1", group: "basic", md: "#", pv: "h1" },
+  { type: "h2", name: "Heading 2", desc: "Medium section heading.", icon: "H2", ic: "bH2", group: "basic", md: "##", pv: "h2" },
+  { type: "h3", name: "Heading 3", desc: "Small section heading.", icon: "H3", ic: "bH3", group: "basic", md: "###", pv: "h3" },
+  { type: "bullet", name: "Bulleted list", desc: "Unordered points.", icon: "•", ic: "bBullet", group: "basic", md: "-", pv: "bullet", kw: "bullet list" },
+  { type: "numbered", name: "Numbered list", desc: "Steps, in order.", icon: "1.", ic: "bNumbered", group: "basic", md: "1.", pv: "numbered" },
+  { type: "todo", name: "To-do list", desc: "A checkbox that means it.", icon: "☑", ic: "bTodo", group: "basic", md: "[]", pv: "todo", kw: "todo task checkbox" },
+  { type: "toggle", name: "Toggle list", desc: "Details, tucked away.", icon: "▸", ic: "bToggle", group: "basic", pv: "toggle", kw: "toggle collapse" },
+  { type: "quote", name: "Quote", desc: "Someone said it better.", icon: "\u201D", ic: "bQuote", group: "basic", md: ">", pv: "quote" },
+  { type: "callout", name: "Callout", desc: "The thing people skim past — louder.", icon: "💡", ic: "bCallout", group: "basic", md: "!>", pv: "callout" },
+  { type: "divider", name: "Divider", desc: "A visual breath.", icon: "—", ic: "bDivider", group: "basic", md: "---", pv: "divider", kw: "divider line rule hr" },
+  { type: "image", name: "Image", desc: "A screenshot, diagram or photo.", icon: "🖼", ic: "bImage", group: "media", pv: "image", kw: "image picture photo screenshot" },
+  { type: "imagerow", name: "Image row", desc: "Two or three images side by side.", icon: "▥", ic: "bImageRow", group: "media", pv: "imagerow", kw: "gallery images" },
   {
     type: "file",
     name: "File",
     desc: "Attach a document. It stays with the page, and with every export.",
-    // A typographic mark, like every other glyph in this column — an emoji
-    // here would be the only one that breaks the set, and emoji are user
-    // content in this product, never UI chrome.
     icon: "\u2398",
     ic: "bFile",
+    group: "media",
+    pv: "file",
     kw: "file attachment pdf doc docx upload attach download",
   },
   {
-    type: "page",
-    name: "Page",
-    desc: "A page that lives inside this one.",
-    icon: "\u2398",
-    ic: "bPage",
-    kw: "page subpage child inside nest place placement",
-  },
-  {
-    // A new database inside this page (Notion's "Table view"). `lang`
-    // carries the variant through the same path code blocks use.
+    // A new database inside this page (Notion's "Table view").
     type: "view",
     name: "Table view",
     desc: "A new database inside this page, shown as a table.",
     icon: "\u25A4",
     ic: "bView",
+    group: "database",
+    pv: "viewTable",
     kw: "database table view inline new rows properties",
     lang: "new",
   },
+  { type: "view", name: "Board view", desc: "A new database as a board.", icon: "\u25A4", ic: "board", group: "database", pv: "viewBoard", kw: "database board kanban new", lang: "new:board" },
+  { type: "view", name: "List view", desc: "A new database as a list.", icon: "\u25A4", ic: "list", group: "database", pv: "viewList", kw: "database list new", lang: "new:list" },
+  { type: "view", name: "Calendar view", desc: "A new database on a calendar.", icon: "\u25A4", ic: "calendar", group: "database", pv: "viewCalendar", kw: "database calendar dates new", lang: "new:calendar" },
   {
     type: "view",
     name: "Linked view",
     desc: "A table, board or list of an existing database.",
     icon: "\u25A4",
     ic: "bView",
+    group: "database",
+    pv: "viewLinked",
     kw: "view linked database board list query pages existing",
+  },
+  { type: "table", name: "Table", desc: "Simple rows and columns.", icon: "▦", ic: "bTable", group: "advanced", pv: "table", kw: "grid simple table" },
+  {
+    type: "sheet",
+    name: "Sheet",
+    desc: "A calculating spreadsheet. Formulas, formats and totals.",
+    icon: "\u03A3",
+    ic: "bSheet",
+    group: "advanced",
+    pv: "sheet",
+    kw: "sheet sheets spreadsheet formula calc sum total number grid",
+  },
+  {
+    type: "code",
+    name: "Code",
+    desc: "Monospace, verbatim.",
+    icon: "<>",
+    ic: "bCode",
+    group: "advanced",
+    md: "```",
+    pv: "code",
+    kw: "code snippet",
+  },
+  {
+    type: "code",
+    name: "Diagram",
+    desc: "A flowchart or sequence drawn from Mermaid.",
+    icon: "<>",
+    ic: "bCode",
+    group: "advanced",
+    pv: "diagram",
+    kw: "mermaid diagram flowchart chart sequence",
+    lang: "mermaid",
+  },
+  { type: "caption", name: "Caption", desc: "A quiet note.", icon: "c", ic: "bCaption", group: "advanced", pv: "caption" },
+  {
+    type: "page",
+    name: "Page",
+    desc: "A page that lives inside this one.",
+    icon: "\u2398",
+    ic: "bPage",
+    group: "advanced",
+    pv: "page",
+    kw: "page subpage child inside nest place placement",
   },
 ];
 
@@ -441,13 +464,16 @@ function blockTypeName(b: Blk | undefined): string {
   return BLOCK_MENU.find((m) => m.type === b?.type && !m.lang)?.name ?? b?.type ?? "Block";
 }
 
-const COLUMNS_MENU: MenuItem[] = [
-  { type: "columns", name: "2 columns", desc: "Side by side.", icon: "▥", ic: "layout", count: 2 },
-  { type: "columns", name: "3 columns", desc: "Three across.", icon: "▥", ic: "layout", count: 3 },
-  { type: "columns", name: "4 columns", desc: "Four across.", icon: "▥", ic: "layout", count: 4 },
-  { type: "columns", name: "5 columns", desc: "Five across.", icon: "▥", ic: "layout", count: 5 },
-  { type: "columns", name: "6 columns", desc: "Six across.", icon: "▥", ic: "layout", count: 6 },
-];
+const COLUMNS_MENU: MenuItem[] = [2, 3, 4, 5, 6].map((n) => ({
+  type: "columns" as BlockType,
+  name: `${n} columns`,
+  desc: n === 2 ? "Side by side." : `${n} across.`,
+  icon: "▥",
+  ic: "layout" as IconKey,
+  group: "advanced" as SlashGroup,
+  pv: "columns" as PreviewKey,
+  count: n,
+}));
 
 
 
@@ -2244,16 +2270,7 @@ export function EditableBody({
     // Top-level slash menu: BLOCK_MENU + COLUMNS_MENU. ColumnStack (inside a
     // column) manages its own menu with BLOCK_MENU only — columns must
     // never nest (see src/lib/columns.ts).
-    const all: MenuItem[] = [...BLOCK_MENU, ...COLUMNS_MENU];
-    const q = (slash?.query ?? "").toLowerCase().trim();
-    if (!q) return all;
-    return all.filter(
-      (m) =>
-        m.name.toLowerCase().includes(q) ||
-        m.type.includes(q) ||
-        (m.kw != null && m.kw.includes(q)) ||
-        (m.count != null && `col${m.count}`.includes(q)),
-    );
+    return slashEntries([...BLOCK_MENU, ...COLUMNS_MENU], slash?.query ?? "");
   }, [slash]);
   const [menuIdx, setMenuIdx] = useState(0);
   useEffect(() => setMenuIdx(0), [slash?.query]);
@@ -2264,6 +2281,7 @@ export function EditableBody({
     (blockId: string, type: BlockType, count?: number, lang?: string) => {
       const idx = blocks.findIndex((b) => b.id === blockId);
       if (idx === -1) return;
+      rememberSlashPick({ type, count, lang });
       const prev = blocks[idx];
       const t = (prev.text ?? "");
       const at = slash && slash.blockId === blockId ? slash.at : t.lastIndexOf("/");
@@ -2295,7 +2313,8 @@ export function EditableBody({
       }
       if (type === "view") {
         FRESH_VIEW_BLOCKS.add(blockId);
-        if (lang === "new") FRESH_NEW_DATABASES.add(blockId);
+        // "new" = a new database as a table; "new:board" etc. its layout.
+        if (lang?.startsWith("new")) FRESH_NEW_DATABASES.set(blockId, lang.split(":")[1] ?? "table");
       }
       if (type === "todo" && nb.checked == null) nb.checked = false;
       if (type === "toggle" && nb.open == null) nb.open = false;
@@ -2749,6 +2768,7 @@ export function EditableBody({
           label: m.name,
           // Icon comes from the block DEFINITION — one place, three menus.
           icon: m.ic,
+          preview: <BlockPreview k={m.pv} />,
           checked:
             !isMulti &&
             target?.type === m.type &&
@@ -2765,6 +2785,7 @@ export function EditableBody({
         ...TOGGLE_HEADINGS.map(({ n, ic }) => ({
           kind: "row" as const,
           label: `Toggle heading ${n}`,
+          preview: <BlockPreview k={`toggleH${n}` as PreviewKey} />,
           icon: ic,
           checked: !isMulti && target?.type === "toggle" && curLevel === `h${n}`,
           onPick: () => {
@@ -3768,7 +3789,7 @@ export function EditableBody({
           items={filteredMenu}
           activeIdx={menuIdx}
           onHover={setMenuIdx}
-          onPick={(t, count, lang) => applyType(slash.blockId, t, count, lang)}
+          onPick={(m) => applyType(slash.blockId, m.type, m.count, m.lang)}
           onClose={closeSlash}
         />
       ) : null}
@@ -4778,14 +4799,7 @@ function ColumnStack({
     const base = BLOCK_MENU.filter(
       (m) => m.type !== "view" && !(isCallout && m.type === "callout"),
     );
-    const q = (slash?.query ?? "").toLowerCase().trim();
-    if (!q) return base;
-    return base.filter(
-      (m) =>
-        m.name.toLowerCase().includes(q) ||
-        m.type.includes(q) ||
-        (m.kw != null && m.kw.includes(q)),
-    );
+    return slashEntries(base, slash?.query ?? "");
   }, [slash, isCallout]);
 
   useEffect(() => {
@@ -4940,6 +4954,7 @@ function ColumnStack({
           kind: "row" as const,
           label: m.name,
           icon: m.ic,
+          preview: <BlockPreview k={m.pv} />,
           checked:
             target?.type === m.type &&
             (m.type !== "code" || isDiagram(target) === (m.lang === "mermaid")) &&
@@ -4952,6 +4967,7 @@ function ColumnStack({
         ...TOGGLE_HEADINGS.map(({ n, ic }) => ({
           kind: "row" as const,
           label: `Toggle heading ${n}`,
+          preview: <BlockPreview k={`toggleH${n}` as PreviewKey} />,
           icon: ic,
           checked: target?.type === "toggle" && curLevel === `h${n}`,
           onPick: () => {
@@ -5131,7 +5147,10 @@ function ColumnStack({
               if (e.key === "Enter") {
                 e.preventDefault();
                 const picked = filteredMenu[menuIdx];
-                if (picked) applyTypeLocal(b.id, picked.type, codeExtra(b.id, picked.type, picked.lang));
+                if (picked) {
+                  rememberSlashPick(picked);
+                  applyTypeLocal(b.id, picked.type, codeExtra(b.id, picked.type, picked.lang));
+                }
                 return;
               }
               if (e.key === "Escape") {
@@ -5349,7 +5368,10 @@ function ColumnStack({
           items={filteredMenu}
           activeIdx={menuIdx}
           onHover={setMenuIdx}
-          onPick={(t, _count, lang) => applyTypeLocal(slash.blockId, t, codeExtra(slash.blockId, t, lang))}
+          onPick={(m) => {
+            rememberSlashPick(m);
+            applyTypeLocal(slash.blockId, m.type, codeExtra(slash.blockId, m.type, m.lang));
+          }}
           onClose={() => setSlash(null)}
         />
       ) : null}
@@ -7677,114 +7699,3 @@ function AddPill({
 }
 
 
-/* ────────────── Slash menu ────────────── */
-
-function SlashMenu({
-  x,
-  y,
-  yTop,
-  items,
-  activeIdx,
-  onHover,
-  onPick,
-  onClose,
-}: {
-  x: number;
-  y: number;
-  yTop: number;
-  items: MenuItem[];
-  activeIdx: number;
-  onHover: (i: number) => void;
-  onPick: (t: BlockType, count?: number, lang?: string) => void;
-
-  onClose: () => void;
-}) {
-  // Clamp to viewport so the panel never clips out of view.
-  const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
-  const vh = typeof window !== "undefined" ? window.innerHeight : 800;
-  const left = Math.max(12, Math.min(vw - 324 - 12, x));
-  // Open below the block; near the bottom of the window, open above it so
-  // the menu never covers the line being typed. Decided once on open and
-  // kept while filtering, anchored by its bottom edge so it hugs the block.
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  const [above, setAbove] = useState<boolean | null>(null);
-  useLayoutEffect(() => {
-    const h = panelRef.current?.offsetHeight ?? 420;
-    setAbove(y + h + 12 > vh && yTop - h >= 12);
-    // Only on open.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const top = Math.max(12, Math.min(vh - 420 - 12, y));
-  const placement: React.CSSProperties = above
-    ? { left, bottom: vh - yTop, transformOrigin: "bottom left" }
-    : { left, top, transformOrigin: "top left", visibility: above === null ? "hidden" : undefined };
-
-  // Keep the highlighted row in view when moving with the arrow keys.
-  const listRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const row = listRef.current?.querySelector<HTMLElement>('[data-active="true"]');
-    row?.scrollIntoView({ block: "nearest" });
-  }, [activeIdx]);
-
-  useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      const el = e.target as HTMLElement | null;
-      if (el?.closest?.("[data-slash-menu]")) return;
-      onClose();
-    };
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [onClose]);
-
-  return createPortal(
-    <div
-      ref={exitRef("pop", panelRef)}
-      data-slash-menu
-      className="fixed z-50 animate-popIn rounded-xl border border-line bg-surface shadow-popover"
-      style={{ ...placement, width: 324, maxHeight: 420 }}
-    >
-      <div className="px-3 pb-1 pt-2 text-label uppercase text-faint">Blocks</div>
-      <div ref={listRef} className="max-h-[340px] overflow-y-auto py-1">
-        {items.length === 0 ? (
-          <div className="px-3 py-2 text-meta text-muted">No matches.</div>
-        ) : (
-          items.map((m, i) => (
-            <button
-              key={m.type + (m.count != null ? `-${m.count}` : "") + (m.lang ? `-${m.lang}` : "")}
-              type="button"
-              data-active={i === activeIdx ? "true" : undefined}
-              onMouseEnter={() => onHover(i)}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                onPick(m.type, m.count, m.lang);
-              }}
-
-              className={
-                "flex w-full items-center gap-3 px-2 py-1.5 text-left " +
-                (i === activeIdx ? "bg-sunken" : "")
-              }
-            >
-              <span
-                aria-hidden
-                className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-sunken font-mono text-caption text-body"
-              >
-                {m.icon}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-row font-bold text-noir">{m.name}</span>
-                <span className="block truncate text-meta text-muted">{m.desc}</span>
-              </span>
-            </button>
-          ))
-        )}
-      </div>
-      <div className="border-t border-line px-3 py-2 text-meta text-faint">
-        <span aria-hidden className="mr-1">
-          ⌕
-        </span>
-        Search all blocks…
-      </div>
-    </div>,
-    document.body,
-  );
-}

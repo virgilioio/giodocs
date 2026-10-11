@@ -62,6 +62,9 @@ export type MenuRow =
       checked?: boolean;
 
       danger?: boolean;
+      /** A card shown beside the menu while the row is pointed at (block
+       *  previews in Turn into). Desktop only. */
+      preview?: ReactNode;
       onPick: () => void;
     };
 
@@ -325,7 +328,13 @@ function CheckIcon() {
   );
 }
 
-function SpecRow({ row }: { row: Extract<MenuRow, { kind: "row" }> }) {
+function SpecRow({
+  row,
+  onHover,
+}: {
+  row: Extract<MenuRow, { kind: "row" }>;
+  onHover?: (el: HTMLElement | null) => void;
+}) {
   const iconPath =
     row.icon && (row.icon in IC ? IC[row.icon as keyof typeof IC] : row.icon);
   return (
@@ -338,6 +347,8 @@ function SpecRow({ row }: { row: Extract<MenuRow, { kind: "row" }> }) {
         row.onPick();
       }}
       onMouseDown={(e) => e.stopPropagation()}
+      onMouseEnter={onHover ? (e) => onHover(e.currentTarget) : undefined}
+      onFocus={onHover ? (e) => onHover(e.currentTarget) : undefined}
       className={
         "flex w-full items-center rounded-md text-left " +
         (row.danger ? "hover:bg-dangerTint" : "hover:bg-rail")
@@ -446,6 +457,23 @@ function SpecRow({ row }: { row: Extract<MenuRow, { kind: "row" }> }) {
 }
 
 function SpecBody({ spec, onClose }: { spec: MenuSpec; onClose: () => void }) {
+  const phone = useIsPhone();
+  const hasPreviews = !phone && spec.rows.some((r) => r.kind === "row" && !!r.preview);
+  const [pv, setPv] = useState<{ node: ReactNode; top: number; right: boolean } | null>(null);
+  const previewCard =
+    hasPreviews && pv ? (
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          top: Math.max(0, pv.top),
+          ...(pv.right ? { left: "calc(100% + 8px)" } : { right: "calc(100% + 8px)" }),
+          pointerEvents: "none",
+        }}
+      >
+        {pv.node}
+      </div>
+    ) : null;
   if (spec.confirm) {
     const c = spec.confirm;
     return (
@@ -555,11 +583,27 @@ function SpecBody({ spec, onClose }: { spec: MenuSpec; onClose: () => void }) {
               }}
             />
           ) : (
-            <SpecRow key={`r-${i}`} row={r} />
+            <SpecRow
+              key={`r-${i}`}
+              row={r}
+              onHover={
+                hasPreviews
+                  ? (el) => {
+                      const panel = el?.closest<HTMLElement>('[role="menu"]');
+                      if (!el || !panel || !r.preview) return setPv(null);
+                      const pr = panel.getBoundingClientRect();
+                      const top = el.getBoundingClientRect().top - pr.top - 8;
+                      const right = pr.right + 8 + 200 <= window.innerWidth;
+                      setPv({ node: r.preview, top, right });
+                    }
+                  : undefined
+              }
+            />
           ),
         )}
       </div>
       {spec.inputFirst ? null : input}
+      {previewCard}
       {spec.footer && (
         <div
           style={{
