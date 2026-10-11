@@ -76,6 +76,7 @@ import {
   type SelectOption,
 } from "./property-pickers";
 import { IC } from "@/lib/menu-icons";
+import { useIsPhone } from "@/lib/use-media";
 
 /* The table layout of a view. Which properties it shows, in which order and
  * how wide, come from the view's config (src/lib/view-config.ts); every
@@ -902,11 +903,14 @@ function AddPropertyButton({
   databaseId,
   onCreated,
   shownBuiltIns,
+  iconOnly = false,
 }: {
   databaseId: string;
   onCreated: (key: string) => void;
   /** Built-ins already shown (the rest are offered as columns). */
   shownBuiltIns: string[];
+  /** A phone's narrow end track: just the +. */
+  iconOnly?: boolean;
 }) {
   const ws = useWorkspaceId();
   const shell = useWorkspaceShell(ws);
@@ -948,17 +952,19 @@ function AddPropertyButton({
         type="button"
         aria-expanded={!!anchor}
         data-add-property
+        aria-label={iconOnly ? "Add property" : undefined}
+        title={iconOnly ? "Add property" : undefined}
         onClick={(e) => {
           setSub(null);
           setAnchor(e.currentTarget);
         }}
         className={`flex items-center gap-1 whitespace-nowrap rounded-md text-meta text-muted hover:bg-railHover hover:text-strong ${anchor ? "bg-railHover" : ""}`}
-        style={{ height: 24, padding: "0 6px", marginRight: "auto", marginLeft: 4 }}
+        style={iconOnly ? { height: 24, width: 28, justifyContent: "center", margin: "0 6px" } : { height: 24, padding: "0 6px", marginRight: "auto", marginLeft: 4 }}
       >
         <svg viewBox="0 0 24 24" width={13} height={13} aria-hidden fill="none">
           <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" />
         </svg>
-        Add property
+        {iconOnly ? null : "Add property"}
       </button>
       <RowMenu spec={anchor ? (sub ?? typeSpec) : null} anchor={anchor} onClose={close} />
     </>
@@ -1482,11 +1488,14 @@ export function ViewTable({
   const ctxStale = useMemo(() => ({ ...ctxFresh, isStale: true }), [ctxFresh]);
   const ctxOk = useMemo(() => ({ ...ctxFresh, isStale: false }), [ctxFresh]);
 
+  const phone = useIsPhone();
   const tracks = [TITLE_KEY, ...shown].map((k) => ({ k, ...trackOf(config, k, typeOf(k)) }));
   const allFixed = tracks.every((t) => t.fixed);
   // The ⋯ track takes what's left only when every property has a set width.
   // The last track holds each row's ⋯ and, in the heading, "+ Add property".
-  const endW = canArrange && databaseId ? 150 : 40;
+  // On a phone the end track stays 40px: it's sticky, and a wider one
+  // would cover the properties the table scrolls under it.
+  const endW = canArrange && databaseId && !phone ? 150 : 40;
   const endTrack = allFixed ? `minmax(${endW}px, 1fr)` : `${endW}px`;
   const minTableWidth = 16 + endW + tracks.reduce((n, t) => n + t.min, 0);
   const templateWith = (override?: { key: string; px: number }) =>
@@ -1843,9 +1852,10 @@ export function ViewTable({
                 databaseId={databaseId}
                 onCreated={(key) => onConfig({ ...config, props: showProp(shown, key) })}
                 shownBuiltIns={shown.filter((k) => k.startsWith("@"))}
+                iconOnly={phone}
               />
             ) : null}
-            {canArrange ? (
+            {canArrange && !phone ? (
               <PropertiesMenu
                 shown={shown}
                 allKeys={allKeys}
