@@ -35,6 +35,30 @@ export function mergeTemplateProps(pageProps: unknown, templateProps: unknown): 
   return out;
 }
 
+/** Only the values a row of this database can hold: its properties that
+ *  store something (archived ones included: their values are kept) (never IDs, formulas, rollups or a relation's far
+ *  side). A row carried into a database from elsewhere can keep values for
+ *  properties that database doesn't have; copying them into a new row
+ *  would be refused ("Unknown property"), so a copy leaves them behind. */
+export function keepStoredProps(
+  props: unknown,
+  defs: ReadonlyArray<{ key: string; type: string; config?: unknown; archived_at?: string | null }>,
+): Rec {
+  const src = props && typeof props === "object" && !Array.isArray(props) ? (props as Rec) : {};
+  const ok = new Set(
+    defs
+      .filter((d) => !["rollup", "formula", "unique_id"].includes(d.type))
+      .filter((d) => {
+        const c = d.config;
+        return !(d.type === "relation" && c && typeof c === "object" && typeof (c as Rec).of === "string");
+      })
+      .map((d) => d.key),
+  );
+  const out: Rec = {};
+  for (const [k, v] of Object.entries(src)) if (ok.has(k)) out[k] = v;
+  return out;
+}
+
 /** A page nobody has written in yet: no title and no words in any block. */
 export function isBlankPage(title: string | null | undefined, blocks: unknown): boolean {
   if ((title ?? "").trim()) return false;

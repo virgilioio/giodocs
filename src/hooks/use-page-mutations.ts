@@ -12,6 +12,7 @@ import { useWorkspaceId } from "@/lib/workspace-context";
 import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import type { PageListItem, PageFull, Block } from "@/lib/types";
 import { applyMove, descendantsOf, type MoveTarget } from "@/lib/page-tree";
+import { storedPropsFor } from "./stored-props";
 
 
 type ViewRow = {
@@ -757,7 +758,7 @@ export function useDuplicatePage() {
         // Beside the original: a row stays a row of its database (with its
         // values), a page inside a page stays inside it.
         parent_id: src.parent_id ?? null,
-        props: (src.database_id ? (src.props ?? {}) : {}) as never,
+        props: (await storedPropsFor(src.props, src.database_id)) as never,
         blocks: cloned as never,
         access_type: "restricted",
       });

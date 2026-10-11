@@ -183,6 +183,10 @@ provider Virgilio already has; don't build them until asked.
   Starting from one copies blocks (new ids), icon, title and properties
   (the page's own properties win), and copies its images and files into
   the new page's storage folder so the new page's readers see them.
+  A copy (from a template, or Duplicate) carries only the values its
+  database's properties can hold (keepStoredProps, 2026-10-11): rows can
+  keep leftover values for properties their database doesn't have, and
+  copying those would be refused as an unknown property.
 - Who can change a page (pages_guard_edit / can_edit_page_row, every
   path): a member on a workspace page shared to edit, a workspace owner,
   or anyone with edit access on the page. A workspace page shared as

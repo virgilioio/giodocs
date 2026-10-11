@@ -56,3 +56,23 @@ describe("template images", () => {
     expect(((out[2].children as Array<Record<string, unknown>>)[0]).path).toBe("ws/new/a.png");
   });
 });
+
+describe("keepStoredProps", () => {
+  it("keeps only values the database's properties can hold", async () => {
+    const { keepStoredProps } = await import("./template-copy");
+    const defs = [
+      { key: "status_2", type: "status" },
+      { key: "old", type: "text", archived_at: "x" },
+      { key: "req", type: "unique_id" },
+      { key: "calc", type: "formula" },
+      { key: "back", type: "relation", config: { of: "fwd" } },
+    ];
+    expect(
+      keepStoredProps(
+        { area: "People", status: "In review", status_2: "todo", old: "kept", req: 4, calc: 1, back: [] },
+        defs,
+      ),
+    ).toEqual({ status_2: "todo", old: "kept" });
+    expect(keepStoredProps(null, defs)).toEqual({});
+  });
+});

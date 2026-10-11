@@ -3,11 +3,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { qk } from "@/lib/query-keys";
 import { useToast } from "@/lib/toast";
 import { useWorkspaceId } from "@/lib/workspace-context";
-import { cloneBlocksFresh, mergeTemplateProps, pathForPage, retargetBlockPaths } from "@/lib/template-copy";
+import {
+  cloneBlocksFresh,
+  mergeTemplateProps,
+  pathForPage,
+  retargetBlockPaths,
+} from "@/lib/template-copy";
 import { collectImagePaths } from "@/lib/image-ops";
 import { IMAGE_BUCKET } from "@/lib/image-ops";
 import { useNavigate } from "@tanstack/react-router";
 import { useCreatePage } from "./use-page-mutations";
+import { storedPropsFor } from "./stored-props";
 import type { Block, PageFull } from "@/lib/types";
 
 /* Templates: making a page one (or not), and starting pages from them.
@@ -109,11 +115,12 @@ export async function applyTemplate(
   const tpl = await fetchTemplateContent(templateId);
   const blocks = await copyTemplateFiles(cloneBlocksFresh(tpl.blocks), pageId);
   const sameDatabase = !!tpl.database_id && current.databaseId === tpl.database_id;
+  const tplProps = sameDatabase ? await storedPropsFor(tpl.props, tpl.database_id) : {};
   const patch = {
     blocks: blocks as never,
     icon: tpl.icon || "📄",
     title: current.title.trim() ? current.title : tpl.title,
-    ...(sameDatabase ? { props: mergeTemplateProps(current.props, tpl.props) as never } : {}),
+    ...(sameDatabase ? { props: mergeTemplateProps(current.props, tplProps) as never } : {}),
   };
   const { error } = await supabase.from("pages").update(patch).eq("id", pageId);
   if (error) throw error;
@@ -142,7 +149,7 @@ export function useNewPageFromTemplate() {
     try {
       const tpl = await fetchTemplateContent(templateId);
       const created = await create.mutateAsync({
-        seedProps: tpl.database_id ? mergeTemplateProps({}, tpl.props) : {},
+        seedProps: await storedPropsFor(tpl.props, tpl.database_id),
         title: tpl.title,
         icon: tpl.icon || "📄",
         parentId: tpl.parent_id,
