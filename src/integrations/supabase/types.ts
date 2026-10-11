@@ -429,6 +429,7 @@ export type Database = {
           icon: string
           id: string
           is_database: boolean
+          page_layout: Json | null
           parent_id: string | null
           position: number | null
           props: Json
@@ -454,6 +455,7 @@ export type Database = {
           icon?: string
           id?: string
           is_database?: boolean
+          page_layout?: Json | null
           parent_id?: string | null
           position?: number | null
           props?: Json
@@ -479,6 +481,7 @@ export type Database = {
           icon?: string
           id?: string
           is_database?: boolean
+          page_layout?: Json | null
           parent_id?: string | null
           position?: number | null
           props?: Json
