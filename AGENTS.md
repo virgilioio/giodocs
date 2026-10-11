@@ -165,6 +165,10 @@ provider Virgilio already has; don't build them until asked.
   directory (src/lib/mention-directory.ts, filled by app-shell). A page
   mention never stores a title, and a page the reader can't open reads
   "Private page". page_backlinks (as the caller) feeds "Linked from".
+- Custom emoji and mention chips are atoms (2026-10-11): contenteditable
+  false, ONE rendered character in ce-offsets (ATOM), so the caret before
+  and after one are different positions; Backspace/Delete remove it whole,
+  and the caret is lifted out of an atom if the browser puts it inside.
 - The inbox is the notifications table. Only database code writes it
   (pages_notify_mentions, add_comment); people read and mark read their
   own rows. Only people who can open the page are notified, never the

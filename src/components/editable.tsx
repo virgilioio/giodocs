@@ -43,7 +43,7 @@ import {
 import { createPortal } from "react-dom";
 import { htmlToInlineMarkdown } from "@/lib/inline-tokens";
 import { inlineToHtml } from "@/lib/inline-markdown";
-import { readCaretSource, writeCaretSource } from "@/lib/ce-offsets";
+import { liftCaretOutOfAtom, readCaretSource, writeCaretSource } from "@/lib/ce-offsets";
 import { searchEmoji, shouldOpenEmojiTrigger, type Emoji } from "@/lib/emoji-data";
 import { useInlineEmojiSet, type InlineEmoji } from "@/lib/emoji-registry";
 import { EmojiGrid } from "./emoji-picker";
@@ -289,6 +289,24 @@ export const Editable = forwardRef<HTMLDivElement, EditableProps>(
       onSourceChange(nextSource);
       evaluateTrigger(nextSource);
     };
+
+    // The caret never rests inside an emoji or a mention chip (it would be
+    // invisible and typing would go nowhere): step it to the near side.
+    useEffect(() => {
+      const doc = elRef.current?.ownerDocument;
+      if (!doc) return;
+      let prev: number | null = null;
+      const onSel = () => {
+        const el = elRef.current;
+        if (!el || doc.activeElement !== el) {
+          prev = null;
+          return;
+        }
+        prev = liftCaretOutOfAtom(el, prev);
+      };
+      doc.addEventListener("selectionchange", onSel);
+      return () => doc.removeEventListener("selectionchange", onSel);
+    }, []);
 
     // Close the popup when the caret moves out of the ":query" region
     // (arrow keys, click). selectionchange fires on the document.

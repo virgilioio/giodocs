@@ -181,6 +181,7 @@ function renderChildren(
           key={ctx.keyCounter++}
           data-o={withOffsets ? t.sourceStart : undefined}
           {...{ [EMOJI_ATTR]: t.name }}
+          contentEditable={false}
           title={`:${t.name}:`}
           style={{
             ...EMOJI_BOX,
@@ -396,7 +397,10 @@ function tokensToHtml(
         continue;
       }
       const url = emojiUrl(t.name, opts);
-      out += `<span ${EMOJI_ATTR}="${escHtml(t.name)}" title="${escHtml(
+      // An atom, like a mention chip: the caret steps around it and one
+      // Backspace removes it whole. Editable, its hidden shortcode text
+      // took the caret (invisible) and swallowed Backspace.
+      out += `<span ${EMOJI_ATTR}="${escHtml(t.name)}" contenteditable="false" title="${escHtml(
         sc,
       )}" style="display:inline-block;width:1.15em;height:1.15em;vertical-align:-0.2em;background-size:contain;background-repeat:no-repeat;background-position:center;${
         url ? `background-image:url(&quot;${escHtml(url)}&quot;)` : ""

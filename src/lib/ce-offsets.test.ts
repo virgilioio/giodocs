@@ -193,13 +193,13 @@ const EMOJI_OPTS = {
  * renderer-side comparison must drop the span WITH its contents — that
  * is precisely the DOM rule getCaretOffset enforces. */
 const stripEmojiSpans = (html: string): string =>
-  html.replace(/<span data-gio-emoji=[\s\S]*?<\/span><\/span>/g, "");
+  html.replace(/<span data-gio-emoji=[\s\S]*?<\/span><\/span>/g, "\uFFFC");
 const renderedOf = (html: string): string => stripTags(stripEmojiSpans(html));
 
 describe("buildOffsetMap — custom emoji tokens", () => {
-  it("a known shortcode has ZERO rendered length", () => {
+  it("a known shortcode is ONE rendered character (an atom)", () => {
     const m = buildOffsetMap("a:brand:b", EMOJI_OPTS);
-    expect(m.renderedText).toBe("ab");
+    expect(m.renderedText).toBe("a\uFFFCb");
   });
   it("an unknown shortcode stays literal text", () => {
     const m = buildOffsetMap("Note: hello:", EMOJI_OPTS);
@@ -215,10 +215,11 @@ describe("buildOffsetMap — custom emoji tokens", () => {
   });
   it("the caret steps over the whole token", () => {
     const m = buildOffsetMap("a:brand:b", EMOJI_OPTS);
-    // rendered 1 sits between "a" and "b" → source index of "b" (8).
-    expect(m.toSource(1)).toBe(8);
-    expect(m.toRendered(8)).toBe(1);
-    expect(m.toRendered(4)).toBe(1); // inside ":brand:" clamps
+    // rendered 1 is just before the emoji, rendered 2 just after it.
+    expect(m.toSource(1)).toBe(1);
+    expect(m.toSource(2)).toBe(8);
+    expect(m.toRendered(8)).toBe(2);
+    expect(m.toRendered(4)).toBe(1); // inside ":brand:" clamps to its near edge
   });
   it("toRendered(toSource(r)) === r with emoji present", () => {
     for (const src of ["a:brand:b", ":ship-it: go", "**x:brand:y**"]) {

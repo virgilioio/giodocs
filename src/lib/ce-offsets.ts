@@ -21,11 +21,16 @@ import {
   type InlineToken,
 } from "./inline-tokens";
 
-/* An @mention chip is an atom the same way (its name is display, not
- * source). Text inside an inline-emoji span is a screen-reader / copy-paste
- * affordance, not content: it must contribute ZERO rendered characters
- * or the DOM caret and the offset map disagree by the length of the
- * shortcode. Every DOM traversal in this file skips those subtrees. */
+/* Custom emoji and @mention chips are ATOMS: each is one rendered
+ * character (ATOM in renderedText), whatever text it holds inside (a
+ * hidden shortcode, a person's name). One character, not zero, so the
+ * caret before an atom and the caret after it are different positions:
+ * Backspace after an emoji removes it, and typing after one lands after
+ * it (2026-10-11; with zero width the two sides were the same offset and
+ * the caret could fall into the atom, where it vanished). Every DOM
+ * traversal in this file counts an atom as one and never looks inside. */
+export const ATOM = "\uFFFC";
+
 function isEmojiEl(n: Node | null): n is Element {
   return (
     !!n &&
@@ -49,7 +54,7 @@ function emojiAncestor(node: Node, root: Node): Element | null {
 function visibleLen(node: Node): number {
   if (node.nodeType === 3) return (node.nodeValue ?? "").length;
   if (node.nodeType !== 1) return 0;
-  if (isEmojiEl(node)) return 0;
+  if (isEmojiEl(node)) return 1;
   let n = 0;
   for (const c of Array.from(node.childNodes)) n += visibleLen(c);
   return n;
@@ -70,7 +75,14 @@ function visibleLenBefore(root: Node, stop: Node): number {
       return;
     }
     if (n.nodeType !== 1) return;
-    if (isEmojiEl(n)) return;
+    if (isEmojiEl(n)) {
+      if (n.contains(stop)) {
+        done = true;
+        return;
+      }
+      acc += 1;
+      return;
+    }
     for (const c of Array.from(n.childNodes)) {
       rec(c);
       if (done) return;
@@ -153,10 +165,14 @@ function scan(source: string, opts?: InlineOpts): {
       }
 
       if (t.kind === "emoji" || t.kind === "mention") {
-        // Zero rendered characters, exactly like a delimiter run: every
-        // source position inside ":name:" clamps to the same rendered
-        // slot, so the caret steps over the token as one atom.
-        fillClamp(t.sourceStart, t.sourceEnd, renderedLen);
+        // One rendered character (ATOM): before it is renderedLen, after
+        // it renderedLen + 1. Source positions inside the token clamp to
+        // its near edge, so the caret steps over it whole.
+        fillClamp(t.sourceStart, t.sourceEnd - 1, renderedLen);
+        rendered.push(ATOM);
+        r2s.push(t.sourceStart);
+        renderedLen += 1;
+        s2r[t.sourceEnd] = renderedLen;
         continue;
       }
 
@@ -238,13 +254,15 @@ export function getCaretOffset(
     const doc = el.ownerDocument;
     if (!doc) return 0;
 
+    // A caret inside an atom counts as just before it.
+    const inAtom = emojiAncestor(node, el);
+    if (inAtom) return visibleLenBefore(el, inAtom);
     if (node.nodeType === 3 /* Text */) {
-      const inEmoji = emojiAncestor(node, el);
-      if (inEmoji) return visibleLenBefore(el, inEmoji);
       return visibleLenBefore(el, node) + offset;
     }
 
-    // Element node: sum text length of the first `offset` children.
+    // Element node: everything before it, plus its first `offset` children.
+    count = node === el ? 0 : visibleLenBefore(el, node);
     let idx = 0;
     for (const child of Array.from(node.childNodes)) {
       if (idx >= offset) break;
@@ -273,27 +291,41 @@ export function setCaretOffset(
   const s = Math.max(0, Math.min(start | 0, total));
   const e = Math.max(s, Math.min((end ?? start) | 0, total));
 
-  const locate = (target: number): { node: Node; offset: number } => {
-    const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
-      acceptNode: (n: Node) =>
-        emojiAncestor(n, el)
-          ? NodeFilter.FILTER_REJECT
-          : NodeFilter.FILTER_ACCEPT,
-    });
-    let counted = 0;
-    let cur = walker.nextNode();
-    let last: Text | null = null;
-    while (cur) {
-      const len = (cur.nodeValue ?? "").length;
-      if (counted + len >= target) {
-        return { node: cur, offset: target - counted };
-      }
-      counted += len;
-      last = cur as Text;
-      cur = walker.nextNode();
+  // Text nodes and atoms in document order. A caret next to an atom sits
+  // in the neighbouring text when there is some, else in the atom's
+  // parent just before or after it (never inside it).
+  const pieces: Node[] = [];
+  const collect = (n: Node) => {
+    for (const c of Array.from(n.childNodes)) {
+      if (c.nodeType === 3) pieces.push(c);
+      else if (isEmojiEl(c)) pieces.push(c);
+      else if (c.nodeType === 1) collect(c);
     }
+  };
+  collect(el);
+  const beside = (atom: Node, after: boolean): { node: Node; offset: number } => {
+    const parent = atom.parentNode ?? el;
+    const i = Array.from(parent.childNodes).indexOf(atom as ChildNode);
+    return { node: parent, offset: i + (after ? 1 : 0) };
+  };
+  const locate = (target: number): { node: Node; offset: number } => {
+    let counted = 0;
+    for (let i = 0; i < pieces.length; i++) {
+      const cur = pieces[i];
+      if (cur.nodeType === 3) {
+        const len = (cur.nodeValue ?? "").length;
+        if (counted + len >= target) return { node: cur, offset: target - counted };
+        counted += len;
+        continue;
+      }
+      if (counted === target) return beside(cur, false);
+      counted += 1;
+      if (counted === target && pieces[i + 1]?.nodeType !== 3) return beside(cur, true);
+    }
+    const last = pieces[pieces.length - 1];
     if (!last) return { node: el, offset: 0 };
-    return { node: last, offset: (last.nodeValue ?? "").length };
+    if (last.nodeType === 3) return { node: last, offset: (last.nodeValue ?? "").length };
+    return beside(last, true);
   };
 
   const range = doc.createRange();
@@ -355,4 +387,24 @@ export function writeCaretSource(
   const rStart = map.toRendered(start);
   const rEnd = end === undefined ? undefined : map.toRendered(end);
   setCaretOffset(el, rStart, rEnd);
+}
+
+/** Keeps the caret out of atoms. The browser can put a collapsed caret
+ *  inside an emoji's hidden shortcode or a chip's text (Home, arrows, a
+ *  click), where it is invisible and typing goes nowhere. This moves it
+ *  beside the atom: after it when the caret was moving forward (it came
+ *  from before the atom), else before it. Returns the rendered offset the
+ *  caret ends at, for the next call's `prev`. */
+export function liftCaretOutOfAtom(el: HTMLElement, prev: number | null): number | null {
+  const win = el.ownerDocument?.defaultView;
+  const sel = win?.getSelection?.();
+  if (!sel || sel.rangeCount === 0) return null;
+  const r = sel.getRangeAt(0);
+  if (!el.contains(r.startContainer)) return null;
+  const atom = emojiAncestor(r.startContainer, el);
+  if (!atom || !r.collapsed) return getCaretOffset(el)?.start ?? null;
+  const before = visibleLenBefore(el, atom);
+  const target = prev !== null && prev <= before ? before + 1 : before;
+  setCaretOffset(el, target);
+  return target;
 }

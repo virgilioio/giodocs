@@ -73,7 +73,7 @@ describe("mention chips", () => {
     const m = mentionSource("user", SAM, "Sam");
     const src = `ab${m}cd`;
     const map = buildOffsetMap(src);
-    expect(map.renderedText).toBe("abcd");
+    expect(map.renderedText).toBe("ab\uFFFCcd");
     expect(map.toRendered(2 + 5)).toBe(2); // inside the mention → its edge
     const [l, r] = splitInlineSource(src, 6);
     expect(l).toBe(`ab${m}`);
