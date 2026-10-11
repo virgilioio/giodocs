@@ -310,6 +310,24 @@ provider Virgilio already has; don't build them until asked.
   (start a page from one) and quick links. The ⋯ beside the greeting
   shows or hides each section (home_prefs.hidden).
 
+## Decisions (Allan, 2026-10-11: templates in the sidebar, new-page start)
+- Templates sit in the sidebar under Inbox (templates-panel.tsx): every
+  template grouped as Pages or "Rows of <database>", searchable, each
+  opened to edit or Used to start a page; New template makes a private
+  page that is a template. Starters (src/lib/starter-templates.ts: To-do
+  list, Meeting notes, Weekly plan, Project brief) ship with the app and
+  are offered there and on blank pages.
+- A blank page you can edit shows its starting points under the first
+  line (new-page-starter.tsx): Empty page, your templates, starters,
+  Import a file, and (plain pages only) Or start with a database: Table,
+  Board, List, Calendar. Typing anywhere hides it.
+- Import reads Markdown, HTML and CSV in the browser (src/lib/file-import.ts,
+  2 MB at most) with the paste readers. A CSV becomes a simple table (its
+  ⋯ menu turns it into a database). Other formats are refused in words.
+- Starting a database flips the blank page to is_database and adds a
+  shared view of that layout (use-start-database.ts); a board gets a
+  Status (Not started, In progress, Done) to group by, a calendar a Date.
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.

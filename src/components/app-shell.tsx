@@ -23,6 +23,7 @@ import { useEmojiSet } from "@/hooks/use-custom-emoji";
 import { setInlineEmojiSet } from "@/lib/emoji-registry";
 import { mentionPage, setMentionDirectory } from "@/lib/mention-directory";
 import { InboxButton } from "./inbox";
+import { TemplatesButton } from "./templates-panel";
 import { useInboxRealtime } from "@/hooks/use-inbox";
 import { describeNotification, openNotificationTarget } from "@/lib/inbox-text";
 import { openComments } from "@/lib/comments-store";
@@ -922,6 +923,7 @@ function SidebarBody({
           <span className="flex-1 text-left">Home</span>
         </Link>
         <InboxButton />
+        <TemplatesButton />
 
         {loading ? (
           <SkeletonList />

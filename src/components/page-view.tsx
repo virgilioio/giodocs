@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import {
@@ -80,7 +81,11 @@ import {
 import { RowMenu, type MenuRow, type MenuSpec } from "./row-menu";
 import { PageHistoryHost } from "./page-history";
 import { LinkedFrom } from "./linked-from";
-import { TemplateBanner, TemplatePicker } from "./templates-ui";
+import { TemplateBanner } from "./templates-ui";
+import { NewPageStarter } from "./new-page-starter";
+import { STARTERS, starterBlocks } from "@/lib/starter-templates";
+import { importFile } from "@/lib/file-import";
+import { useStartDatabase } from "@/hooks/use-start-database";
 import { applyTemplate } from "@/hooks/use-templates";
 import { isBlankPage } from "@/lib/template-copy";
 import { CommentMarkers, CommentsHost } from "./comments-panel";
@@ -1781,6 +1786,32 @@ export function PageEditor({ pageId }: { pageId: string }) {
     [page, prepareRestore, adoptRestored, queryClient, toast, ws],
   );
 
+  /* The rest of a blank page's starting points (new-page-starter.tsx):
+   * fill it with a starter or an imported file, or make it a database. */
+  const fillBlankPage = useCallback(
+    async (blocks: unknown[], extra: { title?: string; icon?: string }) => {
+      if (!page) return;
+      const problem = await prepareRestore();
+      if (problem) throw new Error(problem);
+      const patch: { blocks: never; title?: string; icon?: string } = { blocks: blocks as never };
+      if (extra.title && !(page.title ?? "").trim()) patch.title = extra.title;
+      if (extra.icon && (!page.icon || page.icon === "📄")) patch.icon = extra.icon;
+      const { error } = await supabase.from("pages").update(patch).eq("id", page.id);
+      if (error) throw new Error("Couldn't fill the page. Try again.");
+      const { data, error: e2 } = await supabase
+        .from("pages")
+        .select("title, icon, props, blocks, edited_at, edited_by")
+        .eq("id", page.id)
+        .single();
+      if (e2 || !data) throw new Error("Couldn't load the filled page. Reload to see it.");
+      adoptRestored({ ...data, blocks: (Array.isArray(data.blocks) ? data.blocks : []) as unknown as Block[] } as RestoredPage);
+      void queryClient.invalidateQueries({ queryKey: qk.pages(ws) });
+    },
+    [page, prepareRestore, adoptRestored, queryClient, ws],
+  );
+  const startDatabase = useStartDatabase();
+  const navigateTo = useNavigate();
+
   // Comments stay live while the page is open; the panel closes on leaving.
   useCommentsLive(pageId);
   useEffect(
@@ -1981,8 +2012,39 @@ export function PageEditor({ pageId }: { pageId: string }) {
         {showTemplatePicker ? (
           // Floats under the first line of a blank page: it goes the moment
           // you type, and nothing moves when it does.
-          <div style={{ position: "absolute", top: 50, left: 0, width: 360, zIndex: 2 }}>
-            <TemplatePicker databaseId={page.database_id ?? null} onPick={pickTemplate} />
+          <div style={{ position: "absolute", top: 50, left: 0, width: 420, zIndex: 2 }}>
+            <NewPageStarter
+              databaseId={page.database_id ?? null}
+              canBeDatabase={!page.database_id && !page.is_database}
+              onEmpty={() => {
+                setWroteSomething(true);
+                focusFirstBlock();
+              }}
+              onTemplate={pickTemplate}
+              onStarter={async (id) => {
+                const s = STARTERS.find((x) => x.id === id);
+                await fillBlankPage(starterBlocks(id), { title: s?.name, icon: s?.icon });
+              }}
+              onImport={async (file) => {
+                const r = importFile(file.name, await file.text());
+                if (!r.ok) throw new Error(r.error);
+                await fillBlankPage(r.blocks, { title: r.title });
+                if (r.kind === "csv") {
+                  toast.push("Imported as a table. Its ⋯ menu can turn it into a database.");
+                }
+              }}
+              onDatabase={async (layout) => {
+                const problem = await prepareRestore();
+                if (problem) throw new Error(problem);
+                let view: { id: string };
+                try {
+                  view = await startDatabase.mutateAsync({ pageId: page.id, layout, icon: page.icon ?? null });
+                } catch {
+                  throw new Error("Couldn't make this page a database. Try again.");
+                }
+                void navigateTo({ to: "/p/$pageId", params: { pageId: page.id }, search: { v: view.id } });
+              }}
+            />
           </div>
         ) : null}
         <GridToDatabaseProvider>

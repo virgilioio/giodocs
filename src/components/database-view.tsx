@@ -868,14 +868,22 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
     [],
   );
 
-  const emptyBody = (
-    <div className="grid place-items-center py-20 text-center">
-      <div className="font-display text-subhead text-noir">Nothing matches this view yet.</div>
-      <p className="mt-2 text-meta text-secondary">
-        A view is a query over this database&apos;s rows — they appear here the moment their properties match.
-      </p>
-    </div>
-  );
+  const emptyBody =
+    unfilteredCount === 0 ? (
+      <div className="grid place-items-center py-20 text-center">
+        <div className="font-display text-subhead text-noir">No rows yet.</div>
+        <p className="mt-2 text-meta text-secondary">
+          Add the first one with New. Every row is a page of its own.
+        </p>
+      </div>
+    ) : (
+      <div className="grid place-items-center py-20 text-center">
+        <div className="font-display text-subhead text-noir">Nothing matches this view yet.</div>
+        <p className="mt-2 text-meta text-secondary">
+          A view is a query over this database&apos;s rows — they appear here the moment their properties match.
+        </p>
+      </div>
+    );
 
   let body: ReactNode;
   if (rows.length === 0 && layout !== "table") body = emptyBody;

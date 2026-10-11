@@ -68,9 +68,9 @@ export function TemplatePicker({
   if (rows.length === 0) return null;
   const shown = all ? rows : rows.slice(0, SHOWN);
   return (
-    <section aria-label="Start from a template" className="animate-fadeIn">
+    <section aria-label="Your templates" className="animate-fadeIn">
       <div className="text-label uppercase text-faint" style={{ marginBottom: 6 }}>
-        Start from a template
+        Your templates
       </div>
       <ul>
         {shown.map((t) => (
