@@ -140,7 +140,7 @@
   --dur-dialog-in: 220ms; --dur-dialog-out: 150ms;
   --dur-expand: 240ms;  --dur-move: 240ms;  --dur-switch: 200ms;
   --dur-toast: 400ms;  --dur-toast-out: 200ms;
-  --dur-flash: 1200ms;  --dur-sidebar: 240ms;
+  --dur-flash: 1200ms;  --dur-sidebar: 240ms;  --dur-tabs: 260ms;
   --delay-tooltip: 400ms;
 }
 
@@ -814,8 +814,24 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
   box-shadow: 0 4px 14px rgba(13, 13, 9, 0.08);
 }
 .gio-phone-tabs {
+  overflow-x: clip; /* the pills' fills reach past their tabs */
   gap: 10px;
   padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+}
+/* A top tab's pill (PhoneTopTabs): wider than the tab, clipped to it at
+   rest; a change of tab slides the clip's edges. */
+.gio-phone-tab {
+  transition: color var(--dur-tabs) var(--ease-in-out);
+}
+.gio-phone-tab-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -400px;
+  right: -400px;
+  clip-path: inset(0 400px 0 400px round 26px);
+  pointer-events: none;
+  transition: background-color var(--dur-tabs) var(--ease-in-out);
 }
 .gio-phone-bottom {
   gap: 12px;

@@ -433,6 +433,12 @@ provider Virgilio already has; don't build them until asked.
   never reads as empty ("Nothing here yet" waits for the data). A skeleton
   that replaces another shows at once (sk.tsx), so the screen never blinks
   blank between them. Desktop's boot stays a blank canvas.
+- Switching the phone's top tabs slides the pills (PhoneTopTabs,
+  --dur-tabs 260ms, --ease-in-out): each pill's fill is drawn wider than
+  its tab and clipped to it, so its edges slide from where they were
+  (clip-path); icons glide (transform), the picked tab's name fades in,
+  colours cross over. No layout is animated; reduced motion keeps only
+  the colours. The tab's content swaps at once (screens don't animate).
 - A phone table's sticky end track stays 40px (just the +), so it never
   covers the properties scrolling under it.
 

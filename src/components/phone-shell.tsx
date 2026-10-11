@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { exitOnly, exitRef } from "@/lib/exit-motion";
@@ -46,6 +46,63 @@ export function Glyph({ d, size = 22, fill = false }: { d: string; size?: number
 
 /* ────────────── Top tabs ────────────── */
 
+/* Switching tabs (2026-10-11): the pills slide to their new sizes — each
+ * pill's edges move from where they were (clip-path), its icon glides to
+ * its new place (transform), the picked tab's name fades in and the
+ * colours cross over, all on one --dur-tabs / --ease-in-out beat. Nothing
+ * animates layout; reduced motion keeps only the colours. */
+
+type TabRects = Record<string, { left: number; right: number; icon: number }>;
+
+const FILL_REACH = 400; // how far a fill extends past its tab (clipped)
+const restClip = `inset(0 ${FILL_REACH}px 0 ${FILL_REACH}px round 26px)`;
+
+/** "260ms", ".26s" (as the build may write it) → 260. */
+function toMs(v: string): number | null {
+  const n = parseFloat(v);
+  if (!Number.isFinite(n)) return null;
+  return /ms\s*$/.test(v) ? n : n * 1000;
+}
+
+function readTabRects(nav: HTMLElement): TabRects {
+  const out: TabRects = {};
+  nav.querySelectorAll<HTMLElement>("[data-tab]").forEach((el) => {
+    const r = el.getBoundingClientRect();
+    const icon = el.querySelector<HTMLElement>("[data-tab-icon]")?.getBoundingClientRect();
+    out[el.dataset.tab!] = { left: r.left, right: r.right, icon: icon ? icon.left : r.left };
+  });
+  return out;
+}
+
+function slideTabs(nav: HTMLElement, from: TabRects) {
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+  const css = getComputedStyle(document.documentElement);
+  const duration = toMs(css.getPropertyValue("--dur-tabs")) ?? 260;
+  const easing = css.getPropertyValue("--ease-in-out").trim() || "ease-in-out";
+  const to = readTabRects(nav);
+  nav.querySelectorAll<HTMLElement>("[data-tab]").forEach((el) => {
+    const id = el.dataset.tab!;
+    const a = from[id];
+    const b = to[id];
+    if (!a || !b) return;
+    const fill = el.querySelector<HTMLElement>("[data-tab-fill]");
+    const icon = el.querySelector<HTMLElement>("[data-tab-icon]");
+    const label = el.querySelector<HTMLElement>("[data-tab-label]");
+    // A quick second tap restarts the slide from here (the colour
+    // transitions are CSS's own and are left running).
+    const stop = (x: Animation) => (typeof CSSTransition !== "undefined" && x instanceof CSSTransition ? null : x.cancel());
+    fill?.getAnimations().forEach(stop);
+    icon?.getAnimations().forEach(stop);
+    const l = FILL_REACH + (a.left - b.left);
+    const r = FILL_REACH + (b.right - a.right);
+    fill?.animate([{ clipPath: `inset(0 ${r}px 0 ${l}px round 26px)` }, { clipPath: restClip }], { duration, easing });
+    const dx = a.icon - b.icon;
+    if (dx) icon?.animate([{ transform: `translateX(${dx}px)` }, { transform: "none" }], { duration, easing });
+    // The picked tab's name arrives once its pill has room for it.
+    label?.animate([{ opacity: 0 }, { opacity: 0, offset: 0.5 }, { opacity: 1 }], { duration, easing: "linear" });
+  });
+}
+
 export function PhoneTopTabs({
   tab,
   unread,
@@ -64,8 +121,28 @@ export function PhoneTopTabs({
     { id: "inbox", label: "Inbox", d: G.inbox },
     { id: "templates", label: "Templates", d: G.templates },
   ];
+  const navRef = useRef<HTMLElement | null>(null);
+  const before = useRef<TabRects | null>(null);
+  // Where the pills were just before a tab is picked (the freshest
+  // layout), and after every change (Back and Forward pick tabs too).
+  const capture = () => {
+    if (navRef.current) before.current = readTabRects(navRef.current);
+  };
+  useLayoutEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    if (before.current) slideTabs(nav, before.current);
+    before.current = readTabRects(nav);
+  }, [tab]);
   return (
-    <nav aria-label="Main" className="gio-phone-tabs flex items-center" data-phone-tabs>
+    <nav
+      ref={navRef}
+      aria-label="Main"
+      className="gio-phone-tabs flex items-center"
+      data-phone-tabs
+      onPointerDownCapture={capture}
+      onClickCapture={capture}
+    >
       <button
         type="button"
         onClick={onAccount}
@@ -85,13 +162,22 @@ export function PhoneTopTabs({
             search={t.id === "home" ? {} : { tab: t.id }}
             aria-label={label}
             aria-current={active ? "page" : undefined}
-            className={`gio-press relative flex items-center justify-center rounded-full ${
-              active ? "bg-selected text-strong" : "bg-sunken text-muted"
-            }`}
+            data-tab={t.id}
+            className={`gio-press gio-phone-tab relative flex items-center justify-center ${active ? "text-strong" : "text-muted"}`}
             style={{ height: 52, flex: active ? "2 1 0" : "1 1 0", gap: 10, minWidth: 0 }}
           >
-            <Glyph d={t.d} size={22} fill={false} />
-            {active ? <span className="truncate" style={{ fontSize: 17, fontWeight: 700 }}>{t.label}</span> : null}
+            {/* The pill: a fill drawn wider than the tab and clipped to it,
+                so a change of tab can slide its edges (clip-path) from where
+                they were instead of jumping. */}
+            <span aria-hidden data-tab-fill className={`gio-phone-tab-fill ${active ? "bg-selected" : "bg-sunken"}`} />
+            <span data-tab-icon className="relative grid shrink-0 place-items-center">
+              <Glyph d={t.d} size={22} fill={false} />
+            </span>
+            {active ? (
+              <span data-tab-label className="relative truncate" style={{ fontSize: 17, fontWeight: 700 }}>
+                {t.label}
+              </span>
+            ) : null}
             {t.id === "inbox" && unread && !active ? (
               <span
                 aria-hidden
