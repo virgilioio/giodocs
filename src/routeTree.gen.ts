@@ -9,18 +9,18 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as HomeRouteImport } from './routes/home'
 import { Route as LoginRouteImport } from './routes/login'
-import { Route as AAreaRouteImport } from './routes/a.$area'
-import { Route as AcceptInviteTokenRouteImport } from './routes/accept-invite.$token'
-import { Route as InviteTokenRouteImport } from './routes/invite.$token'
-import { Route as PPageIdRouteImport } from './routes/p.$pageId'
+import { Route as HomeRouteImport } from './routes/home'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as VViewIdRouteImport } from './routes/v.$viewId'
+import { Route as PPageIdRouteImport } from './routes/p.$pageId'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as AcceptInviteTokenRouteImport } from './routes/accept-invite.$token'
+import { Route as AAreaRouteImport } from './routes/a.$area'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HomeRoute = HomeRouteImport.update({
@@ -28,24 +28,14 @@ const HomeRoute = HomeRouteImport.update({
   path: '/home',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AAreaRoute = AAreaRouteImport.update({
-  id: '/a/$area',
-  path: '/a/$area',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AcceptInviteTokenRoute = AcceptInviteTokenRouteImport.update({
-  id: '/accept-invite/$token',
-  path: '/accept-invite/$token',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const InviteTokenRoute = InviteTokenRouteImport.update({
-  id: '/invite/$token',
-  path: '/invite/$token',
+const VViewIdRoute = VViewIdRouteImport.update({
+  id: '/v/$viewId',
+  path: '/v/$viewId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PPageIdRoute = PPageIdRouteImport.update({
@@ -53,9 +43,19 @@ const PPageIdRoute = PPageIdRouteImport.update({
   path: '/p/$pageId',
   getParentRoute: () => rootRouteImport,
 } as any)
-const VViewIdRoute = VViewIdRouteImport.update({
-  id: '/v/$viewId',
-  path: '/v/$viewId',
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AcceptInviteTokenRoute = AcceptInviteTokenRouteImport.update({
+  id: '/accept-invite/$token',
+  path: '/accept-invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AAreaRoute = AAreaRouteImport.update({
+  id: '/a/$area',
+  path: '/a/$area',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -136,11 +136,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/home': {
@@ -150,32 +150,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HomeRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/a/$area': {
-      id: '/a/$area'
-      path: '/a/$area'
-      fullPath: '/a/$area'
-      preLoaderRoute: typeof AAreaRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/accept-invite/$token': {
-      id: '/accept-invite/$token'
-      path: '/accept-invite/$token'
-      fullPath: '/accept-invite/$token'
-      preLoaderRoute: typeof AcceptInviteTokenRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/invite/$token': {
-      id: '/invite/$token'
-      path: '/invite/$token'
-      fullPath: '/invite/$token'
-      preLoaderRoute: typeof InviteTokenRouteImport
+    '/v/$viewId': {
+      id: '/v/$viewId'
+      path: '/v/$viewId'
+      fullPath: '/v/$viewId'
+      preLoaderRoute: typeof VViewIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/p/$pageId': {
@@ -185,11 +171,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PPageIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/v/$viewId': {
-      id: '/v/$viewId'
-      path: '/v/$viewId'
-      fullPath: '/v/$viewId'
-      preLoaderRoute: typeof VViewIdRouteImport
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/accept-invite/$token': {
+      id: '/accept-invite/$token'
+      path: '/accept-invite/$token'
+      fullPath: '/accept-invite/$token'
+      preLoaderRoute: typeof AcceptInviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/a/$area': {
+      id: '/a/$area'
+      path: '/a/$area'
+      fullPath: '/a/$area'
+      preLoaderRoute: typeof AAreaRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
