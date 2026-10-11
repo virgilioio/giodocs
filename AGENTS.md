@@ -348,6 +348,20 @@ provider Virgilio already has; don't build them until asked.
 - Wrap text is per view (views.config.wrap); a wrapped cell grows to its
   text. It counts as a view change like shown properties.
 
+## Decisions (Allan, 2026-10-11: page view of a database's rows)
+- pages.page_layout on a DATABASE says how its rows show their properties
+  when opened as pages (src/lib/page-layout.ts): an order, and per
+  property Always show / Hide when empty / Always hide ("always",
+  "filled", "never"). Unset: the first three always, the rest when filled.
+  Hidden and empty-hidden properties wait in an "N more properties" fold.
+- Changed from the row page: Customize (the strip's header) lists every
+  property with its rule; each property's ⋮⋮ opens its rule and Move
+  up / down, and drags to reorder. A move writes the whole order and every
+  rule, so nothing else shifts.
+- guard_database_settings: page_layout and task_config change only for
+  people who can edit the database page (the pages UPDATE policy alone
+  let view-only members change them), and page_layout's shape is checked.
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.

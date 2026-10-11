@@ -87,6 +87,19 @@ import { STARTERS, starterBlocks } from "@/lib/starter-templates";
 import { importFile } from "@/lib/file-import";
 import { useStartDatabase } from "@/hooks/use-start-database";
 import { applyTemplate } from "@/hooks/use-templates";
+import { useSetPageLayout } from "@/hooks/use-page-layout";
+import {
+  SHOW_LABELS,
+  arrangeStrip,
+  orderedKeys,
+  readPageLayout,
+  ruleOf,
+  withMove,
+  withMoveBeside,
+  withRule,
+  type PageLayout,
+  type ShowRule,
+} from "@/lib/page-layout";
 import { isBlankPage } from "@/lib/template-copy";
 import { CommentMarkers, CommentsHost } from "./comments-panel";
 import { useCommentsLive } from "@/hooks/use-comments";
@@ -864,7 +877,11 @@ function PropertyStrip({
   justVerified,
   onSet,
   onSetPage,
+  canEditLayout,
 }: {
+  /** Can change how the database's rows show their properties (the server
+   *  decides finally: guard_database_settings). */
+  canEditLayout: boolean;
   page: PageFull;
   /** Every property in the workspace; the strip shows the page's own
    *  database's, and relations may reach into others. */
@@ -940,9 +957,6 @@ function PropertyStrip({
       present.delete(d.key);
     }
   }
-  const byPos = [...propDefs].sort(
-    (a, b) => (a.position ?? 0) - (b.position ?? 0),
-  );
 
   /* A freshly added property has no value yet, and `isPropSet` reads every
    * seed (null / "" / []) as absent — so the new row never appeared and
@@ -953,15 +967,111 @@ function PropertyStrip({
   const shown = new Set(present);
   added.forEach((k) => shown.add(k));
 
-  // A row always shows its database's first three properties (set or
-  // not), then any other property that has a value, in database order.
-  const top = byPos
-    .filter((d) => !d.archived_at && d.type !== "rollup")
-    .slice(0, 3)
-    .map((d) => d.key);
-  const rest = byPos.filter((d) => !top.includes(d.key)).filter((d) => shown.has(d.key));
+  // The database's page layout (Notion's "Page view"): its order, and per
+  // property Always show / Hide when empty / Always hide. Without one: the
+  // first three always, the rest when filled (src/lib/page-layout.ts).
+  const dbItem = databaseId ? pages.find((p) => p.id === databaseId) : undefined;
+  const layout = useMemo(() => readPageLayout(dbItem?.page_layout), [dbItem?.page_layout]);
+  const liveDefs = useMemo(() => propDefs.filter((d) => !d.archived_at), [propDefs]);
+  const arranged = arrangeStrip(liveDefs, layout, shown);
+  const rows = arranged.shown.map((k) => ({ key: k }));
+  const foldedRows = arranged.folded.map((k) => ({ key: k }));
+  const [foldOpen, setFoldOpen] = useState(false);
+  const saveLayout = useSetPageLayout();
+  const setLayout = (next: PageLayout) => {
+    if (databaseId) saveLayout.mutate({ databaseId, layout: next });
+  };
+  const [menu, setMenu] = useState<{ anchor: HTMLElement; spec: MenuSpec } | null>(null);
+  const dbName = dbItem?.title?.trim() || "this database";
+  const ruleSpec = (key: string, back?: () => void): MenuSpec => {
+    const order = orderedKeys(liveDefs, layout);
+    const i = order.indexOf(key);
+    const rule = ruleOf(key, liveDefs, layout);
+    const close = () => setMenu(null);
+    const rows: MenuRow[] = (["always", "filled", "never"] as ShowRule[]).map((r) => ({
+      kind: "row" as const,
+      label: SHOW_LABELS[r],
+      icon: r === "never" ? "eyeOff" : r === "filled" ? "M4 6h16M4 12h10M4 18h6" : "M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12zM12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z",
+      checked: rule === r,
+      onPick: () => {
+        setLayout(withRule(layout, key, r));
+        close();
+      },
+    }));
+    rows.push({ kind: "sep" });
+    if (i > 0)
+      rows.push({ kind: "row", label: "Move up", icon: "chevUp", onPick: () => { setLayout(withMove(layout, liveDefs, key, i - 1)); close(); } });
+    if (i >= 0 && i < order.length - 1)
+      rows.push({ kind: "row", label: "Move down", icon: "chevDown", onPick: () => { setLayout(withMove(layout, liveDefs, key, i + 1)); close(); } });
+    return {
+      title: labelFor(key, propDefs),
+      rows,
+      onBack: back,
+      footer: `For every page of ${dbName}.`,
+      width: 240,
+    };
+  };
+  const customizeSpec = (): MenuSpec => ({
+    title: `Page view for ${dbName}`,
+    width: 280,
+    maxHeight: 420,
+    rows: orderedKeys(liveDefs, layout).map((k) => ({
+      kind: "row" as const,
+      label: labelFor(k, propDefs),
+      hint: { text: SHOW_LABELS[ruleOf(k, liveDefs, layout)] },
+      onPick: () =>
+        setMenu((m) => (m ? { ...m, spec: ruleSpec(k, () => setMenu((mm) => (mm ? { ...mm, spec: customizeSpec() } : mm))) } : m)),
+    })),
+    footer: "How every page of this database shows its properties. Drag a property's ⋮⋮ on a page to reorder it.",
+  });
 
-  const rows = [...top.map((k) => ({ key: k })), ...rest.map((d) => ({ key: d.key }))];
+  /* Drag a property's ⋮⋮ to move it (after 4px; a click opens its menu). */
+  const [dragKey, setDragKey] = useState<string | null>(null);
+  const [dropAt, setDropAt] = useState<{ key: string; after: boolean } | null>(null);
+  const startHandle = (e: React.PointerEvent<HTMLButtonElement>, key: string) => {
+    if (e.button !== 0) return;
+    const btn = e.currentTarget;
+    const startY = e.clientY;
+    let active = false;
+    let target: { key: string; after: boolean } | null = null;
+    const onMove = (ev: PointerEvent) => {
+      if (!active && Math.abs(ev.clientY - startY) < 4) return;
+      if (!active) {
+        active = true;
+        setDragKey(key);
+      }
+      const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest<HTMLElement>("[data-strip-key]");
+      const k = el?.dataset.stripKey;
+      if (el && k && k !== key) {
+        const r = el.getBoundingClientRect();
+        target = { key: k, after: ev.clientY > r.top + r.height / 2 };
+      } else target = null;
+      setDropAt(target);
+    };
+    const finish = (commit: boolean) => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("keydown", onKey, true);
+      setDragKey(null);
+      setDropAt(null);
+      if (!active) {
+        setMenu({ anchor: btn, spec: ruleSpec(key) });
+        return;
+      }
+      if (commit && target) setLayout(withMoveBeside(layout, liveDefs, key, target.key, target.after));
+    };
+    const onUp = () => finish(true);
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        ev.stopPropagation();
+        finish(false);
+      }
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("keydown", onKey, true);
+  };
 
   const [hoverKey, setHoverKey] = useState<string | null>(null);
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -1038,6 +1148,19 @@ function PropertyStrip({
           />
           <span>{collapsed ? "Properties" : "Hide properties"}</span>
         </button>
+        {!collapsed && databaseId && canEditLayout ? (
+          <button
+            type="button"
+            onClick={(e) => setMenu({ anchor: e.currentTarget, spec: customizeSpec() })}
+            aria-label={`Page view for ${dbName}`}
+            title={`Page view for ${dbName}`}
+            className="ml-auto flex shrink-0 items-center rounded-md text-faint hover:bg-sunken hover:text-secondary"
+            style={{ gap: 5, fontSize: 13, height: 26, padding: "0 6px" }}
+          >
+            <Glyph path="M4 7h10M18 7h2M4 17h4M12 17h8M14 5v4M8 15v4" className="h-[13px] w-[13px]" strokeWidth={2} />
+            <span>Customize</span>
+          </button>
+        ) : null}
         {collapsed ? (
           <span
             className="min-w-0 flex-1 truncate"
@@ -1089,7 +1212,7 @@ function PropertyStrip({
         }}
       >
       <div style={{ minHeight: 0, overflow: collapsed || moving ? "hidden" : "visible" }}>
-      {rows.map((r) => {
+      {[...rows, ...(foldOpen ? foldedRows : [])].map((r) => {
         const def = propDefs.find((d) => d.key === r.key);
         const removable =
           def && def.is_system === false && shown.has(r.key) && !isComputedDef(def);
@@ -1099,7 +1222,8 @@ function PropertyStrip({
         return (
           <div
             key={r.key}
-            className="gio-prop-row rounded-md"
+            data-strip-key={r.key}
+            className="gio-prop-row relative rounded-md"
             style={{
               display: "grid",
               gridTemplateColumns: "132px 1fr",
@@ -1107,6 +1231,11 @@ function PropertyStrip({
               minHeight: 32,
               padding: "2px 6px",
               background: active ? "var(--color-track)" : undefined,
+              opacity: dragKey === r.key ? 0.45 : 1,
+              boxShadow:
+                dropAt?.key === r.key
+                  ? `inset 0 ${dropAt.after ? -2 : 2}px 0 0 var(--color-accent)`
+                  : undefined,
             }}
             onMouseEnter={() => setHoverKey(r.key)}
             onMouseLeave={() => setHoverKey(null)}
@@ -1119,6 +1248,38 @@ function PropertyStrip({
                 color: "var(--color-muted)",
               }}
             >
+              {canEditLayout && databaseId ? (
+                <button
+                  type="button"
+                  aria-label={`Move or hide ${label}`}
+                  title="Drag to move · click for options"
+                  onPointerDown={(e) => startHandle(e, r.key)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setMenu({ anchor: e.currentTarget, spec: ruleSpec(r.key) });
+                    }
+                  }}
+                  className="absolute grid place-items-center rounded-sm text-whisper hover:bg-railHover hover:text-secondary focus-visible:opacity-100"
+                  style={{
+                    left: -14,
+                    width: 14,
+                    height: 24,
+                    cursor: "grab",
+                    touchAction: "none",
+                    opacity: active || dragKey === r.key ? 1 : 0,
+                  }}
+                >
+                  <svg viewBox="0 0 10 14" width={10} height={14} aria-hidden fill="currentColor">
+                    <circle cx="3" cy="3" r="1.2" />
+                    <circle cx="7" cy="3" r="1.2" />
+                    <circle cx="3" cy="7" r="1.2" />
+                    <circle cx="7" cy="7" r="1.2" />
+                    <circle cx="3" cy="11" r="1.2" />
+                    <circle cx="7" cy="11" r="1.2" />
+                  </svg>
+                </button>
+              ) : null}
               <span>{label}</span>
               {showX ? (
                 <button
@@ -1169,6 +1330,28 @@ function PropertyStrip({
           </div>
         );
       })}
+
+      {foldedRows.length ? (
+        <button
+          type="button"
+          aria-expanded={foldOpen}
+          onClick={() => setFoldOpen((v) => !v)}
+          className="flex w-full items-center rounded-md text-faint hover:bg-track hover:text-secondary"
+          style={{ gap: 6, minHeight: 30, padding: "2px 6px", fontSize: 14 }}
+        >
+          <Glyph
+            path="M9 6l6 6-6 6"
+            className="h-[11px] w-[11px]"
+            strokeWidth={2.4}
+            style={{ transform: foldOpen ? "rotate(90deg)" : "none", transition: "transform var(--dur-hover) var(--ease-out)" }}
+          />
+          {foldOpen
+            ? `Hide ${foldedRows.length} ${foldedRows.length === 1 ? "property" : "properties"}`
+            : `${foldedRows.length} more ${foldedRows.length === 1 ? "property" : "properties"}`}
+        </button>
+      ) : null}
+
+      <RowMenu spec={menu?.spec ?? null} anchor={menu?.anchor ?? null} align="start" onClose={() => setMenu(null)} />
 
       {/* Placed in — presentation over the STRUCTURAL column `parent_id`.
        * Deliberately not a property_defs row, so it never appears in
@@ -1977,6 +2160,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
         members={members}
         meId={meId}
         pages={(shell.pages.data ?? []) as PageListItem[]}
+        canEditLayout={canEditPage && !app.locked}
         onSetPage={(pageId, key, value) => setProp.mutate({ pageId, key, value })}
         staleDays={staleDays}
         onVerify={onVerify}
