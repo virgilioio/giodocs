@@ -1074,6 +1074,22 @@ export type Database = {
           page_count: number
         }[]
       }
+      list_trash: {
+        Args: { p_query?: string }
+        Returns: {
+          access_type: string
+          deleted_at: string
+          excerpt: string | null
+          icon: string | null
+          id: string
+          inside: number
+          is_database: boolean
+          parent_id: string | null
+          parent_title: string | null
+          title: string
+          trashed_ancestors: string[]
+        }[]
+      }
       lock_option_def: {
         Args: { p_def: string }
         Returns: {
