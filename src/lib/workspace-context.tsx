@@ -2,6 +2,8 @@ import { createContext, useContext, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./auth-context";
+import { useIsPhone } from "./use-media";
+import { PhoneBootSkeleton } from "@/components/phone-skeletons";
 
 type WorkspaceCtx = { workspaceId: string };
 
@@ -15,6 +17,7 @@ const Ctx = createContext<WorkspaceCtx | null>(null);
  */
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const phone = useIsPhone();
 
   const q = useQuery({
     queryKey: ["membership", user?.id ?? "none"],
@@ -33,6 +36,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   });
 
   if (!q.data) {
+    // A phone draws its frame and the screen's skeleton meanwhile.
+    if (phone && q.data === undefined) return <PhoneBootSkeleton />;
     return <div className="min-h-screen bg-canvas" aria-hidden />;
   }
 

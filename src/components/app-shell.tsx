@@ -53,7 +53,8 @@ import {
 import { useToast } from "@/lib/toast";
 import type { PageListItem } from "@/lib/types";
 import { DatabaseView } from "./database-view";
-import { ViewSkeleton } from "./skeletons";
+import { PageSkeleton, ViewSkeleton } from "./skeletons";
+import { PhoneHomeSkeleton, PhonePageButtonsSkeleton, PhoneRecentRowsSkeleton } from "./phone-skeletons";
 import { useDelayedPending } from "./sk";
 import { PageEditor } from "./page-view";
 import { PageTopbarActions } from "./page-topbar-actions";
@@ -488,7 +489,13 @@ export function AppShell() {
   );
 
   if (phone) {
-    const onPage = selection?.kind === "page" || selection?.kind === "database";
+    // The address decides the frame, so a page keeps its floating buttons
+    // while the page list is still on its way.
+    const pageSel = selection?.kind === "page" || selection?.kind === "database" ? selection : null;
+    const onPage =
+      !!pageSel ||
+      pathname.startsWith("/p/") ||
+      pathname.startsWith("/v/");
     const tab: PhoneTab = phoneTab === "inbox" || phoneTab === "templates" ? phoneTab : "home";
     return (
       <RowMenuProvider>
@@ -525,13 +532,14 @@ export function AppShell() {
                 <SidebarBody {...sidebarProps} phone />
               )
             ) : showShellSkeleton ? (
-              <ViewSkeleton layout="table" />
+              onPage ? <PageSkeleton /> : <PhoneHomeSkeleton />
             ) : null}
           </main>
-          {onPage && selection ? (
+          {onPage && !pageSel ? <PhonePageButtonsSkeleton /> : null}
+          {pageSel ? (
             <PageTopbarActions
               phone
-              pageId={selection.id}
+              pageId={pageSel.id}
               menuOpen={pageMenuOpen}
               onMenuOpen={() => setPageMenuOpen(true)}
               onMenuClose={() => setPageMenuOpen(false)}
@@ -546,7 +554,7 @@ export function AppShell() {
             <RecentsCard
               onClose={() => setRecentsOpen(false)}
               onSearch={() => setPaletteOpen(true)}
-              currentId={onPage && selection ? selection.id : undefined}
+              currentId={pageSel?.id}
             />
           ) : null}
           {accountSheet ? (
@@ -1179,7 +1187,7 @@ function SidebarBody({
         )}
 
         {loading ? (
-          <SkeletonList />
+          phone ? <PhoneHomeSkeleton inner /> : <SkeletonList />
         ) : (
           <>
             {favorites.length ? (
@@ -1289,6 +1297,14 @@ function PhoneRecents({
   const visitsQ = useRecentVisits(ws);
   const navigate = useNavigate();
   const recent = useMemo(() => recentPages(visitsQ.data ?? [], pages, 8), [visitsQ.data, pages]);
+  // Loading isn't empty: the section holds its place until the visits arrive.
+  if (visitsQ.isPending)
+    return (
+      <>
+        <SectionHeader label="Recents" open={open} onToggle={onToggle} phone />
+        {open ? <PhoneRecentRowsSkeleton /> : null}
+      </>
+    );
   if (recent.length === 0) return null;
   return (
     <>

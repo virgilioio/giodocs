@@ -10,6 +10,7 @@ import { useToast } from "@/lib/toast";
 import type { PageListItem } from "@/lib/types";
 import { Popover } from "./popover";
 import { Ico } from "./emoji-icon";
+import { TemplateRowsSkeleton } from "./phone-skeletons";
 
 /* Templates in the sidebar (under Inbox): every template in the
  * workspace, grouped by where it makes pages (plain pages, or a database's
@@ -129,7 +130,7 @@ export function TemplatesPanel({ close }: { close: () => void }) {
       </div>
       <div style={{ maxHeight: "min(480px, 65vh)", overflowY: "auto", paddingBottom: 6 }}>
         {q.isLoading ? (
-          <p className="px-3 py-2 text-meta text-muted">Loading templates…</p>
+          <TemplateRowsSkeleton />
         ) : groups.length === 0 && (q.data ?? []).length === 0 && !query ? (
           <p className="px-3 py-2 text-meta text-muted" style={{ lineHeight: 1.5 }}>
             No templates yet. Make one with New template, or open any page's ⋯ menu and choose Use as

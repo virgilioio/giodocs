@@ -8,7 +8,9 @@ import { useRecentVisits } from "@/hooks/use-home";
 import { recentPages } from "@/lib/home";
 import { setPageOrigin } from "@/lib/page-origin";
 import type { PageListItem } from "@/lib/types";
+import { G } from "@/lib/phone-glyphs";
 import { Ico } from "./emoji-icon";
+import { PhoneRecentRowsSkeleton } from "./phone-skeletons";
 
 /* The phone frame (Allan, 2026-10-11; Notion's iOS app is the model).
  * Below 768px the app has no sidebar and no top bar:
@@ -23,18 +25,6 @@ import { Ico } from "./emoji-icon";
  * Desktop never renders any of this. */
 
 export type PhoneTab = "home" | "inbox" | "templates";
-
-const G = {
-  home: "M4 11.2 12 4l8 7.2V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z",
-  inbox: "M4 13.5 6.6 5.6A1.6 1.6 0 0 1 8.1 4.5h7.8a1.6 1.6 0 0 1 1.5 1.1L20 13.5V18a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 13.5h4.6l1.2 2.3h4.4l1.2-2.3H20",
-  templates: "M5 4h14v5H5zM5 13h6v7H5zM15 13h4M15 17h4",
-  search: "M11 4a7 7 0 1 1 0 14 7 7 0 0 1 0-14zM20 20l-3.5-3.5",
-  compose: "M12 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-6M17.6 3.6a2 2 0 0 1 2.8 2.8L12 14.8 8.5 15.5l.7-3.5z",
-  menu: "M4 7h16M4 12h16M4 17h16",
-  back: "M15 5l-7 7 7 7",
-  share: "M12 3v12M7.5 7.5 12 3l4.5 4.5M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7",
-  more: "M5 10.3a1.7 1.7 0 1 0 0 3.4 1.7 1.7 0 0 0 0-3.4zM12 10.3a1.7 1.7 0 1 0 0 3.4 1.7 1.7 0 0 0 0-3.4zM19 10.3a1.7 1.7 0 1 0 0 3.4 1.7 1.7 0 0 0 0-3.4z",
-};
 
 export function Glyph({ d, size = 22, fill = false }: { d: string; size?: number; fill?: boolean }) {
   return (
@@ -258,7 +248,11 @@ export function RecentsCard({
         style={{ transformOrigin: "bottom left" }}
       >
         <div className="px-4 pb-1 pt-3 text-meta text-muted">Recents</div>
-        {recent.length === 0 ? (
+        {visitsQ.isPending ? (
+          <div className="px-4">
+            <PhoneRecentRowsSkeleton />
+          </div>
+        ) : recent.length === 0 ? (
           <p className="px-4 py-2 text-ui text-muted">Pages you open show up here.</p>
         ) : (
           <ul className="overflow-y-auto" style={{ maxHeight: "min(420px, 55vh)" }}>

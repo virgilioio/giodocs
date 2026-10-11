@@ -1,6 +1,7 @@
 import { formulaResultOf, relationConfig, valueWords } from "@/lib/relations";
 import { isPeekOpen } from "@/lib/peek";
 import { PhoneMoreButton, PhonePageButtons } from "./phone-shell";
+import { PhonePageButtonsSkeleton } from "./phone-skeletons";
 import { useIsFavorite, useToggleFavorite } from "@/hooks/use-home";
 import { propValue } from "@/lib/run-view";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -480,7 +481,8 @@ export function PageTopbarActions({
     };
   }, [page, members, shell.propDefs.data, shell.pages.data]);
 
-  if (!listRow) return null;
+  // A phone keeps its floating buttons in place while the page list loads.
+  if (!listRow) return phone && !shell.pages.data ? <PhonePageButtonsSkeleton /> : null;
 
   const linkIcon =
     "M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.8 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7L12.3 19";

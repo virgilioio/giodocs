@@ -423,6 +423,18 @@ provider Virgilio already has; don't build them until asked.
   page, closed until opened, closing when a page opens.
 - Not yet on phones: the keyboard toolbar, long-press block menus, tables
   as lists, quick capture, offline reading (the plan's later steps).
+- Phone skeletons (phone-skeletons.tsx, 2026-10-11): every phone loading
+  state is drawn on the geometry of the screen it stands in for. While the
+  session and workspace load, the gates draw the phone frame
+  (PhoneBootSkeleton: the top tabs or a page's floating buttons, the
+  bottom bar, and the skeleton of the screen the address points at). The
+  Home tab, Recents, Inbox, Templates, the ☰ card, a page and a database
+  each have their own; desktop skeletons hand over below 768px. Loading
+  never reads as empty ("Nothing here yet" waits for the data). A skeleton
+  that replaces another shows at once (sk.tsx), so the screen never blinks
+  blank between them. Desktop's boot stays a blank canvas.
+- A phone table's sticky end track stays 40px (just the +), so it never
+  covers the properties scrolling under it.
 
 ## Decisions (Allan, 2026-10-11: Notion's blocks, databases and new pages)
 - Slash menu (slash-menu.tsx, src/lib/slash-entries.ts): sections Suggested

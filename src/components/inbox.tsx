@@ -9,6 +9,7 @@ import { describeNotification, openNotificationTarget } from "@/lib/inbox-text";
 import { openComments } from "@/lib/comments-store";
 import { Popover } from "./popover";
 import { Ico } from "./emoji-icon";
+import { InboxRowsSkeleton } from "./phone-skeletons";
 
 /* Inbox — the sidebar row under Search, and its panel: everything that
  * mentioned you, newest first. A row opens the page at the block and marks
@@ -54,7 +55,7 @@ export function InboxButton() {
  *  (`page`: no height cap, roomier rows). */
 export function InboxPanel({ close, page = false }: { close: () => void; page?: boolean }) {
   const { user } = useAuth();
-  const { items, unread } = useVisibleInbox();
+  const { items, unread, loading } = useVisibleInbox();
   const markRead = useMarkRead(user?.id);
   const navigate = useNavigate();
   const setOrigin = useSetPageOrigin();
@@ -85,7 +86,9 @@ export function InboxPanel({ close, page = false }: { close: () => void; page?: 
               </button>
             ) : null}
           </div>
-          {items.length === 0 ? (
+          {loading ? (
+            <InboxRowsSkeleton page={page} />
+          ) : items.length === 0 ? (
             <p className="text-meta text-muted" style={{ padding: "10px 12px 14px", lineHeight: 1.5 }}>
               Nothing here yet. When someone mentions you on a page, it shows up here.
             </p>

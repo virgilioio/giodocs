@@ -13,7 +13,9 @@
  *  - Column-header row uses padding 12px 11px 6px and lineHeight 11px,
  *    matching the loaded HeaderCell.
  */
+import { useIsPhone } from "@/lib/use-media";
 import { Sk } from "./sk";
+import { PhoneDatabaseSkeleton, PhonePageSkeleton } from "./phone-skeletons";
 
 const SR = <span className="sr-only">Loading…</span>;
 
@@ -55,6 +57,8 @@ const ROW_GRID =
 /* ─────────────────────────── View skeleton ─────────────────────────── */
 
 export function ViewSkeleton({ layout = "table" }: { layout?: "table" | "list" }) {
+  const phone = useIsPhone();
+  if (phone) return <PhoneDatabaseSkeleton layout={layout} />;
   return (
     <div
       role="status"
@@ -168,6 +172,8 @@ export function ViewSkeleton({ layout = "table" }: { layout?: "table" | "list" }
 /* ─────────────────────────── Page skeleton ─────────────────────────── */
 
 export function PageSkeleton() {
+  const phone = useIsPhone();
+  if (phone) return <PhonePageSkeleton />;
   return (
     <div
       role="status"
@@ -290,6 +296,8 @@ const BOARD_COLS: Array<{ cards: number[]; title: string; count: number }> = [
 const CARD_TITLE_W = ["72%", "58%", "66%", "62%", "70%"];
 
 export function BoardSkeleton() {
+  const phone = useIsPhone();
+  if (phone) return <PhoneDatabaseSkeleton layout="board" />;
   return (
     <div
       role="status"
