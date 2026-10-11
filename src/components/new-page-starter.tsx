@@ -4,11 +4,13 @@ import { IMPORT_ACCEPT, IMPORT_MAX_BYTES } from "@/lib/file-import";
 import { LAYOUT_NAMES, type StartLayout } from "@/hooks/use-start-database";
 import { TemplatePicker } from "./templates-ui";
 import { Ico } from "./emoji-icon";
+import { Popover } from "./popover";
 
-/* A blank page's starting points (Notion's new-page screen): carry on with
- * an empty page, start from one of the workspace's templates or a starter,
- * import a file, or make the page a database. It floats under the first
- * line and goes the moment you type. */
+/* A blank page's starting points (Notion's new-page screen, 2026-10-11):
+ * "Get started with" and a row of chips — Empty page, Templates ▾ (the
+ * workspace's templates and the starters), Database ▾ (Table, Board,
+ * List, Calendar) and Import. It floats under the first line and goes the
+ * moment you type. */
 
 const LAYOUT_ICONS: Record<StartLayout, string> = {
   table: "M4 5h16v14H4zM4 10h16M10 10v9",
@@ -53,38 +55,104 @@ export function NewPageStarter({
     }
   };
 
+  const chip = "flex items-center rounded-full border border-line bg-surface text-ui text-body hover:bg-sunken disabled:opacity-60";
+  const chipStyle = { gap: 7, height: 32, padding: "0 13px" } as const;
   return (
     <section aria-label="Start this page" className="animate-fadeIn">
       <p className="text-meta text-faint" style={{ marginBottom: 8 }}>
-        Press Enter or start typing for an empty page, or pick a starting point.
+        Get started with
       </p>
-      <ul>
-        <Item icon={<Glyph d="M7 3h7l5 5v13H7zM14 3v5h5" />} label="Empty page" onClick={onEmpty} />
-      </ul>
-
-      <div style={{ marginTop: 10 }}>
-        <TemplatePicker databaseId={databaseId} onPick={onTemplate} />
-      </div>
-
-      <Heading>Starters</Heading>
-      <ul>
-        {STARTERS.map((s) => (
-          <Item
-            key={s.id}
-            icon={<Ico icon={s.icon} size={16} />}
-            label={s.name}
-            hint={busy === `s:${s.id}` ? "Adding…" : s.hint}
+      <ul className="flex flex-wrap items-center" style={{ gap: 6 }}>
+        <li>
+          <button type="button" onClick={onEmpty} className={chip} style={chipStyle}>
+            <Glyph d="M7 3h7l5 5v13H7zM14 3v5h5" />
+            Empty page
+          </button>
+        </li>
+        <li>
+          <Popover
+            width={300}
+            trigger={({ onClick, ref, open }) => (
+              <button ref={ref} type="button" onClick={onClick} aria-expanded={open} disabled={!!busy} className={chip} style={chipStyle}>
+                <Glyph d="M5 4h14v5H5zM5 13h6v7H5zM15 13h4M15 17h4" />
+                Templates
+                <Glyph d="m6 9 6 6 6-6" />
+              </button>
+            )}
+          >
+            {(close) => (
+              <div style={{ padding: 4, maxHeight: 420, overflowY: "auto" }}>
+                <TemplatePicker
+                  databaseId={databaseId}
+                  onPick={async (id) => {
+                    close();
+                    await run(`t:${id}`, () => onTemplate(id));
+                  }}
+                />
+                <Heading>Starters</Heading>
+                <ul>
+                  {STARTERS.map((st) => (
+                    <Item
+                      key={st.id}
+                      icon={<Ico icon={st.icon} size={16} />}
+                      label={st.name}
+                      hint={st.hint}
+                      disabled={!!busy}
+                      onClick={() => {
+                        close();
+                        void run(`s:${st.id}`, () => onStarter(st.id));
+                      }}
+                    />
+                  ))}
+                </ul>
+              </div>
+            )}
+          </Popover>
+        </li>
+        {canBeDatabase ? (
+          <li>
+            <Popover
+              width={220}
+              trigger={({ onClick, ref, open }) => (
+                <button ref={ref} type="button" onClick={onClick} aria-expanded={open} disabled={!!busy} className={chip} style={chipStyle}>
+                  <Glyph d={LAYOUT_ICONS.table} />
+                  {busy?.startsWith("d:") ? "Making…" : "Database"}
+                  <Glyph d="m6 9 6 6 6-6" />
+                </button>
+              )}
+            >
+              {(close) => (
+                <ul style={{ padding: 4 }}>
+                  {(Object.keys(LAYOUT_NAMES) as StartLayout[]).map((l) => (
+                    <Item
+                      key={l}
+                      icon={<Glyph d={LAYOUT_ICONS[l]} />}
+                      label={LAYOUT_NAMES[l]}
+                      disabled={!!busy}
+                      onClick={() => {
+                        close();
+                        void run(`d:${l}`, () => onDatabase(l));
+                      }}
+                    />
+                  ))}
+                </ul>
+              )}
+            </Popover>
+          </li>
+        ) : null}
+        <li>
+          <button
+            type="button"
             disabled={!!busy}
-            onClick={() => void run(`s:${s.id}`, () => onStarter(s.id))}
-          />
-        ))}
-        <Item
-          icon={<Glyph d="M12 4v11M7 10l5 5 5-5M5 20h14" />}
-          label="Import a file"
-          hint={busy === "import" ? "Reading…" : "Markdown, HTML or CSV"}
-          disabled={!!busy}
-          onClick={() => fileRef.current?.click()}
-        />
+            onClick={() => fileRef.current?.click()}
+            className={chip}
+            style={chipStyle}
+            title="Markdown, HTML or CSV, up to 2 MB"
+          >
+            <Glyph d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+            {busy === "import" ? "Reading…" : "Import"}
+          </button>
+        </li>
       </ul>
       <input
         ref={fileRef}
@@ -104,29 +172,6 @@ export function NewPageStarter({
           void run("import", () => onImport(f));
         }}
       />
-
-      {canBeDatabase ? (
-        <>
-          <Heading>Or start with a database</Heading>
-          <ul className="flex flex-wrap" style={{ gap: 4 }}>
-            {(Object.keys(LAYOUT_NAMES) as StartLayout[]).map((l) => (
-              <li key={l}>
-                <button
-                  type="button"
-                  disabled={!!busy}
-                  onClick={() => void run(`d:${l}`, () => onDatabase(l))}
-                  className="flex items-center rounded-md border border-line bg-surface text-row text-body hover:bg-sunken disabled:opacity-60"
-                  style={{ gap: 7, height: 30, padding: "0 10px" }}
-                >
-                  <Glyph d={LAYOUT_ICONS[l]} />
-                  {busy === `d:${l}` ? "Making…" : LAYOUT_NAMES[l]}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
-      ) : null}
-
       <p role="alert" className="text-meta text-danger" style={{ minHeight: 18, marginTop: 6 }}>
         {error ?? ""}
       </p>

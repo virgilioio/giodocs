@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { openPageSomewhere } from "@/lib/peek";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { pageQuery } from "@/hooks/use-workspace-data";
@@ -178,7 +179,8 @@ function PageTitleCell({
             className="min-w-0 flex-1 truncate text-left text-row font-bold hover:underline"
             onClick={() => {
               setOrigin(page.id);
-              navigate({ to: "/p/$pageId", params: { pageId: page.id } });
+              // A row opens in a dialog over the database (Notion's peek).
+              openPageSomewhere(navigate, page.id);
             }}
             onMouseEnter={() => {
               qc.prefetchQuery(pageQuery(page.id));

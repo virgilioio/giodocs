@@ -67,6 +67,8 @@ import { useAllowedDomains } from "@/hooks/use-workspace-data";
 import { isTypingTarget } from "@/lib/is-typing";
 import { exitOnly } from "@/lib/exit-motion";
 import { HomeView } from "./home-view";
+import { PagePeek } from "./page-peek";
+import { usePeek } from "@/lib/peek";
 import { useHomePrefs, useRecentVisits, useRecordVisit, useToggleFavorite } from "@/hooks/use-home";
 import { recentPages, startTarget } from "@/lib/home";
 
@@ -367,13 +369,15 @@ export function AppShell() {
 
 
 
-  // The sidebar over the page closes when a page opens.
+  // The sidebar over the page closes when a page opens (here or in the
+  // dialog).
   const selectionKey = selection ? JSON.stringify(selection) : "";
+  const peekId = usePeek()?.id ?? null;
   useEffect(() => {
     setRailOpen(false);
     setRecentsOpen(false);
     setPageMenuOpen(false);
-  }, [selectionKey]);
+  }, [selectionKey, peekId]);
 
   async function handleSignOut() {
     await supabase.auth.signOut();
@@ -772,6 +776,7 @@ export function AppShell() {
         </main>
       </div>
       {modals}
+      <PagePeek />
 
     </div>
     </RowMenuProvider>
@@ -1124,11 +1129,13 @@ function SidebarBody({
         ) : null}
         {phone ? null : (
           <>
-        {/* Search */}
+        {/* Search, and New page (Notion's ✎): a new page inside the page
+            you're on, else in Private; it opens in a dialog. */}
+        <div className="flex items-center" style={{ gap: 4 }}>
         <button
           type="button"
           onClick={onOpenPalette}
-          className="flex w-full items-center gap-2 rounded-md border border-line bg-surface px-2.5 py-1.5 text-ui text-secondary hover:bg-railHover"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-line bg-surface px-2.5 py-1.5 text-ui text-secondary hover:bg-railHover"
         >
           <Glyph path="M11 4a7 7 0 100 14 7 7 0 000-14zm5.5 12.5l4 4" className="h-4 w-4 text-muted" />
           <span className="flex-1 text-left">Search</span>
@@ -1136,6 +1143,28 @@ function SidebarBody({
             ⌘K
           </span>
         </button>
+        <button
+          type="button"
+          aria-label="New page"
+          title="New page"
+          data-sidebar-new-page
+          onClick={() => {
+            const here = selection && (selection.kind === "page" || selection.kind === "database") ? selection.id : null;
+            void (async () => {
+              try {
+                await createAndOpen({ seedProps: {}, parentId: here });
+              } catch {
+                // Not allowed to add inside this page: make it in Private.
+                if (here) await createAndOpen({ seedProps: {} }).catch(() => undefined);
+              }
+            })();
+          }}
+          className="grid shrink-0 place-items-center rounded-md text-muted hover:bg-railHover hover:text-strong"
+          style={{ width: 32, height: 32 }}
+        >
+          <Glyph path="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" className="h-4 w-4" />
+        </button>
+        </div>
         <Link
           to="/home"
           aria-current={selection?.kind === "home" ? "page" : undefined}

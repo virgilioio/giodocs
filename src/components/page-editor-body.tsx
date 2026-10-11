@@ -228,6 +228,7 @@ import {
 import type { IconKey } from "@/lib/menu-icons";
 import { BlockPreview, type PreviewKey } from "./block-previews";
 import { SlashMenu } from "./slash-menu";
+import { keysAreMine, useInPeek } from "@/lib/peek";
 import { slashEntries, rememberSlashPick, type SlashGroup } from "@/lib/slash-entries";
 import { exitRef } from "@/lib/exit-motion";
 import { MermaidBlock, MERMAID_STARTER } from "@/components/mermaid-block";
@@ -657,6 +658,9 @@ export function EditableBody({
   const workspaceId = useWorkspaceId();
   const rowHandlers = useStableRowHandlers();
   const navigate = useNavigate();
+  const inPeek = useInPeek();
+  const inPeekRef = useRef(inPeek);
+  inPeekRef.current = inPeek;
   const lastPage = useRef(pageId);
   useEffect(() => {
     if (lastPage.current !== pageId) {
@@ -873,6 +877,8 @@ export function EditableBody({
   useEffect(() => {
     if (locked) return;
     const onKey = (e: KeyboardEvent) => {
+      // A page open in a dialog on top owns window-wide keys.
+      if (!keysAreMine(inPeekRef.current)) return;
       if (!primaryMod(e)) return;
       // The title, property fields and dialogs keep their own native undo;
       // ⌘Z there must not undo the page body.
@@ -1695,6 +1701,8 @@ export function EditableBody({
   useEffect(() => {
     if (selectedIds.size === 0) return;
     const onKey = (e: KeyboardEvent) => {
+      // A page open in a dialog on top owns window-wide keys.
+      if (!keysAreMine(inPeekRef.current)) return;
       // Escape is a deliberate exception to the typing guard. It clears
       // BOTH the selection and its scope.
       if (e.key === "Escape") {
@@ -1746,6 +1754,8 @@ export function EditableBody({
   useEffect(() => {
     if (selectedIds.size === 0) return;
     const onKey = (e: KeyboardEvent) => {
+      // A page open in a dialog on top owns window-wide keys.
+      if (!keysAreMine(inPeekRef.current)) return;
       if (!primaryMod(e)) return;
       const key = e.key.toLowerCase();
       if (key !== "c" && key !== "x") return;
@@ -1768,6 +1778,8 @@ export function EditableBody({
   useEffect(() => {
     if (selectedIds.size === 0) return;
     const onKey = (e: KeyboardEvent) => {
+      // A page open in a dialog on top owns window-wide keys.
+      if (!keysAreMine(inPeekRef.current)) return;
       if (!primaryMod(e)) return;
       if (e.key.toLowerCase() !== "a") return;
       if (isTypingTarget(e.target)) return;
@@ -2429,6 +2441,8 @@ export function EditableBody({
   useEffect(() => {
     if (selectedIds.size === 0) return;
     const onKey = (e: KeyboardEvent) => {
+      // A page open in a dialog on top owns window-wide keys.
+      if (!keysAreMine(inPeekRef.current)) return;
       if (isTypingTarget(e.target)) return;
       // Only when nothing else has focus (or focus is in the page body): a
       // focused menu item, dialog button or emoji grid keeps its own
@@ -2647,6 +2661,8 @@ export function EditableBody({
   useEffect(() => {
     if (locked) return;
     const onKey = (e: KeyboardEvent) => {
+      // A page open in a dialog on top owns window-wide keys.
+      if (!keysAreMine(inPeekRef.current)) return;
       if (!primaryMod(e)) return;
       if (e.key.toLowerCase() !== "d") return;
       if (isTypingTarget(e.target)) return;
@@ -2681,6 +2697,8 @@ export function EditableBody({
     if (locked) return;
     if (selectedIds.size === 0) return;
     const onKey = (e: KeyboardEvent) => {
+      // A page open in a dialog on top owns window-wide keys.
+      if (!keysAreMine(inPeekRef.current)) return;
       if (!primaryMod(e)) return;
       if (isTypingTarget(e.target)) return;
       const k = e.key.toLowerCase();

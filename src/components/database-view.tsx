@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { isPeekOpen } from "@/lib/peek";
 import { useNavigate } from "@tanstack/react-router";
 import { primaryMod } from "@/lib/platform";
 import { toClipboard } from "@/lib/clipboard";
@@ -573,6 +574,7 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
   useEffect(() => {
     if (!anySelection) return;
     const onKey = (e: KeyboardEvent) => {
+      if (isPeekOpen()) return; // the page in the dialog owns the keys
       if (e.key === "Escape") clearSelection();
     };
     window.addEventListener("keydown", onKey);
@@ -836,6 +838,7 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (isPeekOpen()) return; // the page in the dialog owns the keys
       if (isTypingTarget(e.target)) return;
       if (!primaryMod(e)) return;
       const k = e.key.toLowerCase();

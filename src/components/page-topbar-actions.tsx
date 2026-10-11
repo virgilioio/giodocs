@@ -1,4 +1,5 @@
 import { formulaResultOf, relationConfig, valueWords } from "@/lib/relations";
+import { isPeekOpen } from "@/lib/peek";
 import { PhoneMoreButton, PhonePageButtons } from "./phone-shell";
 import { useIsFavorite, useToggleFavorite } from "@/hooks/use-home";
 import { propValue } from "@/lib/run-view";
@@ -398,6 +399,7 @@ export function PageTopbarActions({
   useEffect(() => {
     if (!listRow) return;
     const onKey = (e: KeyboardEvent) => {
+      if (isPeekOpen()) return; // the page in the dialog owns the keys
       if (isTypingTarget(e.target)) return;
       const meta = primaryMod(e);
       // e.code: on a Mac ⌥L types "¬", so e.key never reads "l".

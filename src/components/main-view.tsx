@@ -1,4 +1,5 @@
 import { actionableDefs, valueLabel } from "@/lib/prop-actions";
+import { openPageSomewhere } from "@/lib/peek";
 import { PROPERTY_KINDS } from "@/lib/property-kinds";
 import React, { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { setViewDateMode, viewTime } from "@/lib/view-time";
@@ -1626,7 +1627,7 @@ export function BoardBody({
                       return;
                     }
                     setOrigin(p.id);
-                    navigate({ to: "/p/$pageId", params: { pageId: p.id } });
+                    openPageSomewhere(navigate, p.id);
                   }}
                   className={
                     "group rounded-[9px] bg-surface p-[10px] text-left shadow-card transition hover:shadow-cardHover cursor-pointer " +
@@ -1776,7 +1777,7 @@ export function ListBody({
                 return;
               }
               setOrigin(p.id);
-              navigate({ to: "/p/$pageId", params: { pageId: p.id } });
+              openPageSomewhere(navigate, p.id);
             }}
             className={
               "group grid w-full items-center gap-[11px] rounded-lg text-left cursor-pointer " +

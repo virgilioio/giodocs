@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { openPageSomewhere } from "@/lib/peek";
 import { useNavigate } from "@tanstack/react-router";
 import { useSetPageOrigin } from "@/lib/page-origin";
 import {
@@ -97,7 +98,7 @@ export function CalendarViewBody({
 
   const open = (id: string) => {
     setOrigin(id);
-    navigate({ to: "/p/$pageId", params: { pageId: id } });
+    openPageSomewhere(navigate, id);
   };
 
   if (!dateKey) {

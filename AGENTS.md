@@ -424,6 +424,50 @@ provider Virgilio already has; don't build them until asked.
 - Not yet on phones: the keyboard toolbar, long-press block menus, tables
   as lists, quick capture, offline reading (the plan's later steps).
 
+## Decisions (Allan, 2026-10-11: Notion's blocks, databases and new pages)
+- Slash menu (slash-menu.tsx, src/lib/slash-entries.ts): sections Suggested
+  (the person's recent picks, per device), Basic blocks, Media, Database,
+  Advanced; one-line rows with the typing shortcut on the right; "Close
+  menu · esc". Every block type has a preview card (block-previews.tsx:
+  a small example in Gio's style and one line), shown beside the
+  highlighted row in the slash menu and in Turn into (MenuRow.preview).
+- The Database section makes a new database inside the page as a Table,
+  Board (with a Status), List or Calendar (with a Date) view, or a Linked
+  view of an existing one. Inline views can be calendars too.
+- A database (inside a page or on its own page) has Notion's toolbar
+  (database-toolbar.tsx): Filter, Sort, Search, Open as full page, View
+  settings, New ▾ (templates), each an icon with a tooltip. Inside a page
+  it shows while pointed at or focused. Filters and sorts show as chips
+  only when set; the query sentence is off by default (Settings ›
+  Preferences turns it back on). Search is a passing title filter
+  ("@title", run-view), never saved.
+- The heading row is plain, sentence case, each property with its type's
+  icon, and ends with "+ Add property": a name field and a grouped
+  two-column type grid (property-type-grid.tsx); picking a type adds it at
+  once (relation, rollup and formula continue with their steps), and in a
+  view the built-ins (created/edited time and by) can be added as columns.
+- View settings (view-settings.tsx), one panel everywhere: view name,
+  Layout, Property visibility, Filter, Sort, Group (Show by on a
+  calendar), Copy link to view; then Edit properties, Row page layout and
+  Task database for people who can edit the database; a database page
+  adds More view actions (save, publish, duplicate, pin, export, delete).
+  The layout switch left the database header for it.
+- New pages and database rows open in a dialog over the current page
+  (page-peek.tsx, src/lib/peek.ts; Notion's centre peek): ⤡ opens the page
+  itself, "Add to ▾" moves it (move_page), Copy link, ★ Favorites, ⋯. Esc
+  or a click outside closes it. A page made for the dialog and closed
+  while still blank (no title, no words, no values, nothing inside) is
+  deleted. Databases and phones open pages in full. While a dialog is
+  open, the page underneath ignores window-wide keys (keysAreMine).
+- The sidebar's ✎ (New page) makes a page inside the page you're on, or
+  in Private when that isn't possible.
+- A blank page's starting points are "Get started with" chips: Empty
+  page, Templates ▾ (yours and the starters), Database ▾ (Table, Board,
+  List, Calendar) and Import.
+- Not built (out of scope or later): AI features, Forms, Gallery,
+  Timeline, Feed and Dashboard views, Automations, Conditional color,
+  Heading 4, Button and Place properties, Lock database.
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.

@@ -1,4 +1,5 @@
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { openPageSomewhere } from "@/lib/peek";
 import { useNavigate } from "@tanstack/react-router";
 import { FRESH_NEW_DATABASES, FRESH_VIEW_BLOCKS, type Blk } from "@/lib/block-ops";
 import { PageImageCtx } from "@/components/image-block";
@@ -310,7 +311,7 @@ function InlineViewBody({
       ? view.config.group
       : null;
 
-  const open = (id: string) => navigate({ to: "/p/$pageId", params: { pageId: id } });
+  const open = (id: string) => openPageSomewhere(navigate, id);
   const menuFor = (p: PageListItem) => () =>
     ({
       title: p.title || "Untitled",

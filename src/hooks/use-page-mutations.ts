@@ -13,6 +13,7 @@ import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import type { PageListItem, PageFull, Block } from "@/lib/types";
 import { applyMove, descendantsOf, type MoveTarget } from "@/lib/page-tree";
 import { storedPropsFor } from "./stored-props";
+import { openPageSomewhere } from "@/lib/peek";
 
 
 type ViewRow = {
@@ -1109,6 +1110,8 @@ export function useCreatePageAndOpen() {
       /** Where the page goes: inside this page (a row, when it's a database). */
       parentId?: string | null;
       isDatabase?: boolean;
+      /** Open it as its own page instead of in the dialog. */
+      full?: boolean;
     }) => {
       const created = await create.mutateAsync(v);
       try {
@@ -1116,7 +1119,9 @@ export function useCreatePageAndOpen() {
       } catch {
         /* storage unavailable */
       }
-      await navigate({ to: "/p/$pageId", params: { pageId: created.id } });
+      // A new page opens in a dialog over this one (Notion's way), unless
+      // it's a database or this is a phone; left blank, it's thrown away.
+      openPageSomewhere(navigate, created.id, { full: !!v.isDatabase || !!v.full, fresh: true });
       return created;
     },
     [create, navigate],
