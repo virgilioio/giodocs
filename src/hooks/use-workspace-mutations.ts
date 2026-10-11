@@ -6,7 +6,7 @@ import { useWorkspaceId } from "@/lib/workspace-context";
 
 type WorkspacePatch = {
   name?: string;
-  icon?: string;
+  icon?: string | null;
   stale_days?: number;
 };
 

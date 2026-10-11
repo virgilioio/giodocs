@@ -127,7 +127,7 @@ export function Popover({
         {trigger({ open, onClick: () => setOpen((v) => !v), ref: btnRef })}
         {open && typeof document !== "undefined"
           ? createPortal(
-              <MenuSheetFrame onClose={close} panelRef={panelRef} zIndex={90}>
+              <MenuSheetFrame onClose={close} panelRef={panelRef} zIndex={"var(--z-menu)" as unknown as number}>
                 <div data-popover-body style={{ padding: "0 12px" }}>{children(close)}</div>
               </MenuSheetFrame>,
               document.body,
@@ -149,7 +149,8 @@ export function Popover({
                 top: pos?.top ?? -9999,
                 left: pos?.left ?? -9999,
                 width,
-                zIndex: 90,
+                // Above dialogs that can hold one (Settings).
+                zIndex: "var(--z-menu)" as unknown as number,
                 visibility: pos ? "visible" : "hidden",
                 // Grow from the trigger.
                 transformOrigin: `${pos?.above ? "bottom" : "top"} ${align === "end" ? "right" : "left"}`,

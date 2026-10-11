@@ -83,6 +83,12 @@ export function EmojiPicker({
     if (focusedOnce.current) return;
     focusedOnce.current = true;
     searchRef.current?.focus();
+    // A popover is hidden until it has measured where to sit, and a hidden
+    // field can't take focus: try again once it shows.
+    requestAnimationFrame(() => {
+      const el = searchRef.current;
+      if (el && el.isConnected && document.activeElement !== el) el.focus();
+    });
   }, []);
 
   // §6 — custom emoji sit ABOVE the unicode grid, in their own section.

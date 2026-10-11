@@ -38,6 +38,7 @@ import { useSendInvites } from "@/hooks/use-invites";
 import { SpecMenuTrigger } from "./row-menu";
 import { Ico } from "./emoji-icon";
 import { CustomEmojiComposer } from "./custom-emoji-composer";
+import { WorkspaceIconPicker } from "./workspace-icon-picker";
 import { type CustomEmoji } from "@/lib/custom-emoji";
 import {
   useCreateCustomEmoji,
@@ -540,7 +541,6 @@ function StartPageRow() {
 
 /* ─────────────────────────── General pane ─────────────────────────── */
 
-const WS_EMOJI = ["🧭", "🏛", "🚀", "📚", "🧪", "🎯", "🛠", "🌱", "☕", "🐙", "🦉", "🌿"];
 
 function GeneralPane() {
   const ws = useWorkspaceId();
@@ -560,7 +560,6 @@ function GeneralPane() {
 
   const [nameDraft, setNameDraft] = useState(workspace?.name ?? "");
   useEffect(() => setNameDraft(workspace?.name ?? ""), [workspace?.name]);
-  const [iconOpen, setIconOpen] = useState(false);
 
   const staleDays = workspace?.stale_days ?? 90;
   const [sliderDays, setSliderDays] = useState(staleDays);
@@ -604,42 +603,13 @@ function GeneralPane() {
           />
         </Row>
 
-        <Row label="Icon" help="One emoji.">
-          <div style={{ position: "relative" }}>
-            <button
-              type="button"
-              disabled={!isOwner}
-              onClick={() => setIconOpen((v) => !v)}
-              className="grid place-items-center border border-line rounded-lg hover:bg-rail disabled:opacity-60"
-              style={{ width: 52, height: 52, fontSize: 26 }}
-            >
-              {workspace?.icon ?? "📄"}
-            </button>
-            {iconOpen && (
-              <div
-                ref={exitOnly("pop")}
-                className="absolute z-10 mt-1 bg-surface border border-line shadow-popover animate-popIn"
-                style={{ borderRadius: 12, padding: 6, width: 240 }}
-              >
-                <div className="grid grid-cols-6 gap-1">
-                  {WS_EMOJI.map((e) => (
-                    <button
-                      key={e}
-                      type="button"
-                      onClick={() => {
-                        updateWs.mutate({ icon: e });
-                        setIconOpen(false);
-                      }}
-                      className="grid h-8 w-8 place-items-center rounded-md hover:bg-rail"
-                      style={{ fontSize: 18 }}
-                    >
-                      {e}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+        <Row label="Icon" help="Pick an emoji or upload an image. It shows in the sidebar and the account menu.">
+          <WorkspaceIconPicker
+            icon={workspace?.icon ?? null}
+            workspaceName={workspace?.name ?? ""}
+            disabled={!isOwner}
+            onChange={(icon) => updateWs.mutate({ icon })}
+          />
         </Row>
 
         <Row
