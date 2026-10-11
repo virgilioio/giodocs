@@ -106,9 +106,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: appCss,
       },
-      { rel: "icon", href: "/favicon.ico" },
-      // iPhone "Add to Home Screen" reads this (180×180 PNG, opaque).
-      { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
+      // The dark tile with the cream mark (Allan, 2026-10-11). "?v=2" makes
+      // phones and browsers fetch it again instead of keeping the old one.
+      { rel: "icon", href: "/favicon.ico?v=2", sizes: "any" },
+      { rel: "icon", type: "image/png", sizes: "192x192", href: "/icon-192.png?v=2" },
+      { rel: "icon", type: "image/png", sizes: "512x512", href: "/icon-512.png?v=2" },
+      // iPhone "Add to Home Screen" reads this: 180×180, opaque, the tile to
+      // the edges (the phone rounds the corners itself).
+      { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png?v=2" },
     ],
   }),
   shellComponent: RootShell,
