@@ -989,6 +989,7 @@ export type Database = {
       delete_page: { Args: { p_page: string }; Returns: undefined }
       domain_status: { Args: { p_email: string }; Returns: string }
       dup_view_json: { Args: { j: Json; m: Json }; Returns: Json }
+      duplicate_property: { Args: { p_def: string }; Returns: Json }
       duplicate_database: { Args: { p_database: string }; Returns: string }
       edit_comment: {
         Args: { p_body: string; p_comment: string }
@@ -1045,6 +1046,11 @@ export type Database = {
         }[]
       }
       mention_excerpt: { Args: { p_text: string }; Returns: string }
+      move_property_option: {
+        Args: { p_def: string; p_to: number; p_value: string }
+        Returns: undefined
+      }
+      option_palette: { Args: { p_color: string }; Returns: Json }
       page_backlinks: {
         Args: { p_page: string }
         Returns: {
@@ -1095,6 +1101,10 @@ export type Database = {
         }
         Returns: number
       }
+      remove_property_option: {
+        Args: { p_def: string; p_value: string }
+        Returns: undefined
+      }
       rename_property_option: {
         Args: { p_def: string; p_label: string; p_value: string }
         Returns: undefined
@@ -1127,6 +1137,10 @@ export type Database = {
           snippets: Json
           title: string
         }[]
+      }
+      set_property_option_color: {
+        Args: { p_color: string; p_def: string; p_value: string }
+        Returns: undefined
       }
       set_comment_removed: {
         Args: { p_comment: string; p_removed: boolean }
