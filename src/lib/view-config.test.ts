@@ -151,3 +151,15 @@ describe("trackOf", () => {
     expect(trackOf({}, "@edited", "timestamp").min).toBe(92);
   });
 });
+
+describe("wrap and insert", () => {
+  it("reads wrap defensively and toggles it", async () => {
+    const { readConfig: rc, toggleWrap, insertProp } = await import("./view-config");
+    expect(rc({ wrap: ["notes", 3, "notes", ""] }).wrap).toEqual(["notes"]);
+    expect(rc({ wrap: [] }).wrap).toBeUndefined();
+    expect(toggleWrap({}, "notes")).toEqual({ wrap: ["notes"] });
+    expect(toggleWrap({ wrap: ["notes"] }, "notes")).toEqual({});
+    expect(insertProp(["a", "b", "c"], "x", 1)).toEqual(["a", "x", "b", "c"]);
+    expect(insertProp(["a", "b"], "x", 9)).toEqual(["a", "b", "x"]);
+  });
+});

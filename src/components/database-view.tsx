@@ -469,6 +469,8 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
   const archivePage = useArchivePage();
 
   const view = useMemo(() => pickView(views, selection.viewId), [views, selection.viewId]);
+  const [filterAsk, setFilterAsk] = useState<{ prop: string; n: number } | null>(null);
+  const { prefs } = usePrefs();
   const homePrefs = useHomePrefs();
   const saveHomePrefs = useSaveHomePrefs();
   const pinnedViews = homePrefs.data?.pinned_views ?? [];
@@ -955,6 +957,8 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
         onNewRow={canEditDb ? onNewRow : undefined}
         relations={tableRelations}
         databaseId={canEditDb ? databaseId : undefined}
+        isOwner={isWorkspaceOwner}
+        onFilter={prefs.explainQuery ? (k) => setFilterAsk({ prop: k, n: Date.now() }) : undefined}
       />
     );
 
@@ -998,7 +1002,6 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
     return out;
   };
 
-  const { prefs } = usePrefs();
   useEffect(() => {
     setDateModeForMainView(prefs.dateFormat);
   }, [prefs.dateFormat]);
@@ -1066,6 +1069,7 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
           editable
           pages={pages}
           verbose={prefs.explainQuery}
+          filterAsk={filterAsk}
           pill={isModified ? <ModifiedPill onSave={doSaveAsMyView} onDiscard={doDiscard} /> : null}
           menuSpec={(mctx) =>
             buildViewToolbarSpec(

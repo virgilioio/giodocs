@@ -85,6 +85,11 @@ export type MenuSpec = {
   /** When set, the title bar renders a ‹ Back button that calls this. */
   onBack?: () => void;
   width?: number;
+  /** The input sits under the title instead of after the rows (a name
+   *  field at the top of a column menu, Notion's way). */
+  inputFirst?: boolean;
+  /** Taller menus (a column menu): the list scrolls past this height. */
+  maxHeight?: number;
 };
 
 /** Ergonomic type for spec-builder callers: swap the spec (submenu) or close. */
@@ -486,8 +491,11 @@ function SpecBody({ spec, onClose }: { spec: MenuSpec; onClose: () => void }) {
   }
 
   const rows = cleanRows(spec.rows);
+  const input = spec.input ? (
+    <SpecInput key={spec.title} input={spec.input} onClose={onClose} first={spec.inputFirst} />
+  ) : null;
   return (
-    <div style={{ maxHeight: 280, overflow: "auto" }}>
+    <div style={{ maxHeight: spec.maxHeight ?? 280, overflow: "auto" }}>
       <div
         className="flex items-center gap-1 truncate"
         style={{
@@ -522,6 +530,7 @@ function SpecBody({ spec, onClose }: { spec: MenuSpec; onClose: () => void }) {
         )}
         <span className="truncate">{spec.title}</span>
       </div>
+      {spec.inputFirst ? input : null}
       <div>
         {rows.map((r, i) =>
           r.kind === "sep" ? (
@@ -539,7 +548,7 @@ function SpecBody({ spec, onClose }: { spec: MenuSpec; onClose: () => void }) {
           ),
         )}
       </div>
-      {spec.input && <SpecInput key={spec.title} input={spec.input} onClose={onClose} />}
+      {spec.inputFirst ? null : input}
       {spec.footer && (
         <div
           style={{
@@ -561,9 +570,11 @@ function SpecBody({ spec, onClose }: { spec: MenuSpec; onClose: () => void }) {
 function SpecInput({
   input,
   onClose,
+  first,
 }: {
   input: NonNullable<MenuSpec["input"]>;
   onClose: () => void;
+  first?: boolean;
 }) {
   const [value, setValue] = useState(input.initial ?? "");
   const ref = useRef<HTMLInputElement | null>(null);
@@ -578,11 +589,11 @@ function SpecInput({
   }, [input.selectOnFocus]);
   return (
     <div
-      style={{
-        borderTop: "1px solid var(--color-lineSoft)",
-        margin: 4,
-        paddingTop: 5,
-      }}
+      style={
+        first
+          ? { borderBottom: "1px solid var(--color-lineSoft)", margin: "2px 4px 4px", paddingBottom: 5 }
+          : { borderTop: "1px solid var(--color-lineSoft)", margin: 4, paddingTop: 5 }
+      }
     >
       <input
         ref={ref}
@@ -594,8 +605,10 @@ function SpecInput({
             e.preventDefault();
             const v = value.trim();
             if (v) input.onCommit(v);
-            // A step that leads to another step keeps the menu open.
+            // A step that leads to another step keeps the menu open; the
+            // field empties for the next entry (Add an option).
             if (!(input.keepOpen && v)) onClose();
+            else setValue("");
           }
         }}
         className="w-full bg-rail focus:outline-none"

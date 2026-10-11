@@ -32,8 +32,10 @@ import {
   TITLE_KEY,
   allPropKeys,
   hideProp,
+  insertProp,
   labelOfProp,
   moveProp,
+  toggleWrap,
   setWidth,
   showProp,
   shownProps,
@@ -47,7 +49,8 @@ import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
 import { Ico } from "./emoji-icon";
 import { Popover } from "./popover";
-import { RowMenu, SpecMenuTrigger, type MenuRow, type MenuSpec } from "./row-menu";
+import { RowMenu, SpecMenuTrigger, type MenuBuildCtx, type MenuRow, type MenuSpec } from "./row-menu";
+import { usePropertyEditing } from "./property-menu";
 import { useNewPropertyFlow } from "./new-property-flow";
 import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { useWorkspaceId } from "@/lib/workspace-context";
@@ -574,6 +577,7 @@ const TableRow = memo(function TableRow({
   autoEdit,
   onEditDone,
   selectable,
+  wrapped,
 }: {
   p: PageListItem;
   shown: string[];
@@ -586,6 +590,8 @@ const TableRow = memo(function TableRow({
   autoEdit: boolean;
   onEditDone: () => void;
   selectable: boolean;
+  /** Properties whose cells wrap (Wrap text). */
+  wrapped: ReadonlySet<string>;
 }) {
   return (
     <div className="contents group" role="row">
@@ -598,7 +604,7 @@ const TableRow = memo(function TableRow({
           />
         ) : null}
       </div>
-      <div data-page-id={p.id} role="cell" className={cellClass(selected)}>
+      <div data-page-id={p.id} role="cell" data-wrap={wrapped.has(TITLE_KEY) || undefined} className={cellClass(selected)}>
         <PageTitleCell
           page={p}
           onSave={(t) => rename({ pageId: p.id, title: t })}
@@ -607,7 +613,7 @@ const TableRow = memo(function TableRow({
         />
       </div>
       {shown.map((k) => (
-        <div key={k} data-page-id={p.id} data-prop={k} role="cell" className={cellClass(selected)}>
+        <div key={k} data-page-id={p.id} data-prop={k} role="cell" data-wrap={wrapped.has(k) || undefined} className={cellClass(selected)}>
           <ValueCell page={p} k={k} ctx={ctx} />
         </div>
       ))}
@@ -776,7 +782,7 @@ function PropHeading({
   sortDir: "asc" | "desc" | null;
   dragging: boolean;
   canArrange: boolean;
-  menu: () => MenuSpec;
+  menu: (mctx: MenuBuildCtx) => MenuSpec;
   onPointerDownLabel: (e: React.PointerEvent) => void;
   onResizeStart: (e: React.PointerEvent) => void;
   onResetWidth: () => void;
@@ -808,23 +814,15 @@ function PropHeading({
             suppressClick.current = false;
             return;
           }
-          // Every choice in a heading's menu is final: pick, then close.
-          const m = menu();
-          setSpec({
-            ...m,
-            rows: m.rows.map((r) =>
-              r.kind === "row"
-                ? {
-                    ...r,
-                    onPick: () => {
-                      r.onPick();
-                      setAnchor(null);
-                      setSpec(null);
-                    },
-                  }
-                : r,
-            ),
-          });
+          setSpec(
+            menu({
+              setSpec,
+              close: () => {
+                setAnchor(null);
+                setSpec(null);
+              },
+            }),
+          );
           setAnchor(e.currentTarget);
         }}
         aria-haspopup="menu"
@@ -1317,6 +1315,8 @@ export function ViewTable({
   databaseId,
   rowLimit,
   onShowAll,
+  isOwner,
+  onFilter,
 }: {
   rows: PageListItem[];
   pages: PageListItem[];
@@ -1351,6 +1351,10 @@ export function ViewTable({
   /** Show at most this many rows (per group), then "Show all". */
   rowLimit?: number;
   onShowAll?: () => void;
+  /** A workspace owner: can archive properties from their column. */
+  isOwner?: boolean;
+  /** Opens the view's filter builder at this property. */
+  onFilter?: (key: string) => void;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -1446,56 +1450,108 @@ export function ViewTable({
   const primary = sorts[0];
   const sortedKey = primary ? keyOfSortName(primary.prop) : null;
 
-  const headingMenu = (k: string): MenuSpec => {
-    const rowsOut: MenuRow[] = [
-      {
+  const editing = usePropertyEditing({ databaseId, isOwner: !!isOwner });
+  const wrapped = useMemo(() => new Set(config.wrap ?? []), [config.wrap]);
+
+  const headingMenu = (k: string, mctx: MenuBuildCtx): MenuSpec => {
+    // Every plain choice is final: do it, then close.
+    const final = (row: Extract<MenuRow, { kind: "row" }>): MenuRow => ({
+      ...row,
+      onPick: () => {
+        row.onPick();
+        mctx.close();
+      },
+    });
+    const back = () => headingMenu(k, mctx);
+    const isTitle = k === TITLE_KEY;
+    const rowsOut: MenuRow[] = [];
+    const edit = isTitle ? [] : editing.editRows(k, mctx, back);
+    if (edit.length) rowsOut.push(...edit, { kind: "sep" });
+    if (onFilter && !isTitle)
+      rowsOut.push(final({ kind: "row", label: "Filter", icon: "M4 6h16M7 12h10M10 18h4", onPick: () => onFilter(k) }));
+    rowsOut.push(
+      final({
         kind: "row",
         label: "Sort ascending",
         icon: IC.chevUp,
         checked: sortedKey === k && primary?.dir === "asc",
         onPick: () => onSort({ prop: sortNameOf(k), dir: "asc" }),
-      },
-      {
+      }),
+      final({
         kind: "row",
         label: "Sort descending",
         icon: IC.chevDown,
         checked: sortedKey === k && primary?.dir === "desc",
         onPick: () => onSort({ prop: sortNameOf(k), dir: "desc" }),
-      },
-    ];
-    if (canArrange && k !== TITLE_KEY) {
-      const i = shown.indexOf(k);
+      }),
+    );
+    if (canArrange) {
+      const i = isTitle ? -1 : shown.indexOf(k);
       rowsOut.push({ kind: "sep" });
-      if (i > 0)
-        rowsOut.push({
+      rowsOut.push(
+        // The page title is always first: a new property goes to its right.
+        ...editing
+          .insertRows(i, mctx, back, (newKey, at) => onConfig({ ...config, props: insertProp(shown, newKey, at) }))
+          .filter((r) => !isTitle || (r.kind === "row" && r.label === "Insert right")),
+      );
+      if (!isTitle) {
+        if (i > 0)
+          rowsOut.push(
+            final({
+              kind: "row",
+              label: "Move left",
+              icon: "m15 18-6-6 6-6",
+              onPick: () => onConfig({ ...config, props: moveProp(shown, k, i - 1) }),
+            }),
+          );
+        if (i < shown.length - 1)
+          rowsOut.push(
+            final({
+              kind: "row",
+              label: "Move right",
+              icon: IC.open,
+              onPick: () => onConfig({ ...config, props: moveProp(shown, k, i + 1) }),
+            }),
+          );
+        rowsOut.push(
+          final({
+            kind: "row",
+            label: "Hide in this view",
+            icon: IC.eyeOff,
+            onPick: () => onConfig({ ...config, props: hideProp(shown, k) }),
+          }),
+        );
+      }
+      rowsOut.push(
+        final({
           kind: "row",
-          label: "Move left",
-          icon: "m15 18-6-6 6-6",
-          onPick: () => onConfig({ ...config, props: moveProp(shown, k, i - 1) }),
-        });
-      if (i < shown.length - 1)
-        rowsOut.push({
-          kind: "row",
-          label: "Move right",
-          icon: IC.open,
-          onPick: () => onConfig({ ...config, props: moveProp(shown, k, i + 1) }),
-        });
-      rowsOut.push({
-        kind: "row",
-        label: "Hide in this view",
-        icon: IC.eyeOff,
-        onPick: () => onConfig({ ...config, props: hideProp(shown, k) }),
-      });
+          label: "Wrap text",
+          icon: "M4 6h16M4 12h13a3 3 0 0 1 0 6h-4m0 0 2-2m-2 2 2 2M4 18h5",
+          checked: wrapped.has(k),
+          onPick: () => onConfig(toggleWrap(config, k)),
+        }),
+      );
+      if (config.widths?.[k] !== undefined)
+        rowsOut.push(
+          final({
+            kind: "row",
+            label: "Reset width",
+            icon: "M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4",
+            onPick: () => onConfig(setWidth(config, k, null)),
+          }),
+        );
     }
-    if (canArrange && config.widths?.[k] !== undefined) {
-      rowsOut.push({
-        kind: "row",
-        label: "Reset width",
-        icon: "M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4",
-        onPick: () => onConfig(setWidth(config, k, null)),
-      });
-    }
-    return { title: labelOf(k), rows: rowsOut, width: 220 };
+    const tail = isTitle ? [] : editing.tailRows(k, mctx, back);
+    if (tail.length) rowsOut.push({ kind: "sep" }, ...tail);
+    return {
+      title: labelOf(k),
+      rows: rowsOut,
+      width: 240,
+      maxHeight: 460,
+      inputFirst: true,
+      input: isTitle ? undefined : editing.renameInput(k, mctx),
+      footer: isTitle ? undefined : editing.ownerNote(k),
+    };
   };
 
   /* Drag a heading to move the property. Starts after 4px, like block
@@ -1649,6 +1705,7 @@ export function ViewTable({
         autoEdit={editId === p.id}
         onEditDone={clearEdit}
         selectable={selectable}
+        wrapped={wrapped}
       />
     );
   };
@@ -1684,7 +1741,7 @@ export function ViewTable({
       sortDir={sortedKey === k ? (primary?.dir ?? null) : null}
       dragging={drag?.key === k}
       canArrange={canArrange}
-      menu={() => headingMenu(k)}
+      menu={(mctx) => headingMenu(k, mctx)}
       onPointerDownLabel={(e) => startHeadingDrag(e, k)}
       onResizeStart={(e) => startResize(e, k)}
       onResetWidth={() => onConfig(setWidth(config, k, null))}

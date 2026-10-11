@@ -328,6 +328,26 @@ provider Virgilio already has; don't build them until asked.
   shared view of that layout (use-start-database.ts); a board gets a
   Status (Not started, In progress, Done) to group by, a calendar a Date.
 
+## Decisions (Allan, 2026-10-11: the column menu)
+- Clicking a table column's heading opens Notion's property menu
+  (property-menu.tsx + view-table headingMenu): the name field on top
+  (rename), Type (only while no row has a value; relations and rollups
+  are made as new properties), Edit options, Filter (opens +Filter at that
+  property), sorts, Insert left / right (the new-property flow, placed in
+  the view beside it), Move, Hide in this view, Wrap text, Reset width,
+  Duplicate property, Archive property (owners, with a confirm and Undo).
+  Property changes are offered only to people who can edit the database.
+- Options: rename, colour (palette names gray, green, amber, yellow,
+  blue, purple, pink, red, mapped to tokens by option_palette in SQL),
+  Move up / down, and Remove for an option no row uses. All through
+  set_property_option_color / move_property_option / remove_property_option,
+  one option at a time under a row lock, like add/rename.
+- duplicate_property copies a property in its database as "<name> (copy)"
+  with the values of every row the caller can edit; a two-way relation is
+  copied one way, the far side of one can't be copied.
+- Wrap text is per view (views.config.wrap); a wrapped cell grows to its
+  text. It counts as a view change like shown properties.
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.

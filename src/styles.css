@@ -774,3 +774,9 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
 .gio-prop-resize:focus-visible::after,
 .gio-prop-resize:active::after { opacity: 1; transition: none; }
 [data-resizing] { cursor: col-resize; user-select: none; }
+
+/* Wrap text (a view's column setting): the cell grows to its text instead
+   of cutting it off. Unlayered, so it wins over the cell's nowrap and
+   truncate utilities. */
+[data-wrap] { white-space: normal; align-items: flex-start; }
+[data-wrap] .truncate { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }

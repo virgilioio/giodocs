@@ -15,6 +15,8 @@ export type ViewConfig = {
   widths?: Record<string, number>;
   calcs?: Record<string, string>;
   group?: string | null;
+  /** Properties whose cells wrap onto several lines instead of cutting off. */
+  wrap?: string[];
 };
 
 export type ConfigPropDef = {
@@ -145,6 +147,10 @@ export function readConfig(raw: unknown): ViewConfig {
   }
   if (typeof r.group === "string" && r.group) out.group = r.group;
   else if (r.group === null) out.group = null;
+  if (Array.isArray(r.wrap)) {
+    const w = [...new Set(r.wrap.filter((k): k is string => typeof k === "string" && !!k))];
+    if (w.length) out.wrap = w;
+  }
   return out;
 }
 
@@ -234,6 +240,7 @@ export function sameIgnoringWidths(a: ViewConfig, b: ViewConfig): boolean {
       props: rest.props ?? null,
       calcs: rest.calcs && Object.keys(rest.calcs).length ? rest.calcs : null,
       group: rest.group ?? null,
+      wrap: rest.wrap && rest.wrap.length ? [...rest.wrap].sort() : null,
     });
   };
   return strip(a) === strip(b);
@@ -259,4 +266,21 @@ export function sortNameOf(key: string): string {
   if (key === "@verified") return "verified";
   if (isBuiltIn(key)) return key;
   return `p:${key}`;
+}
+
+/** Wraps a property's cells in this view, or stops wrapping them. */
+export function toggleWrap(config: ViewConfig, key: string): ViewConfig {
+  const cur = config.wrap ?? [];
+  const next = cur.includes(key) ? cur.filter((k) => k !== key) : [...cur, key];
+  const out = { ...config };
+  if (next.length) out.wrap = next;
+  else delete out.wrap;
+  return out;
+}
+
+/** Puts a property into the shown list at an index (Insert left / right). */
+export function insertProp(shown: string[], key: string, index: number): string[] {
+  const rest = shown.filter((k) => k !== key);
+  const at = Math.max(0, Math.min(index, rest.length));
+  return [...rest.slice(0, at), key, ...rest.slice(at)];
 }

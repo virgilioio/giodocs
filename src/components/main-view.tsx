@@ -1,6 +1,6 @@
 import { actionableDefs, valueLabel } from "@/lib/prop-actions";
 import { PROPERTY_KINDS } from "@/lib/property-kinds";
-import React, { useMemo, useState, type ReactNode } from "react";
+import React, { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { setViewDateMode, viewTime } from "@/lib/view-time";
 import { useNavigate } from "@tanstack/react-router";
 import { useWorkspaceId } from "@/lib/workspace-context";
@@ -111,6 +111,7 @@ export function QueryToolbar({
   verbose,
   pill,
   menuSpec,
+  filterAsk,
 }: {
   filters: Filter[];
   sort: SortSpec | SortSpec[];
@@ -131,6 +132,8 @@ export function QueryToolbar({
   verbose: boolean;
   pill?: ReactNode;
   menuSpec: (ctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
+  /** A column's "Filter": opens +Filter at that property (n changes each ask). */
+  filterAsk?: { prop: string; n: number } | null;
 }) {
   const pickFilter = (picked: Filter) =>
     onChangeFilters(applyFilterReplacement(filters, picked));
@@ -209,6 +212,7 @@ export function QueryToolbar({
               people={people}
               staleDays={staleDays}
               onPick={pickFilter}
+              ask={filterAsk ?? null}
             />
           )}
         </>
@@ -370,19 +374,40 @@ function AddFilterButton({
   people,
   staleDays,
   onPick,
+  ask,
 }: {
   propDefs: PropDef[];
   pages: PageListItem[];
   people: PersonForLabel[];
   staleDays: number;
   onPick: (f: Filter) => void;
+  ask: { prop: string; n: number } | null;
 }) {
+  // A column's "Filter" opens this at its property: remember where to
+  // start, then press the button.
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const [startProp, setStartProp] = useState<string | null>(null);
+  const askN = ask?.n;
+  useEffect(() => {
+    if (!ask) return;
+    setStartProp(ask.prop);
+    const id = window.requestAnimationFrame(() => btnRef.current?.click());
+    return () => window.cancelAnimationFrame(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askN]);
   return (
     <Popover
       width={264}
+      onOpenChange={(o) => {
+        if (!o) setStartProp(null);
+      }}
       trigger={({ onClick, ref }) => (
         <button
-          ref={ref}
+          ref={(el) => {
+            btnRef.current = el;
+            if (typeof ref === "function") ref(el);
+            else if (ref) (ref as React.MutableRefObject<HTMLButtonElement | null>).current = el;
+          }}
           type="button"
           onClick={onClick}
           style={{
@@ -422,10 +447,12 @@ function AddFilterButton({
     >
       {(close) => (
         <FilterBuilderContent
+          key={startProp ?? "root"}
           propDefs={propDefs}
           pages={pages}
           people={people}
           staleDays={staleDays}
+          startAt={startProp ? { prop: startProp } : undefined}
           onPick={(f) => {
             onPick(f);
             close();

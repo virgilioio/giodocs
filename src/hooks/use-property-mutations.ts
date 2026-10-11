@@ -318,3 +318,121 @@ export function useSetPropertyArchived() {
   });
   return m;
 }
+
+/* ─── Editing options and copying a property (property_editing migration) ───
+ * One option at a time, under a row lock in the database; each change
+ * shows at once on the cached property and is put back if it fails. */
+
+type OptionRow = { value: string; label: string; tint?: string; ink?: string; dot?: string };
+
+/** The palette an option colour comes from (option_palette in SQL). */
+export const OPTION_COLORS = ["gray", "green", "amber", "yellow", "blue", "purple", "pink", "red"] as const;
+export type OptionColor = (typeof OPTION_COLORS)[number];
+export const OPTION_PALETTE: Record<OptionColor, { tint: string; ink: string; dot: string }> = {
+  gray: { tint: "sunken", ink: "secondary", dot: "whisper" },
+  green: { tint: "accentTint", ink: "accent", dot: "accentDot" },
+  amber: { tint: "amberTint", ink: "amberInk", dot: "amberDot" },
+  yellow: { tint: "yellowTint", ink: "yellowInk", dot: "yellowInk" },
+  blue: { tint: "blueTint", ink: "blueInk", dot: "blue" },
+  purple: { tint: "purpleTint", ink: "purple", dot: "purple" },
+  pink: { tint: "pinkTint", ink: "pinkInk", dot: "pink" },
+  red: { tint: "dangerTint", ink: "danger", dot: "dangerDot" },
+};
+
+/** Which palette colour an option shows, by its tint. */
+export function colorOfOption(o: { tint?: string }): OptionColor | null {
+  const hit = OPTION_COLORS.find((c) => OPTION_PALETTE[c].tint === o.tint);
+  return hit ?? null;
+}
+
+function useOptionEdit<V extends { id: string }>(
+  rpc: (v: V) => PromiseLike<{ error: unknown }>,
+  apply: (opts: OptionRow[], v: V) => OptionRow[],
+  failText: string,
+) {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (v: V) => {
+      const { error } = await rpc(v);
+      if (error) throw error;
+    },
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: qk.propDefs(ws) });
+      const snap = qc.getQueryData<PropDef[]>(qk.propDefs(ws));
+      if (snap) {
+        qc.setQueryData<PropDef[]>(
+          qk.propDefs(ws),
+          snap.map((d) =>
+            d.id === v.id
+              ? { ...d, options: apply((Array.isArray(d.options) ? d.options : []) as unknown as OptionRow[], v) as never }
+              : d,
+          ),
+        );
+      }
+      return { snap };
+    },
+    onError: (err, _v, ctx) => {
+      if (ctx?.snap) qc.setQueryData(qk.propDefs(ws), ctx.snap);
+      toast.push(`${failText}: ${message(err)}`);
+    },
+    onSettled: () => refresh(qc, ws),
+  });
+}
+
+export function useSetOptionColor() {
+  return useOptionEdit<{ id: string; value: string; color: OptionColor }>(
+    (v) => supabase.rpc("set_property_option_color", { p_def: v.id, p_value: v.value, p_color: v.color }),
+    (opts, v) => opts.map((o) => (o.value === v.value ? { ...o, ...OPTION_PALETTE[v.color] } : o)),
+    "Couldn't change the colour",
+  );
+}
+
+export function useMoveOption() {
+  return useOptionEdit<{ id: string; value: string; to: number }>(
+    (v) => supabase.rpc("move_property_option", { p_def: v.id, p_value: v.value, p_to: v.to }),
+    (opts, v) => {
+      const moving = opts.find((o) => o.value === v.value);
+      if (!moving) return opts;
+      const rest = opts.filter((o) => o.value !== v.value);
+      const at = Math.max(0, Math.min(v.to, rest.length));
+      return [...rest.slice(0, at), moving, ...rest.slice(at)];
+    },
+    "Couldn't move the option",
+  );
+}
+
+export function useRemoveOption() {
+  return useOptionEdit<{ id: string; value: string }>(
+    (v) => supabase.rpc("remove_property_option", { p_def: v.id, p_value: v.value }),
+    (opts, v) => opts.filter((o) => o.value !== v.value),
+    "Couldn't remove the option",
+  );
+}
+
+/** A copy of a property in its database, with the values of the rows you
+ *  can edit (duplicate_property). Resolves to the copy's key. */
+export function useDuplicateProperty() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (v: { id: string; label: string }) => {
+      const { data, error } = await supabase.rpc("duplicate_property", { p_def: v.id });
+      if (error) throw error;
+      return data as { id: string; key: string; label: string; rows: number };
+    },
+    onSuccess: async (made) => {
+      await qc.invalidateQueries({ queryKey: qk.propDefs(ws) });
+      void qc.invalidateQueries({ queryKey: qk.propDefsAll(ws) });
+      void qc.invalidateQueries({ queryKey: qk.pages(ws) });
+      toast.push(
+        made.rows > 0
+          ? `Made "${made.label}" with the values of ${made.rows} ${made.rows === 1 ? "row" : "rows"}.`
+          : `Made "${made.label}".`,
+      );
+    },
+    onError: (err, v) => toast.push(`Couldn't copy ${v.label}: ${message(err)}`),
+  });
+}
