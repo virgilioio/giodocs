@@ -433,6 +433,7 @@ export type Database = {
           parent_id: string | null
           position: number | null
           props: Json
+          row_number: number | null
           search_tsv: unknown
           task_config: Json | null
           template_at: string | null
@@ -459,6 +460,7 @@ export type Database = {
           parent_id?: string | null
           position?: number | null
           props?: Json
+          row_number?: number | null
           search_tsv?: unknown
           task_config?: Json | null
           template_at?: string | null
@@ -485,6 +487,7 @@ export type Database = {
           parent_id?: string | null
           position?: number | null
           props?: Json
+          row_number?: number | null
           search_tsv?: unknown
           task_config?: Json | null
           template_at?: string | null
@@ -1141,6 +1144,10 @@ export type Database = {
           title: string
         }[]
       }
+      set_property_option_group: {
+        Args: { p_def: string; p_group: string; p_value: string }
+        Returns: undefined
+      }
       set_property_option_color: {
         Args: { p_color: string; p_def: string; p_value: string }
         Returns: undefined
@@ -1240,6 +1247,9 @@ export type Database = {
         | "phone"
         | "relation"
         | "rollup"
+        | "unique_id"
+        | "files"
+        | "formula"
       view_layout: "table" | "board" | "list" | "calendar"
       view_scope: "personal" | "team"
     }
@@ -1385,6 +1395,9 @@ export const Constants = {
         "phone",
         "relation",
         "rollup",
+        "unique_id",
+        "files",
+        "formula",
       ],
       view_layout: ["table", "board", "list", "calendar"],
       view_scope: ["personal", "team"],
