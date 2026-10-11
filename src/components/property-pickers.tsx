@@ -14,6 +14,7 @@ import {
 } from "@/lib/due-date";
 import { parseDateInput } from "@/lib/date-parse";
 import { checkTypedValue, displayFor, hrefFor } from "@/lib/property-kinds";
+import { personIds, togglePerson } from "@/lib/person-value";
 
 /* Shared editing popovers, used by BOTH the table cells (main-view.tsx)
  * and the page properties strip (page-view.tsx). Callers supply the
@@ -110,39 +111,54 @@ export function OwnerPicker({
   width = 240,
   onOpenChange,
   emptyLabel = "No owner",
+  multi = false,
 }: {
-  value: string | null;
+  /** One member id, or a list of them (a person property without a limit). */
+  value: unknown;
   members: MemberLike[];
-  onPick: (uid: string | null) => void;
+  /** The value to store: an id, a list of ids (multi), or null. */
+  onPick: (next: string | string[] | null) => void;
   trigger: TriggerFn;
   width?: number;
   onOpenChange?: (open: boolean) => void;
   emptyLabel?: string;
+  /** Several people: a pick adds or takes off, and the list stays open. */
+  multi?: boolean;
 }) {
+  const chosen = personIds(value);
   return (
     <Popover width={width} trigger={trigger} onOpenChange={onOpenChange}>
       {(close) => (
         <div className="max-h-72 overflow-y-auto">
-          {members.map((m) => (
-            <button
-              key={m.user_id}
-              type="button"
-              className={
-                "flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left hover:bg-rail " +
-                (m.user_id === value ? "font-bold" : "")
-              }
-              onClick={() => {
-                onPick(m.user_id);
-                close();
-              }}
-            >
-              <MiniAvatar profile={m.profiles} />
-              <span className="text-meta">
-                {m.profiles?.full_name ?? m.profiles?.email ?? "Unknown"}
-              </span>
-              {m.user_id === value ? <span className="ml-auto text-accent">✓</span> : null}
-            </button>
-          ))}
+          {members.map((m) => {
+            const on = chosen.includes(m.user_id);
+            return (
+              <button
+                key={m.user_id}
+                type="button"
+                data-person-option={m.user_id}
+                aria-pressed={multi ? on : undefined}
+                className={
+                  "flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left hover:bg-rail " +
+                  (on ? "font-bold" : "")
+                }
+                onClick={() => {
+                  if (multi) {
+                    onPick(togglePerson(chosen, m.user_id, false));
+                    return;
+                  }
+                  onPick(m.user_id);
+                  close();
+                }}
+              >
+                <MiniAvatar profile={m.profiles} />
+                <span className="text-meta">
+                  {m.profiles?.full_name ?? m.profiles?.email ?? "Unknown"}
+                </span>
+                {on ? <span className="ml-auto text-accent">✓</span> : null}
+              </button>
+            );
+          })}
           <div className="my-1 border-t border-lineSoft" />
           <button
             type="button"

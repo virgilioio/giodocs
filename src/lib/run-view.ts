@@ -1,6 +1,7 @@
 import type { PageListItem } from "./types";
 import { dateSpan, isTerminalStatus, toDueString, type DateSpan } from "./due-date";
 import { groupOfValue } from "./status-groups";
+import { personIds } from "./person-value";
 
 /* The one place a view's filter, sort and grouping run (AGENTS.md: "View
  * filtering happens in EXACTLY one place"). Everything here is pure.
@@ -291,10 +292,13 @@ export function matches(page: PageListItem, f: Filter, ctx: RunViewCtx): boolean
   switch (f.op) {
     case "eq": {
       const v = valueIn(ctx, page, requireProp(f));
+      // A list (several people) is the value when it holds it.
+      if (Array.isArray(v)) return v.map(String).includes(String(f.value));
       return v != null && String(v) === String(f.value);
     }
     case "neq": {
       const v = valueIn(ctx, page, requireProp(f));
+      if (Array.isArray(v)) return !v.map(String).includes(String(f.value));
       return v == null || String(v) !== String(f.value);
     }
     case "includes": {
@@ -450,8 +454,11 @@ function sortKey(page: PageListItem, key: string, ctx: RunViewCtx): Key {
         ? { empty: false, v: i }
         : { empty: false, v: 1e6, t: asText(raw).toLowerCase() };
     }
-    case "person":
-      return { empty: false, v: (ctx.nameOf?.(String(raw)) ?? String(raw)).toLowerCase() };
+    case "person": {
+      const ids = personIds(raw);
+      if (ids.length === 0) return { empty: true, v: "" };
+      return { empty: false, v: ids.map((id) => ctx.nameOf?.(id) ?? id).join(", ").toLowerCase() };
+    }
     case "relation": {
       // By the linked pages' titles, in order.
       const ids = Array.isArray(raw) ? raw.map(String) : [];

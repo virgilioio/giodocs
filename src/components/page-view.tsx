@@ -116,6 +116,7 @@ import { clearUndoStore } from "@/lib/undo-store";
 import { normAccess, panelCopy } from "@/lib/share-panel";
 import type { Block, PageAccessRow, PageFull, PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
+import { onePersonOnly, personIds } from "@/lib/person-value";
 
 
 type PropDef = Database["public"]["Tables"]["property_defs"]["Row"];
@@ -408,10 +409,14 @@ function EditableValue({
 
   /* ── Owner / Person ── */
   if (def?.type === "person") {
-    const m = members.find((x) => x.user_id === raw);
+    const chosen = personIds(raw)
+      .map((id) => members.find((x) => x.user_id === id))
+      .filter((x): x is (typeof members)[number] => !!x);
+    const m = chosen[0];
     return (
       <OwnerPicker
-        value={typeof raw === "string" ? raw : null}
+        value={raw}
+        multi={!onePersonOnly(def)}
         members={members}
         onPick={onSet}
         onOpenChange={onOpenChange}
@@ -425,9 +430,15 @@ function EditableValue({
           >
             {m ? (
               <>
-                <MiniAvatar profile={m.profiles} />
-                <span style={{ fontSize: 14, color: "var(--color-strong)" }}>
-                  {m.profiles?.full_name ?? m.profiles?.email ?? "Unknown"}
+                <span className="flex shrink-0">
+                  {chosen.slice(0, 3).map((x, i) => (
+                    <span key={x.user_id} style={{ marginLeft: i ? -6 : 0, borderRadius: 999, boxShadow: "0 0 0 2px var(--color-surface)" }}>
+                      <MiniAvatar profile={x.profiles} />
+                    </span>
+                  ))}
+                </span>
+                <span className="min-w-0 truncate" style={{ fontSize: 14, color: "var(--color-strong)" }}>
+                  {chosen.map((x) => x.profiles?.full_name ?? x.profiles?.email ?? "Unknown").join(", ")}
                 </span>
               </>
             ) : (

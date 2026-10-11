@@ -14,7 +14,9 @@ export function describeNotification(n: Pick<InboxItem, "actor_id" | "kind" | "p
           ? "mentioned you in a comment on"
           : n.kind === "comment_reply"
             ? "replied to a comment on"
-            : "updated",
+            : n.kind === "person_added"
+              ? "added you to"
+              : "updated",
     page: page?.title || "Untitled",
     icon: page?.icon || "📄",
   };

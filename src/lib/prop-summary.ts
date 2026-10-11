@@ -1,4 +1,5 @@
 import { formatDue, isDateRange } from "./due-date";
+import { personIds } from "./person-value";
 
 /* One-line text for a property value, for the collapsed property strip.
  *
@@ -56,8 +57,11 @@ export function summarizeProp(
       return value.length === 1 ? "1 link" : `${value.length} links`;
     }
     case "person": {
-      if (typeof value !== "string" || !value) return null;
-      return personName(value);
+      // Only people it can name; someone unknown says nothing.
+      const names = personIds(value)
+        .map((id) => personName(id))
+        .filter((n): n is string => !!n);
+      return names.length ? names.join(", ") : null;
     }
     case "date":
       if (isDateRange(value)) return formatDue(value);

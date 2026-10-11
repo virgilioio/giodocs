@@ -7,6 +7,7 @@
  * drift. Pure: returns MenuRow data, no React. */
 
 import type { MenuRow } from "@/components/row-menu";
+import { onePersonOnly, personIds, togglePerson } from "./person-value";
 
 export type ActionDef = {
   key: string;
@@ -14,6 +15,7 @@ export type ActionDef = {
   type: string;
   options?: unknown;
   archived_at?: string | null;
+  config?: unknown;
 };
 
 export type ActionMember = {
@@ -71,8 +73,14 @@ export function valueLabel(def: ActionDef, value: unknown, members: ActionMember
   if (value === null || value === undefined || value === "") return "empty";
   if (def.type === "checkbox") return value === true ? "Checked" : "Unchecked";
   if (def.type === "person") {
-    const m = members.find((x) => x.user_id === value);
-    return m ? nameOf(m) : "someone";
+    const ids = personIds(value);
+    if (ids.length === 0) return "empty";
+    return ids
+      .map((id) => {
+        const m = members.find((x) => x.user_id === id);
+        return m ? nameOf(m) : "someone";
+      })
+      .join(", ");
   }
   if (Array.isArray(value)) return value.map((v) => valueLabel(def, v, members)).join(", ");
   const hit = optionsOf(def).find((o) => o.value === value);
@@ -113,7 +121,7 @@ export function valueRows(
           tint: `var(--color-${m.profiles?.avatar_tint ?? "sunken"})`,
           ink: `var(--color-${m.profiles?.avatar_ink ?? "body"})`,
         },
-        checked: current === m.user_id,
+        checked: personIds(current).includes(m.user_id),
         onPick: () => pick(m.user_id, nameOf(m)),
       }));
       return [...rows, { kind: "sep" }, clear(`Clear ${def.label || def.key}`)];
@@ -155,6 +163,9 @@ export function valueRows(
 
 /** A multi-select pick adds to the list; everything else replaces. */
 export function nextValue(def: ActionDef, existing: unknown, picked: unknown): unknown {
+  // A person property without a limit adds or takes off the person picked.
+  if (def.type === "person" && typeof picked === "string" && !onePersonOnly(def))
+    return togglePerson(existing, picked, false);
   if (def.type !== "multi_select" || picked === null) return picked;
   const arr = Array.isArray(existing) ? existing.filter((x): x is string => typeof x === "string") : [];
   return typeof picked === "string" && !arr.includes(picked) ? [...arr, picked] : arr;

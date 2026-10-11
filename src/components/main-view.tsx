@@ -18,6 +18,7 @@ import { Popover } from "./popover";
 import { SpecMenuTrigger, type MenuSpec } from "./row-menu";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
+import { personIds } from "@/lib/person-value";
 
 type Layout = "table" | "board" | "list" | "calendar";
 
@@ -1594,7 +1595,7 @@ export function BoardBody({
           <div className="flex flex-col gap-2">
             {col.pages.map((p) => {
               const isStale = new Date(p.verified_at).getTime() < staleThreshold;
-              const ownerId = personDef ? propsOf(p)[personDef.key] : null;
+              const ownerId = personDef ? personIds(propsOf(p)[personDef.key])[0] : null;
               const owner =
                 typeof ownerId === "string"
                   ? members.find((m) => m.user_id === ownerId)?.profiles
@@ -1749,7 +1750,7 @@ export function ListBody({
       {rows.map((p, idx) => {
         const props = propsOf(p);
         const isStale = new Date(p.verified_at).getTime() < staleThreshold;
-        const ownerId = personDef ? props[personDef.key] : null;
+        const ownerId = personDef ? personIds(props[personDef.key])[0] : null;
         const owner =
           typeof ownerId === "string"
             ? members.find((m) => m.user_id === ownerId)?.profiles
