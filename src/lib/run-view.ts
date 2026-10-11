@@ -148,6 +148,9 @@ export function propValue(page: PageListItem, key: string): unknown {
       return page.created_by ?? null;
     case "@edited_by":
       return page.edited_by ?? null;
+    case "@title":
+      // A database's Search (a passing filter, never saved).
+      return page.title ?? null;
     default:
       return propsOf(page)[key];
   }

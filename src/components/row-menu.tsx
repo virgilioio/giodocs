@@ -95,6 +95,9 @@ export type MenuSpec = {
   inputFirst?: boolean;
   /** Taller menus (a column menu): the list scrolls past this height. */
   maxHeight?: number;
+  /** A body of its own instead of rows (Add property's type grid). It
+   *  still gets the title bar, Back and the shell. */
+  content?: (close: () => void) => ReactNode;
 };
 
 /** Ergonomic type for spec-builder callers: swap the spec (submenu) or close. */
@@ -529,6 +532,42 @@ function SpecBody({ spec, onClose }: { spec: MenuSpec; onClose: () => void }) {
     );
   }
 
+  if (spec.content) {
+    return (
+      <div data-spec-body style={{ maxHeight: spec.maxHeight ?? 440, overflow: "auto" }}>
+        {spec.onBack || spec.title ? (
+          <div
+            className="flex items-center gap-1 truncate"
+            style={{
+              padding: "7px 10px 3px",
+              fontFamily: "var(--font-display)",
+              fontSize: 11.5,
+              fontWeight: 700,
+              letterSpacing: ".07em",
+              textTransform: "uppercase",
+              color: "var(--color-faint)",
+            }}
+          >
+            {spec.onBack && (
+              <button
+                type="button"
+                aria-label="Back"
+                onClick={spec.onBack}
+                className="grid place-items-center rounded-sm hover:bg-rail"
+                style={{ width: 16, height: 16, marginRight: 2 }}
+              >
+                <svg viewBox="0 0 24 24" width={11} height={11} aria-hidden>
+                  <path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            )}
+            <span className="truncate">{spec.title}</span>
+          </div>
+        ) : null}
+        {spec.content(onClose)}
+      </div>
+    );
+  }
   const rows = cleanRows(spec.rows);
   const input = spec.input ? (
     <SpecInput key={spec.title} input={spec.input} onClose={onClose} first={spec.inputFirst} />

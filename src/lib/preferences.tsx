@@ -25,7 +25,7 @@ const DEFAULT: Prefs = {
   fontFamily: "default",
   density: "comfortable",
   dateFormat: "relative",
-  explainQuery: true,
+  explainQuery: false,
   showSidebarCounts: true,
 };
 
@@ -41,8 +41,11 @@ const THEME_KEY = "gio.theme";
  * persisted false into localStorage; B2 flipped the default to true, but
  * stored values still hid the sentence toolbar for anyone who touched the
  * app during that window.
+ * v3 (2026-10-11) — Notion's database toolbar: filters and sorts show as
+ * chips only when set, so the sentence is off for everyone once (it can be
+ * turned back on in Settings › Preferences).
  */
-const PREFS_VERSION = 2;
+const PREFS_VERSION = 3;
 
 function readStored(): Prefs {
   if (typeof window === "undefined") return DEFAULT;
@@ -52,8 +55,8 @@ function readStored(): Prefs {
     const parsed = JSON.parse(raw) as Partial<Prefs> & { prefsVersion?: number };
     const merged: Prefs = { ...DEFAULT, ...parsed };
     const version = typeof parsed.prefsVersion === "number" ? parsed.prefsVersion : 0;
-    if (version < 2) {
-      merged.explainQuery = true;
+    if (version < 3) {
+      merged.explainQuery = false;
       try {
         window.localStorage.setItem(
           STORAGE_KEY,

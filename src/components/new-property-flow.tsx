@@ -1,4 +1,6 @@
+import { useRef } from "react";
 import type { MenuRow, MenuSpec } from "./row-menu";
+import { PropertyTypeGrid } from "./property-type-grid";
 import { useCreateProperty } from "@/hooks/use-property-mutations";
 import { PROPERTY_KINDS, kindLabel, type PropertyType } from "@/lib/property-kinds";
 import { BUILT_IN_LABELS, BUILT_IN_TYPES } from "@/lib/view-config";
@@ -53,8 +55,17 @@ export function useNewPropertyFlow(opts: {
   /** Where Back from the type list goes (null: the caller's root list). */
   rootBack: MenuSpec | null;
   onCreated: (def: { key: string; type: string }) => void;
+  /** In a view: show a built-in (created/edited) as a column. */
+  onBuiltIn?: (key: string) => void;
+  /** Built-ins the view already shows. */
+  shownBuiltIns?: string[];
+  /** The type panel is the first thing shown (a table's Add property). */
+  noBack?: boolean;
 }): { typeSpec: MenuSpec } {
-  const { databaseId, allPropDefs, databases, setSub, rootBack, onCreated } = opts;
+  const { databaseId, allPropDefs, databases, setSub, rootBack, onCreated, onBuiltIn, shownBuiltIns } = opts;
+  // The name typed above the type grid, carried into the steps that ask
+  // for one (relation, rollup, formula).
+  const typedName = useRef("");
   const createProperty = useCreateProperty();
   const propDefs = allPropDefs.filter((d) => d.database_id === databaseId);
   const defsByKey = new Map(allPropDefs.map((d) => [d.key, d]));
@@ -82,6 +93,8 @@ export function useNewPropertyFlow(opts: {
     footer: "Every row of this database gets it. Only owners can archive it.",
     input: {
       placeholder: "Name it, then press Enter",
+      initial: typedName.current || undefined,
+      selectOnFocus: true,
       onCommit: (label) => (then ? then(label) : create(label, type)),
       // A relation's name leads to "one way or both", a formula's to its
       // expression.
@@ -223,26 +236,38 @@ export function useNewPropertyFlow(opts: {
   const formulaName = (): MenuSpec =>
     nameSpec("formula", (label) => setSub(formulaExprSpec(label)));
 
-  // Step 1: pick a type.
+  // Step 1: name it and pick a type, in one panel (Notion's). Simple types
+  // are made at once; relation, rollup and formula continue with their
+  // steps, the typed name filled in.
   const typeSpec: MenuSpec = {
     title: "New property",
-    onBack: rootBack ? () => setSub(rootBack) : () => setSub(null),
-    rows: PROPERTY_KINDS.map((k) => ({
-      kind: "row" as const,
-      label: k.label,
-      icon: k.icon,
-      hint: { text: k.hint },
-      onPick: () =>
-        setSub(
-          k.type === "relation"
-            ? relationScopeSpec()
-            : k.type === "rollup"
-              ? rollupRelationSpec()
-              : k.type === "formula"
-                ? formulaName()
-                : nameSpec(k.type),
-        ),
-    })),
+    onBack: rootBack ? () => setSub(rootBack) : opts.noBack ? undefined : () => setSub(null),
+    rows: [],
+    width: 380,
+    maxHeight: 520,
+    content: (close) => (
+      <PropertyTypeGrid
+        onBuiltIn={
+          onBuiltIn
+            ? (key) => {
+                onBuiltIn(key);
+                close();
+              }
+            : undefined
+        }
+        shownBuiltIns={shownBuiltIns}
+        onPick={(type, name) => {
+          typedName.current = name;
+          if (type === "relation") setSub(relationScopeSpec());
+          else if (type === "rollup") setSub(rollupRelationSpec());
+          else if (type === "formula") setSub(name ? formulaExprSpec(name) : formulaName());
+          else {
+            create(name || kindLabel(type), type);
+            close();
+          }
+        }}
+      />
+    ),
   };
 
   return { typeSpec };

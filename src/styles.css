@@ -789,6 +789,16 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
 [data-wrap] { white-space: normal; align-items: flex-start; }
 [data-wrap] .truncate { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
 
+/* The database toolbar inside a page (database-toolbar.tsx): it shows while
+   the database is pointed at or holds focus, or while one of its menus or
+   its search is open; always on a database page and on touch screens. */
+.gio-db-tools { opacity: 0; transition: opacity var(--dur-hover) var(--ease-out); }
+.gio-db-host:hover .gio-db-tools,
+.gio-db-host:focus-within .gio-db-tools,
+.gio-db-tools[data-pinned],
+.gio-db-tools[data-always] { opacity: 1; }
+@media (hover: none) { .gio-db-tools { opacity: 1; } }
+
 /* ─────────────── Phone frame (2026-10-11) ───────────────
  * Below 768px (src/lib/use-media.ts, phone-shell.tsx): top tabs, floating
  * round buttons and bars, bottom sheets. Safe areas keep them clear of the

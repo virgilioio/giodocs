@@ -112,6 +112,9 @@ export function QueryToolbar({
   pill,
   menuSpec,
   filterAsk,
+  compact = false,
+  open = false,
+  sortAsk,
 }: {
   filters: Filter[];
   sort: SortSpec | SortSpec[];
@@ -134,6 +137,13 @@ export function QueryToolbar({
   menuSpec: (ctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
   /** A column's "Filter": opens +Filter at that property (n changes each ask). */
   filterAsk?: { prop: string; n: number } | null;
+  /** Notion's way (2026-10-11): no "Pages where" sentence and no ⋯ (the
+   *  database toolbar has Filter, Sort and View settings); the row shows
+   *  only while something is set, or while `open`. */
+  compact?: boolean;
+  open?: boolean;
+  /** The toolbar's Sort: opens the sort menu (n changes each ask). */
+  sortAsk?: number;
 }) {
   const pickFilter = (picked: Filter) =>
     onChangeFilters(applyFilterReplacement(filters, picked));
@@ -148,6 +158,74 @@ export function QueryToolbar({
     const p = pages.find((x) => x.id === id);
     return p ? p.title || "Untitled" : "a private page";
   };
+
+  if (compact) {
+    const grouped = layout === "board" || layout === "calendar" || (layout === "table" && !!tableGroup);
+    if (!open && filters.length === 0 && !grouped && !pill && !sortAsk) return null;
+    return (
+      <div className="flex flex-wrap items-center" data-query-chips style={{ marginTop: 4, marginBottom: 8, gap: 7, minHeight: 22 }}>
+        {filters.map((f, i) => {
+          const fixed = i === fixedFilterIndex;
+          const clickable = editable && !fixed;
+          return (
+            <FilterChip
+              key={i}
+              label={filterLabel(f, { people, staleDays, defs: labelDefs, pageTitle })}
+              clickable={clickable}
+              removable={clickable}
+              onRemove={() => onChangeFilters(filters.filter((_, idx) => idx !== i))}
+              renderPicker={
+                clickable
+                  ? (close) => (
+                      <FilterBuilderContent
+                        propDefs={propDefs}
+                        pages={pages}
+                        people={people}
+                        staleDays={staleDays}
+                        startAt={{ prop: f.prop, op: f.op, value: f.value }}
+                        onPick={(picked) => {
+                          onChangeFilters(applyFilterReplacement(filters.filter((_, idx) => idx !== i), picked));
+                          close();
+                        }}
+                      />
+                    )
+                  : undefined
+              }
+            />
+          );
+        })}
+        {editable && (
+          <AddFilterButton
+            propDefs={propDefs}
+            pages={pages}
+            people={people}
+            staleDays={staleDays}
+            onPick={pickFilter}
+            ask={filterAsk ?? null}
+          />
+        )}
+        <span aria-hidden className="inline-block bg-line" style={{ width: 1, height: 16 }} />
+        <SortControl sort={sort} defs={propDefs} nameDefs={labelDefs} onChange={onChangeSort} ask={sortAsk} />
+        {layout === "table" && editable && tableGroup ? (
+          <TableGroupControl value={tableGroup} choices={tableGroupChoices} onChange={onChangeTableGroup} />
+        ) : null}
+        {layout === "board" && <GroupControl groupBy={groupBy} defs={groupableDefs} onChange={onChangeGroupBy} />}
+        {layout === "calendar" && (
+          <GroupControl
+            groupBy={groupBy}
+            defs={dateDefs}
+            onChange={onChangeGroupBy}
+            title="Show by"
+            iconPath="M5 5h14v15H5zM5 10h14M9 3v4M15 3v4"
+            emptyText="Add a date property to place pages on the calendar."
+            fallbackLabel="No date property"
+          />
+        )}
+        <div style={{ flex: 1, minWidth: 8 }} />
+        {pill}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -1073,14 +1151,23 @@ function SortControl({
   defs,
   nameDefs,
   onChange,
+  ask,
 }: {
   sort: SortSpec | SortSpec[];
   defs: PropDef[];
   /** Archived properties too, so a saved sort on one still reads by name. */
   nameDefs: PropDef[];
   onChange: (s: SortSpec | SortSpec[]) => void;
+  /** Opens the menu when it changes (the toolbar's Sort). */
+  ask?: number;
 }) {
   const sorts = sortsOf(sort);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (!ask) return;
+    const id = window.requestAnimationFrame(() => btnRef.current?.click());
+    return () => window.cancelAnimationFrame(id);
+  }, [ask]);
   const [picking, setPicking] = useState<number | null>(null);
   const targets = sortTargets(defs);
   const named = sortTargets(nameDefs);
@@ -1095,7 +1182,11 @@ function SortControl({
       }}
       trigger={({ onClick, ref }) => (
         <ToolbarBorderlessButton
-          innerRef={ref}
+          innerRef={(el: HTMLButtonElement | null) => {
+            btnRef.current = el;
+            if (typeof ref === "function") ref(el);
+            else if (ref) (ref as React.MutableRefObject<HTMLButtonElement | null>).current = el;
+          }}
           onClick={onClick}
           iconPath="M7 4v12m0 0l-3-3m3 3l3-3M17 20V8m0 0l-3 3m3-3l3 3"
           label={sortLabelOf(sort, nameDefs)}

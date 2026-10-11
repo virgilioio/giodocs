@@ -6,7 +6,7 @@ import { usePrefs } from "@/lib/preferences";
 import { useAuth } from "@/lib/auth-context";
 import { usePage, usePageAccess } from "@/hooks/use-workspace-data";
 import { runView, sortsOf, type Filter, type SortSpec } from "@/lib/run-view";
-import { labelOfProp, readConfig, shownProps, type ViewConfig } from "@/lib/view-config";
+import { allPropKeys, labelOfProp, readConfig, shownProps, type ViewConfig } from "@/lib/view-config";
 import { sortLabel as sortLabelOf } from "@/lib/sort-label";
 import { seedForGroup, seedFromFilters } from "@/lib/view-seed";
 import { ViewTable } from "./view-table";
@@ -22,7 +22,7 @@ import { useToast } from "@/lib/toast";
 import { Popover } from "./popover";
 import { EmojiPicker } from "./emoji-picker";
 import { Ico } from "./emoji-icon";
-import { RowMenu, type MenuSpec, type MenuRow } from "./row-menu";
+import { RowMenu, type MenuSpec, type MenuRow, type MenuBuildCtx } from "./row-menu";
 import { useTemplates } from "@/hooks/use-workspace-data";
 import { useNewPageFromTemplate, useSetTemplate } from "@/hooks/use-templates";
 import { useWorkspaceId } from "@/lib/workspace-context";
@@ -64,6 +64,8 @@ import type { ExportViewColumn, ExportViewRow } from "@/lib/export";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
 import { isTypingTarget } from "@/lib/is-typing";
+import { DatabaseToolbar } from "./database-toolbar";
+import { useViewSettings } from "./view-settings";
 import { useHomePrefs, useSaveHomePrefs } from "@/hooks/use-home";
 import { togglePinned } from "@/lib/home";
 
@@ -210,32 +212,7 @@ function DatabaseHeader({
         <span className="shrink-0 text-ui text-faint">{countLabel}</span>
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        <div
-          className="flex items-center overflow-hidden rounded-lg border border-line"
-          style={{ height: 30 }}
-        >
-          {(["table", "board", "list", "calendar"] as const).map((l, i) => {
-            const active = l === layout;
-            return (
-              <button
-                key={l}
-                type="button"
-                title={l}
-                aria-label={l}
-                aria-pressed={active}
-                onClick={() => onChangeLayout(l)}
-                className={
-                  "grid place-items-center " +
-                  (i > 0 ? "border-l border-line " : "") +
-                  (active ? "bg-selected text-noir" : "text-faint hover:bg-sunken")
-                }
-                style={{ height: 30, width: 32 }}
-              >
-                <LayoutGlyph layout={l} />
-              </button>
-            );
-          })}
-        </div>
+        {/* The layout is chosen in View settings (Notion's way). */}
         {canEdit && (
           <div className="inline-flex items-stretch overflow-hidden rounded-lg bg-btn text-btnFg" style={{ height: 30 }}>
             <button
@@ -542,9 +519,21 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
     });
   const clearDraft = (id: string) => storeClearDraft(id);
 
+  // Search (the toolbar's): a passing filter on the title, never saved.
+  const [search, setSearch] = useState("");
+  const [queryOpen, setQueryOpen] = useState(false);
+  const [sortAsk, setSortAsk] = useState(0);
   const rows = useMemo(
-    () => runView(pages, { filter: filters, sort }, runCtx),
-    [pages, filters, sort, runCtx],
+    () =>
+      runView(
+        pages,
+        {
+          filter: search.trim() ? [...filters, { op: "contains", prop: "@title", value: search.trim() } as Filter] : filters,
+          sort,
+        },
+        runCtx,
+      ),
+    [pages, filters, sort, runCtx, search],
   );
 
   /* --- selection ------------------------------------------------------- */
@@ -795,6 +784,56 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
     toast.push(`Copied link to "${view?.name ?? database?.title ?? "this database"}"`);
   };
 
+  // View settings (the toolbar's): this view, then the database.
+  const usedKeys = useMemo(() => {
+    const u = new Set<string>();
+    for (const p of pages) {
+      const pr = p.props as Record<string, unknown> | null;
+      if (pr) for (const [k, v] of Object.entries(pr)) if (v !== null && v !== "" && !(Array.isArray(v) && !v.length)) u.add(k);
+    }
+    return u;
+  }, [pages]);
+  const shownNow = shownProps(viewConfig, propDefs, usedKeys);
+  const openFilter = () => {
+    setQueryOpen(true);
+    setFilterAsk((a) => ({ prop: "", n: (a?.n ?? 0) + 1 }));
+  };
+  const openSort = () => {
+    setQueryOpen(true);
+    setSortAsk((n) => n + 1);
+  };
+  const viewSettings = useViewSettings({
+    databaseId,
+    name: view?.name ?? "",
+    onRename: view && canManageView ? (n) => doRenameCommit(view.id, n) : undefined,
+    layout,
+    onLayout: onChangeLayout,
+    visibility:
+      layout === "table"
+        ? {
+            shown: shownNow,
+            allKeys: allPropKeys(shownNow, propDefs),
+            labelOf: (k) => labelOfProp(k, propDefs),
+            onChange: (next) => onChangeConfig({ ...viewConfig, props: next }),
+          }
+        : undefined,
+    onFilter: openFilter,
+    onSort: openSort,
+    group:
+      layout === "table"
+        ? { title: "Group", value: tableGroup, choices: tableGroupChoices, onChange: (g) => onChangeConfig({ ...viewConfig, group: g }), allowNone: true }
+        : layout === "board"
+          ? { title: "Group", value: groupBy || null, choices: groupableDefs.map((d) => ({ key: d.key, label: d.label })), onChange: (g) => g && onChangeGroupBy(g), allowNone: false }
+          : layout === "calendar"
+            ? { title: "Show by", value: groupBy || null, choices: dateDefs.map((d) => ({ key: d.key, label: d.label })), onChange: (g) => g && onChangeGroupBy(g), allowNone: false }
+            : undefined,
+    onCopyLink: copyLinkHere,
+    canEditDatabase: canEditDb,
+    more: (mctx) => viewMenuSpecRef.current(mctx),
+  });
+  // The saved-view actions, built where the page has them all.
+  const viewMenuSpecRef = useRef<(mctx: MenuBuildCtx) => MenuSpec>(() => ({ title: "", rows: [] }));
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTypingTarget(e.target)) return;
@@ -959,7 +998,10 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
         relations={tableRelations}
         databaseId={canEditDb ? databaseId : undefined}
         isOwner={isWorkspaceOwner}
-        onFilter={prefs.explainQuery ? (k) => setFilterAsk({ prop: k, n: Date.now() }) : undefined}
+        onFilter={(k) => {
+          setQueryOpen(true);
+          setFilterAsk({ prop: k, n: Date.now() });
+        }}
       />
     );
 
@@ -1028,59 +1070,16 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
     );
   }
 
-  return (
-    <PageOriginContext.Provider value={originValue}>
-      <div className="mx-auto" style={{ maxWidth: "var(--container-view)", padding: "34px 40px" }}>
-        <DatabaseHeader
-          database={database}
-          canEdit={canEditDb}
-          rowCount={unfilteredCount}
-          onRename={(title) => rename.mutate({ pageId: databaseId, title })}
-          onSetIcon={(icon) => setIcon.mutate({ pageId: databaseId, icon })}
-          onNewRow={onNewPage}
-          layout={layout}
-          onChangeLayout={onChangeLayout}
-        />
-
-        <ViewTabs
-          views={views}
-          activeId={view?.id ?? null}
-          drafts={drafts}
-          onPick={(id) => void goToView(id)}
-          onAdd={doAddView}
-          renamingId={renamingView}
-          onRenameCommit={doRenameCommit}
-          onRenameCancel={() => setRenamingView(null)}
-        />
-
-        <QueryToolbar
-          filters={filters}
-          sort={sort}
-          groupBy={groupBy}
-          layout={layout}
-          onChangeFilters={onChangeFilters}
-          onChangeSort={onChangeSort}
-          onChangeGroupBy={onChangeGroupBy}
-          tableGroup={tableGroup}
-          tableGroupChoices={tableGroupChoices}
-          onChangeTableGroup={(g) => onChangeConfig({ ...viewConfig, group: g })}
-          propDefs={propDefs}
-          people={people}
-          staleDays={staleDays}
-          editable
-          pages={pages}
-          verbose={prefs.explainQuery}
-          filterAsk={filterAsk}
-          pill={isModified ? <ModifiedPill onSave={doSaveAsMyView} onDiscard={doDiscard} /> : null}
-          menuSpec={(mctx) =>
-            buildViewToolbarSpec(
+  viewMenuSpecRef.current = (mctx: MenuBuildCtx): MenuSpec => viewMenuSpec(mctx);
+  function viewMenuSpec(mctx: MenuBuildCtx): MenuSpec {
+    return buildViewToolbarSpec(
               {
                 scope: view ? (isTeamView ? "team" : "personal") : "none",
                 isModified,
                 canManage: canManageView,
                 canShare: isOwnerOfView && (canEditDb || isWorkspaceOwner),
                 name: view?.name ?? base.name,
-                databaseName: database.title || "Untitled",
+                databaseName: database?.title || "Untitled",
                 publisherName,
                 layout,
                 rowCount: rows.length,
@@ -1106,10 +1105,80 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
                   : undefined,
               },
               mctx,
-            )
-          }
+            );
+  }
+
+  return (
+    <PageOriginContext.Provider value={originValue}>
+      <div className="mx-auto" style={{ maxWidth: "var(--container-view)", padding: "34px 40px" }}>
+        <DatabaseHeader
+          database={database}
+          canEdit={canEditDb}
+          rowCount={unfilteredCount}
+          onRename={(title) => rename.mutate({ pageId: databaseId, title })}
+          onSetIcon={(icon) => setIcon.mutate({ pageId: databaseId, icon })}
+          onNewRow={onNewPage}
+          layout={layout}
+          onChangeLayout={onChangeLayout}
         />
 
+        <div className="flex items-end" style={{ gap: 8 }}>
+          <div className="min-w-0 flex-1">
+            <ViewTabs
+              views={views}
+              activeId={view?.id ?? null}
+              drafts={drafts}
+              onPick={(id) => void goToView(id)}
+              onAdd={doAddView}
+              renamingId={renamingView}
+              onRenameCommit={doRenameCommit}
+              onRenameCancel={() => setRenamingView(null)}
+            />
+          </div>
+          <div style={{ paddingBottom: 6 }}>
+            <DatabaseToolbar
+              always
+              onFilter={() => {
+                setQueryOpen(true);
+                setFilterAsk((a) => ({ prop: "", n: (a?.n ?? 0) + 1 }));
+              }}
+              onSort={() => {
+                setQueryOpen(true);
+                setSortAsk((n) => n + 1);
+              }}
+              search={search}
+              onSearch={setSearch}
+              settings={viewSettings.build}
+            />
+          </div>
+        </div>
+
+        <QueryToolbar
+          compact={!prefs.explainQuery}
+          open={queryOpen}
+          sortAsk={sortAsk}
+          filters={filters}
+          sort={sort}
+          groupBy={groupBy}
+          layout={layout}
+          onChangeFilters={onChangeFilters}
+          onChangeSort={onChangeSort}
+          onChangeGroupBy={onChangeGroupBy}
+          tableGroup={tableGroup}
+          tableGroupChoices={tableGroupChoices}
+          onChangeTableGroup={(g) => onChangeConfig({ ...viewConfig, group: g })}
+          propDefs={propDefs}
+          people={people}
+          staleDays={staleDays}
+          editable
+          pages={pages}
+          verbose={prefs.explainQuery}
+          filterAsk={filterAsk}
+          pill={isModified ? <ModifiedPill onSave={doSaveAsMyView} onDiscard={doDiscard} /> : null}
+          menuSpec={viewSettings.build}
+        />
+
+        {viewSettings.dialog}
         {isModified && <ModifiedBand baseName={base.name} saved={!!view} />}
 
         {rows.length < unfilteredCount && (

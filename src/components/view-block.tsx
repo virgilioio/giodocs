@@ -25,6 +25,12 @@ import { useAuth } from "@/lib/auth-context";
 import { IC } from "@/lib/menu-icons";
 import { BoardBody, ListBody, QueryToolbar } from "./main-view";
 import { ViewTable } from "./view-table";
+import { DatabaseToolbar } from "./database-toolbar";
+import { useViewSettings } from "./view-settings";
+import { allPropKeys, labelOfProp, shownProps } from "@/lib/view-config";
+import { useWorkspaceId } from "@/lib/workspace-context";
+import { useTemplates } from "@/hooks/use-workspace-data";
+import { useNewPageFromTemplate } from "@/hooks/use-templates";
 import type { MenuSpec } from "./row-menu";
 import type { PageListItem } from "@/lib/types";
 
@@ -39,20 +45,6 @@ const ROW_LIMIT = 25;
 const EMPTY_SET = new Set<string>();
 const noop = () => {};
 
-const LAYOUT_CHOICES: Array<{ layout: InlineLayout; label: string; icon: string }> = [
-  { layout: "table", label: "Table", icon: IC.bTable },
-  { layout: "board", label: "Board", icon: IC.board },
-  { layout: "list", label: "List", icon: IC.list },
-  { layout: "calendar", label: "Calendar", icon: IC.calendar },
-];
-
-function Glyph({ d }: { d: string }) {
-  return (
-    <svg viewBox="0 0 24 24" width={15} height={15} aria-hidden fill="none">
-      <path d={d} stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
 
 export function ViewBlock({
   block,
@@ -278,10 +270,26 @@ function InlineViewBody({
     setName(view.name);
   }
 
+  // Search (the toolbar's): a passing filter on the title, never saved.
+  const [search, setSearch] = useState("");
+  const [queryOpen, setQueryOpen] = useState(false);
+  const [filterAsk, setFilterAsk] = useState<{ prop: string; n: number } | null>(null);
+  const [sortAsk, setSortAsk] = useState(0);
   const rows = useMemo(
-    () => runView(rt.pages, { filter: view.filter, sort }, rt.runCtx),
-    [rt.pages, view.filter, sort, rt.runCtx],
+    () =>
+      runView(
+        rt.pages,
+        {
+          filter: search.trim() ? [...view.filter, { op: "contains", prop: "@title", value: search.trim() } as Filter] : view.filter,
+          sort,
+        },
+        rt.runCtx,
+      ),
+    [rt.pages, view.filter, sort, rt.runCtx, search],
   );
+  const ws = useWorkspaceId();
+  const templatesQ = useTemplates(ws);
+  const fromTemplate = useNewPageFromTemplate();
   const staleThreshold = Date.now() - rt.staleDays * 24 * 60 * 60 * 1000;
   const groupable = rt.propDefs.filter((d) => d.type === "select" || d.type === "status");
   const boardGroup =
@@ -338,9 +346,10 @@ function InlineViewBody({
 
   let body;
   if (view.layout === "board") {
+    // A board shows its columns even before it has rows (Notion's way).
     body =
-      rows.length === 0 ? (
-        <Empty />
+      rows.length === 0 && (view.filter.length > 0 || search.trim()) ? (
+        <Empty filtered />
       ) : (
         <BoardBody
           rows={rows}
@@ -381,7 +390,7 @@ function InlineViewBody({
     const shown = showAll ? rows : rows.slice(0, ROW_LIMIT);
     body =
       rows.length === 0 ? (
-        <Empty />
+        <Empty filtered={view.filter.length > 0 || !!search.trim()} />
       ) : (
         <>
           <ListBody
@@ -430,6 +439,7 @@ function InlineViewBody({
         groupKey={tableGroup}
         onNewRow={editable ? onNewRow : undefined}
         relations={rt.tableRelations}
+        databaseId={view.database_id ?? undefined}
         selectable={false}
         rowLimit={showAll ? undefined : ROW_LIMIT}
         onShowAll={() => setShowAll(true)}
@@ -437,9 +447,56 @@ function InlineViewBody({
     );
   }
 
+  const dbTemplates = (templatesQ.data ?? []).filter((t) => t.database_id === view.database_id);
+  const usedKeys = useMemo(() => {
+    const u = new Set<string>();
+    for (const p of rt.pages) {
+      const pr = p.props as Record<string, unknown> | null;
+      if (pr) for (const [k, v] of Object.entries(pr)) if (v !== null && v !== "" && !(Array.isArray(v) && !v.length)) u.add(k);
+    }
+    return u;
+  }, [rt.pages]);
+  const shownNow = shownProps(view.config, rt.propDefs, usedKeys);
+  const openFilter = () => {
+    setQueryOpen(true);
+    setFilterAsk((a) => ({ prop: "", n: (a?.n ?? 0) + 1 }));
+  };
+  const openSort = () => {
+    setQueryOpen(true);
+    setSortAsk((n) => n + 1);
+  };
+  const dateDefs = rt.propDefs.filter((d) => d.type === "date");
+  const settings = useViewSettings({
+    databaseId: view.database_id,
+    name: view.name,
+    onRename: editable ? (n) => patch({ name: n.slice(0, 200) }) : undefined,
+    layout: view.layout,
+    onLayout: editable ? (l) => patch({ layout: l }) : undefined,
+    visibility:
+      editable && view.layout === "table"
+        ? {
+            shown: shownNow,
+            allKeys: allPropKeys(shownNow, rt.propDefs),
+            labelOf: (k) => labelOfProp(k, rt.propDefs),
+            onChange: (next) => patch({ config: { ...view.config, props: next } }),
+          }
+        : undefined,
+    onFilter: editable ? openFilter : undefined,
+    onSort: openSort,
+    group: !editable
+      ? undefined
+      : view.layout === "table"
+        ? { title: "Group", value: tableGroup, choices: tableGroupChoices, onChange: (g) => patch({ config: { ...view.config, group: g } }), allowNone: true }
+        : view.layout === "board"
+          ? { title: "Group", value: boardGroup, choices: groupable.map((d) => ({ key: d.key, label: d.label })), onChange: (g) => g && patch({ group_by: g }), allowNone: false }
+          : view.layout === "calendar"
+            ? { title: "Show by", value: view.group_by ?? dateDefs[0]?.key ?? null, choices: dateDefs.map((d) => ({ key: d.key, label: d.label })), onChange: (g) => g && patch({ group_by: g }), allowNone: false }
+            : undefined,
+    canEditDatabase: editable,
+  });
   return (
-    <div data-view-block className="min-w-0" style={{ padding: "4px 0" }}>
-      <div className="flex items-center" style={{ gap: 8 }}>
+    <div data-view-block className="gio-db-host min-w-0" style={{ padding: "4px 0" }}>
+      <div className="flex items-center" style={{ gap: 8, minHeight: 36 }}>
         {editable ? (
           <input
             value={name}
@@ -454,50 +511,58 @@ function InlineViewBody({
                 (e.target as HTMLInputElement).blur();
               }
             }}
-            placeholder="Untitled view"
+            placeholder={rt.database?.title?.trim() || "New database"}
             aria-label="View name"
-            className="min-w-0 flex-1 rounded-sm border border-transparent bg-transparent font-display text-subhead text-noir focus:border-accent"
+            className={`min-w-0 flex-1 rounded-sm border border-transparent bg-transparent font-display text-h3 text-noir focus:border-accent ${rt.database?.title?.trim() ? "placeholder:text-noir" : "placeholder:text-whisper"}`}
             style={{ fontWeight: 700, padding: "0 4px", marginLeft: -5 }}
           />
         ) : (
-          <span className="min-w-0 flex-1 truncate font-display text-subhead text-noir" style={{ fontWeight: 700 }}>
-            {view.name || "Untitled view"}
+          <span className="min-w-0 flex-1 truncate font-display text-h3 text-noir" style={{ fontWeight: 700 }}>
+            {view.name || rt.database?.title?.trim() || "Untitled"}
           </span>
         )}
-        {rt.database ? (
-          <button
-            type="button"
-            onClick={() => void navigate({ to: "/p/$pageId", params: { pageId: rt.database!.id } })}
-            className="shrink-0 truncate rounded-sm text-meta text-faint hover:bg-sunken hover:text-strong"
-            style={{ maxWidth: 160, padding: "1px 5px" }}
-            title={`Open ${rt.database.title?.trim() || "Untitled"}`}
-          >
-            {rt.database.title?.trim() || "Untitled"}
-          </button>
-        ) : null}
-        <span className="tnum shrink-0 text-meta text-faint">
-          {rows.length} {rows.length === 1 ? "row" : "rows"}
-        </span>
-        {editable ? (
-          <div role="group" aria-label="Layout" className="flex shrink-0 items-center rounded-md border border-line" style={{ padding: 2, gap: 2 }}>
-            {LAYOUT_CHOICES.map((c) => (
-              <button
-                key={c.layout}
-                type="button"
-                aria-pressed={view.layout === c.layout}
-                aria-label={c.label}
-                title={c.label}
-                onClick={() => patch({ layout: c.layout })}
-                className={`grid place-items-center rounded-sm ${view.layout === c.layout ? "bg-sunken text-strong" : "text-muted hover:text-strong"}`}
-                style={{ width: 26, height: 24 }}
-              >
-                <Glyph d={c.icon} />
-              </button>
-            ))}
-          </div>
-        ) : null}
+        <DatabaseToolbar
+          onFilter={editable ? openFilter : undefined}
+          onSort={openSort}
+          search={search}
+          onSearch={setSearch}
+          onOpenFull={rt.database ? () => void navigate({ to: "/p/$pageId", params: { pageId: rt.database!.id } }) : undefined}
+          settings={settings.build}
+          onNew={
+            editable && view.database_id
+              ? () => void createAndOpen({ seedProps: seed(), parentId: view.database_id })
+              : undefined
+          }
+          newMenu={
+            editable && view.database_id
+              ? () => ({
+                  title: "New",
+                  rows: [
+                    {
+                      kind: "row" as const,
+                      label: "Empty page",
+                      icon: IC.bPage,
+                      onPick: () => void createAndOpen({ seedProps: seed(), parentId: view.database_id }),
+                    },
+                    ...(dbTemplates.length ? [{ kind: "sep" as const }] : []),
+                    ...dbTemplates.map((t) => ({
+                      kind: "row" as const,
+                      label: t.title?.trim() || "Untitled",
+                      icon: IC.bPage,
+                      onPick: () => void fromTemplate(t.id),
+                    })),
+                  ],
+                  footer: dbTemplates.length ? undefined : "No templates yet. Make one from a row's ⋯ menu (Use as template).",
+                })
+              : undefined
+          }
+        />
       </div>
       <QueryToolbar
+        compact
+        open={queryOpen}
+        sortAsk={sortAsk}
+        filterAsk={filterAsk}
         filters={view.filter}
         sort={sort}
         groupBy={boardGroup}
@@ -514,22 +579,20 @@ function InlineViewBody({
         editable={editable}
         pages={rt.pages}
         verbose
-        menuSpec={() => ({
-          title: view.name || "This view",
-          rows: [],
-          footer:
-            "A view inside a page keeps its own filters and settings. They save with the page.",
-        })}
+        menuSpec={settings.build}
       />
+      {settings.dialog}
       {body}
     </div>
   );
 }
 
-function Empty() {
+function Empty({ filtered = false }: { filtered?: boolean }) {
   return (
     <div className="rounded-lg border border-lineSoft text-meta text-secondary" style={{ padding: "18px 16px" }}>
-      Nothing matches this view yet. Rows appear here the moment their properties match.
+      {filtered
+        ? "Nothing matches this view yet. Rows appear here the moment their properties match."
+        : "No rows yet. Add one with New."}
     </div>
   );
 }

@@ -756,9 +756,10 @@ function HeaderSelectAll({
 
 /* ─────────────────────────── Headings ─────────────────────────── */
 
-const HEAD_CLASS =
-  "relative flex items-center border-b border-line bg-canvas text-label uppercase text-faint";
-const HEAD_STYLE = { padding: "12px 0 6px", lineHeight: "11px" } as const;
+/* Notion's heading row (2026-10-11): plain, sentence case, each property
+ * with its type's icon. */
+const HEAD_CLASS = "relative flex items-center border-b border-line text-meta text-muted";
+const HEAD_STYLE = { padding: "7px 0", lineHeight: "16px" } as const;
 
 function kindIcon(type: string | undefined): string | undefined {
   if (type === "timestamp") return IC.clock;
@@ -793,7 +794,10 @@ function PropHeading({
   onResetWidth,
   onNudgeWidth,
   suppressClick,
+  icon,
 }: {
+  /** The property type's icon (a path), or "Aa" for the title. */
+  icon?: string;
   k: string;
   label: string;
   sortDir: "asc" | "desc" | null;
@@ -819,7 +823,7 @@ function PropHeading({
     >
       <button
         type="button"
-        className="flex min-w-0 flex-1 items-center gap-1 rounded-sm text-left uppercase hover:text-muted"
+        className="flex min-w-0 flex-1 items-center gap-1.5 rounded-sm text-left hover:text-strong"
         style={{
           padding: "0 11px",
           cursor: canArrange && k !== TITLE_KEY ? "grab" : "pointer",
@@ -844,6 +848,15 @@ function PropHeading({
         }}
         aria-haspopup="menu"
       >
+        {icon === "Aa" ? (
+          <span aria-hidden className="shrink-0 text-caption text-faint" style={{ width: 15, textAlign: "center" }}>
+            Aa
+          </span>
+        ) : icon ? (
+          <svg viewBox="0 0 24 24" width={14} height={14} aria-hidden className="shrink-0 text-faint">
+            <path d={icon} fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : null}
         <span className="truncate">{label}</span>
         {sortDir ? <SortArrow dir={sortDir} /> : null}
       </button>
@@ -886,9 +899,12 @@ function PropHeading({
 function AddPropertyButton({
   databaseId,
   onCreated,
+  shownBuiltIns,
 }: {
   databaseId: string;
   onCreated: (key: string) => void;
+  /** Built-ins already shown (the rest are offered as columns). */
+  shownBuiltIns: string[];
 }) {
   const ws = useWorkspaceId();
   const shell = useWorkspaceShell(ws);
@@ -913,6 +929,12 @@ function AddPropertyButton({
     databases,
     setSub: (s) => (s ? setSub(s) : close()),
     rootBack: null,
+    noBack: true,
+    shownBuiltIns,
+    onBuiltIn: (key) => {
+      onCreated(key);
+      close();
+    },
     onCreated: (def) => {
       onCreated(def.key);
       close();
@@ -922,19 +944,19 @@ function AddPropertyButton({
     <>
       <button
         type="button"
-        aria-label="New property"
-        title="New property"
         aria-expanded={!!anchor}
+        data-add-property
         onClick={(e) => {
           setSub(null);
           setAnchor(e.currentTarget);
         }}
-        className={`grid place-items-center rounded-md text-whisper hover:bg-railHover hover:text-strong ${anchor ? "bg-railHover" : ""}`}
-        style={{ width: 22, height: 22, marginRight: 2 }}
+        className={`flex items-center gap-1 whitespace-nowrap rounded-md text-meta text-muted hover:bg-railHover hover:text-strong ${anchor ? "bg-railHover" : ""}`}
+        style={{ height: 24, padding: "0 6px", marginRight: "auto", marginLeft: 4 }}
       >
         <svg viewBox="0 0 24 24" width={13} height={13} aria-hidden fill="none">
           <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" />
         </svg>
+        Add property
       </button>
       <RowMenu spec={anchor ? (sub ?? typeSpec) : null} anchor={anchor} onClose={close} />
     </>
@@ -1461,8 +1483,10 @@ export function ViewTable({
   const tracks = [TITLE_KEY, ...shown].map((k) => ({ k, ...trackOf(config, k, typeOf(k)) }));
   const allFixed = tracks.every((t) => t.fixed);
   // The ⋯ track takes what's left only when every property has a set width.
-  const endTrack = allFixed ? "minmax(40px, 1fr)" : "40px";
-  const minTableWidth = 16 + 40 + tracks.reduce((n, t) => n + t.min, 0);
+  // The last track holds each row's ⋯ and, in the heading, "+ Add property".
+  const endW = canArrange && databaseId ? 150 : 40;
+  const endTrack = allFixed ? `minmax(${endW}px, 1fr)` : `${endW}px`;
+  const minTableWidth = 16 + endW + tracks.reduce((n, t) => n + t.min, 0);
   const templateWith = (override?: { key: string; px: number }) =>
     [
       "16px",
@@ -1762,6 +1786,7 @@ export function ViewTable({
       key={k}
       k={k}
       label={labelOf(k)}
+      icon={k === TITLE_KEY ? "Aa" : kindIcon(typeOf(k))}
       sortDir={sortedKey === k ? (primary?.dir ?? null) : null}
       dragging={drag?.key === k}
       canArrange={canArrange}
@@ -1808,13 +1833,14 @@ export function ViewTable({
           {heading(TITLE_KEY)}
           {shown.map(heading)}
           <div
-            className={HEAD_CLASS + " sticky right-0 z-[1] justify-end"}
-            style={{ padding: "6px 0 2px" }}
+            className={HEAD_CLASS + " sticky right-0 z-[1] justify-end bg-surface"}
+            style={{ padding: "3px 0" }}
           >
             {canArrange && databaseId ? (
               <AddPropertyButton
                 databaseId={databaseId}
                 onCreated={(key) => onConfig({ ...config, props: showProp(shown, key) })}
+                shownBuiltIns={shown.filter((k) => k.startsWith("@"))}
               />
             ) : null}
             {canArrange ? (
