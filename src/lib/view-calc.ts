@@ -1,4 +1,5 @@
 import { isEmptyValue, propValue, spanOfValue } from "./run-view";
+import { formatNumber, type NumberFormat } from "./number-format";
 import { dayWords } from "./filter-label";
 import type { PageListItem } from "./types";
 
@@ -242,6 +243,13 @@ export function calculate(
   key: string,
   now: Date = new Date(),
   readValue?: ReadValue,
+  /** A number property's format: sums, averages and the like show in it. */
+  fmt?: NumberFormat,
 ): string {
-  return formatCalc(calculateRaw(calc, pages, key, readValue), now);
+  const raw = calculateRaw(calc, pages, key, readValue);
+  if (fmt && raw && raw.kind === "number" && VALUE_CALCS.has(calc)) return formatNumber(raw.n, fmt);
+  return formatCalc(raw, now);
 }
+
+/** Calculations that come out in the property's own units. */
+const VALUE_CALCS = new Set<string>(["sum", "average", "median", "min", "max", "range"]);

@@ -1,5 +1,6 @@
 import type { PageListItem } from "./types";
 import { dateSpan, isTerminalStatus, toDueString, type DateSpan } from "./due-date";
+import { groupOfValue } from "./status-groups";
 
 /* The one place a view's filter, sort and grouping run (AGENTS.md: "View
  * filtering happens in EXACTLY one place"). Everything here is pure.
@@ -99,6 +100,17 @@ export type RunViewCtx = {
    *  stored (relations' far sides, rollups): see relations.ts readValueWith. */
   readValue?: (page: PageListItem, key: string) => unknown;
 };
+
+/** A row with a status in the Complete group (status-groups.ts); without
+ *  property types, a status named like a finished one. */
+function finishedIn(page: PageListItem, ctx: RunViewCtx): boolean {
+  const props = propsOf(page);
+  if (!ctx.props) return isTerminalStatus(props.status);
+  for (const [key, info] of ctx.props) {
+    if (info.type === "status" && groupOfValue(props[key], info.options) === "done") return true;
+  }
+  return false;
+}
 
 function valueIn(ctx: Pick<RunViewCtx, "readValue">, page: PageListItem, key: string): unknown {
   // Not "valueOf": every object already has one (Object.prototype).
@@ -343,7 +355,7 @@ export function matches(page: PageListItem, f: Filter, ctx: RunViewCtx): boolean
       if (f.value === "overdue") {
         // Overdue once its last day has passed; an overdue date on a
         // finished page is noise, as in its cell.
-        if (isTerminalStatus(propsOf(page).status)) return false;
+        if (finishedIn(page, ctx)) return false;
         const r = rangeOf("overdue", now)!;
         return span.end <= r[1];
       }
@@ -446,8 +458,14 @@ function sortKey(page: PageListItem, key: string, ctx: RunViewCtx): Key {
         v: ids.map((id) => (ctx.titleOf?.(id) ?? id).toLowerCase()).join(", "),
       };
     }
+    case "unique_id": {
+      const n = asNumber(raw);
+      return n === null ? { empty: true, v: 0 } : { empty: false, v: n };
+    }
+    case "formula":
     case "rollup": {
       if (typeof raw === "number") return { empty: false, v: raw };
+      if (typeof raw === "boolean") return { empty: false, v: raw ? 1 : 0 };
       return { empty: false, v: asText(raw).toLowerCase() };
     }
     default:

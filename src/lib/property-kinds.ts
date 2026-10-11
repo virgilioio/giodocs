@@ -19,7 +19,10 @@ export type PropertyType =
   | "phone"
   | "links"
   | "relation"
-  | "rollup";
+  | "rollup"
+  | "unique_id"
+  | "files"
+  | "formula";
 
 export type PropertyKind = {
   type: PropertyType;
@@ -55,12 +58,30 @@ export const PROPERTY_KINDS: PropertyKind[] = [
     hint: "A figure from related pages",
     icon: "M4 19h16M7 15l3-4 3 2 4-6",
   },
+  {
+    type: "files",
+    label: "Files & media",
+    hint: "Documents and images",
+    icon: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5",
+  },
+  {
+    type: "formula",
+    label: "Formula",
+    hint: "Worked out from other properties",
+    icon: "M5 5h6M5 19c4 0 3-14 7-14M9 12h6M15 9l5 6M20 9l-5 6",
+  },
+  {
+    type: "unique_id",
+    label: "ID",
+    hint: "A number for every row, like REQ-12",
+    icon: "M4 9h16M4 15h16M10 3 8 21M16 3l-2 18",
+  },
 ];
 
 /** Kinds that need more than a name to set up (made from a page's
  *  Add a property menu, step by step). */
 export function needsSetup(type: PropertyType): boolean {
-  return type === "relation" || type === "rollup";
+  return type === "relation" || type === "rollup" || type === "formula";
 }
 
 export function kindLabel(type: string): string {

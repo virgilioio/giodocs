@@ -802,9 +802,9 @@ function FilterBuilderContent({
   }
 
   const compare =
-    def.type === "number"
+    def.type === "number" || def.type === "unique_id"
       ? { kind: "number" as const, ops: NUMBER_OPS }
-      : def.type === "links"
+      : def.type === "links" || def.type === "files"
         ? null
         : { kind: "text" as const, ops: TEXT_OPS };
 

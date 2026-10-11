@@ -19,11 +19,23 @@ import {
   useRemoveOption,
   useRenamePropertyOption,
   useSetOptionColor,
+  useSetOptionGroup,
   useSetPropertyArchived,
+  useSetPropertyConfig,
   useUpdateProperty,
   type OptionColor,
 } from "@/hooks/use-property-mutations";
 import { PROPERTY_KINDS, kindLabel, type PropertyType } from "@/lib/property-kinds";
+import { GROUP_LABELS, groupOf, type StatusGroup } from "@/lib/status-groups";
+import {
+  CURRENCIES,
+  CURRENCY_LABELS,
+  FORMAT_LABELS,
+  formatNumber,
+  readNumberFormat,
+  type NumberFormat,
+  type NumberFormatKind,
+} from "@/lib/number-format";
 import { IC } from "@/lib/menu-icons";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
@@ -46,7 +58,9 @@ const COLOR_NAMES: Record<OptionColor, string> = {
 
 /** Types a property can be changed to from its menu (relations and
  *  rollups need settings: make those as new properties). */
-const RETYPE_TO = PROPERTY_KINDS.filter((k) => k.type !== "relation" && k.type !== "rollup");
+const RETYPE_TO = PROPERTY_KINDS.filter(
+  (k) => k.type !== "relation" && k.type !== "rollup" && k.type !== "formula",
+);
 
 function optionsOf(d: PropDef | undefined): Opt[] {
   return Array.isArray(d?.options) ? (d!.options as unknown as Opt[]).filter((o) => o && o.value) : [];
@@ -71,6 +85,9 @@ export function usePropertyEditing({
   const setColor = useSetOptionColor();
   const moveOption = useMoveOption();
   const removeOption = useRemoveOption();
+  const setGroup = useSetOptionGroup();
+  const setConfig = useSetPropertyConfig();
+  const shellDefs = () => (qc.getQueryData<PropDef[]>(qk.propDefs(ws)) ?? allPropDefs) as PropDef[];
 
   const pages = useMemo(() => (shell.pages.data ?? []) as PageListItem[], [shell.pages.data]);
   const allPropDefs = useMemo(() => (shell.propDefs.data ?? []) as PropDef[], [shell.propDefs.data]);
@@ -168,6 +185,18 @@ export function usePropertyEditing({
         mctx.setSpec(here());
       },
     }));
+    if (d.type === "status") {
+      const g = groupOf(o);
+      rows.push({ kind: "sep" });
+      for (const grp of ["todo", "doing", "done"] as StatusGroup[])
+        rows.push({
+          kind: "row",
+          label: GROUP_LABELS[grp],
+          icon: grp === "done" ? "M5 12.5l4.5 4.5L19 7.5" : grp === "doing" ? "M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17zM12 3.5v17" : "M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z",
+          checked: g === grp,
+          onPick: () => setGroup.mutate({ id: d.id, value, group: grp }, { onSettled: () => mctx.setSpec(here()) }),
+        });
+    }
     rows.push({ kind: "sep" });
     if (i > 0)
       rows.push({
@@ -270,7 +299,129 @@ export function usePropertyEditing({
         hint: { text: String(optionsOf(d).length) },
         onPick: () => mctx.setSpec(optionsSpec(key, mctx, back)),
       });
+    if (d.type === "number") {
+      const f = readNumberFormat(d.config);
+      rows.push({
+        kind: "row",
+        label: "Number format",
+        icon: "M9 4 7 20M17 4l-2 16M4 9h16M3 15h16",
+        hint: { text: f.format === "currency" ? `${FORMAT_LABELS.currency} (${f.currency ?? "USD"})` : FORMAT_LABELS[f.format ?? "number"] },
+        onPick: () => mctx.setSpec(numberSpec(key, mctx, back)),
+      });
+    }
+    if (d.type === "unique_id") {
+      const prefix = String((d.config as { prefix?: string } | null)?.prefix ?? "");
+      rows.push({
+        kind: "row",
+        label: "ID prefix",
+        icon: "M4 9h16M4 15h16M10 3 8 21M16 3l-2 18",
+        hint: { text: prefix ? `${prefix}-1` : "1, 2, 3…" },
+        onPick: () =>
+          mctx.setSpec({
+            title: "ID prefix",
+            onBack: () => mctx.setSpec(back()),
+            inputFirst: true,
+            rows: [],
+            input: {
+              placeholder: "Letters and digits, like REQ",
+              initial: prefix,
+              selectOnFocus: true,
+              onCommit: (v) => {
+                const next = v.trim().toUpperCase();
+                if (!/^[A-Z0-9]{0,10}$/.test(next)) return;
+                setConfig.mutate({ id: d.id, config: next ? { prefix: next } : {} });
+              },
+            },
+            footer: "Every row gets the next number when it's made: REQ-1, REQ-2… Up to 10 letters and digits; leave it empty for plain numbers.",
+          }),
+      });
+    }
+    if (d.type === "formula") {
+      const expr = String((d.config as { expression?: string } | null)?.expression ?? "");
+      rows.push({
+        kind: "row",
+        label: "Edit formula",
+        icon: "M5 5h6M5 19c4 0 3-14 7-14M9 12h6M15 9l5 6M20 9l-5 6",
+        hint: { text: expr ? "set" : "empty" },
+        onPick: () => mctx.setSpec(formulaSpec(key, mctx, back)),
+      });
+    }
     return rows;
+  };
+
+  const numberSpec = (key: string, mctx: MenuBuildCtx, back: () => MenuSpec): MenuSpec => {
+    const d = defOf(key)!;
+    const f = readNumberFormat(d.config);
+    const here = () => numberSpec(key, mctx, back);
+    const save = (next: NumberFormat) => {
+      const cfg: Record<string, unknown> = {};
+      if (next.format && next.format !== "number") cfg.format = next.format;
+      if (next.format === "currency") cfg.currency = next.currency ?? "USD";
+      if (next.decimals !== undefined) cfg.decimals = next.decimals;
+      setConfig.mutate({ id: d.id, config: cfg }, { onSettled: () => mctx.setSpec(here()) });
+    };
+    const sample = formatNumber(1234.5, f);
+    const rows: MenuRow[] = (Object.keys(FORMAT_LABELS) as NumberFormatKind[]).map((k) => ({
+      kind: "row" as const,
+      label: FORMAT_LABELS[k],
+      checked: (f.format ?? "number") === k,
+      onPick: () => save({ ...f, format: k }),
+    }));
+    if (f.format === "currency") {
+      rows.push({ kind: "sep" });
+      for (const c of CURRENCIES)
+        rows.push({
+          kind: "row",
+          label: CURRENCY_LABELS[c],
+          hint: { text: c },
+          checked: (f.currency ?? "USD") === c,
+          onPick: () => save({ ...f, currency: c }),
+        });
+    }
+    rows.push({ kind: "sep" });
+    for (const n of [undefined, 0, 1, 2, 3] as Array<number | undefined>)
+      rows.push({
+        kind: "row",
+        label: n === undefined ? "Decimals as typed" : n === 1 ? "1 decimal" : `${n} decimals`,
+        checked: f.decimals === n,
+        onPick: () => save({ ...f, decimals: n }),
+      });
+    return {
+      title: "Number format",
+      onBack: () => mctx.setSpec(back()),
+      maxHeight: 460,
+      rows,
+      footer: `1234.5 shows as ${sample}. Values stay as they are; only how they show changes.`,
+    };
+  };
+
+  const formulaSpec = (key: string, mctx: MenuBuildCtx, back: () => MenuSpec): MenuSpec => {
+    const d = defOf(key)!;
+    const expr = String((d.config as { expression?: string } | null)?.expression ?? "");
+    const names = (shellDefs() as PropDef[])
+      .filter((x) => x.database_id === databaseId && !x.archived_at && x.key !== key)
+      .map((x) => x.label)
+      .slice(0, 6);
+    return {
+      title: `Formula of ${d.label}`,
+      onBack: () => mctx.setSpec(back()),
+      inputFirst: true,
+      width: 320,
+      rows: [],
+      input: {
+        placeholder: 'prop("Effort") * 2',
+        initial: expr,
+        selectOnFocus: false,
+        onCommit: (v) => {
+          const next = v.trim().replace(/^=/, "");
+          setConfig.mutate({ id: d.id, config: next ? { expression: next } : {} });
+        },
+      },
+      footer:
+        'Refer to a property as prop("Name")' +
+        (names.length ? `, for example prop("${names[0]}")` : "") +
+        ". Use + − × ÷, comparisons, and IF, CONCAT, ROUND, SUM, MIN, MAX, ABS, TODAY. Press Enter to save.",
+    };
   };
 
   /** Insert left / right: a new property placed beside this one. */

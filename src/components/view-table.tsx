@@ -5,18 +5,23 @@ import { pageQuery } from "@/hooks/use-workspace-data";
 import { useSetPageOrigin } from "@/lib/page-origin";
 import { useAddPropertyOption } from "@/hooks/use-property-mutations";
 import type { useRenamePage, useSetPageProperty } from "@/hooks/use-page-mutations";
-import { isTerminalStatus } from "@/lib/due-date";
+import { isFinished } from "@/lib/status-groups";
+import { readNumberFormat, type NumberFormat } from "@/lib/number-format";
 import { isTypedString, PROPERTY_KINDS } from "@/lib/property-kinds";
 import { relList, relResolve } from "@/lib/related-links";
 import {
   relatedPages,
+  formulaResultOf,
   relationSummary,
   relationUsable,
   relationWrite,
   rollupKind,
   rollupText,
+  uniqueIdText,
   type RelationIndex,
 } from "@/lib/relations";
+import { FilesValue } from "./files-value";
+import { FormulaValueView, UniqueIdView } from "./computed-value";
 import { RelationEditor } from "./relation-editor";
 import { groupRows, sortProp, type PropInfo, type RowGroup, type SortSpec } from "@/lib/run-view";
 import { viewTime } from "@/lib/view-time";
@@ -486,6 +491,17 @@ function ValueCell({ page, k, ctx }: { page: PageListItem; k: string; ctx: CellC
     ) : (
       EMPTY
     );
+  if (def.type === "unique_id") return <UniqueIdView text={uniqueIdText(page, def)} />;
+  if (def.type === "formula")
+    return (
+      <FormulaValueView
+        result={
+          ctx.relations
+            ? formulaResultOf(page, def, ctx.relations.idx.defs, ctx.relations.readValue, ctx.relations.words)
+            : null
+        }
+      />
+    );
   if (def.type === "rollup") {
     // Worked out from the related pages: read only.
     const text = ctx.relations ? rollupText(page, def, ctx.relations.idx, ctx.relations.words) : "";
@@ -519,9 +535,17 @@ function ValueCell({ page, k, ctx }: { page: PageListItem; k: string; ctx: CellC
       return <LinksCell page={page} value={raw} pages={ctx.linkPages} onSet={set} />;
     case "checkbox":
       return <CheckboxToggle value={raw} onSet={set} label={def.label} variant="cell" />;
+    case "files":
+      return <FilesValue pageId={page.id} value={raw} onSet={set} variant="cell" />;
     case "number":
       return (
-        <NumberEditor value={raw} onSet={set} variant="cell" triggerClassName="tnum text-left" />
+        <NumberEditor
+          value={raw}
+          onSet={set}
+          variant="cell"
+          triggerClassName="tnum text-left"
+          format={readNumberFormat(def.config)}
+        />
       );
     case "date":
       return (
@@ -529,7 +553,7 @@ function ValueCell({ page, k, ctx }: { page: PageListItem; k: string; ctx: CellC
           value={raw}
           onSet={set}
           variant="cell"
-          terminal={isTerminalStatus(firstStatusValue(page, ctx.defs))}
+          terminal={isFinished(propsOf(page), ctx.defs.values())}
           triggerClassName="min-w-0 text-left"
         />
       );
@@ -545,13 +569,6 @@ function ValueCell({ page, k, ctx }: { page: PageListItem; k: string; ctx: CellC
       />
     );
   return <TextEditor value={raw} onSet={set} variant="cell" triggerClassName="text-left" />;
-}
-
-/** The row's value of its database's first status property: a date stops
- *  reading as overdue once that status is a finished one. */
-function firstStatusValue(page: PageListItem, defs: ReadonlyMap<string, PropDef>): unknown {
-  for (const d of defs.values()) if (d.type === "status" && !d.archived_at) return propsOf(page)[d.key];
-  return undefined;
 }
 
 /* ─────────────────────────── Row ─────────────────────────── */
@@ -1172,7 +1189,9 @@ function CalcCell({
   canArrange,
   onPick,
   readValue,
+  numberFormat,
 }: {
+  numberFormat?: NumberFormat;
   k: string;
   label: string;
   type: string | undefined;
@@ -1184,7 +1203,7 @@ function CalcCell({
 }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [spec, setSpec] = useState<MenuSpec | null>(null);
-  const value = calc ? calculate(calc, pages, k, undefined, readValue) : "";
+  const value = calc ? calculate(calc, pages, k, undefined, readValue, numberFormat) : "";
   const close = () => {
     setAnchor(null);
     setSpec(null);
@@ -1249,7 +1268,10 @@ function CalcRow({
   typeOf,
   onPick,
   readValue,
+  formatOf,
 }: {
+  /** A number property's format, for sums and averages. */
+  formatOf?: (k: string) => NumberFormat | undefined;
   pages: PageListItem[];
   keys: string[];
   calcs: Record<string, string> | undefined;
@@ -1278,6 +1300,7 @@ function CalcRow({
               canArrange={canArrange}
               onPick={(calc) => onPick(k, calc)}
               readValue={readValue}
+              numberFormat={formatOf?.(k)}
             />
           </div>
         );
@@ -1417,7 +1440,7 @@ export function ViewTable({
   // Rows re-render when relations change only if they show one.
   const needsRelations = shown.some((k) => {
     const t = defs.get(k)?.type;
-    return t === "relation" || t === "rollup";
+    return t === "relation" || t === "rollup" || t === "formula";
   });
   const rel = needsRelations ? (relations ?? null) : null;
   const ctxFresh = useMemo(
@@ -1724,6 +1747,7 @@ export function ViewTable({
       labelOf={labelOf}
       typeOf={typeOf}
       readValue={relations?.readValue}
+      formatOf={(k) => (defs.get(k)?.type === "number" ? readNumberFormat(defs.get(k)?.config) : undefined)}
       onPick={(k, calc) => {
         const calcs = { ...(config.calcs ?? {}) };
         if (calc) calcs[k] = calc;

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { FilesValue } from "./files-value";
+import { FormulaValueView, UniqueIdView } from "./computed-value";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
@@ -38,7 +40,9 @@ import {
   TypedValueEditor,
   CheckboxToggle,
 } from "./property-pickers";
-import { isPropSet, isTerminalStatus } from "@/lib/due-date";
+import { isPropSet } from "@/lib/due-date";
+import { isFinished } from "@/lib/status-groups";
+import { readNumberFormat } from "@/lib/number-format";
 import { summarizeProp } from "@/lib/prop-summary";
 import {
   buildRelationIndex,
@@ -50,9 +54,12 @@ import {
   relationConfig,
   relationUsable,
   relationWrite,
+  formulaResultOf,
+  readValueWith,
   rollupConfig,
   rollupKind,
   rollupText,
+  uniqueIdText,
   valueWords,
   type RelationIndex,
 } from "@/lib/relations";
@@ -371,7 +378,11 @@ function EditableValue({
   onSet,
   onOpenChange,
   relations,
+  finished = false,
 }: {
+  /** The row is finished (a status in the Complete group): its dates
+   *  stop warning that they're overdue. */
+  finished?: boolean;
   propKey: string;
   page: PageFull;
   def: PropDef | undefined;
@@ -543,6 +554,7 @@ function EditableValue({
         emptyLabel={emptyCopy(propKey, def.type)}
         triggerClassName={VALUE_CELL_CLASS + " tnum"}
         triggerStyle={VALUE_CELL_STYLE}
+        format={readNumberFormat(def.config)}
       />
     );
   }
@@ -555,7 +567,7 @@ function EditableValue({
         value={raw}
         onSet={onSet}
         onOpenChange={onOpenChange}
-        terminal={isTerminalStatus(propsOf(page)["status"])}
+        terminal={finished}
         emptyLabel={emptyCopy(propKey, def.type)}
         triggerClassName={VALUE_CELL_CLASS}
         triggerStyle={VALUE_CELL_STYLE}
@@ -612,6 +624,44 @@ function EditableValue({
           />
         )}
       </Popover>
+    );
+  }
+
+  /* ── Unique ID / Formula ── worked out: read only. */
+  if (def?.type === "unique_id") {
+    return (
+      <span className="flex items-center" style={{ ...VALUE_CELL_STYLE, fontSize: 14, cursor: "default" }}>
+        <UniqueIdView text={uniqueIdText(page, def)} variant="strip" />
+      </span>
+    );
+  }
+  if (def?.type === "formula") {
+    const self = page as unknown as PageListItem;
+    const result = formulaResultOf(
+      self,
+      def,
+      relations.idx.defs,
+      readValueWith(relations.idx, relations.words),
+      relations.words,
+    );
+    return (
+      <span className="flex min-w-0 items-center" style={{ ...VALUE_CELL_STYLE, fontSize: 14, cursor: "default" }}>
+        <FormulaValueView result={result} variant="strip" />
+      </span>
+    );
+  }
+
+  /* ── Files & media ── */
+  if (def?.type === "files") {
+    return (
+      <FilesValue
+        pageId={page.id}
+        value={raw}
+        onSet={onSet}
+        variant="strip"
+        emptyLabel={emptyCopy(propKey, def.type)}
+        triggerClassName={VALUE_CELL_CLASS}
+      />
     );
   }
 
@@ -751,6 +801,9 @@ const TYPE_LABEL: Record<string, string> = {
   links: "Links",
   relation: "Relation",
   rollup: "Rollup",
+  formula: "Formula",
+  unique_id: "ID",
+  files: "Files & media",
   url: "Link",
   email: "Email",
   phone: "Phone",
@@ -782,7 +835,8 @@ function AddPropertyPopover({
     .filter((d) => !d.archived_at)
     // A rollup shows by itself once its relation links somewhere; a far
     // side whose near side was archived has nothing to add.
-    .filter((d) => d.type !== "rollup")
+    // IDs and formulas likewise: they show whenever they have a value.
+    .filter((d) => d.type !== "rollup" && d.type !== "formula" && d.type !== "unique_id")
     .filter((d) => d.type !== "relation" || relationUsable(d, defsByKey));
 
   const close = () => {
@@ -951,6 +1005,9 @@ function PropertyStrip({
       const rel = rollupConfig(d)?.relation;
       if (rel && relatedIds(self, rel, relIdx).length) present.add(d.key);
     }
+    if (d.type === "unique_id" && typeof page.row_number === "number") present.add(d.key);
+    if (d.type === "formula" && String((d.config as { expression?: unknown } | null)?.expression ?? "").trim())
+      present.add(d.key);
     // A stored relation whose pages are all private to the reader shows
     // nothing to edit, so it reads as empty.
     if (d.type === "relation" && !isBackRelation(d) && !relatedIds(self, d.key, relIdx).length) {
@@ -974,6 +1031,7 @@ function PropertyStrip({
   const layout = useMemo(() => readPageLayout(dbItem?.page_layout), [dbItem?.page_layout]);
   const liveDefs = useMemo(() => propDefs.filter((d) => !d.archived_at), [propDefs]);
   const arranged = arrangeStrip(liveDefs, layout, shown);
+  const finished = isFinished(propsRec, liveDefs);
   const rows = arranged.shown.map((k) => ({ key: k }));
   const foldedRows = arranged.folded.map((k) => ({ key: k }));
   const [foldOpen, setFoldOpen] = useState(false);
@@ -1318,7 +1376,8 @@ function PropertyStrip({
                 def={def}
                 members={members}
                 pages={pages}
-                    relations={relations}
+                relations={relations}
+                finished={finished}
                 onSet={(v) => onSet(r.key, v)}
                 onOpenChange={(open) =>
                   setOpenKey((prev) =>
@@ -1496,7 +1555,13 @@ function PropertyStrip({
           // Worked-out properties hold nothing to seed, and a stored value
           // (links to pages this reader can't open) is never overwritten:
           // the row just opens.
-          if (!isComputedDef(propDefs.find((d) => d.key === key)) && !isPropSet(propsRec[key]))
+          // A null seed is no value at all (and a property made a moment ago
+          // may not be in the list yet to say it's worked out).
+          if (
+            seed !== null &&
+            !isComputedDef(propDefs.find((d) => d.key === key)) &&
+            !isPropSet(propsRec[key])
+          )
             onSet(key, seed);
         }}
       />

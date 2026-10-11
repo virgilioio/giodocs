@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { formatNumber, type NumberFormat } from "@/lib/number-format";
 import { Popover } from "./popover";
 import {
   dateSpan,
@@ -877,6 +878,7 @@ export function NumberEditor({
   triggerClassName,
   triggerStyle,
   onOpenChange,
+  format,
 }: {
   value: unknown;
   onSet: (v: number | null) => void;
@@ -885,6 +887,8 @@ export function NumberEditor({
   triggerClassName?: string;
   triggerStyle?: React.CSSProperties;
   onOpenChange?: (open: boolean) => void;
+  /** How the property shows its numbers (editing shows the plain number). */
+  format?: NumberFormat;
 }) {
   const current = typeof value === "number" && Number.isFinite(value) ? value : null;
   const [editing, setEditing] = useState(false);
@@ -948,7 +952,7 @@ export function NumberEditor({
           className="tnum"
           style={{ fontSize: VALUE_FONT[variant], color: "var(--color-strong)" }}
         >
-          {current}
+          {format ? formatNumber(current, format) : current}
         </span>
       )}
     </button>

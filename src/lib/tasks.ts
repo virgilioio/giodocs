@@ -57,8 +57,15 @@ const DONE_WORDS = /^(done|complete|completed|finished|closed|shipped|resolved|l
 
 /** The options that look finished, by name. */
 export function suggestDoneValues(def: { options?: unknown } | undefined): string[] {
+  // A status says which of its options are Complete (status-groups.ts);
+  // the names decide for anything not grouped.
+  const raw = Array.isArray(def?.options) ? (def!.options as Array<{ value?: string; group?: unknown }>) : [];
   return optionList(def)
-    .filter((o) => DONE_WORDS.test(o.label.trim()) || DONE_WORDS.test(o.value.trim()))
+    .filter((o) => {
+      const g = raw.find((r) => r && r.value === o.value)?.group;
+      if (g === "todo" || g === "doing") return false;
+      return g === "done" || DONE_WORDS.test(o.label.trim()) || DONE_WORDS.test(o.value.trim());
+    })
     .map((o) => o.value);
 }
 

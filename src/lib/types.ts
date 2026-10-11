@@ -31,6 +31,8 @@ export type PageListItem = Pick<
   task_config?: PageRow["task_config"];
   /** A database: how its rows show their properties (src/lib/page-layout.ts). */
   page_layout?: PageRow["page_layout"];
+  /** A row's number in its database (Unique ID properties show it). */
+  row_number?: number | null;
 };
 
 export type PageFull = Omit<PageRow, "search_tsv"> & {

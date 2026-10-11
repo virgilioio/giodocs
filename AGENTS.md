@@ -362,6 +362,36 @@ provider Virgilio already has; don't build them until asked.
   people who can edit the database page (the pages UPDATE policy alone
   let view-only members change them), and page_layout's shape is checked.
 
+## Decisions (Allan, 2026-10-11: more property types)
+- ID (`unique_id`, config `{prefix}`, up to 10 letters or digits): a row's
+  number is pages.row_number, given by the pages_0b_row_number trigger
+  (next number in its database) on insert and on moving into a database;
+  the browser never sets it. It shows as "REQ-104" (or "104"), sorts and
+  filters as a number, and is never written into props.
+- Number formats live in a number property's config: `format` (number,
+  number with commas, percent, currency), `decimals` (0–6) and `currency`
+  (src/lib/number-format.ts). Percent shows the stored number as typed
+  plus "%". Cells, the row strip and the Calculate row use the format;
+  editing shows the plain number.
+- Files & media (`files`): a list of {path, name, size, mime}, at most 50,
+  uploaded to the page-images bucket under the row's own folder
+  (<workspace>/<row>/files/…), so the files are exactly as private as the
+  row; opened with a signed URL (src/lib/file-values.ts, files-value.tsx).
+  A file removed from the list stays in storage (Undo-safe, like file
+  blocks).
+- Status groups: each status option can carry `group` todo / doing / done,
+  set one at a time through set_property_option_group. Overdue, My tasks'
+  done values and terminal dates read the group (src/lib/status-groups.ts);
+  an option without one falls back to its name ("Done", "Not started"…).
+- Formula (config `{expression}`, up to 2000 characters): spreadsheet
+  maths over the row's own values, run by the sheet engine;
+  `prop("Name")` reads a property by its label (Name/Page/Title is the
+  page title). Worked out in the browser for each reader, never stored;
+  a formula that reads itself stops with an error in words. Changing a
+  property's type clears its config (property_defs_0_reset_config).
+- validate_page_props refuses stored values for formula and unique_id;
+  guard_property_config checks each type's config shape.
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.

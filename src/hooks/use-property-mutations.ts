@@ -436,3 +436,41 @@ export function useDuplicateProperty() {
     onError: (err, v) => toast.push(`Couldn't copy ${v.label}: ${message(err)}`),
   });
 }
+
+/** A property's settings (number format, ID prefix, formula): the whole
+ *  config, checked by guard_property_config. Shows at once. */
+export function useSetPropertyConfig() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const toast = useToast();
+  return useMutation({
+    mutationFn: async (v: { id: string; config: Record<string, unknown> }) => {
+      const { error } = await supabase.from("property_defs").update({ config: v.config as never }).eq("id", v.id);
+      if (error) throw error;
+    },
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: qk.propDefs(ws) });
+      const snap = qc.getQueryData<PropDef[]>(qk.propDefs(ws));
+      if (snap) {
+        qc.setQueryData<PropDef[]>(
+          qk.propDefs(ws),
+          snap.map((d) => (d.id === v.id ? { ...d, config: v.config as never } : d)),
+        );
+      }
+      return { snap };
+    },
+    onError: (err, _v, ctx) => {
+      if (ctx?.snap) qc.setQueryData(qk.propDefs(ws), ctx.snap);
+      toast.push(`Couldn't change the property: ${message(err)}`);
+    },
+    onSettled: () => refresh(qc, ws),
+  });
+}
+
+export function useSetOptionGroup() {
+  return useOptionEdit<{ id: string; value: string; group: "todo" | "doing" | "done" }>(
+    (v) => supabase.rpc("set_property_option_group", { p_def: v.id, p_value: v.value, p_group: v.group }),
+    (opts, v) => opts.map((o) => (o.value === v.value ? ({ ...o, group: v.group } as OptionRow) : o)),
+    "Couldn't change the group",
+  );
+}

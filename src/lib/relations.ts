@@ -10,6 +10,12 @@ import {
   type CalcId,
   type CalcRaw,
 } from "./view-calc";
+import {
+  evaluatePropertyFormula,
+  formulaText,
+  type FormulaResult,
+  type FormulaValue,
+} from "./property-formula";
 
 /* Relations and rollups (2026-10-10). Pure.
  *
@@ -77,7 +83,58 @@ export function isBackRelation(def: RelDefLike | undefined): boolean {
 
 /** Worked out rather than stored: never written to a page. */
 export function isComputedDef(def: RelDefLike | undefined): boolean {
-  return def?.type === "rollup" || isBackRelation(def);
+  return (
+    def?.type === "rollup" || def?.type === "formula" || def?.type === "unique_id" || isBackRelation(def)
+  );
+}
+
+/** A Unique ID's text for a row: "REQ-12", or "12" without a prefix. */
+export function uniqueIdText(page: { row_number?: number | null }, def: RelDefLike | undefined): string {
+  const n = page.row_number;
+  if (typeof n !== "number") return "";
+  const prefix = String(cfgOf(def).prefix ?? "");
+  return prefix ? `${prefix}-${n}` : String(n);
+}
+
+/** Formulas being worked out right now (a formula that reads itself,
+ *  through others, stops instead of looping). */
+const evaluating = new Set<string>();
+
+/** A formula's result for a row. `read` is how the row's other values are
+ *  read (relations as pages, rollups as figures); `words` turns options,
+ *  people and pages into words. */
+export function formulaResultOf(
+  page: PageListItem,
+  def: RelDefLike,
+  defs: ReadonlyMap<string, RelDefLike>,
+  read: (page: PageListItem, key: string) => unknown,
+  words: (value: unknown, key: string) => string[],
+): FormulaResult {
+  const expr = String(cfgOf(def).expression ?? "");
+  const mark = `${page.id}:${def.key}`;
+  if (evaluating.has(mark)) return { value: null, error: "The formula refers to itself." };
+  evaluating.add(mark);
+  try {
+    const own = [...defs.values()].filter((d) => d.database_id === def.database_id && d.key !== def.key);
+    return evaluatePropertyFormula(expr, (label) => {
+      const l = label.toLowerCase();
+      if (l === "name" || l === "page" || l === "title") {
+        const named = own.find((d) => (d.label ?? "").toLowerCase() === l);
+        if (!named) return page.title ?? "";
+      }
+      const d = own.find((x) => (x.label ?? "").toLowerCase() === l);
+      if (!d) return undefined;
+      const v = read(page, d.key);
+      if (v === null || v === undefined) return null;
+      if (typeof v === "number" || typeof v === "boolean") return v;
+      if (d.type === "date") return typeof v === "string" ? v.split("/")[0] : null;
+      if (d.type === "unique_id" || d.type === "formula") return v as FormulaValue;
+      const w = words(v, d.key);
+      return w.length ? w.join(", ") : null;
+    });
+  } finally {
+    evaluating.delete(mark);
+  }
 }
 
 export type RelationIndex = {
@@ -198,9 +255,14 @@ export function readValueWith(
   words: (value: unknown, targetKey: string) => string[] = (v) =>
     v === null || v === undefined ? [] : Array.isArray(v) ? v.map(String) : [String(v)],
 ) {
-  return (page: PageListItem, key: string): unknown => {
+  const readValue = (page: PageListItem, key: string): unknown => {
     const def = idx.defs.get(key);
     if (def?.type === "relation") return relatedIds(page, key, idx);
+    if (def?.type === "unique_id") return typeof page.row_number === "number" ? page.row_number : null;
+    if (def?.type === "formula") {
+      const v = formulaResultOf(page, def, idx.defs, readValue, words).value;
+      return v === "" ? null : v;
+    }
     if (def?.type === "rollup") {
       const cfg = rollupConfig(def);
       if (!cfg) return null;
@@ -212,6 +274,7 @@ export function readValueWith(
     }
     return propValue(page, key);
   };
+  return readValue;
 }
 
 /** What a rollup's figure behaves like, for sorting, filters and cells. */
@@ -319,6 +382,19 @@ export function valueWords(opts: {
         return [value === true || value === "true" ? "Checked" : "Not checked"];
       case "date":
         return list.map((v) => formatDue(v) || String(v));
+      case "unique_id":
+        return list.map((v) => {
+          const prefix = String(cfgOf(d).prefix ?? "");
+          return prefix ? `${prefix}-${String(v)}` : String(v);
+        });
+      case "formula":
+        return list.map((v) => formulaText(v as FormulaValue));
+      case "files":
+        return list.map((v) =>
+          v && typeof v === "object" && typeof (v as { name?: unknown }).name === "string"
+            ? (v as { name: string }).name
+            : String(v),
+        );
       default:
         return list.map(String);
     }

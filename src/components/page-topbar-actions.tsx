@@ -1,4 +1,5 @@
-import { relationConfig, valueWords } from "@/lib/relations";
+import { formulaResultOf, relationConfig, valueWords } from "@/lib/relations";
+import { propValue } from "@/lib/run-view";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { primaryMod } from "@/lib/platform";
 import { toClipboard } from "@/lib/clipboard";
@@ -415,14 +416,16 @@ export function PageTopbarActions({
       label: string;
       type: string;
       options: unknown;
+      config: unknown;
       position: number | null;
       archived_at: string | null;
       database_id: string | null;
     }>)
       .filter((d) => page.database_id && d.database_id === page.database_id && !d.archived_at)
       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+    const wordsDefs = new Map(defs.map((d) => [d.key, d]));
     const words = valueWords({
-      defs: new Map(defs.map((d) => [d.key, d])),
+      defs: wordsDefs,
       nameOf: (id) => {
         const m = members.find((x) => x.user_id === id);
         return m?.profiles?.full_name || m?.profiles?.email || "Someone";
@@ -432,7 +435,18 @@ export function PageTopbarActions({
     });
     const properties = defs
       .filter((d) => d.type !== "rollup" && !(d.type === "relation" && relationConfig(d).of))
-      .map((d) => [d.label, words(props[d.key], d.key).join(", ")] as const);
+      .map((d) => {
+        const self = page as unknown as PageListItem;
+        // Worked out, not stored: the ID from the row's number, a formula
+        // from the row's own values.
+        const v =
+          d.type === "unique_id"
+            ? self.row_number ?? null
+            : d.type === "formula"
+              ? formulaResultOf(self, d, wordsDefs, (p, k) => propValue(p, k), words).value
+              : props[d.key];
+        return [d.label, words(v, d.key).join(", ")] as const;
+      });
     const blocks: Block[] = Array.isArray(page.blocks)
       ? (page.blocks as unknown[]).filter(
           (b): b is Block => !!b && typeof b === "object",

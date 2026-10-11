@@ -29,6 +29,18 @@ export function seedFor(t: string): unknown {
   }
 }
 
+/** What a formula can read, in words, for the expression step. */
+export function formulaHelp(defs: ReadonlyArray<{ label: string; type: string; archived_at?: string | null }>): string {
+  const names = defs
+    .filter((d) => !d.archived_at && d.type !== "formula" && d.type !== "files")
+    .slice(0, 6)
+    .map((d) => `prop("${d.label}")`);
+  return (
+    "Spreadsheet maths and functions (SUM, IF, ROUND, CONCAT…). " +
+    (names.length ? `Read a property with ${names.join(", ")}.` : 'Read a property with prop("Name").')
+  );
+}
+
 export function useNewPropertyFlow(opts: {
   databaseId: string;
   /** Every property in the workspace: a rollup reads the properties of
@@ -71,8 +83,9 @@ export function useNewPropertyFlow(opts: {
     input: {
       placeholder: "Name it, then press Enter",
       onCommit: (label) => (then ? then(label) : create(label, type)),
-      // A relation's name leads to "one way or both".
-      keepOpen: type === "relation",
+      // A relation's name leads to "one way or both", a formula's to its
+      // expression.
+      keepOpen: type === "relation" || type === "formula",
     },
   });
 
@@ -196,6 +209,20 @@ export function useNewPropertyFlow(opts: {
       rollupCalcSpec(relation, target, type),
     );
 
+  /* Formula: a name, then the expression (prop("Name") reads a property). */
+  const formulaExprSpec = (label: string): MenuSpec => ({
+    title: label,
+    rows: [],
+    onBack: () => setSub(formulaName()),
+    footer: formulaHelp(propDefs),
+    input: {
+      placeholder: 'e.g. prop("Salary") * 12',
+      onCommit: (expression) => create(label, "formula", { expression }),
+    },
+  });
+  const formulaName = (): MenuSpec =>
+    nameSpec("formula", (label) => setSub(formulaExprSpec(label)));
+
   // Step 1: pick a type.
   const typeSpec: MenuSpec = {
     title: "New property",
@@ -211,7 +238,9 @@ export function useNewPropertyFlow(opts: {
             ? relationScopeSpec()
             : k.type === "rollup"
               ? rollupRelationSpec()
-              : nameSpec(k.type),
+              : k.type === "formula"
+                ? formulaName()
+                : nameSpec(k.type),
         ),
     })),
   };
