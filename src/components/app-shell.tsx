@@ -35,6 +35,7 @@ import { mentionPage, setMentionDirectory } from "@/lib/mention-directory";
 import { InboxButton, InboxPanel } from "./inbox";
 import { useInboxUnread } from "@/hooks/use-visible-inbox";
 import { TemplatesButton, TemplatesPanel } from "./templates-panel";
+import { TrashPanel } from "./trash-panel";
 import { FavoritesList } from "./favorites-list";
 import { useFavoritePages } from "@/hooks/use-favorites";
 import { useInboxRealtime } from "@/hooks/use-inbox";
@@ -231,6 +232,7 @@ export function AppShell() {
   const [railOpen, setRailOpen] = useState(false);
   const [recentsOpen, setRecentsOpen] = useState(false);
   const [accountSheet, setAccountSheet] = useState(false);
+  const [trashSheet, setTrashSheet] = useState(false);
   const phoneTab = useRouterState({
     select: (s) => (s.location.search as { tab?: unknown }).tab,
   }) as unknown;
@@ -604,6 +606,16 @@ export function AppShell() {
               </SheetGroup>
               <SheetGroup>
                 <SheetRow
+                  icon="M4 7h16M10 11v6M14 11v6M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M9 7V4h6v3"
+                  label="Trash"
+                  onClick={() => {
+                    setAccountSheet(false);
+                    setTrashSheet(true);
+                  }}
+                />
+              </SheetGroup>
+              <SheetGroup>
+                <SheetRow
                   icon="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l5-5-5-5M15 12H3"
                   label="Log out"
                   danger
@@ -613,6 +625,13 @@ export function AppShell() {
                   }}
                 />
               </SheetGroup>
+            </BottomSheet>
+          ) : null}
+          {trashSheet ? (
+            <BottomSheet title="Trash" onClose={() => setTrashSheet(false)}>
+              <div className="gio-phone-panel">
+                <TrashPanel page close={() => setTrashSheet(false)} />
+              </div>
             </BottomSheet>
           ) : null}
           {modals}
@@ -1265,9 +1284,7 @@ function SidebarBody({
       </div>
 
       {phone ? null : <FooterAccount
-        profile={profile}
         userEmail={userEmail}
-        initials={initials}
         workspaceName={workspaceName}
         workspaceIcon={workspaceIcon}
         memberCount={memberCount}
@@ -1367,9 +1384,7 @@ function EmptyWorkspace() {
 /* ─────────────────── Footer + account dropdown ─────────────────── */
 
 function FooterAccount({
-  profile,
   userEmail,
-  initials,
   workspaceName,
   workspaceIcon,
   memberCount,
@@ -1380,9 +1395,7 @@ function FooterAccount({
   onOpenSettings,
   onOpenInvite,
 }: {
-  profile: { full_name: string; avatar_tint: string; avatar_ink: string } | null;
   userEmail: string;
-  initials: string;
   workspaceName: string;
   workspaceIcon: string;
   memberCount: number;
@@ -1393,62 +1406,134 @@ function FooterAccount({
   onOpenSettings: () => void;
   onOpenInvite: () => void;
 }) {
-  const displayName = profile?.full_name || userEmail || "You";
+  const navigate = useNavigate();
+  const [apps, setApps] = useState(false);
+  const [trash, setTrash] = useState(false);
+  useEffect(() => {
+    if (!apps && !trash) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setApps(false);
+      setTrash(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [apps, trash]);
+  // Notion's corner (2026-10-11): the workspace (its menu: settings,
+  // invites, the account, log out) and, beside it, the apps (Trash,
+  // My tasks). The person themself lives in Settings › My profile.
   return (
     <>
-      {/* Footer button */}
-      <button
-        type="button"
-        onClick={() => (open ? onClose() : onOpen())}
-        aria-label="Account menu"
-        aria-expanded={open}
-        className={
-          "flex items-center border-t border-line w-full text-left " +
-          (open ? "bg-railHover" : "hover:bg-railHover")
-        }
-        style={{ padding: "9px 10px", gap: 9, cursor: "pointer" }}
-      >
-        <span
-          className="grid shrink-0 place-items-center rounded-full"
-          style={{
-            width: 26,
-            height: 26,
-            background: profile?.avatar_tint ?? "var(--color-sunken)",
-            color: profile?.avatar_ink ?? "var(--color-noir)",
-            fontSize: 11.5,
-            fontWeight: 700,
-          }}
-          aria-hidden
+      <div className="flex items-center border-t border-line" style={{ padding: "6px 8px", gap: 4 }} data-sidebar-footer>
+        <button
+          type="button"
+          onClick={() => (open ? onClose() : onOpen())}
+          aria-label={`${workspaceName || "Workspace"}: settings and account`}
+          aria-expanded={open}
+          data-workspace-menu
+          className={"flex min-w-0 flex-1 items-center rounded-md text-left " + (open ? "bg-railHover" : "hover:bg-railHover")}
+          style={{ padding: "6px 6px", gap: 8, cursor: "pointer" }}
         >
-          {initials}
-        </span>
-        <div className="min-w-0 flex-1">
-          <div
-            className="truncate text-body"
-            style={{ fontSize: 14, fontWeight: 700 }}
-            title={displayName}
+          <span
+            className="grid shrink-0 place-items-center bg-sunken"
+            style={{ width: 22, height: 22, borderRadius: 6 }}
+            aria-hidden
           >
-            {displayName}
-          </div>
-          <div
-            className="truncate text-muted"
-            style={{ fontSize: 12.5 }}
-            title={`${workspaceName}${memberCount ? ` · ${memberCount} people` : ""}`}
-          >
-            {workspaceName}
-            {memberCount ? ` · ${memberCount} people` : ""}
-          </div>
-        </div>
-
-        <span className="shrink-0 text-whisper">
-          <svg width={14} height={14} viewBox="0 0 24 24" fill="none"
+            <Ico icon={workspaceIcon} size={14} />
+          </span>
+          <span className="min-w-0 truncate text-body" style={{ fontSize: 14, fontWeight: 700 }} title={workspaceName}>
+            {workspaceName || "Workspace"}
+          </span>
+          <svg width={13} height={13} viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth={2} strokeLinecap="round"
-            strokeLinejoin="round" aria-hidden>
-            <path d="m8 14.5 4 4 4-4" />
-            <path d="m8 9.5 4-4 4 4" />
+            strokeLinejoin="round" className="shrink-0 text-whisper" aria-hidden>
+            <path d="m6 9 6 6 6-6" />
           </svg>
-        </span>
-      </button>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setTrash(false);
+            setApps((v) => !v);
+          }}
+          aria-label="More: Trash and My tasks"
+          title="Trash, My tasks"
+          aria-expanded={apps}
+          data-apps-button
+          className={"grid shrink-0 place-items-center rounded-md text-muted hover:bg-railHover hover:text-strong " + (apps || trash ? "bg-railHover text-strong" : "")}
+          style={{ width: 30, height: 30 }}
+        >
+          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M5 5h5v5H5zM14 5h5v5h-5zM5 14h5v5H5zM14 14h5v5h-5z" />
+          </svg>
+        </button>
+      </div>
+
+      {apps ? (
+        <>
+          <div className="fixed inset-0" style={{ zIndex: 95 }} onClick={() => setApps(false)} aria-hidden />
+          <div
+            ref={exitOnly("pop")}
+            role="menu"
+            aria-label="Trash and My tasks"
+            className="fixed bg-surface animate-popIn"
+            style={{
+              zIndex: 96,
+              left: 10,
+              bottom: 52,
+              transformOrigin: "bottom left",
+              width: 220,
+              border: "1px solid var(--color-line)",
+              borderRadius: 12,
+              padding: 5,
+              boxShadow: "var(--shadow-popover)",
+            }}
+          >
+            <DropdownRow
+              icon="M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"
+              onClick={() => {
+                setApps(false);
+                void navigate({ to: "/home" });
+              }}
+            >
+              My tasks
+            </DropdownRow>
+            <DropdownRow
+              icon="M4 7h16M10 11v6M14 11v6M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M9 7V4h6v3"
+              onClick={() => {
+                setApps(false);
+                setTrash(true);
+              }}
+            >
+              Trash
+            </DropdownRow>
+          </div>
+        </>
+      ) : null}
+
+      {trash ? (
+        <>
+          <div className="fixed inset-0" style={{ zIndex: 95 }} onClick={() => setTrash(false)} aria-hidden />
+          <div
+            ref={exitOnly("pop")}
+            className="fixed bg-surface animate-popIn"
+            style={{
+              zIndex: 96,
+              left: 10,
+              bottom: 52,
+              transformOrigin: "bottom left",
+              width: 420,
+              maxWidth: "calc(100vw - 20px)",
+              border: "1px solid var(--color-line)",
+              borderRadius: 12,
+              padding: "4px 4px 10px",
+              boxShadow: "var(--shadow-popover)",
+            }}
+          >
+            <TrashPanel close={() => setTrash(false)} />
+          </div>
+        </>
+      ) : null}
 
       {open && (
         <>
@@ -1494,7 +1579,7 @@ function FooterAccount({
                   {workspaceName}
                 </div>
                 <div className="truncate text-muted" style={{ fontSize: 12.5 }}>
-                  MVP plan · {memberCount} member{memberCount === 1 ? "" : "s"}
+                  {memberCount} member{memberCount === 1 ? "" : "s"}
                 </div>
               </div>
             </div>

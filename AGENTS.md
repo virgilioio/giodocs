@@ -121,7 +121,9 @@ once. The decisions below replace it wherever an older section disagrees.
 
 ## Scope (exclusions — do not build)
 AI features, public sharing on the open web, real-time co-editing
-cursors, dark mode, multi-workspace UI. (Folder trees were excluded until
+cursors, multi-workspace UI. (Dark mode was listed here, but the app has a
+Light / Dark / System theme in Settings › Preferences; Allan, 2026-10-11:
+keep it.) (Folder trees were excluded until
 2026-10-10; the page tree is now the navigation.)
 
 Lifted by Allan on 2026-10-09: @mentions (people and pages), comments,
@@ -485,6 +487,26 @@ provider Virgilio already has; don't build them until asked.
 - Not built (out of scope or later): AI features, Forms, Gallery,
   Timeline, Feed and Dashboard views, Automations, Conditional color,
   Heading 4, Button and Place properties, Lock database.
+
+## Decisions (Allan, 2026-10-11: the sidebar corner, Trash, workspace icon)
+- The sidebar's bottom-left is Notion's: the workspace button (icon, name,
+  ▾) opens the workspace menu (name and member count, Settings, Invite
+  members, the account, Log out); beside it ▦ opens Trash and My tasks.
+  The person's own name and avatar live in Settings › My profile. On
+  phones, Trash is a row of the account sheet.
+- Trash (trash-panel.tsx, use-trash.ts) lists deleted pages through
+  list_trash (SECURITY DEFINER, read-only; pages RLS hides deleted rows):
+  pages of the caller's workspace they could edit, one row per deletion
+  (what went with a page counts inside it), searchable by title, newest
+  first, at most 200. Blank pages thrown away by the new-page dialog
+  aren't listed. Restore goes through restore_page, bringing back first
+  the deleted pages it lives in, so it returns where it was. A deleted
+  page can't be opened, only restored. Nothing empties Trash (that would
+  be a delete; not built).
+- The workspace icon is picked with the page icon picker (every emoji,
+  custom emoji, Remove) or uploaded: Upload image saves the image as a
+  custom emoji and uses it (workspace-icon-picker.tsx). Popovers sit above
+  dialogs (--z-menu), so a picker opened inside Settings isn't covered.
 
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
