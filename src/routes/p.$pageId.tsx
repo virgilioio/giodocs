@@ -16,7 +16,7 @@ export const Route = createFileRoute("/p/$pageId")({
   }),
   component: PageRoute,
   errorComponent: ({ error, reset }) => (
-    <RouteErrorFallback error={error} reset={reset} scope="page" />
+    <RouteErrorFallback error={error as Error} reset={reset} scope="page" />
   ),
   notFoundComponent: () => <RouteNotFound what="This page" />,
 });

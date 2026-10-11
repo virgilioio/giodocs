@@ -13,7 +13,7 @@ export const Route = createFileRoute("/v/$viewId")({
   }),
   component: ViewRoute,
   errorComponent: ({ error, reset }) => (
-    <RouteErrorFallback error={error} reset={reset} scope="view" />
+    <RouteErrorFallback error={error as Error} reset={reset} scope="view" />
   ),
   notFoundComponent: () => <RouteNotFound what="This view" />,
 });
