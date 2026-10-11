@@ -473,6 +473,11 @@ provider Virgilio already has; don't build them until asked.
   (clip-path); icons glide (transform), the picked tab's name fades in,
   colours cross over. No layout is animated; reduced motion keeps only
   the colours. The tab's content swaps at once (screens don't animate).
+- The top of a phone is one colour (2026-10-11): below 768px html and body
+  are `surface`, like the frame, so the browser's status bar and top edge
+  (which tint from the page background) don't show a canvas band. A
+  theme-color meta follows the body's background in light and dark
+  (src/lib/theme-color.ts).
 - A phone table's sticky end track stays 40px (just the +), so it never
   covers the properties scrolling under it.
 

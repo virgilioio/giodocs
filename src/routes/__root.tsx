@@ -15,6 +15,7 @@ import { AuthProvider } from "../lib/auth-context";
 import { PreferencesProvider } from "../lib/preferences";
 import { ToastProvider } from "../lib/toast";
 import { installTooltips } from "../lib/tooltips";
+import { installThemeColor } from "../lib/theme-color";
 
 function NotFoundComponent() {
   return (
@@ -147,6 +148,7 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   useEffect(() => installTooltips(), []);
+  useEffect(() => installThemeColor(), []);
 
   return (
     <QueryClientProvider client={queryClient}>
