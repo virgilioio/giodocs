@@ -586,6 +586,10 @@ button:is([class~="bg-btn"], [class~="border-line"][class~="bg-surface"], .gio-p
   }
   .gio-cols > * {
     grid-column: 1 !important;
+    /* Each column is placed on row 1 inline (so the handles share it on
+       wide screens); stacked, each takes its own row or they pile up on
+       top of each other (Allan, 2026-10-12). */
+    grid-row: auto !important;
   }
   .gio-col-resize {
     display: none;
