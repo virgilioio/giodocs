@@ -202,6 +202,30 @@ function CommentsButton({ pageId }: { pageId: string }) {
   );
 }
 
+/** Favorites (2026-10-12): the star beside Comments, as on the dialog's
+ *  header. Filled amber when the page is a favorite; Undo in the toast. */
+function FavoriteButton({ pageId, title }: { pageId: string; title: string }) {
+  const favorite = useIsFavorite(pageId);
+  const toggleFavorite = useToggleFavorite();
+  const label = favorite ? "Remove from Favorites" : "Add to Favorites";
+  return (
+    <button
+      type="button"
+      onClick={() => toggleFavorite(pageId, title)}
+      title={label}
+      aria-label={label}
+      aria-pressed={favorite}
+      data-favorite-button
+      className={`grid shrink-0 place-items-center rounded-md hover:bg-sunken ${favorite ? "text-amberInk" : "text-muted hover:text-strong"}`}
+      style={{ height: 26, width: 26 }}
+    >
+      <svg viewBox="0 0 24 24" width={16} height={16} fill={favorite ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" />
+      </svg>
+    </button>
+  );
+}
+
 function IconButton({
   onClick,
   title,
@@ -643,6 +667,8 @@ export function PageTopbarActions({
       </IconButton>
 
       {page ? <CommentsButton pageId={page.id} /> : null}
+
+      {page ? <FavoriteButton pageId={page.id} title={listRow.title ?? ""} /> : null}
 
       <PageMoreButton
         open={menuOpen}
