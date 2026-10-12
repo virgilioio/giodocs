@@ -360,7 +360,7 @@ export function FloatingToolbar({ blockSel }: { blockSel?: BlockSel | null }) {
     background: "var(--color-btn)",
     boxShadow: "0 8px 24px rgba(13,13,9,.22)",
     color: "var(--color-btnFg)",
-    zIndex: 70,
+    zIndex: "var(--z-menu)", // above dialogs, so it works in the peek
     display: "flex",
     alignItems: "center",
     gap: 2,

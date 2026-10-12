@@ -86,8 +86,9 @@ export function SlashMenu<T extends SlashItemLike>({
       data-slash-menu
       role="listbox"
       aria-label="Blocks"
-      className="fixed z-50 flex animate-popIn flex-col rounded-xl border border-line bg-surface shadow-popover"
-      style={{ ...placement, width: W, maxHeight: 420 }}
+      className="fixed flex animate-popIn flex-col rounded-xl border border-line bg-surface shadow-popover"
+      // Above dialogs (the new-page peek is one), like every menu.
+      style={{ ...placement, width: W, maxHeight: 420, zIndex: "var(--z-menu)" }}
     >
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto py-1">
         {items.length === 0 ? (

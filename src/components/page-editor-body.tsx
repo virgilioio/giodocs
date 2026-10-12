@@ -3823,7 +3823,7 @@ export function EditableBody({
                 bottom: 24,
                 left: "50%",
                 transform: "translateX(-50%)",
-                zIndex: 80,
+                zIndex: 85, // above the new-page peek (80/81)
                 background: "var(--color-noir)",
                 color: "var(--color-track)",
                 borderRadius: 14,
