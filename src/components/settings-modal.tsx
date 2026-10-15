@@ -747,7 +747,10 @@ function PeoplePane({
   const toast = useToast();
 
   const { user } = useAuth();
-  const isOwner = members.find((m) => m.user_id === user?.id)?.role === "owner";
+  // Members managed in Gio OS (People & Access, in Gio ATS): invites, roles and
+  // removals happen there, and the database refuses them here.
+  const managed = (workspace as { members_managed_by_os?: boolean } | null | undefined)?.members_managed_by_os === true;
+  const isOwner = members.find((m) => m.user_id === user?.id)?.role === "owner" && !managed;
   const staleDays = workspace?.stale_days ?? 90;
   const staleThreshold = Date.now() - staleDays * 24 * 60 * 60 * 1000;
 
@@ -825,7 +828,30 @@ function PeoplePane({
           />
         </div>
 
-        {/* Invite by link */}
+        {managed ? (
+          <div
+            className="mt-4 flex items-center gap-3 bg-canvas border border-line"
+            style={{ borderRadius: 10, padding: "11px 13px" }}
+          >
+            <div className="min-w-0 flex-1">
+              <div className="text-noir" style={{ fontSize: 14, fontWeight: 700 }}>
+                Managed in Gio OS
+              </div>
+              <div className="text-secondary" style={{ fontSize: 12.5, marginTop: 2 }}>
+                Add people, change roles and remove access in People &amp; Access, in Gio ATS.
+              </div>
+            </div>
+            <a
+              href="https://app.gogio.io/os/people"
+              target="_blank"
+              rel="noreferrer"
+              className="text-accent"
+              style={{ fontSize: 13.5, fontWeight: 700 }}
+            >
+              Open People &amp; Access
+            </a>
+          </div>
+        ) : (
         <div
           className="mt-4 flex items-center gap-3 bg-canvas border border-line"
           style={{ borderRadius: 10, padding: "11px 13px" }}
@@ -854,6 +880,7 @@ function PeoplePane({
           </button>
           <Toggle value={inviteLinkOn} onChange={setInviteLinkOn} />
         </div>
+        )}
 
         {/* Tabs + Add member */}
         <div className="mt-4 flex items-center gap-2">
@@ -883,6 +910,7 @@ function PeoplePane({
             );
           })}
           <div className="flex-1" />
+          {managed ? null : (
           <button
             type="button"
             onClick={onOpenInvite}
@@ -894,6 +922,7 @@ function PeoplePane({
             </svg>
             Add member
           </button>
+          )}
         </div>
 
         {/* Table */}

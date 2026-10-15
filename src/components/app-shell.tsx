@@ -463,7 +463,8 @@ export function AppShell() {
       setAccountMenu(false);
       openSettings("people");
       setMembersTab("members");
-      setInviteOpen(true);
+      // Managed in Gio OS: People opens without the add dialog (it says where to go).
+      if (!(workspace as { members_managed_by_os?: boolean } | null | undefined)?.members_managed_by_os) setInviteOpen(true);
     },
     onOpenPalette: () => setPaletteOpen(true),
   };
