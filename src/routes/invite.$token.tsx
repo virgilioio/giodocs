@@ -327,7 +327,29 @@ function SignupCase({
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
   const [alreadyRegistered, setAlreadyRegistered] = useState(false);
+  const [checkInbox, setCheckInbox] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
+
+  // Google proves the address, so the invitation can be accepted on return:
+  // this page sees the session and shows Join.
+  async function joinWithGoogle() {
+    if (googleBusy) return;
+    setGoogleBusy(true);
+    setError(null);
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: window.location.href,
+        queryParams: { prompt: "select_account", login_hint: invitedEmail },
+      },
+    });
+    if (oauthError) {
+      setGoogleBusy(false);
+      setError("Google sign-in didn't start. Try again, or set a password below.");
+      setNonce((n) => n + 1);
+    }
+  }
 
   useEffect(() => {
     nameRef.current?.focus();
@@ -341,10 +363,14 @@ function SignupCase({
     setBusy(true);
     setError(null);
 
-    const { error: signUpError } = await supabase.auth.signUp({
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email: invitedEmail,
       password,
-      options: { data: { full_name: fullName.trim() } },
+      options: {
+        data: { full_name: fullName.trim() },
+        // The confirmation email brings them back here, signed in, to join.
+        emailRedirectTo: window.location.href,
+      },
     });
 
     if (signUpError) {
@@ -360,7 +386,14 @@ function SignupCase({
       return;
     }
 
-    // Session exists now (email confirmation disabled). Accept the invite.
+    // Email confirmation on: no session until they confirm. The link in the
+    // confirmation email returns them to this invitation, signed in.
+    if (!signUpData.session) {
+      setBusy(false);
+      setCheckInbox(true);
+      return;
+    }
+
     const { error: acceptError } = await supabase.rpc("accept_workspace_invite", { p_token: token });
     if (acceptError) {
       setBusy(false);
@@ -369,6 +402,17 @@ function SignupCase({
       return;
     }
     onAccepted();
+  }
+
+  if (checkInbox) {
+    return (
+      <div>
+        <Header preview={preview} />
+        <p className="mt-5 text-meta text-secondary text-center">
+          Check {invitedEmail} for an email from Gio Docs and confirm your address. The link brings you back here to join.
+        </p>
+      </div>
+    );
   }
 
   if (alreadyRegistered) {
@@ -393,7 +437,21 @@ function SignupCase({
   return (
     <form onSubmit={handleSubmit}>
       <Header preview={preview} />
-      <h2 className="mt-5 text-subhead font-bold text-noir">Set a password to join</h2>
+      <button
+        type="button"
+        onClick={() => void joinWithGoogle()}
+        disabled={googleBusy}
+        className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg border border-line bg-surface font-bold text-ui text-body hover:bg-track disabled:opacity-60"
+        style={{ height: 44 }}
+      >
+        Continue with Google
+      </button>
+      <div className="mt-4 flex items-center gap-3 text-caption text-secondary" aria-hidden>
+        <span className="h-px flex-1 bg-line" />
+        or
+        <span className="h-px flex-1 bg-line" />
+      </div>
+      <h2 className="mt-4 text-subhead font-bold text-noir">Set a password to join</h2>
 
       <div className="mt-4">
         <label htmlFor="full_name" className="block text-meta font-bold text-strong">
