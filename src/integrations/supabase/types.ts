@@ -246,6 +246,53 @@ export type Database = {
           },
         ]
       }
+      os_provision_log: {
+        Row: {
+          actor_email: string
+          detail: string | null
+          email: string
+          id: string
+          invite_id: string | null
+          outcome: string
+          received_at: string
+          request_id: string
+          role: Database["public"]["Enums"]["member_role"] | null
+          workspace_id: string
+        }
+        Insert: {
+          actor_email: string
+          detail?: string | null
+          email: string
+          id?: string
+          invite_id?: string | null
+          outcome: string
+          received_at?: string
+          request_id: string
+          role?: Database["public"]["Enums"]["member_role"] | null
+          workspace_id: string
+        }
+        Update: {
+          actor_email?: string
+          detail?: string | null
+          email?: string
+          id?: string
+          invite_id?: string | null
+          outcome?: string
+          received_at?: string
+          request_id?: string
+          role?: Database["public"]["Enums"]["member_role"] | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "os_provision_log_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       page_access: {
         Row: {
           capability: string
@@ -866,6 +913,7 @@ export type Database = {
           created_at: string
           icon: string
           id: string
+          members_managed_by_os: boolean
           name: string
           slug: string
           stale_days: number
@@ -874,6 +922,7 @@ export type Database = {
           created_at?: string
           icon?: string
           id?: string
+          members_managed_by_os?: boolean
           name: string
           slug: string
           stale_days?: number
@@ -882,6 +931,7 @@ export type Database = {
           created_at?: string
           icon?: string
           id?: string
+          members_managed_by_os?: boolean
           name?: string
           slug?: string
           stale_days?: number
@@ -1183,6 +1233,15 @@ export type Database = {
       }
       option_palette: { Args: { p_color: string }; Returns: Json }
       person_ids: { Args: { v: Json }; Returns: string[] }
+      os_apply_grant: {
+        Args: {
+          p_actor_email: string
+          p_email: string
+          p_request_id: string
+          p_role: string
+        }
+        Returns: Json
+      }
       page_backlinks: {
         Args: { p_page: string }
         Returns: {
