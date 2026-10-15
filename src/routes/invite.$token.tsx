@@ -444,6 +444,7 @@ function SignupCase({
         className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg border border-line bg-surface font-bold text-ui text-body hover:bg-track disabled:opacity-60"
         style={{ height: 44 }}
       >
+        <img src="/google-g.svg" alt="" aria-hidden className="h-4 w-4" />
         Continue with Google
       </button>
       <div className="mt-4 flex items-center gap-3 text-caption text-secondary" aria-hidden>
