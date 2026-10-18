@@ -16,6 +16,7 @@ import { PreferencesProvider } from "../lib/preferences";
 import { ToastProvider } from "../lib/toast";
 import { installTooltips } from "../lib/tooltips";
 import { installThemeColor } from "../lib/theme-color";
+import { GioSplash } from "@/components/gio-splash";
 
 function NotFoundComponent() {
   return (
@@ -157,6 +158,7 @@ function RootComponent() {
           <ToastProvider>
             <Outlet />
           </ToastProvider>
+          <GioSplash ready />
         </PreferencesProvider>
       </AuthProvider>
     </QueryClientProvider>

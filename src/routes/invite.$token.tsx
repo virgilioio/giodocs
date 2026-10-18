@@ -9,6 +9,7 @@ import {
   MIN_PASSWORD_LENGTH,
   type InviteState,
 } from "@/lib/invite-copy";
+import { triggerGioSplash } from "@/components/gio-splash";
 
 export const Route = createFileRoute("/invite/$token")({
   head: () => ({
@@ -69,7 +70,10 @@ function InvitePage() {
       <InviteCard
         preview={preview}
         session={session}
-        onAccepted={() => navigate({ to: "/", replace: true })}
+        onAccepted={() => {
+          triggerGioSplash();
+          navigate({ to: "/", replace: true });
+        }}
         onGoLogin={() =>
           navigate({
             to: "/login",

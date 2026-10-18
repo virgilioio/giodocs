@@ -609,6 +609,15 @@ draws it), `.gio-msep` (dividers inset 12px from the panel's edge),
   hover, so they stay red there.
 - Phones keep the 48px sheet rows (.gio-menu-sheet).
 
+## Decisions (Allan, 2026-10-18: the splash)
+- Gio Docs boots with the splash of Gio ATS and Gio Sales (gio-splash.tsx,
+  GIO SPLASH in styles.css): the Gio Docs mark from public/gio-docs-logo.svg,
+  83px tall in the middle of the window on cream, the same dot morph, curves
+  and timings; then the sheet slides up off the live app. It plays on every
+  full load and again on the sign-in and invite hand-offs
+  (triggerGioSplash). Dark mode: the dark canvas with a cream mark. Reduced
+  motion: the mark at rest and a fade.
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.

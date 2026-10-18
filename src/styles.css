@@ -1225,3 +1225,96 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
   .gio-rail-fold, .gio-rail-tile { transition: none; }
   .gio-rail-flyout { animation: fadeIn 180ms linear; }
 }
+
+/* ─────────────────────────── GIO SPLASH (Allan, 2026-10-18) ───────────────────────────
+   The boot splash of Gio ATS and Gio Sales, with the Gio Docs mark: the dot
+   blooms in the middle of the lockup, flies to its place, the three bars pop
+   out from their left edges and the wordmark blooms in; then the cream sheet
+   slides up off a live app while the lockup sinks and fades. Same curves,
+   timings and 83px lockup as both apps (gio-splash.tsx). The dot starts at
+   the same point relative to the lockup as Gio Sales' (its visual centre,
+   +0.53 / -1.46 units). Dark mode keeps the motion on the dark canvas with a
+   cream mark, so it never flashes white. */
+.gio-splash {
+  color: #0d0d09;
+  height: 83px;
+  width: auto;
+}
+.gio-splash .part {
+  transform-box: fill-box;
+  transform-origin: center;
+  fill: currentColor;
+}
+.gio-splash .bar {
+  transform-origin: left center; /* bars grow out from the left edge */
+}
+.gio-splash:not(.play) .part {
+  opacity: 0;
+}
+.gio-splash--docs.play .dot {
+  animation: gio-docs-dot 1.05s cubic-bezier(0.7, 0, 0.25, 1) both;
+}
+.gio-splash--docs.play .bar {
+  animation: gio-splash-bar 0.4s cubic-bezier(0.3, 1.5, 0.5, 1) both;
+}
+.gio-splash--docs.play .bar-top { animation-delay: 0.78s; }
+.gio-splash--docs.play .bar-mid { animation-delay: 0.82s; }
+.gio-splash--docs.play .bar-low { animation-delay: 0.86s; }
+.gio-splash--docs.play .wd {
+  animation: gio-splash-word 0.45s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+.gio-splash--docs.play .wd-gio { animation-delay: 0.72s; }
+.gio-splash--docs.play .wd-suffix { animation-delay: 0.86s; }
+
+@keyframes gio-docs-dot {
+  0% { opacity: 0; transform: translate(64.28px, 9.57px) scale(0.56); }
+  18% { opacity: 1; transform: translate(64.28px, 9.57px) scale(0.69); }
+  45% { opacity: 1; transform: translate(64.28px, 9.57px) scale(4.8); }
+  72% { transform: translate(0, 0) scale(0.92); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes gio-splash-bar {
+  0% { opacity: 0; transform: scaleX(0.2); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes gio-splash-word {
+  0% { opacity: 0; transform: scale(0.94); filter: blur(2px); }
+  100% { opacity: 1; transform: none; filter: blur(0); }
+}
+
+.gio-splash-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #fffcf9;
+  display: grid;
+  place-items: center;
+}
+[data-theme="dark"] .gio-splash-overlay { background: var(--color-canvas); }
+[data-theme="dark"] .gio-splash { color: #fffcf9; }
+.gio-splash-overlay.leaving {
+  animation: gio-overlay-out 0.55s cubic-bezier(0.7, 0, 0.3, 1) both 0.25s;
+}
+.gio-splash-overlay.leaving .gio-splash {
+  animation: gio-logo-out 0.55s cubic-bezier(0.7, 0, 0.3, 1) both 0.25s;
+}
+@keyframes gio-overlay-out {
+  to { transform: translateY(-100%); }
+}
+@keyframes gio-logo-out {
+  to { transform: translateY(28vh) scale(0.72); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gio-splash .part {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
+  .gio-splash-overlay.leaving { animation: gio-overlay-fade 0.3s ease both 0.25s; }
+  .gio-splash-overlay.leaving .gio-splash { animation: none; }
+  @keyframes gio-overlay-fade {
+    to { opacity: 0; }
+  }
+}
