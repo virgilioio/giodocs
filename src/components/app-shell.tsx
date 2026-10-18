@@ -1,5 +1,7 @@
 import {
+  useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -644,9 +646,14 @@ export function AppShell() {
   }
 
   const railShown = compact ? railOpen : sidebarOpen;
-  // A section opened from the collapsed rail (Favorites, Workspace, Private).
-  const [railFlyout, setRailFlyout] = useState<"favorites" | SectionKey | null>(null);
-  useEffect(() => setRailFlyout(null), [pathname, sidebarOpen]);
+  // A section opened from the collapsed rail (Favorites, Workspace, Private):
+  // hovering its tile opens it, like a hover card (mouse only; a click or
+  // a tap toggles it). The first opens after a short pause, a neighbour at
+  // once; it closes a moment after the pointer leaves the tile and the card.
+  const fly = useRailFlyout();
+  const railFlyout = fly.state?.k ?? null;
+  const flyClose = fly.close;
+  useEffect(() => flyClose(), [pathname, sidebarOpen, flyClose]);
   const toggleRail = () => {
     setSidebarPopover(null);
     setAccountMenu(false);
@@ -720,17 +727,21 @@ export function AppShell() {
                 onOpenSettings={() => openSettings("preferences")}
                 onExpand={toggleRail}
                 flyout={railFlyout}
-                onFlyout={(k) => setRailFlyout((v) => (v === k ? null : k))}
+                onFlyout={fly.toggle}
+                onHover={fly.hover}
+                onLeave={fly.leave}
               />
             </div>
           </div>
-          {!sidebarOpen && railFlyout ? (
+          {!sidebarOpen && fly.state ? (
             <RailFlyout
-              key={railFlyout}
               width={sidebarWidth + 20}
-              onClose={() => setRailFlyout(null)}
+              anchor={fly.state.top}
+              onClose={fly.close}
+              onEnter={fly.keep}
+              onLeave={fly.leave}
             >
-              <SidebarBody {...sidebarProps} only={railFlyout} />
+              <SidebarBody {...sidebarProps} only={fly.state.k} />
             </RailFlyout>
           ) : null}
           {sidebarOpen && (
@@ -1486,6 +1497,8 @@ function CollapsedRail({
   onExpand,
   flyout,
   onFlyout,
+  onHover,
+  onLeave,
 }: {
   selection: Selection;
   workspaceIcon: string;
@@ -1494,7 +1507,9 @@ function CollapsedRail({
   onOpenSettings: () => void;
   onExpand: () => void;
   flyout: "favorites" | SectionKey | null;
-  onFlyout: (k: "favorites" | SectionKey) => void;
+  onFlyout: (k: "favorites" | SectionKey, el: HTMLElement) => void;
+  onHover: (k: "favorites" | SectionKey, el: HTMLElement) => void;
+  onLeave: () => void;
 }) {
   const createAndOpen = useCreatePageAndOpen();
   const here = selection && (selection.kind === "page" || selection.kind === "database") ? selection.id : null;
@@ -1503,11 +1518,12 @@ function CollapsedRail({
       type="button"
       className="gio-rail-tile"
       aria-label={label}
-      title={label}
       aria-expanded={flyout === k}
       data-rail-section={k}
       data-open={flyout === k ? "" : undefined}
-      onClick={() => onFlyout(k)}
+      onClick={(e) => onFlyout(k, e.currentTarget)}
+      onPointerEnter={(e) => e.pointerType === "mouse" && onHover(k, e.currentTarget)}
+      onPointerLeave={(e) => e.pointerType === "mouse" && onLeave()}
     >
       <Glyph path={path} className="h-5 w-5" />
     </button>
@@ -1570,10 +1586,78 @@ const LOCK_GLYPH = "M7 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 
 const GEAR_GLYPH =
   "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z";
 
-/** A section's pages in a black card beside the collapsed rail. Closes on
- *  Esc, a click outside (not on its own rail tile) and when a page opens. */
-function RailFlyout({ width, onClose, children }: { width: number; onClose: () => void; children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
+type FlyKey = "favorites" | SectionKey;
+const FLY_OPEN_MS = 180; // a pause before the first card, so passing over the rail opens nothing
+const FLY_GRACE_MS = 150; // --grace-hovercard: time to cross from the tile into the card
+
+/** Where the tile is, measured from the top of the rail's frame. */
+function tileTop(el: HTMLElement): number {
+  const frame = el.closest("[data-sidebar='beside']");
+  return el.getBoundingClientRect().top - (frame?.getBoundingClientRect().top ?? 0);
+}
+
+function useRailFlyout() {
+  const [state, setState] = useState<{ k: FlyKey; top: number } | null>(null);
+  const openT = useRef<number | undefined>(undefined);
+  const closeT = useRef<number | undefined>(undefined);
+  const clear = () => {
+    window.clearTimeout(openT.current);
+    window.clearTimeout(closeT.current);
+  };
+  const close = useCallback(() => {
+    window.clearTimeout(openT.current);
+    window.clearTimeout(closeT.current);
+    setState(null);
+  }, []);
+  useEffect(() => clear, []);
+  return {
+    state,
+    close,
+    hover(k: FlyKey, el: HTMLElement) {
+      clear();
+      const next = { k, top: tileTop(el) };
+      if (state) setState(next);
+      else openT.current = window.setTimeout(() => setState(next), FLY_OPEN_MS);
+    },
+    leave() {
+      window.clearTimeout(openT.current);
+      window.clearTimeout(closeT.current);
+      closeT.current = window.setTimeout(() => {
+        // A menu opened from the card (a row's ⋯) keeps it open.
+        if (document.querySelector("[role='menu'], .shadow-popover")) return;
+        setState(null);
+      }, FLY_GRACE_MS);
+    },
+    keep() {
+      window.clearTimeout(closeT.current);
+    },
+    toggle(k: FlyKey, el: HTMLElement) {
+      clear();
+      setState((v) => (v?.k === k ? null : { k, top: tileTop(el) }));
+    },
+  };
+}
+
+/** A section's pages in a black card beside the collapsed rail, level with
+ *  its tile. As tall as its pages, never taller than the rail (then it
+ *  scrolls), and moved up when it would run past the bottom. Closes on Esc,
+ *  a click outside and when a page opens. */
+function RailFlyout({
+  width,
+  anchor,
+  onClose,
+  onEnter,
+  onLeave,
+  children,
+}: {
+  width: number;
+  anchor: number;
+  onClose: () => void;
+  onEnter: () => void;
+  onLeave: () => void;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       const t = e.target as Element | null;
@@ -1592,6 +1676,20 @@ function RailFlyout({ width, onClose, children }: { width: number; onClose: () =
       document.removeEventListener("keydown", onKey);
     };
   }, [onClose]);
+  // Level with the tile (its header beside the icon), kept inside the frame.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const frame = el?.parentElement;
+    if (!el || !frame) return;
+    const place = () => {
+      const max = frame.clientHeight - 12 - el.offsetHeight;
+      el.style.top = `${Math.max(12, Math.min(anchor - 6, max))}px`;
+    };
+    place();
+    const ro = new ResizeObserver(place);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [anchor]);
   return (
     <div
       ref={(el) => {
@@ -1600,8 +1698,10 @@ function RailFlyout({ width, onClose, children }: { width: number; onClose: () =
       }}
       className="gio-rail-flyout gio-black-rail-card flex flex-col"
       style={{ width }}
+      onPointerEnter={(e) => e.pointerType === "mouse" && onEnter()}
+      onPointerLeave={(e) => e.pointerType === "mouse" && onLeave()}
     >
-      <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+      <div className="gio-rail-flyout-body flex flex-col">{children}</div>
     </div>
   );
 }
