@@ -924,6 +924,14 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
 }
 .gio-menu-sheet [role="menuitem"] > .truncate,
 .gio-menu-sheet .gio-mrow > .truncate { font-size: 17px !important; line-height: 1.4; }
+/* Pickers inside a Popover are zoomed 1.2 on phones (below), so their
+   rows aim at 40px and 14px to land on 48px and 16.8px. */
+.gio-menu-sheet [data-popover-body] .gio-mrow {
+  min-height: 40px;
+  padding: 8px 10px !important;
+  gap: 10px !important;
+}
+.gio-menu-sheet [data-popover-body] .gio-mrow > .truncate { font-size: 14px !important; }
 .gio-menu-sheet [role="menuitem"]:active,
 .gio-menu-sheet .gio-mrow:active { background: var(--color-rail); }
 .gio-menu-sheet input, .gio-menu-sheet textarea { font-size: 16px !important; }
@@ -1013,6 +1021,10 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
   font-variant-numeric: tabular-nums;
 }
 .gio-mrow-chev { flex: none; color: var(--color-faint); }
+.gio-mrow-check { flex: none; margin-left: auto; color: var(--color-accent); }
+/* Menus driven by arrow keys (slash, @): the highlighted row. Never
+   animated; the pointer moves the highlight too. */
+.gio-mrow[data-active] { background: var(--color-rail); }
 .gio-mrow:disabled { color: var(--color-faint); cursor: not-allowed; }
 .gio-mrow:disabled .gio-mrow-lead { color: inherit; }
 /* Delete and friends: red where there's no hover (phones), and on desktop

@@ -107,7 +107,7 @@ function PeekDialog({ id, fresh }: { id: string; fresh: boolean }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
-      if (document.querySelector('[role="menu"], [data-slash-menu], [data-menu-sheet], .shadow-popover')) return;
+      if (document.querySelector('[role="menu"], [data-slash-menu], [data-menu-sheet], .shadow-popover, .gio-menu')) return;
       close();
     };
     window.addEventListener("keydown", onKey);

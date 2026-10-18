@@ -1614,7 +1614,7 @@ function useRailFlyout() {
       window.clearTimeout(closeT.current);
       closeT.current = window.setTimeout(() => {
         // A menu opened from the card (a row's ⋯) keeps it open.
-        if (document.querySelector("[role='menu'], .shadow-popover")) return;
+        if (document.querySelector("[role='menu'], .shadow-popover, .gio-menu")) return;
         setState(null);
       }, FLY_GRACE_MS);
     },
@@ -1653,7 +1653,7 @@ function RailFlyout({
       const t = e.target as Element | null;
       if (!t || ref.current?.contains(t) || t.closest("[data-rail-section]")) return;
       // Menus the card opens are portalled: clicks in them aren't outside.
-      if (t.closest("[role='menu'], .shadow-popover")) return;
+      if (t.closest("[role='menu'], .shadow-popover, .gio-menu")) return;
       onClose();
     };
     const onKey = (e: KeyboardEvent) => {
