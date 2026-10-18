@@ -937,3 +937,126 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
     padding: 0 16px;
   }
 }
+
+/* ─────────────────────────── THE BLACK RAIL (experiment, 2026-10-18) ───────────────────────────
+   Gio's DNA in Gio Docs: the sidebar is a floating black card, 12px in from
+   the window, like the rail in Gio ATS and Gio Sales; collapsed it is that
+   same 64px rail. It stays black in both themes: the scope below sets every
+   colour token the sidebar uses, so its rows, search, sections and footer
+   need no changes of their own. Menus it opens are portalled, so they keep
+   the page's theme. */
+.gio-black-rail {
+  color-scheme: dark;
+  --color-rail: #0d0d09;
+  --color-surface: #1a1a16;   /* the search field */
+  --color-sunken: #262621;    /* the ⌘K key */
+  --color-railHover: rgba(255, 252, 249, 0.08);
+  --color-selected: rgba(255, 252, 249, 0.10);
+  --color-line: rgba(255, 252, 249, 0.10);
+  --color-lineSoft: rgba(255, 252, 249, 0.06);
+  --color-lineStrong: rgba(255, 252, 249, 0.18);
+  --color-noir: #fffcf9;
+  --color-body: #f3f1ec;
+  --color-strong: #fffcf9;
+  --color-secondary: rgba(255, 252, 249, 0.74);
+  --color-muted: rgba(255, 252, 249, 0.58);
+  --color-faint: rgba(255, 252, 249, 0.50);
+  --color-whisper: rgba(255, 252, 249, 0.42);
+  --color-rule: rgba(255, 252, 249, 0.34);
+  --color-accent: #d7c5fb;    /* lilac: drop lines, focus, the inbox count */
+  --color-btn: #fffcf9;
+  --color-btnFg: #0d0d09;
+  --color-amberInk: #f2be6b;  /* the favourite star */
+  color: var(--color-secondary);
+}
+.gio-black-rail-card {
+  position: relative;
+  height: 100%;
+  border-radius: 16px;
+  background: var(--color-rail);
+  box-shadow: 0 8px 24px rgba(15, 18, 34, 0.08), inset 0 0 0 1px rgba(255, 252, 249, 0.06);
+  overflow: hidden;
+}
+/* On a dark page a black card needs its edge drawn. */
+[data-theme="dark"] .gio-black-rail-card {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 252, 249, 0.09);
+}
+/* The page you're on: lilac text and a lilac bar, as in Gio's rails. */
+.gio-black-rail [aria-current="page"] { color: #d7c5fb !important; font-weight: 700 !important; }
+.gio-black-rail [aria-current="page"] svg { color: #d7c5fb; }
+.gio-black-rail li span:has(> button[aria-current="page"]),
+.gio-black-rail a[aria-current="page"]:not(.gio-rail-tile),
+.gio-black-rail li > button[aria-current="page"] {
+  position: relative;
+  background: rgba(215, 197, 251, 0.10) !important;
+}
+.gio-black-rail li span:has(> button[aria-current="page"])::before,
+.gio-black-rail a[aria-current="page"]:not(.gio-rail-tile)::before,
+.gio-black-rail li > button[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 2px;
+  height: 16px;
+  border-radius: 2px;
+  background: #d7c5fb;
+  transform: translateY(-50%);
+}
+/* The two layers inside the card: the full tree and the 64px rail. The one
+   going away fades first (120ms); the one arriving fades in after the width
+   has mostly moved. Icons never move. */
+.gio-rail-layer {
+  position: absolute;
+  inset: 0 auto 0 0;
+  transition: opacity 120ms var(--ease-out);
+}
+.gio-rail-layer[data-shown="true"] { transition: opacity 160ms var(--ease-out) 120ms; }
+.gio-rail-layer[data-shown="false"] { opacity: 0; pointer-events: none; }
+/* Rail tiles: Gio ATS's, 44px, white at 72% on black; the page you're on is a cream tile. */
+.gio-rail-tile {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  color: rgba(255, 252, 249, 0.72);
+  transition: background-color var(--dur-hover) ease, color var(--dur-hover) ease, transform var(--dur-press) var(--ease-out);
+}
+.gio-rail-tile:active { transform: scale(0.97); }
+@media (hover: hover) and (pointer: fine) {
+  .gio-rail-tile:hover { background: rgba(255, 252, 249, 0.08); color: #fffcf9; }
+}
+.gio-rail-tile[aria-current="page"] { background: #fffcf9 !important; color: #0d0d09 !important; box-shadow: none; }
+.gio-rail-tile[aria-current="page"] svg { color: #0d0d09; }
+.gio-rail-divider { width: 28px; height: 1px; background: rgba(255, 252, 249, 0.14); margin: 2px 0; }
+/* The open/close button on the card's edge: a lilac disc, like the reference. */
+.gio-rail-edge {
+  position: absolute;
+  top: 66px;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #d7c5fb;
+  color: #0d0d09;
+  box-shadow: 0 2px 6px rgba(13, 13, 9, 0.18), 0 0 0 3px var(--color-canvas);
+  transition: transform var(--dur-press) var(--ease-out);
+}
+.gio-rail-edge:active { transform: scale(0.92); }
+.gio-rail-edge svg { transition: transform var(--dur-sidebar) var(--ease-in-out); }
+.gio-rail-edge[aria-expanded="false"] svg { transform: rotate(180deg); }
+/* Variant B: the page floats too, as a rounded card (Gio Sales' frame). */
+[data-page-card="true"] .gio-page-column {
+  margin: 12px 12px 12px 0;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--color-surface);
+  box-shadow: 0 1px 2px rgba(13, 13, 9, 0.04), 0 0 0 1px var(--color-line);
+}
+@media (prefers-reduced-motion: reduce) {
+  .gio-rail-layer, .gio-rail-layer[data-shown="true"] { transition: opacity 120ms linear; }
+  .gio-rail-edge, .gio-rail-edge svg, .gio-rail-tile { transition: none; }
+}

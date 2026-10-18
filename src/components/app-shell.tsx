@@ -98,6 +98,8 @@ const SIDEBAR_W_KEY = "gio.sidebarWidth";
 const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 460;
 const SIDEBAR_DEFAULT = 240;
+/** The collapsed rail: Gio ATS and Gio Sales' 64px. */
+const RAIL_W = 64;
 
 /** The route's page id and `?v=` view, before the pages list says what
  * kind of page it is. */
@@ -654,6 +656,7 @@ export function AppShell() {
     <div
       ref={shellRootRef}
       className="flex h-screen overflow-hidden bg-canvas"
+      data-page-card={pageCardVariant()}
       style={{ "--gio-sidebar-w": `${sidebarWidth}px` } as React.CSSProperties}
     >
       {compact && railOpen ? (
@@ -665,62 +668,90 @@ export function AppShell() {
           aria-hidden
         />
       ) : null}
-      {compact && !railOpen ? null : (
-      <div
-        ref={compact ? exitOnly("rail") : undefined}
-        style={
-          compact
-            ? { width: "var(--gio-sidebar-w)" }
-            : {
-                width: sidebarOpen ? "var(--gio-sidebar-w)" : 0,
-                transition: resizing ? "none" : "width var(--dur-sidebar) var(--ease-in-out)",
-              }
-        }
-        data-sidebar={compact ? "over" : "beside"}
-        className={
-          compact
-            ? "gio-rail-over fixed inset-y-0 left-0 z-50 overflow-hidden border-r border-line bg-rail"
-            : "relative shrink-0 overflow-hidden border-r border-line bg-rail"
-        }
-      >
-        <div
-          style={{ width: "var(--gio-sidebar-w)" }}
-          className="flex h-screen flex-col"
-        >
-          <SidebarBody {...sidebarProps} />
-        </div>
-        {sidebarOpen && !compact && (
+      {compact ? (
+        railOpen ? (
           <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize sidebar"
-            onPointerDown={startResize}
-            onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT)}
-            className="group absolute inset-y-0 z-20"
-            style={{
-              right: -2,
-              width: 5,
-              cursor: "col-resize",
-              touchAction: "none",
-            }}
+            ref={exitOnly("rail")}
+            style={{ width: "var(--gio-sidebar-w)" }}
+            data-sidebar="over"
+            className="gio-rail-over fixed inset-y-0 left-0 z-50 overflow-hidden border-r border-line bg-rail"
           >
-            <span
-              aria-hidden
-              className={
-                "absolute inset-y-0 left-1/2 -translate-x-1/2 " +
-                (resizing
-                  ? "bg-lineStrong"
-                  : "bg-transparent group-hover:bg-lineStrong")
-              }
-              style={{ width: 1 }}
-            />
+            <div style={{ width: "var(--gio-sidebar-w)" }} className="flex h-screen flex-col">
+              <SidebarBody {...sidebarProps} />
+            </div>
           </div>
-        )}
-      </div>
+        ) : null
+      ) : (
+        /* The black rail (experiment, 2026-10-18): a floating card 12px in
+           from the window. Open, it holds the page tree; closed, it is Gio's
+           64px rail. Only its width moves; the two layers crossfade. */
+        <div
+          data-sidebar="beside"
+          className="gio-black-rail relative shrink-0"
+          style={{
+            width: (sidebarOpen ? sidebarWidth : RAIL_W) + 24,
+            padding: 12,
+            transition: resizing ? "none" : "width var(--dur-sidebar) var(--ease-in-out)",
+          }}
+        >
+          <div className="gio-black-rail-card">
+            <div
+              className="gio-rail-layer flex flex-col"
+              data-shown={sidebarOpen}
+              inert={!sidebarOpen}
+              style={{ width: sidebarWidth }}
+            >
+              <SidebarBody {...sidebarProps} />
+            </div>
+            <div
+              className="gio-rail-layer"
+              data-shown={!sidebarOpen}
+              inert={sidebarOpen}
+              style={{ width: RAIL_W }}
+            >
+              <CollapsedRail
+                selection={selection}
+                workspaceIcon={workspace?.icon ?? "📄"}
+                workspaceName={workspaceName}
+                onOpenPalette={() => setPaletteOpen(true)}
+                onOpenSettings={() => openSettings("preferences")}
+                onExpand={toggleRail}
+              />
+            </div>
+          </div>
+          <button
+            type="button"
+            className="gio-rail-edge"
+            onClick={toggleRail}
+            aria-expanded={sidebarOpen}
+            aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+            title={sidebarOpen ? "Collapse sidebar  ⌘\\" : "Expand sidebar  ⌘\\"}
+            style={{ right: 0 }}
+          >
+            <Glyph path="M15 6l-6 6 6 6" className="h-3.5 w-3.5" />
+          </button>
+          {sidebarOpen && (
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize sidebar"
+              onPointerDown={startResize}
+              onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT)}
+              className="group absolute z-20"
+              style={{ top: 64, bottom: 24, right: 8, width: 8, cursor: "col-resize", touchAction: "none" }}
+            >
+              <span
+                aria-hidden
+                className={"absolute inset-y-0 left-1/2 -translate-x-1/2 rounded-full " + (resizing ? "bg-accent" : "bg-transparent group-hover:bg-lineStrong")}
+                style={{ width: 2 }}
+              />
+            </div>
+          )}
+        </div>
       )}
 
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="gio-page-column flex min-w-0 flex-1 flex-col">
         <header
           style={{ height: "var(--spacing-topbar)" }}
           className="flex shrink-0 items-center gap-3 border-b border-line bg-surface px-3"
@@ -728,6 +759,7 @@ export function AppShell() {
           {/* Sidebar toggle — first child, present on views AND pages, never
               moves. Same panel glyph in both states: a chevron would
               promise a direction the button does not deliver. */}
+          {compact ? (
           <button
             type="button"
             // Close popovers anchored to sidebar rows — their anchor is
@@ -754,6 +786,7 @@ export function AppShell() {
               <path d="M9 4v16" />
             </svg>
           </button>
+          ) : null}
           {pageBack ? (
             <Link
               to={pageBack.to}
@@ -1383,6 +1416,105 @@ function EmptyWorkspace() {
 
 
 /* ─────────────────── Footer + account dropdown ─────────────────── */
+
+/** Experiment only: `localStorage["gio.exp.pageCard"] = "1"` floats the page
+ *  as a rounded card beside the rail (variant B, Gio Sales' frame). */
+function pageCardVariant(): "true" | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    return window.localStorage.getItem("gio.exp.pageCard") === "1" ? "true" : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The collapsed sidebar: Gio's 64px rail (Gio ATS, Gio Sales). Home, then
+ *  Search, New page, Inbox and Templates; your favourite pages as tiles;
+ *  Settings and the workspace at the bottom. Labels are tooltips. */
+function CollapsedRail({
+  selection,
+  workspaceIcon,
+  workspaceName,
+  onOpenPalette,
+  onOpenSettings,
+  onExpand,
+}: {
+  selection: Selection;
+  workspaceIcon: string;
+  workspaceName: string;
+  onOpenPalette: () => void;
+  onOpenSettings: () => void;
+  onExpand: () => void;
+}) {
+  const navigate = useNavigate();
+  const createAndOpen = useCreatePageAndOpen();
+  const favorites = useFavoritePages().slice(0, 6);
+  const here = selection && (selection.kind === "page" || selection.kind === "database") ? selection.id : null;
+  return (
+    <nav aria-label="Sidebar" className="flex h-full flex-col items-center" style={{ width: RAIL_W, padding: "12px 0", rowGap: 6 }}>
+      <Link
+        to="/home"
+        aria-label="Home"
+        title="Home"
+        aria-current={selection?.kind === "home" ? "page" : undefined}
+        className="gio-rail-tile"
+      >
+        <Glyph path={HOME_GLYPH} className="h-5 w-5" />
+      </Link>
+      <span className="gio-rail-divider" aria-hidden />
+      <button type="button" className="gio-rail-tile" aria-label="Search" title="Search  ⌘K" onClick={onOpenPalette}>
+        <Glyph path="M11 4a7 7 0 100 14 7 7 0 000-14zm5.5 12.5l4 4" className="h-5 w-5" />
+      </button>
+      <button
+        type="button"
+        className="gio-rail-tile"
+        aria-label="New page"
+        title="New page"
+        onClick={() => {
+          void (async () => {
+            try {
+              await createAndOpen({ seedProps: {}, parentId: here });
+            } catch {
+              if (here) await createAndOpen({ seedProps: {} }).catch(() => undefined);
+            }
+          })();
+        }}
+      >
+        <Glyph path="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" className="h-5 w-5" />
+      </button>
+      <InboxButton rail />
+      <TemplatesButton rail />
+      {favorites.length ? <span className="gio-rail-divider" aria-hidden /> : null}
+      {favorites.map((p) => (
+        <button
+          key={p.id}
+          type="button"
+          className="gio-rail-tile"
+          aria-label={p.title?.trim() || "Untitled"}
+          title={p.title?.trim() || "Untitled"}
+          aria-current={here === p.id ? "page" : undefined}
+          onClick={() => {
+            setPageOrigin(p.id, { kind: "search" });
+            void navigate({ to: "/p/$pageId", params: { pageId: p.id } });
+          }}
+        >
+          <Ico icon={p.icon || (p.is_database ? "🗂️" : "📄")} size={20} />
+        </button>
+      ))}
+      <div className="mt-auto flex flex-col items-center" style={{ rowGap: 6 }}>
+        <button type="button" className="gio-rail-tile" aria-label="Settings" title="Settings" onClick={onOpenSettings}>
+          <Glyph
+            path="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"
+            className="h-5 w-5"
+          />
+        </button>
+        <button type="button" className="gio-rail-tile" aria-label={workspaceName} title={workspaceName} onClick={onExpand}>
+          <Ico icon={workspaceIcon} size={20} />
+        </button>
+      </div>
+    </nav>
+  );
+}
 
 function FooterAccount({
   userEmail,

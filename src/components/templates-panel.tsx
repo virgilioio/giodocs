@@ -19,7 +19,8 @@ import { TemplateRowsSkeleton } from "./phone-skeletons";
 
 export const TEMPLATE_ICON = "M5 4h14v5H5zM5 13h6v7H5zM15 13h4M15 17h4";
 
-export function TemplatesButton() {
+/** `rail`: a 44px tile on the collapsed black rail. */
+export function TemplatesButton({ rail = false }: { rail?: boolean } = {}) {
   return (
     <Popover
       width={400}
@@ -29,12 +30,14 @@ export function TemplatesButton() {
           type="button"
           onClick={onClick}
           aria-expanded={open}
-          className={`mt-1 flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-ui text-secondary hover:bg-railHover ${open ? "bg-railHover" : ""}`}
+          aria-label={rail ? "Templates" : undefined}
+          title={rail ? "Templates" : undefined}
+          className={rail ? `gio-rail-tile ${open ? "bg-railHover" : ""}` : `mt-1 flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-ui text-secondary hover:bg-railHover ${open ? "bg-railHover" : ""}`}
         >
-          <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden className="text-muted">
+          <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden className={rail ? "h-5 w-5" : "text-muted"}>
             <path d={TEMPLATE_ICON} />
           </svg>
-          <span className="flex-1 text-left">Templates</span>
+          {rail ? null : <span className="flex-1 text-left">Templates</span>}
         </button>
       )}
     >
