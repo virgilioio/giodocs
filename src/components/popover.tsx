@@ -163,7 +163,7 @@ export function Popover({
                 // Grow from the trigger.
                 transformOrigin: `${pos?.above ? "bottom" : "top"} ${align === "end" ? "right" : "left"}`,
               }}
-              className="rounded-lg border border-line bg-surface p-1 shadow-popover animate-popIn"
+              className="gio-menu animate-popIn"
             >
               {children(close)}
             </div>,

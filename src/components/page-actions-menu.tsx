@@ -89,58 +89,29 @@ export function PageMoreButton({ open, onClick, className }: {
 /* ────────────── Row primitives ────────────── */
 
 function GroupSep() {
-  return <div style={{ borderBottom: "1px solid var(--color-sunken)", padding: "4px 0" }} />;
+  return <div aria-hidden className="gio-msep" />;
 }
 
 function ActionRow({
-  icon, label, hint, hintKind, onClick, danger,
+  icon, label, hint, onClick, danger,
 }: {
   icon?: string;
   label: string;
   hint?: ReactNode;
+  /** Shortcuts and values share the UI font now (Notion's menus); kept for callers. */
   hintKind?: "shortcut" | "value";
   onClick?: () => void;
   danger?: boolean;
 }) {
-  const [hover, setHover] = useState(false);
-  const bg = hover ? (danger ? "var(--color-dangerTint)" : "var(--color-rail)") : "transparent";
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        display: "flex", alignItems: "center", gap: 10, width: "100%",
-        padding: "6px 9px", borderRadius: 8, background: bg,
-        color: danger ? "var(--color-danger)" : "var(--color-body)",
-        textAlign: "left", cursor: "pointer",
-      }}
-    >
+    <button type="button" onClick={onClick} className="gio-mrow" data-danger={danger || undefined}>
       {icon != null && (
-        <Ic path={icon} size={15} stroke={1.9}
-          color={danger ? "currentColor" : "var(--color-muted)"}
-          className="shrink-0" />
-      )}
-      <span style={{ flex: 1, fontSize: 14.5, lineHeight: 1.3 }}>{label}</span>
-      {hint != null && (
-        <span
-          style={{
-            marginLeft: "auto",
-            fontFamily: hintKind === "shortcut"
-              ? "'Spline Sans Mono', ui-monospace, monospace"
-              : "'Lato', system-ui, sans-serif",
-            fontSize: hintKind === "shortcut" ? 11.5 : 12.5,
-            color: "var(--color-whisper)",
-            maxWidth: 118,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {hint}
+        <span className="gio-mrow-lead" aria-hidden>
+          <Ic path={icon} size={20} stroke={1.6} />
         </span>
       )}
+      <span className="truncate">{label}</span>
+      {hint != null && <span className="gio-mrow-hint">{hint}</span>}
     </button>
   );
 }
@@ -208,21 +179,12 @@ function TogglePill({ on, onChange }: { on: boolean; onChange: () => void }) {
 function ToggleRow({ icon, label, on, onChange }: {
   icon: string; label: string; on: boolean; onChange: () => void;
 }) {
-  const [hover, setHover] = useState(false);
   return (
-    <div
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      onClick={onChange}
-      style={{
-        display: "flex", alignItems: "center", gap: 10,
-        padding: "6px 9px", borderRadius: 8,
-        background: hover ? "var(--color-rail)" : "transparent",
-        color: "var(--color-body)", cursor: "pointer",
-      }}
-    >
-      <Ic path={icon} size={15} stroke={1.9} color="var(--color-muted)" className="shrink-0" />
-      <span style={{ flex: 1, fontSize: 14.5 }}>{label}</span>
+    <div onClick={onChange} className="gio-mrow">
+      <span className="gio-mrow-lead" aria-hidden>
+        <Ic path={icon} size={20} stroke={1.6} />
+      </span>
+      <span className="truncate">{label}</span>
       <TogglePill on={on} onChange={onChange} />
     </div>
   );
@@ -447,12 +409,10 @@ export function PageActionsMenu({
         ref={exitRef("pop", panelRef)}
         role="menu"
         onClick={(e) => e.stopPropagation()}
+        className="gio-menu"
         style={{
           position: "fixed", top: 48, right: 12, zIndex: 81,
-          width: 302, background: "var(--color-surface)",
-          border: "1px solid var(--color-line)", borderRadius: 12,
-          boxShadow: "0 18px 48px rgba(13,13,9,.16)",
-          padding: 5, animation: "var(--animate-popIn)",
+          width: 302, animation: "var(--animate-popIn)",
           transformOrigin: "top right",
         }}
       >
@@ -588,12 +548,9 @@ export function PageActionsMenu({
             </div>
 
             {/* FOOTER — no-op search hint */}
-            <div style={{
-              borderTop: "1px solid var(--color-sunken)", marginTop: 3,
-              padding: "8px 10px 5px", display: "flex", gap: 8,
-              alignItems: "center", fontSize: 13.5, color: "var(--color-whisper)",
-            }}>
-              <Ic path={P.search} size={12} color="var(--color-whisper)" />
+            <GroupSep />
+            <div className="gio-mfoot flex items-center" style={{ gap: 8 }}>
+              <Ic path={P.search} size={14} />
               <span>Search all actions…</span>
             </div>
           </>
