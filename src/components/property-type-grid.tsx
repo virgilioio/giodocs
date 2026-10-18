@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { PROPERTY_KINDS, type PropertyType } from "@/lib/property-kinds";
 import { useIsPhone } from "@/lib/use-media";
+import { MenuHead, MenuIcon, MenuLead, MenuSearch, MenuSep } from "./menu-parts";
 
 /* Add property in one step (2026-10-11, Notion's): a name field on top,
  * then every type in a two-column grid with its icon, grouped — the
@@ -29,12 +30,9 @@ function Cell({ label, icon, onPick, title }: { label: string; icon?: string; on
       onClick={onPick}
       title={title}
       data-type-option={label}
-      className="flex min-w-0 items-center gap-2 rounded-md text-left text-ui text-body hover:bg-rail"
-      style={{ height: 32, padding: "0 8px" }}
+      className="gio-mrow min-w-0"
     >
-      <svg viewBox="0 0 24 24" width={16} height={16} aria-hidden className="shrink-0 text-muted">
-        {icon ? <path d={icon} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" /> : null}
-      </svg>
+      <MenuLead>{icon ? <MenuIcon path={icon} /> : null}</MenuLead>
       <span className="truncate">{label}</span>
     </button>
   );
@@ -42,8 +40,8 @@ function Cell({ label, icon, onPick, title }: { label: string; icon?: string; on
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div style={{ padding: "4px 0" }}>
-      <div className="px-2 pb-1 text-label text-faint">{title}</div>
+    <div>
+      <MenuHead>{title}</MenuHead>
       <div className="grid grid-cols-2" style={{ gap: 1 }}>
         {children}
       </div>
@@ -77,9 +75,9 @@ export function PropertyTypeGrid({
   };
   const builtIns = onBuiltIn ? BUILT_INS.filter((b) => !shownBuiltIns.includes(b.key)) : [];
   return (
-    <div data-property-type-grid style={{ padding: "2px 2px 4px" }}>
-      <input
-        ref={ref}
+    <div data-property-type-grid>
+      <MenuSearch
+        inputRef={ref}
         value={name}
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => {
@@ -91,15 +89,13 @@ export function PropertyTypeGrid({
         }}
         placeholder="Type property name…"
         aria-label="Property name"
-        className="mb-1 w-full rounded-md border border-line bg-surface text-ui text-strong focus:border-accent focus:outline-none"
-        style={{ padding: "6px 9px" }}
       />
       <Section title="Select type">{BASIC.map(cell)}</Section>
-      <div className="mx-2 border-t border-lineSoft" />
+      <MenuSep />
       <Section title="Worked out or linked">{WORKED.map(cell)}</Section>
       {builtIns.length ? (
         <>
-          <div className="mx-2 border-t border-lineSoft" />
+          <MenuSep />
           <Section title="Built in">
             {builtIns.map((b) => (
               <Cell key={b.key} label={b.label} icon={b.icon} onPick={() => onBuiltIn!(b.key)} />

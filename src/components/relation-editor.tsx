@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Ico } from "./emoji-icon";
+import { MenuLead, MenuPageRow, MenuSearch } from "./menu-parts";
 import type { PageListItem } from "@/lib/types";
 
 /* Editing a relation: the pages it links to (open one, or take it off),
@@ -37,22 +38,20 @@ export function RelationEditor({
   );
 
   return (
-    <div style={{ padding: "2px 0" }}>
+    <div>
       {linked.length > 0 ? (
         <ul aria-label="Linked pages" style={{ maxHeight: 180, overflowY: "auto" }}>
           {linked.map((p) => (
-            <li
-              key={p.id}
-              className="group/rel flex items-center rounded-md hover:bg-rail"
-              style={{ gap: 6, padding: "4px 6px" }}
-            >
+            <li key={p.id} className="gio-mrow group/rel" style={{ gap: 4 }}>
               <button
                 type="button"
                 onClick={() => onOpenPage(p.id)}
-                className="flex min-w-0 flex-1 items-center text-left text-row text-strong hover:underline"
-                style={{ gap: 6 }}
+                className="flex min-w-0 flex-1 items-center text-left text-strong hover:underline"
+                style={{ gap: 8 }}
               >
-                <Ico icon={p.icon || "📄"} size={15} />
+                <MenuLead>
+                  <Ico icon={p.icon || "📄"} size={16} />
+                </MenuLead>
                 <span className="truncate">{p.title || "Untitled"}</span>
               </button>
               <button
@@ -69,54 +68,44 @@ export function RelationEditor({
           ))}
         </ul>
       ) : null}
-      <div style={{ padding: "6px 6px 4px" }}>
-        <input
-          autoFocus
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && matches[0]) {
-              e.preventDefault();
-              onAdd(matches[0].id);
-              setQ("");
-            }
-          }}
-          placeholder="Link a page…"
-          aria-label="Find a page to link"
-          className="w-full rounded-md border border-line bg-surface text-row text-body focus:border-accent"
-          style={{ padding: "5px 8px" }}
-        />
-      </div>
+      <MenuSearch
+        autoFocus
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && matches[0]) {
+            e.preventDefault();
+            onAdd(matches[0].id);
+            setQ("");
+          }
+        }}
+        placeholder="Link a page…"
+        aria-label="Find a page to link"
+      />
       {scopeNote ? (
-        <div className="text-caption text-faint" style={{ padding: "0 10px 4px" }}>
+        <div className="gio-mfoot" style={{ paddingTop: 0 }}>
           {scopeNote}
         </div>
       ) : null}
       <ul aria-label="Pages you can link" style={{ maxHeight: 220, overflowY: "auto" }}>
         {matches.slice(0, MAX_SHOWN).map((p) => (
           <li key={p.id}>
-            <button
-              type="button"
-              onClick={() => {
+            <MenuPageRow
+              icon={p.icon || "📄"}
+              label={p.title || "Untitled"}
+              onPick={() => {
                 onAdd(p.id);
                 setQ("");
               }}
-              className="flex w-full items-center rounded-md text-left text-row text-body hover:bg-rail"
-              style={{ gap: 6, padding: "5px 8px" }}
-            >
-              <Ico icon={p.icon || "📄"} size={15} />
-              <span className="truncate">{p.title || "Untitled"}</span>
-            </button>
+            />
           </li>
         ))}
         {matches.length === 0 ? (
-          <li className="text-meta text-muted" style={{ padding: "6px 10px 8px" }}>
+          <li className="gio-mfoot">
             {query ? "No pages match." : "Every page that fits is linked."}
           </li>
         ) : matches.length > MAX_SHOWN ? (
-          <li className="text-caption text-faint" style={{ padding: "4px 10px 6px" }}>
-            {matches.length - MAX_SHOWN} more. Type to narrow it down.
-          </li>
+          <li className="gio-mfoot">{matches.length - MAX_SHOWN} more. Type to narrow it down.</li>
         ) : null}
       </ul>
     </div>
