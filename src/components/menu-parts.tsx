@@ -8,7 +8,8 @@
  * <MenuLead>, and `data-danger` / `data-active` mark Delete-like rows and the
  * keyboard highlight.
  */
-import type { ReactNode } from "react";
+import type { InputHTMLAttributes, ReactNode, Ref } from "react";
+import { Ico } from "./emoji-icon";
 
 /** The 20px leading slot, so every label in a menu starts on one line. */
 export function MenuLead({ children }: { children?: ReactNode }) {
@@ -117,5 +118,46 @@ export function MenuFoot({ children }: { children: ReactNode }) {
       <MenuSep />
       <div className="gio-mfoot">{children}</div>
     </>
+  );
+}
+
+/** A page in a menu: its icon in the leading slot, its title, a short hint.
+ *  `icon` undefined leaves the slot for `lead` (a + for "Create …"). */
+export function MenuPageRow({
+  icon,
+  lead,
+  label,
+  hint,
+  onPick,
+}: {
+  icon?: string | null;
+  lead?: ReactNode;
+  label: string;
+  hint?: string;
+  onPick: () => void;
+}) {
+  return (
+    <button type="button" onClick={onPick} className="gio-mrow">
+      <MenuLead>{icon !== undefined ? <Ico icon={icon} size={16} /> : lead}</MenuLead>
+      <span className="truncate">{label}</span>
+      {hint ? <span className="gio-mrow-hint">{hint}</span> : null}
+    </button>
+  );
+}
+
+/** Notion's search field at the top of a picker: 28px, the UI size. */
+export function MenuSearch({
+  inputRef,
+  className,
+  ...rest
+}: InputHTMLAttributes<HTMLInputElement> & { inputRef?: Ref<HTMLInputElement> }) {
+  return (
+    <div className="gio-msearch-box">
+      <input
+        ref={inputRef}
+        {...rest}
+        className={className ? `gio-msearch ${className}` : "gio-msearch"}
+      />
+    </div>
   );
 }

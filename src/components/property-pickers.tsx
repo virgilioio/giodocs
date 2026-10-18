@@ -341,9 +341,7 @@ function TagsPickerBody({
             </button>
           );
         })}
-        {merged.length === 0 ? (
-          <p className="gio-mfoot">No tags yet.</p>
-        ) : null}
+        {merged.length === 0 ? <p className="gio-mfoot">No tags yet.</p> : null}
       </div>
       <MenuSep />
       <div className="flex gap-1 p-1">

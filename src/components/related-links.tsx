@@ -15,6 +15,7 @@
 import { useMemo, useRef, useState } from "react";
 import { Popover } from "./popover";
 import { Ico } from "./emoji-icon";
+import { MenuFoot, MenuHead, MenuLead, MenuSearch, MenuSep } from "./menu-parts";
 import {
   hrefOf,
   isUrlish,
@@ -270,41 +271,24 @@ function RelatedPicker({
 
   return (
     <div style={{ maxHeight: 340, overflow: "auto" }}>
-      <div
-        className="truncate"
-        style={{
-          padding: "7px 10px 3px",
-          fontFamily: "var(--font-display)",
-          fontSize: 11.5,
-          fontWeight: 700,
-          letterSpacing: ".07em",
-          textTransform: "uppercase",
-          color: "var(--color-faint)",
+      <MenuHead>Related links</MenuHead>
+      <MenuSearch
+        inputRef={(el) => {
+          if (el && !focused.current) {
+            focused.current = true;
+            el.focus();
+          }
         }}
-      >
-        Related links
-      </div>
-      <div style={{ padding: "2px 4px 4px" }}>
-        <input
-          ref={(el) => {
-            if (el && !focused.current) {
-              focused.current = true;
-              el.focus();
-            }
-          }}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              pickFirst();
-            }
-          }}
-          placeholder="Search pages, or paste a URL"
-          className="w-full border border-line bg-track"
-          style={{ borderRadius: 7, padding: "5px 7px", fontSize: 13 }}
-        />
-      </div>
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            pickFirst();
+          }
+        }}
+        placeholder="Search pages, or paste a URL"
+      />
 
       {urlRow ? (
         <PickRow
@@ -325,14 +309,7 @@ function RelatedPicker({
 
       {unresolved.length > 0 ? (
         <>
-          <div
-            aria-hidden
-            style={{
-              height: 1,
-              background: "var(--color-lineSoft)",
-              margin: "4px 3px",
-            }}
-          />
+          <MenuSep />
           {unresolved.map((e) => (
             <PickRow
               key={e}
@@ -343,18 +320,7 @@ function RelatedPicker({
         </>
       ) : null}
 
-      <div
-        style={{
-          borderTop: "1px solid var(--color-lineSoft)",
-          margin: "4px 4px 0",
-          padding: "8px 7px 4px",
-          fontSize: 12.5,
-          lineHeight: 1.45,
-          color: "var(--color-secondary)",
-        }}
-      >
-        {footer}
-      </div>
+      <MenuFoot>{footer}</MenuFoot>
     </div>
   );
 }
@@ -373,32 +339,17 @@ function PickRow({
   onRemove?: () => void;
 }) {
   return (
-    <div className="flex items-center" style={{ gap: 6, padding: "0 3px" }}>
+    <div className="flex items-center" style={{ gap: 4 }}>
       <button
         type="button"
         onClick={onPick}
         disabled={!onPick}
-        className="flex min-w-0 flex-1 items-center rounded-md text-left hover:bg-sunken"
-        style={{
-          gap: 7,
-          padding: "5px 7px",
-          fontSize: 13.5,
-          color: "var(--color-body)",
-          background: "transparent",
-          border: 0,
-          cursor: onPick ? "pointer" : "default",
-        }}
+        className="gio-mrow min-w-0 flex-1"
+        style={onPick ? undefined : { cursor: "default", color: "var(--color-muted)" }}
       >
-        {icon !== undefined ? <Ico icon={icon} size={14} /> : null}
-        <span className="min-w-0 flex-1 truncate">{label}</span>
-        {hint ? (
-          <span
-            className="truncate"
-            style={{ fontSize: 12, color: "var(--color-faint)" }}
-          >
-            {hint}
-          </span>
-        ) : null}
+        <MenuLead>{icon !== undefined ? <Ico icon={icon} size={16} /> : null}</MenuLead>
+        <span className="truncate">{label}</span>
+        {hint ? <span className="gio-mrow-hint">{hint}</span> : null}
       </button>
       {onRemove ? (
         <Remove onClick={onRemove} label={`Remove ${label}`} />
