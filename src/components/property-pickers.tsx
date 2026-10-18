@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { formatNumber, type NumberFormat } from "@/lib/number-format";
 import { Popover } from "./popover";
+import { MenuCheck, MenuLead, MenuSep } from "./menu-parts";
 import {
   dateSpan,
   dueDeltaDays,
@@ -138,10 +139,7 @@ export function OwnerPicker({
                 type="button"
                 data-person-option={m.user_id}
                 aria-pressed={multi ? on : undefined}
-                className={
-                  "flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left hover:bg-rail " +
-                  (on ? "font-bold" : "")
-                }
+                className="gio-mrow"
                 onClick={() => {
                   if (multi) {
                     onPick(togglePerson(chosen, m.user_id, false));
@@ -151,24 +149,27 @@ export function OwnerPicker({
                   close();
                 }}
               >
-                <MiniAvatar profile={m.profiles} />
-                <span className="text-meta">
+                <MenuLead>
+                  <MiniAvatar profile={m.profiles} />
+                </MenuLead>
+                <span className="truncate">
                   {m.profiles?.full_name ?? m.profiles?.email ?? "Unknown"}
                 </span>
-                {on ? <span className="ml-auto text-accent">✓</span> : null}
+                {on ? <MenuCheck /> : null}
               </button>
             );
           })}
-          <div className="my-1 border-t border-lineSoft" />
+          <MenuSep />
           <button
             type="button"
-            className="w-full rounded-sm px-2 py-1 text-left text-meta text-muted hover:bg-rail"
+            className="gio-mrow"
+            style={{ color: "var(--color-muted)" }}
             onClick={() => {
               onPick(null);
               close();
             }}
           >
-            {emptyLabel}
+            <span className="truncate">{emptyLabel}</span>
           </button>
         </div>
       )}
@@ -202,7 +203,7 @@ export function SelectPicker({
       {(close) => (
         <div>
           {options.length === 0 ? (
-            <div className="px-2 py-1 text-meta text-muted">
+            <div className="gio-mfoot">
               {onCreate ? "No options yet. Add the first one below." : "No options."}
             </div>
           ) : null}
@@ -210,14 +211,16 @@ export function SelectPicker({
             <button
               key={o.value}
               type="button"
-              className="flex w-full items-center rounded-sm px-2 py-1 text-left hover:bg-rail"
+              className="gio-mrow"
               onClick={() => {
                 onPick(o.value);
                 close();
               }}
             >
-              <StatusChip label={o.label} tint={o.tint} ink={o.ink} />
-              {o.value === value ? <span className="ml-auto text-accent">✓</span> : null}
+              <span className="truncate">
+                <StatusChip label={o.label} tint={o.tint} ink={o.ink} />
+              </span>
+              {o.value === value ? <MenuCheck /> : null}
             </button>
           ))}
           {onCreate ? (
@@ -231,16 +234,17 @@ export function SelectPicker({
               }}
             />
           ) : null}
-          <div className="my-1 border-t border-lineSoft" />
+          <MenuSep />
           <button
             type="button"
-            className="w-full rounded-sm px-2 py-1 text-left text-meta text-muted hover:bg-rail"
+            className="gio-mrow"
+            style={{ color: "var(--color-muted)" }}
             onClick={() => {
               onPick(null);
               close();
             }}
           >
-            Clear
+            <span className="truncate">Clear</span>
           </button>
         </div>
       )}
@@ -329,19 +333,19 @@ function TagsPickerBody({
             <button
               key={t}
               type="button"
-              className="flex w-full items-center justify-between rounded-sm px-2 py-1 text-left text-meta hover:bg-rail"
+              className="gio-mrow"
               onClick={() => onSet(on ? value.filter((x) => x !== t) : [...value, t])}
             >
-              <span>{t}</span>
-              {on ? <span className="text-accent">✓</span> : null}
+              <span className="truncate">{t}</span>
+              {on ? <MenuCheck /> : null}
             </button>
           );
         })}
         {merged.length === 0 ? (
-          <p className="px-2 py-1 text-meta text-muted">No tags yet.</p>
+          <p className="gio-mfoot">No tags yet.</p>
         ) : null}
       </div>
-      <div className="my-1 border-t border-lineSoft" />
+      <MenuSep />
       <div className="flex gap-1 p-1">
         <input
           value={neu}
