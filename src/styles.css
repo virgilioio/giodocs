@@ -97,6 +97,8 @@
   --shadow-card: 0 1px 2px rgba(13,13,9,.05);
   --shadow-cardHover: 0 3px 10px rgba(13,13,9,.08);
   --shadow-popover: 0 18px 48px rgba(13,13,9,.16);
+  /* Menus (Notion's): a hairline ring and a short, soft drop. */
+  --shadow-menu: 0 0 0 1px rgba(13,13,9,.07), 0 3px 6px rgba(13,13,9,.06), 0 9px 24px rgba(13,13,9,.14);
   --shadow-modal: 0 30px 80px rgba(13,13,9,.26);
   --shadow-toast: 0 10px 30px rgba(13,13,9,.22);
 
@@ -369,6 +371,7 @@ button:is([class~="bg-btn"], [class~="border-line"][class~="bg-surface"], .gio-p
   --shadow-card: 0 1px 2px rgba(0,0,0,.35);
   --shadow-cardHover: 0 3px 10px rgba(0,0,0,.45);
   --shadow-popover: 0 18px 48px rgba(0,0,0,.55);
+  --shadow-menu: 0 0 0 1px rgba(255,252,249,.08), 0 3px 6px rgba(0,0,0,.3), 0 9px 24px rgba(0,0,0,.5);
   --shadow-modal: 0 30px 80px rgba(0,0,0,.65);
   --shadow-toast: 0 10px 30px rgba(0,0,0,.6);
 }
@@ -913,13 +916,16 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
   padding: 0 10px calc(20px + env(safe-area-inset-bottom));
 }
 .gio-menu-sheet [data-spec-body] { max-height: none !important; }
-.gio-menu-sheet [role="menuitem"] {
+.gio-menu-sheet [role="menuitem"],
+.gio-menu-sheet .gio-mrow {
   min-height: 48px;
   padding: 10px 12px !important;
   gap: 14px !important;
 }
-.gio-menu-sheet [role="menuitem"] > .truncate { font-size: 17px !important; }
-.gio-menu-sheet [role="menuitem"]:active { background: var(--color-rail); }
+.gio-menu-sheet [role="menuitem"] > .truncate,
+.gio-menu-sheet .gio-mrow > .truncate { font-size: 17px !important; line-height: 1.4; }
+.gio-menu-sheet [role="menuitem"]:active,
+.gio-menu-sheet .gio-mrow:active { background: var(--color-rail); }
 .gio-menu-sheet input, .gio-menu-sheet textarea { font-size: 16px !important; }
 /* A popover's own contents (pickers) are drawn at desktop sizes; scaled up
    whole so rows become thumb-sized without restyling each picker. */
@@ -956,6 +962,83 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
 .gio-ico { color: rgb(from currentColor r g b / 1); }
 @supports not (color: rgb(from currentColor r g b / 1)) {
   .gio-black-rail .gio-ico { color: #fffcf9; }
+}
+
+/* ─────────────────────────── MENUS (Notion's, Allan 2026-10-18) ───────────────────────────
+   One row grammar for every desktop menu, measured from Notion's: 28px rows,
+   a 20px icon slot 8px from the label, 4px panel padding, dividers inset
+   12px from the panel's edge, a 12px sentence-case header, shortcuts and the
+   footer in the UI font. Lato and Gio's colours stay. Phones keep their
+   thumb-sized sheet rows (.gio-menu-sheet). */
+.gio-menu {
+  background: var(--color-surface);
+  border-radius: 12px;
+  padding: 4px;
+  box-shadow: var(--shadow-menu);
+}
+.gio-mrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  text-align: left;
+  font-size: var(--text-ui);
+  line-height: 20px;
+  color: var(--color-body);
+  cursor: pointer;
+}
+.gio-mrow > .truncate { flex: 1; min-width: 0; }
+/* The leading slot: an icon, avatar, swatch or dot, always 20px, so every
+   label in a menu starts on the same line. */
+.gio-mrow-lead {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--color-strong);
+}
+.gio-mrow-hint {
+  flex: none;
+  max-width: 112px;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--color-faint);
+  font-variant-numeric: tabular-nums;
+}
+.gio-mrow-chev { flex: none; color: var(--color-faint); }
+.gio-mrow:disabled { color: var(--color-faint); cursor: not-allowed; }
+.gio-mrow:disabled .gio-mrow-lead { color: inherit; }
+/* Delete and friends: red where there's no hover (phones), and on desktop
+   neutral until pointed at or focused, then the label and icon turn red. */
+.gio-mrow[data-danger] { color: var(--color-danger); }
+.gio-mrow[data-danger] .gio-mrow-lead { color: inherit; }
+@media (hover: hover) and (pointer: fine) {
+  .gio-mrow:not(:disabled):hover { background: var(--color-rail); }
+  .gio-mrow[data-danger]:not(:hover):not(:focus-visible) { color: var(--color-body); }
+}
+.gio-msep { height: 1px; margin: 4px 8px; background: var(--color-line); }
+.gio-mhead {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--color-muted);
+}
+.gio-mfoot {
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--color-faint);
 }
 
 /* ─────────────────────────── THE BLACK RAIL (Allan, 2026-10-18) ───────────────────────────

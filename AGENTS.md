@@ -582,6 +582,23 @@ frame. Colours live in styles.css (THE BLACK RAIL).
   headings), and 12px on both sides of callouts, quotes, code, tables,
   columns, images and inline databases. Small text: 5, 28 / 20 / 14, 4, 10.
 
+## Decisions (Allan, 2026-10-18: menus, Notion's)
+Every desktop menu takes Notion's row grammar, measured from Notion's own
+menus; Lato and Gio's colours stay. The classes live in styles.css (MENUS):
+`.gio-menu` (the panel: radius 12, 4px padding, `--shadow-menu`, a hairline
+ring instead of a border), `.gio-mrow` (28px rows: 4px 8px, 14px on a 20px
+line, 6px corners), `.gio-mrow-lead` (the 20px leading slot, icons 20px at
+a 1.6 stroke in `--color-strong`), `.gio-mrow-hint` (shortcuts and values
+in the UI font, 12px, faint), `.gio-mrow-chev` (submenu chevron; a "›" hint
+draws it), `.gio-msep` (dividers inset 12px from the panel's edge),
+`.gio-mhead` (a 12px sentence-case header) and `.gio-mfoot` (a 12px footer).
+- RowMenu / SpecMenu, the page ⋯ menu and Popover use them; new menus use
+  them too, never their own row padding.
+- Delete and other danger rows look like any other row until pointed at or
+  focused, then the label and icon turn red (`data-danger`). Phones have no
+  hover, so they stay red there.
+- Phones keep the 48px sheet rows (.gio-menu-sheet).
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.
