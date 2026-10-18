@@ -949,6 +949,15 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
   }
 }
 
+/* Icons at full strength (2026-10-18). A colour emoji takes the alpha of the
+   text colour, so <Ico> keeps the colour and drops the alpha; browsers
+   without relative colours fall back to solid cream in the black rail, the
+   one place whose text colours are translucent. */
+.gio-ico { color: rgb(from currentColor r g b / 1); }
+@supports not (color: rgb(from currentColor r g b / 1)) {
+  .gio-black-rail .gio-ico { color: #fffcf9; }
+}
+
 /* ─────────────────────────── THE BLACK RAIL (Allan, 2026-10-18) ───────────────────────────
    Gio's DNA in Gio Docs: the sidebar is a floating black card, 12px in from
    the window, like the rail in Gio ATS and Gio Sales; collapsed it is that
