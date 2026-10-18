@@ -949,7 +949,7 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
   }
 }
 
-/* ─────────────────────────── THE BLACK RAIL (experiment, 2026-10-18) ───────────────────────────
+/* ─────────────────────────── THE BLACK RAIL (Allan, 2026-10-18) ───────────────────────────
    Gio's DNA in Gio Docs: the sidebar is a floating black card, 12px in from
    the window, like the rail in Gio ATS and Gio Sales; collapsed it is that
    same 64px rail. It stays black in both themes: the scope below sets every

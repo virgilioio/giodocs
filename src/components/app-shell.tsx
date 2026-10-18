@@ -692,7 +692,7 @@ export function AppShell() {
           </div>
         ) : null
       ) : (
-        /* The black rail (experiment, 2026-10-18): a floating card 12px in
+        /* The black rail (Allan, 2026-10-18): a floating card 12px in
            from the window. Open, it holds the page tree; closed, it is Gio's
            64px rail. Only its width moves; the two layers crossfade. */
         <div

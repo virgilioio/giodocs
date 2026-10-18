@@ -281,8 +281,8 @@ provider Virgilio already has; don't build them until asked.
   and table headers 12, captions 12. Tokens in styles.css (text-h1/h2/h3
   for heading blocks, text-display for the title, text-prose for body).
   Exports use the same sizes.
-- Callouts (Notion's): 16px padding, 4px corners, 12px icon gap, ordinary
-  block spacing. The block gutter (Notion's): 44px wide, a 24×24 + with a
+- Callouts (Notion's): 16px padding, 4px corners, 12px icon gap; since
+  2026-10-18 they get the set-piece spacing (see "the black rail"). The block gutter (Notion's): 44px wide, a 24×24 + with a
   16px glyph, 2px, a 14×24 six-dot handle, 4px to the text, centred on the
   first line; quiet at rest, full colour with a soft wash when pointed at.
 - `.gio-line` (the shared editable metrics) lives in the base layer so a
@@ -317,7 +317,8 @@ provider Virgilio already has; don't build them until asked.
   shows or hides each section (home_prefs.hidden).
 
 ## Decisions (Allan, 2026-10-11: templates in the sidebar, new-page start)
-- Templates sit in the sidebar under Inbox (templates-panel.tsx): every
+- Templates sit in the sidebar under Home (templates-panel.tsx; the Inbox
+  moved to the sidebar's top row on 2026-10-18): every
   template grouped as Pages or "Rows of <database>", searchable, each
   opened to edit or Used to start a page; New template makes a private
   page that is a template. Starters (src/lib/starter-templates.ts: To-do
@@ -544,6 +545,42 @@ provider Virgilio already has; don't build them until asked.
   custom emoji, Remove) or uploaded: Upload image saves the image as a
   custom emoji and uses it (workspace-icon-picker.tsx). Popovers sit above
   dialogs (--z-menu), so a picker opened inside Settings isn't covered.
+
+## Decisions (Allan, 2026-10-18: the black rail, Gio's DNA)
+Gio Docs takes the rail of Gio ATS and Gio Sales. Desktop only (1120px
+and up); compact screens keep the sidebar over the page, phones their own
+frame. Colours live in styles.css (THE BLACK RAIL).
+- The sidebar is a floating black card (#0d0d09, radius 16, 12px in from
+  the window, the ATS rail's shadow), black in both themes: `.gio-black-rail`
+  sets every colour token the sidebar uses, so rows, search, sections and
+  the footer need no styles of their own; menus it opens are portalled and
+  keep the page's theme. In dark mode its edge is drawn.
+- The page beside it is a rounded card too (radius 16, 12px from the
+  window: `[data-page-card]` on the shell, `.gio-page-column`), as in Gio
+  Sales.
+- Open, the card's top row holds the fold button (a lilac #D7C5FB disc,
+  top-left), New page ✎ and the Inbox (an icon with its count; it is no
+  longer a row); Search sits below, then Home and Templates, then
+  Favorites, Workspace and Private. The page you're on reads lilac with a
+  short lilac bar.
+- Folded (⌘\ or the lilac disc), it is the ATS's 64px rail of 44px tiles
+  (CollapsedRail): unfold, Search, New page, Inbox · Home, Favorites (star),
+  Workspace (four tiles), Private (lock) · Templates, Settings and the
+  workspace at the bottom. Only the width moves (--dur-sidebar,
+  --ease-in-out); the tree and the rail crossfade, icons never move.
+- Favorites, Workspace and Private open their pages in a black card beside
+  the rail (RailFlyout, useRailFlyout) on hover, like a hover card: the
+  first after 180ms, a neighbour at once, closed 150ms after the pointer
+  leaves the tile and the card (an open ⋯ menu keeps it); a click or tap
+  toggles it. It sits level with its tile, as tall as its pages, never
+  taller than the rail (then it scrolls); Esc, a click outside or opening
+  a page closes it. Menus opened from a rail tile open beside the rail
+  (Popover `side="right"`).
+- Spacing: tree rows 30px, 2px apart, 20px above section labels. On the
+  page (PAGE BODY VERTICAL RHYTHM): 6px between paragraphs, 2px between
+  list items, headings 32 / 24 / 16 above and 4 below (8 between two
+  headings), and 12px on both sides of callouts, quotes, code, tables,
+  columns, images and inline databases. Small text: 5, 28 / 20 / 14, 4, 10.
 
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
