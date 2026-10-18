@@ -55,6 +55,7 @@ import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
 import { Ico } from "./emoji-icon";
 import { Popover } from "./popover";
+import { MenuHead, MenuIcon, MenuLead } from "./menu-parts";
 import { RowMenu, SpecMenuTrigger, type MenuBuildCtx, type MenuRow, type MenuSpec } from "./row-menu";
 import { usePropertyEditing } from "./property-menu";
 import { useNewPropertyFlow } from "./new-property-flow";
@@ -1069,17 +1070,20 @@ function PropertiesMenu({
     >
       {() => (
         <div role="menu" aria-label="Properties" style={{ maxHeight: 360, overflowY: "auto" }}>
-          <div className="flex items-center" style={{ padding: "6px 8px 4px 10px", gap: 6 }}>
-            <span className="flex-1 text-label uppercase text-faint">Properties</span>
-            <button
-              type="button"
-              onClick={() => onChange(hidden.length ? allKeys : [])}
-              className="rounded-md px-2 text-meta text-muted hover:bg-sunken hover:text-strong"
-              style={{ height: 24 }}
-            >
-              {hidden.length ? "Show all" : "Hide all"}
-            </button>
-          </div>
+          <MenuHead
+            trailing={
+              <button
+                type="button"
+                onClick={() => onChange(hidden.length ? allKeys : [])}
+                className="rounded-md px-2 text-meta text-muted hover:bg-sunken hover:text-strong"
+                style={{ height: 24 }}
+              >
+                {hidden.length ? "Show all" : "Hide all"}
+              </button>
+            }
+          >
+            Properties
+          </MenuHead>
           {allKeys.map((k) => {
             const on = shown.includes(k);
             const icon = kindIcon(typeOf(k));
@@ -1090,28 +1094,10 @@ function PropertiesMenu({
                 role="menuitemcheckbox"
                 aria-checked={on}
                 onClick={() => onChange(on ? hideProp(shown, k) : showProp(shown, k))}
-                className="flex w-full items-center rounded-md text-left text-row hover:bg-rail"
-                style={{ gap: 9, padding: "6px 10px" }}
+                className="gio-mrow"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  width={15}
-                  height={15}
-                  aria-hidden
-                  fill="none"
-                  className="shrink-0 text-faint"
-                >
-                  {icon ? (
-                    <path
-                      d={icon}
-                      stroke="currentColor"
-                      strokeWidth={1.9}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  ) : null}
-                </svg>
-                <span className={`min-w-0 flex-1 truncate ${on ? "text-strong" : "text-muted"}`}>
+                <MenuLead>{icon ? <MenuIcon path={icon} /> : null}</MenuLead>
+                <span className={`truncate ${on ? "text-strong" : "text-muted"}`}>
                   {labelOf(k)}
                 </span>
                 <span

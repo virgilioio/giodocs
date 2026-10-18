@@ -19,6 +19,8 @@ import {
   type Thread,
 } from "@/hooks/use-comments";
 import { Editable } from "./editable";
+import { MenuIcon, MenuLead } from "./menu-parts";
+import { IC } from "@/lib/menu-icons";
 
 /* Comments — a panel on the right of the page, over it (nothing on the
  * page moves). Open threads in page order, page-wide ones first; resolved
@@ -278,8 +280,8 @@ function CommentItem({
               <div
                 ref={exitOnly("pop")}
                 role="menu"
-                className="absolute right-0 z-10 rounded-lg border border-line bg-surface p-1 shadow-popover animate-popIn"
-                style={{ top: 28, width: 150, transformOrigin: "top right" }}
+                className="gio-menu absolute right-0 z-10 animate-popIn"
+                style={{ top: 28, width: 180, transformOrigin: "top right" }}
                 onMouseLeave={() => setMenu(false)}
               >
                 <button
@@ -289,18 +291,26 @@ function CommentItem({
                     setMenu(false);
                     setEditing(true);
                   }}
-                  className="block w-full rounded-md px-2 py-1.5 text-left text-meta text-body hover:bg-rail"
+                  className="gio-mrow"
                 >
-                  Edit
+                  <MenuLead>
+                    <MenuIcon path={IC.pencil} />
+                  </MenuLead>
+                  <span className="truncate">Edit</span>
                 </button>
                 <button
                   type="button"
                   role="menuitem"
                   onClick={remove}
-                  className="block w-full rounded-md px-2 py-1.5 text-left text-meta hover:bg-dangerTint"
-                  style={{ color: "var(--color-danger)" }}
+                  className="gio-mrow"
+                  data-danger
                 >
-                  {isRoot && thread.replies.length ? "Remove thread" : "Remove"}
+                  <MenuLead>
+                    <MenuIcon path={IC.trash} />
+                  </MenuLead>
+                  <span className="truncate">
+                    {isRoot && thread.replies.length ? "Remove thread" : "Remove"}
+                  </span>
                 </button>
               </div>
             ) : null}

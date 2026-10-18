@@ -924,6 +924,14 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
 }
 .gio-menu-sheet [role="menuitem"] > .truncate,
 .gio-menu-sheet .gio-mrow > .truncate { font-size: 17px !important; line-height: 1.4; }
+/* Pickers inside a Popover are zoomed 1.2 on phones (below), so their
+   rows aim at 40px and 14px to land on 48px and 16.8px. */
+.gio-menu-sheet [data-popover-body] .gio-mrow {
+  min-height: 40px;
+  padding: 8px 10px !important;
+  gap: 10px !important;
+}
+.gio-menu-sheet [data-popover-body] .gio-mrow > .truncate { font-size: 14px !important; }
 .gio-menu-sheet [role="menuitem"]:active,
 .gio-menu-sheet .gio-mrow:active { background: var(--color-rail); }
 .gio-menu-sheet input, .gio-menu-sheet textarea { font-size: 16px !important; }
@@ -1013,6 +1021,15 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
   font-variant-numeric: tabular-nums;
 }
 .gio-mrow-chev { flex: none; color: var(--color-faint); }
+.gio-mrow-check { flex: none; margin-left: auto; color: var(--color-accent); }
+/* Menus driven by arrow keys (slash, @): the highlighted row. Never
+   animated; the pointer moves the highlight too. */
+.gio-mrow[data-active] { background: var(--color-rail); }
+/* In those menus the highlight is the only fill: a row the pointer rests
+   on doesn't stay lit while the arrows move away from it. */
+@media (hover: hover) and (pointer: fine) {
+  [data-keynav] .gio-mrow:not(:disabled):not([data-active]):hover { background: transparent; }
+}
 .gio-mrow:disabled { color: var(--color-faint); cursor: not-allowed; }
 .gio-mrow:disabled .gio-mrow-lead { color: inherit; }
 /* Delete and friends: red where there's no hover (phones), and on desktop
@@ -1023,7 +1040,26 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
   .gio-mrow:not(:disabled):hover { background: var(--color-rail); }
   .gio-mrow[data-danger]:not(:hover):not(:focus-visible) { color: var(--color-body); }
 }
+/* Menus that stay menus on a touch screen (tablets; phones get sheets):
+   rows a finger can hit. */
+@media (pointer: coarse) {
+  .gio-menu .gio-mrow { min-height: 36px; }
+}
 .gio-msep { height: 1px; margin: 4px 8px; background: var(--color-line); }
+.gio-msearch-box { padding: 4px 4px 6px; }
+.gio-msearch {
+  display: block;
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  background: var(--color-track);
+  font-size: var(--text-ui);
+  line-height: 20px;
+  color: var(--color-body);
+}
+.gio-msearch::placeholder { color: var(--color-faint); }
 .gio-mhead {
   display: flex;
   align-items: center;

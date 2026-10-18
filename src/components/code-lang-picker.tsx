@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Popover } from "./popover";
+import { MenuCheck, MenuSearch } from "./menu-parts";
 import { CODE_LANGS, langLabel } from "@/lib/code-langs";
 
 /* The language of a code block, chosen from its corner like Notion's.
@@ -77,9 +78,9 @@ function LangList({ value, onPick }: { value: string; onPick: (lang: string) => 
     return s ? CODE_LANGS.filter((l) => l.label.toLowerCase().includes(s) || l.value.includes(s)) : CODE_LANGS;
   }, [q]);
   return (
-    <div className="p-1" role="listbox" aria-label="Code language">
-      <input
-        ref={inputRef}
+    <div role="listbox" aria-label="Code language">
+      <MenuSearch
+        inputRef={inputRef}
         value={q}
         onChange={(e) => setQ(e.target.value)}
         onKeyDown={(e) => {
@@ -90,8 +91,6 @@ function LangList({ value, onPick }: { value: string; onPick: (lang: string) => 
         }}
         placeholder="Search for a language"
         aria-label="Search for a language"
-        className="mb-1 w-full rounded-md border border-line bg-surface px-2 text-meta focus:border-accent focus:outline-none"
-        style={{ height: 28 }}
       />
       <div className="max-h-64 overflow-y-auto">
         {rows.map((l) => (
@@ -101,13 +100,13 @@ function LangList({ value, onPick }: { value: string; onPick: (lang: string) => 
             role="option"
             aria-selected={l.value === value.toLowerCase()}
             onClick={() => onPick(l.value)}
-            className="flex w-full items-center justify-between rounded-md px-2 py-1 text-left text-meta text-body hover:bg-sunken"
+            className="gio-mrow"
           >
-            <span>{l.label}</span>
-            {l.value === value.toLowerCase() ? <span className="text-accent">✓</span> : null}
+            <span className="truncate">{l.label}</span>
+            {l.value === value.toLowerCase() ? <MenuCheck /> : null}
           </button>
         ))}
-        {rows.length === 0 ? <div className="px-2 py-1 text-meta text-faint">No language matches.</div> : null}
+        {rows.length === 0 ? <div className="gio-mfoot">No language matches.</div> : null}
       </div>
     </div>
   );

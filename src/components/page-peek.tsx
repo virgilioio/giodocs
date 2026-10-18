@@ -17,6 +17,7 @@ import { IC } from "@/lib/menu-icons";
 import type { PageFull, PageListItem } from "@/lib/types";
 import { PageEditor } from "./page-view";
 import { Popover } from "./popover";
+import { MenuPageRow } from "./menu-parts";
 import { PlacePicker } from "./page-block";
 import { RowMenu, type MenuSpec } from "./row-menu";
 import { Ico } from "./emoji-icon";
@@ -107,7 +108,7 @@ function PeekDialog({ id, fresh }: { id: string; fresh: boolean }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
-      if (document.querySelector('[role="menu"], [data-slash-menu], [data-menu-sheet], .shadow-popover')) return;
+      if (document.querySelector('[role="menu"], [data-slash-menu], [data-menu-sheet], .shadow-popover, .gio-menu')) return;
       close();
     };
     window.addEventListener("keydown", onKey);
@@ -175,17 +176,14 @@ function PeekDialog({ id, fresh }: { id: string; fresh: boolean }) {
             {(closeMenu) => (
               <div>
                 {row?.parent_id ? (
-                  <button
-                    type="button"
-                    className="w-full rounded-md text-left text-row text-body hover:bg-rail"
-                    style={{ padding: "6px 10px" }}
-                    onClick={() => {
+                  <MenuPageRow
+                    lead={null}
+                    label="Top level (on its own)"
+                    onPick={() => {
                       closeMenu();
                       setParent.mutate({ pageId: id, parentId: null, title: row?.title ?? "" });
                     }}
-                  >
-                    Top level (on its own)
-                  </button>
+                  />
                 ) : null}
                 <PlacePicker
                   pages={pages}

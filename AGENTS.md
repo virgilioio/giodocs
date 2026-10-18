@@ -592,8 +592,18 @@ a 1.6 stroke in `--color-strong`), `.gio-mrow-hint` (shortcuts and values
 in the UI font, 12px, faint), `.gio-mrow-chev` (submenu chevron; a "›" hint
 draws it), `.gio-msep` (dividers inset 12px from the panel's edge),
 `.gio-mhead` (a 12px sentence-case header) and `.gio-mfoot` (a 12px footer).
-- RowMenu / SpecMenu, the page ⋯ menu and Popover use them; new menus use
-  them too, never their own row padding.
+- Every menu uses them: RowMenu / SpecMenu, the page ⋯ menu, Popover and
+  what's inside Popovers (filter/sort/group builders, person/select/tags/
+  files/relation pickers, page pickers, Properties, Templates, code
+  language, emoji picker), the workspace and Trash menus, the slash and @
+  menus, comment ⋯, the role pickers. Build a new menu from
+  src/components/menu-parts.tsx (MenuLead, MenuIcon, MenuCheck,
+  MenuChevron, MenuSep, MenuHead, MenuFoot, MenuPageRow, MenuSearch, the
+  28px search field), never with its own row padding.
+- Arrow-key menus mark the highlighted row `data-active` and the panel
+  `data-keynav` (the pointer's hover doesn't light a second row).
+- Touch screens that get a menu rather than a sheet (tablets) have rows
+  of at least 36px; inside a phone Popover sheet rows land on 48px.
 - Delete and other danger rows look like any other row until pointed at or
   focused, then the label and icon turn red (`data-danger`). Phones have no
   hover, so they stay red there.

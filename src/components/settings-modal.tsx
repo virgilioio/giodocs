@@ -49,6 +49,7 @@ import {
 } from "@/hooks/use-custom-emoji";
 import { exitOnly } from "@/lib/exit-motion";
 import { PropertiesPaneBody } from "./properties-pane";
+import { MenuCheck } from "./menu-parts";
 
 export type SettingsPane = "profile" | "preferences" | "general" | "people" | "properties" | "emoji";
 
@@ -1226,8 +1227,9 @@ function RolePicker({
       {open && (
         <div
           ref={exitOnly("pop")}
-          className="absolute left-0 top-full z-10 mt-1 bg-surface border border-line shadow-popover animate-popIn"
-          style={{ borderRadius: 8, padding: 4, width: 140 }}
+          role="menu"
+          className="gio-menu absolute left-0 top-full z-10 mt-1 animate-popIn"
+          style={{ width: 160, transformOrigin: "top left" }}
         >
           {(["member", "owner"] as const).map((r) => (
             <button
@@ -1237,10 +1239,12 @@ function RolePicker({
                 onPick(r);
                 setOpen(false);
               }}
-              className="flex w-full items-center rounded-md hover:bg-rail"
-              style={{ padding: "5px 8px", fontSize: 13.5, textAlign: "left" }}
+              role="menuitemradio"
+              aria-checked={r === value}
+              className="gio-mrow"
             >
-              {r === "owner" ? "Owner" : "Member"}
+              <span className="truncate">{r === "owner" ? "Owner" : "Member"}</span>
+              {r === value ? <MenuCheck /> : null}
             </button>
           ))}
         </div>

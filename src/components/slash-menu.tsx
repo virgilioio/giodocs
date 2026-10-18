@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { exitRef } from "@/lib/exit-motion";
 import { IC } from "@/lib/menu-icons";
+import { MenuIcon, MenuLead, MenuSep } from "./menu-parts";
 import { SLASH_GROUP_LABELS, type SlashEntry, type SlashItemLike } from "@/lib/slash-entries";
 import { useIsPhone } from "@/lib/use-media";
 import { BlockPreview } from "./block-previews";
@@ -84,24 +85,21 @@ export function SlashMenu<T extends SlashItemLike>({
     <div
       ref={exitRef("pop", panelRef)}
       data-slash-menu
+      data-keynav
       role="listbox"
       aria-label="Blocks"
-      className="fixed flex animate-popIn flex-col rounded-xl border border-line bg-surface shadow-popover"
+      className="gio-menu fixed flex animate-popIn flex-col"
       // Above dialogs (the new-page peek is one), like every menu.
       style={{ ...placement, width: W, maxHeight: 420, zIndex: "var(--z-menu)" }}
     >
-      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto py-1">
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
         {items.length === 0 ? (
-          <div className="px-3 py-2 text-meta text-muted">No matches.</div>
+          <div className="gio-mfoot">No matches.</div>
         ) : (
           items.map((m, i) => (
             <div key={m.key}>
               {i === 0 || items[i - 1].section !== m.section ? (
-                <div
-                  className="px-3 pb-1 text-label text-faint"
-                  style={{ paddingTop: i === 0 ? 6 : 10 }}
-                  data-slash-section={m.section}
-                >
+                <div className="gio-mhead" data-slash-section={m.section}>
                   {SLASH_GROUP_LABELS[m.section]}
                 </div>
               ) : null}
@@ -116,34 +114,29 @@ export function SlashMenu<T extends SlashItemLike>({
                   e.preventDefault();
                   onPick(m);
                 }}
-                className={"mx-1 flex items-center gap-2.5 rounded-md px-2 text-left " + (i === activeIdx ? "bg-sunken" : "")}
-                style={{ width: "calc(100% - 8px)", height: 32 }}
+                className="gio-mrow"
               >
-                <svg viewBox="0 0 24 24" width={18} height={18} aria-hidden style={{ flex: "none", color: "var(--color-body)" }}>
-                  <path d={IC[m.ic]} fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                <span className="min-w-0 flex-1 truncate text-ui text-strong">{m.name}</span>
-                {m.md ? (
-                  <span className="shrink-0 text-caption text-faint" style={{ fontFamily: "var(--font-mono)" }}>
-                    {m.md}
-                  </span>
-                ) : null}
+                <MenuLead>
+                  <MenuIcon path={IC[m.ic]} />
+                </MenuLead>
+                <span className="truncate">{m.name}</span>
+                {m.md ? <span className="gio-mrow-hint">{m.md}</span> : null}
               </button>
             </div>
           ))
         )}
       </div>
+      <MenuSep />
       <button
         type="button"
         onMouseDown={(e) => {
           e.preventDefault();
           onClose();
         }}
-        className="flex shrink-0 items-center justify-between border-t border-line px-3 text-left text-ui text-body hover:bg-sunken"
-        style={{ height: 38, borderRadius: "0 0 12px 12px" }}
+        className="gio-mrow shrink-0"
       >
-        <span>Close menu</span>
-        <span className="text-caption text-faint">esc</span>
+        <span className="truncate">Close menu</span>
+        <span className="gio-mrow-hint">esc</span>
       </button>
       {active && !phone && pvTop !== null ? (
         <div

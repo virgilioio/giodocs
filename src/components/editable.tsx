@@ -581,13 +581,11 @@ function TriggerPopup({
         maxHeight: 240,
         overflowY: "auto",
       }}
-      className="rounded-lg border border-line bg-surface p-1.5 shadow-popover animate-popIn"
+      className="gio-menu animate-popIn"
     >
       {customCount > 0 ? (
         <>
-          <div className="px-1 pb-1 pt-0.5 text-label uppercase text-faint">
-            Custom
-          </div>
+          <div className="gio-mhead">Custom</div>
           <EmojiGrid
             items={items.slice(0, customCount)}
             highlight={highlight}
@@ -595,9 +593,7 @@ function TriggerPopup({
             onHover={onHover}
           />
           {items.length > customCount ? (
-            <div className="px-1 pb-1 pt-1.5 text-label uppercase text-faint">
-              Emoji
-            </div>
+            <div className="gio-mhead">Emoji</div>
           ) : null}
         </>
       ) : null}

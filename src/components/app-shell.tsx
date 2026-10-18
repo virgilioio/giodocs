@@ -27,6 +27,7 @@ import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { useRealtimeWorkspace } from "@/hooks/use-realtime";
 import { getPageOrigin, setPageOrigin } from "@/lib/page-origin";
 import { Ico } from "./emoji-icon";
+import { MenuCheck, MenuHead, MenuIcon, MenuLead, MenuSep } from "./menu-parts";
 import { PageBreadcrumb } from "./page-breadcrumb";
 import { SidebarTreeView, useTreeExpanded, type TreeNode } from "./sidebar-tree";
 import { DRAG_TYPE, draggedPage } from "@/lib/page-drag";
@@ -1614,7 +1615,7 @@ function useRailFlyout() {
       window.clearTimeout(closeT.current);
       closeT.current = window.setTimeout(() => {
         // A menu opened from the card (a row's ⋯) keeps it open.
-        if (document.querySelector("[role='menu'], .shadow-popover")) return;
+        if (document.querySelector("[role='menu'], .shadow-popover, .gio-menu")) return;
         setState(null);
       }, FLY_GRACE_MS);
     },
@@ -1653,7 +1654,7 @@ function RailFlyout({
       const t = e.target as Element | null;
       if (!t || ref.current?.contains(t) || t.closest("[data-rail-section]")) return;
       // Menus the card opens are portalled: clicks in them aren't outside.
-      if (t.closest("[role='menu'], .shadow-popover")) return;
+      if (t.closest("[role='menu'], .shadow-popover, .gio-menu")) return;
       onClose();
     };
     const onKey = (e: KeyboardEvent) => {
@@ -1789,17 +1790,13 @@ function FooterAccount({
             ref={exitOnly("pop")}
             role="menu"
             aria-label="Trash and My tasks"
-            className="fixed bg-surface animate-popIn"
+            className="gio-menu fixed animate-popIn"
             style={{
               zIndex: 96,
               left: 10,
               bottom: 52,
               transformOrigin: "bottom left",
               width: 220,
-              border: "1px solid var(--color-line)",
-              borderRadius: 12,
-              padding: 5,
-              boxShadow: "var(--shadow-popover)",
             }}
           >
             <DropdownRow
@@ -1859,24 +1856,19 @@ function FooterAccount({
           />
           <div
             ref={exitOnly("pop")}
-            className="fixed bg-surface animate-popIn"
+            role="menu"
+            aria-label="Workspace"
+            className="gio-menu fixed animate-popIn"
             style={{
               zIndex: 96,
               left: 10,
               bottom: 56,
               transformOrigin: "bottom left",
               width: 268,
-              border: "1px solid var(--color-line)",
-              borderRadius: 12,
-              overflow: "hidden",
-              boxShadow: "var(--shadow-popover)",
             }}
           >
             {/* A. Workspace header */}
-            <div
-              className="flex items-center"
-              style={{ padding: "12px 13px 11px", gap: 10 }}
-            >
+            <div className="flex items-center" style={{ padding: "6px 8px 8px", gap: 10 }}>
               <span
                 className="grid shrink-0 place-items-center bg-sunken"
                 style={{ width: 30, height: 30, borderRadius: 8, fontSize: 16 }}
@@ -1898,18 +1890,12 @@ function FooterAccount({
             </div>
 
             {/* B. Actions */}
-            <div style={{ borderTop: "1px solid var(--color-lineSoft)", padding: 5 }}>
+            <MenuSep />
+            <div>
               <DropdownRow
                 icon="M4 21v-6M4 11V3M12 21v-9M12 8V3M20 21v-4M20 13V3M1.5 15h5M9.5 8h5M17.5 17h5"
                 onClick={onOpenSettings}
-                right={
-                  <span
-                    className="font-mono text-whisper"
-                    style={{ fontSize: 11 }}
-                  >
-                    ⌘,
-                  </span>
-                }
+                right={<span className="gio-mrow-hint">⌘,</span>}
               >
                 Settings
               </DropdownRow>
@@ -1922,37 +1908,26 @@ function FooterAccount({
             </div>
 
             {/* C. Account + workspace switcher */}
-            <div style={{ borderTop: "1px solid var(--color-lineSoft)", padding: 5 }}>
-              <div
-                className="truncate text-faint"
-                style={{ fontSize: 12, padding: "5px 9px 4px" }}
-              >
-                {userEmail}
-              </div>
-              <div
-                className="flex items-center rounded-lg"
-                style={{ padding: "6px 9px", gap: 9, fontSize: 14 }}
-              >
-                <span
-                  className="grid shrink-0 place-items-center bg-sunken"
-                  style={{ width: 22, height: 22, borderRadius: 6, fontSize: 12 }}
-                  aria-hidden
-                >
-                  <Ico icon={workspaceIcon} size={12} />
-                </span>
-                <span className="min-w-0 flex-1 truncate text-body">
-                  {workspaceName}
-                </span>
-                <svg width={14} height={14} viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" strokeWidth={2} strokeLinecap="round"
-                  strokeLinejoin="round" className="text-accent" aria-hidden>
-                  <path d="M5 12l5 5 9-11" />
-                </svg>
+            <MenuSep />
+            <div>
+              <MenuHead>{userEmail}</MenuHead>
+              <div className="gio-mrow" style={{ cursor: "default" }}>
+                <MenuLead>
+                  <span
+                    className="grid place-items-center bg-sunken"
+                    style={{ width: 20, height: 20, borderRadius: 5 }}
+                  >
+                    <Ico icon={workspaceIcon} size={12} />
+                  </span>
+                </MenuLead>
+                <span className="truncate">{workspaceName}</span>
+                <MenuCheck />
               </div>
             </div>
 
             {/* D. Log out */}
-            <div style={{ borderTop: "1px solid var(--color-lineSoft)", padding: 5 }}>
+            <MenuSep />
+            <div>
               <DropdownRow
                 icon="M15 12H3m0 0l4-4m-4 4l4 4M9 4h9a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H9"
                 onClick={onSignOut}
@@ -1979,18 +1954,11 @@ function DropdownRow({
   right?: ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center rounded-lg text-body hover:bg-rail hover:text-noir"
-      style={{ padding: "7px 9px", gap: 10, fontSize: 14, textAlign: "left" }}
-    >
-      <svg width={15} height={15} viewBox="0 0 24 24" fill="none"
-        stroke="currentColor" strokeWidth={1.8} strokeLinecap="round"
-        strokeLinejoin="round" className="text-secondary shrink-0" aria-hidden>
-        <path d={icon} />
-      </svg>
-      <span className="min-w-0 flex-1 truncate">{children}</span>
+    <button type="button" role="menuitem" onClick={onClick} className="gio-mrow">
+      <MenuLead>
+        <MenuIcon path={icon} />
+      </MenuLead>
+      <span className="truncate">{children}</span>
       {right}
     </button>
   );

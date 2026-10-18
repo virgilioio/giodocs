@@ -3,6 +3,7 @@ import { useWorkspaceId } from "@/lib/workspace-context";
 import { useTemplates } from "@/hooks/use-workspace-data";
 import { useNewPageFromTemplate, useSetTemplate } from "@/hooks/use-templates";
 import { Ico } from "./emoji-icon";
+import { MenuHead, MenuLead } from "./menu-parts";
 
 /* Templates on the page itself: a banner on a template, and a short list
  * of templates on a blank page to start from. */
@@ -69,9 +70,7 @@ export function TemplatePicker({
   const shown = all ? rows : rows.slice(0, SHOWN);
   return (
     <section aria-label="Your templates" className="animate-fadeIn">
-      <div className="text-label uppercase text-faint" style={{ marginBottom: 6 }}>
-        Your templates
-      </div>
+      <MenuHead>Your templates</MenuHead>
       <ul>
         {shown.map((t) => (
           <li key={t.id}>
@@ -86,12 +85,13 @@ export function TemplatePicker({
                   setBusy(null);
                 }
               }}
-              className="flex w-full min-w-0 items-center rounded-md text-left hover:bg-sunken disabled:opacity-60"
-              style={{ gap: 9, padding: "5px 6px", marginLeft: -6 }}
+              className="gio-mrow"
             >
-              <Ico icon={t.icon || "📄"} size={16} />
-              <span className="min-w-0 truncate text-row text-body">{t.title || "Untitled"}</span>
-              {busy === t.id ? <span className="ml-auto shrink-0 text-caption text-muted">Applying…</span> : null}
+              <MenuLead>
+                <Ico icon={t.icon || "📄"} size={16} />
+              </MenuLead>
+              <span className="truncate">{t.title || "Untitled"}</span>
+              {busy === t.id ? <span className="gio-mrow-hint">Applying…</span> : null}
             </button>
           </li>
         ))}
@@ -100,10 +100,11 @@ export function TemplatePicker({
         <button
           type="button"
           onClick={() => setAll((v) => !v)}
-          className="mt-1 rounded-md px-1.5 text-meta text-muted hover:bg-sunken hover:text-strong"
-          style={{ marginLeft: -6, height: 26 }}
+          className="gio-mrow"
+          style={{ color: "var(--color-muted)" }}
         >
-          {all ? "Show fewer" : `Show all ${rows.length}`}
+          <MenuLead />
+          <span className="truncate">{all ? "Show fewer" : `Show all ${rows.length}`}</span>
         </button>
       ) : null}
     </section>

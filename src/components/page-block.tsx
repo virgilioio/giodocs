@@ -27,6 +27,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { FRESH_PAGE_BLOCKS, type Blk } from "@/lib/block-ops";
 import { Ico } from "./emoji-icon";
 import { Popover } from "./popover";
+import { MenuFoot, MenuHead, MenuIcon, MenuPageRow, MenuSearch } from "./menu-parts";
+import { IC } from "@/lib/menu-icons";
 import { MiniAvatar, StatusChip, hashTag, type MemberLike } from "./property-pickers";
 import { PageImageCtx } from "@/components/image-block";
 import { childrenOf, placementRows, type PlacementRow } from "@/lib/page-tree";
@@ -184,46 +186,29 @@ export function PlacePicker<P extends PageBlockItem>({
 
   return (
     <div style={{ maxHeight: 340, overflow: "auto" }}>
-      <div
-        className="truncate"
-        style={{
-          padding: "7px 10px 3px",
-          fontFamily: "var(--font-display)",
-          fontSize: 11.5,
-          fontWeight: 700,
-          letterSpacing: ".07em",
-          textTransform: "uppercase",
-          color: "var(--color-faint)",
+      <MenuHead>Place a page</MenuHead>
+      <MenuSearch
+        inputRef={(el) => {
+          if (el && !focused.current) {
+            focused.current = true;
+            el.focus();
+          }
         }}
-      >
-        Place a page
-      </div>
-      <div style={{ padding: "2px 4px 4px" }}>
-        <input
-          ref={(el) => {
-            if (el && !focused.current) {
-              focused.current = true;
-              el.focus();
-            }
-          }}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              const first = rows[0];
-              if (first) pick(first);
-            }
-          }}
-          placeholder="Search pages, or type a new name"
-          className="w-full border border-line bg-track"
-          style={{ borderRadius: 7, padding: "5px 7px", fontSize: 13 }}
-        />
-      </div>
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            const first = rows[0];
+            if (first) pick(first);
+          }
+        }}
+        placeholder="Search pages, or type a new name"
+      />
 
       {rows.map((row, i) =>
         row.kind === "page" ? (
-          <PickRow
+          <MenuPageRow
             key={row.page.id}
             icon={row.page.icon}
             label={row.page.title?.trim() || "Untitled"}
@@ -231,8 +216,9 @@ export function PlacePicker<P extends PageBlockItem>({
             onPick={() => pick(row)}
           />
         ) : (
-          <PickRow
+          <MenuPageRow
             key={`create-${i}`}
+            lead={<MenuIcon path={IC.plus} />}
             label={row.title ? `Create "${row.title}" here` : "Create a new page here"}
             hint="new"
             onPick={() => pick(row)}
@@ -240,56 +226,8 @@ export function PlacePicker<P extends PageBlockItem>({
         ),
       )}
 
-      <div
-        style={{
-          padding: "6px 10px 8px",
-          fontSize: 11.5,
-          lineHeight: 1.45,
-          color: "var(--color-faint)",
-        }}
-      >
-        {footer}
-      </div>
+      <MenuFoot>{footer}</MenuFoot>
     </div>
-  );
-}
-
-function PickRow({
-  icon,
-  label,
-  hint,
-  onPick,
-}: {
-  icon?: string | null;
-  label: string;
-  hint?: string;
-  onPick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onPick}
-      className="flex w-full items-center hover:bg-sunken"
-      style={{
-        gap: 7,
-        border: 0,
-        background: "transparent",
-        borderRadius: 7,
-        padding: "5px 7px",
-        textAlign: "left",
-        cursor: "pointer",
-      }}
-    >
-      {icon !== undefined ? <Ico icon={icon} size={15} /> : null}
-      <span className="min-w-0 flex-1 truncate" style={{ fontSize: 13.5 }}>
-        {label}
-      </span>
-      {hint ? (
-        <span className="shrink-0 truncate text-faint" style={{ fontSize: 11.5, maxWidth: 110 }}>
-          {hint}
-        </span>
-      ) : null}
-    </button>
   );
 }
 
@@ -518,23 +456,15 @@ export function PageBlockView<P extends PageBlockItem>({
         >
           {(close) => (
             <div>
-              <PickRow
+              <MenuPageRow
+                lead={<MenuIcon path="M18 6 6 18M6 6l12 12" />}
                 label="Remove from this page"
                 onPick={() => {
                   close();
                   onRemove();
                 }}
               />
-              <div
-                style={{
-                  padding: "6px 10px 8px",
-                  fontSize: 11.5,
-                  lineHeight: 1.45,
-                  color: "var(--color-faint)",
-                }}
-              >
-                Deleting a page happens on the page itself.
-              </div>
+              <MenuFoot>Deleting a page happens on the page itself.</MenuFoot>
             </div>
           )}
         </Popover>

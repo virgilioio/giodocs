@@ -19,6 +19,7 @@ import { SpecMenuTrigger, type MenuSpec } from "./row-menu";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
 import { personIds } from "@/lib/person-value";
+import { MenuCheck, MenuChevron, MenuFoot, MenuHead, MenuIcon, MenuLead, MenuSep } from "./menu-parts";
 
 type Layout = "table" | "board" | "list" | "calendar";
 
@@ -595,35 +596,22 @@ function FilterBuilderContent({
 
   if (step.kind === "root") {
     return (
-      <div style={{ padding: "2px 0" }}>
+      <div>
         <StepTitle>Filter by</StepTitle>
         {rootItems.map((it) => (
           <BuilderRow
             key={it.key}
-            leading={
-              <svg viewBox="0 0 24 24" width={15} height={15} aria-hidden style={{ flex: "none", color: "var(--color-muted)" }}>
-                <path d={ROOT_ICON[it.key] ?? ""} fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            }
+            leading={<MenuIcon path={ROOT_ICON[it.key] ?? ""} />}
             onClick={() => setStep({ kind: "prop", propKey: it.key })}
-            trailing={<span className="font-mono" style={{ color: "var(--color-whisper)", fontSize: 11.5 }}>›</span>}
+            trailing={<MenuChevron />}
           >
             {it.label}
           </BuilderRow>
         ))}
-        <div
-          style={{
-            borderTop: "1px solid var(--color-lineSoft)",
-            margin: "4px 4px 0",
-            padding: "8px 7px 4px",
-            fontSize: 12.5,
-            lineHeight: 1.45,
-            color: "var(--color-whisper)",
-          }}
-        >
+        <MenuFoot>
           Filters combine with and. A new pick for a property replaces the old one; ranges
           (above and below, before and after) and tags add up.
-        </div>
+        </MenuFoot>
       </div>
     );
   }
@@ -633,7 +621,7 @@ function FilterBuilderContent({
 
   if (key === "__freshness") {
     return (
-      <div style={{ padding: "2px 0" }}>
+      <div>
         <StepTitle onBack={back}>Freshness</StepTitle>
         <BuilderRow onClick={() => onPick({ op: "stale", prop: "verified" })}>
           Not verified in {staleDays}+ days
@@ -653,7 +641,7 @@ function FilterBuilderContent({
 
   if (key === "@created") {
     return (
-      <div style={{ padding: "2px 0" }}>
+      <div>
         <StepTitle onBack={back}>Created</StepTitle>
         <DateFilterRows
           prop={key}
@@ -666,7 +654,7 @@ function FilterBuilderContent({
   }
   if (key === "@created_by" || key === "@edited_by") {
     return (
-      <div style={{ padding: "2px 0" }}>
+      <div>
         <StepTitle onBack={back}>{key === "@created_by" ? "Created by" : "Last edited by"}</StepTitle>
         <BuilderRow onClick={() => onPick({ op: "is_me", prop: key })}>Me</BuilderRow>
         {people.map((p) => (
@@ -707,7 +695,7 @@ function FilterBuilderContent({
       ...[...typed].sort().map((v) => ({ value: v, label: v, tint: "sunken", ink: "muted" })),
     ];
     return (
-      <div style={{ padding: "2px 0" }}>
+      <div>
         <StepTitle onBack={back}>{def.label}</StepTitle>
         <BuilderRow onClick={() => onPick({ op: "not_empty", prop: def.key })}>
           Has any {def.label.toLowerCase()}
@@ -723,7 +711,6 @@ function FilterBuilderContent({
                   height: 8,
                   borderRadius: 99,
                   background: `var(--color-${o.ink})`,
-                  flex: "none",
                 }}
               />
             }
@@ -742,7 +729,7 @@ function FilterBuilderContent({
   /* Every other property the team made. */
   if (def.type === "person") {
     return (
-      <div style={{ padding: "2px 0" }}>
+      <div>
         <StepTitle onBack={back}>{def.label}</StepTitle>
         <BuilderRow onClick={() => onPick({ op: "is_me", prop: def.key })}>Me</BuilderRow>
         <BuilderRow onClick={() => onPick({ op: "not_empty", prop: def.key })}>
@@ -769,7 +756,7 @@ function FilterBuilderContent({
     }
     const list = [...vals].sort();
     return (
-      <div style={{ padding: "2px 0" }}>
+      <div>
         <StepTitle onBack={back}>{def.label}</StepTitle>
         {list.length === 0 && <EmptyValues />}
         {list.map((t) => (
@@ -786,7 +773,7 @@ function FilterBuilderContent({
 
   if (def.type === "checkbox") {
     return (
-      <div style={{ padding: "2px 0" }}>
+      <div>
         <StepTitle onBack={back}>{def.label}</StepTitle>
         <BuilderRow onClick={() => onPick({ op: "eq", prop: def.key, value: "true" })}>
           Checked
@@ -815,13 +802,13 @@ function FilterBuilderContent({
       .map((id) => byId.get(id)!)
       .sort((a, b) => (a.title || "").localeCompare(b.title || ""));
     return (
-      <div style={{ padding: "2px 0", maxHeight: 360, overflowY: "auto" }}>
+      <div style={{ maxHeight: 360, overflowY: "auto" }}>
         <StepTitle onBack={back}>{def.label}</StepTitle>
         {list.length === 0 && <EmptyValues />}
         {list.map((p) => (
           <BuilderRow
             key={p.id}
-            leading={<Ico icon={p.icon || "📄"} size={15} />}
+            leading={<Ico icon={p.icon || "📄"} size={16} />}
             onClick={() => onPick({ op: "includes", prop: def.key, value: p.id })}
           >
             {p.title || "Untitled"}
@@ -839,7 +826,7 @@ function FilterBuilderContent({
   if (def.type === "rollup") {
     const kind = rollupKind(def);
     return (
-      <div style={{ padding: "2px 0" }}>
+      <div>
         <StepTitle onBack={back}>{def.label}</StepTitle>
         {kind === "date" ? (
           <DateFilterRows
@@ -864,7 +851,7 @@ function FilterBuilderContent({
 
   if (def.type === "date") {
     return (
-      <div style={{ padding: "2px 0" }}>
+      <div>
         <StepTitle onBack={back}>{def.label}</StepTitle>
         <DateFilterRows
           prop={def.key}
@@ -890,7 +877,7 @@ function FilterBuilderContent({
 
   // Text, number, link, email, phone: compare; related pages: present or not.
   return (
-    <div style={{ padding: "2px 0" }}>
+    <div>
       <StepTitle onBack={back}>{def.label}</StepTitle>
       {compare ? (
         <>
@@ -938,9 +925,7 @@ const RANGE_LABELS: Record<string, string> = {
 };
 
 function FilterDivider() {
-  return (
-    <div aria-hidden style={{ height: 1, background: "var(--color-lineSoft)", margin: "4px 3px" }} />
-  );
+  return <MenuSep />;
 }
 
 /** Quick date ranges, then before / on / after a day. */
@@ -1035,11 +1020,7 @@ function CompareInput({
 }
 
 function EmptyValues() {
-  return (
-    <div style={{ padding: 10, fontSize: 13, color: "var(--color-muted)" }}>
-      No values yet.
-    </div>
-  );
+  return <div className="gio-mfoot">No values yet.</div>;
 }
 
 function StepTitle({
@@ -1049,42 +1030,7 @@ function StepTitle({
   children: ReactNode;
   onBack?: () => void;
 }) {
-  return (
-    <div
-      className="flex items-center gap-1"
-      style={{
-        padding: "7px 10px 3px",
-        fontFamily: "var(--font-display)",
-        fontSize: 11.5,
-        fontWeight: 700,
-        letterSpacing: ".07em",
-        textTransform: "uppercase",
-        color: "var(--color-faint)",
-      }}
-    >
-      {onBack && (
-        <button
-          type="button"
-          aria-label="Back"
-          onClick={onBack}
-          className="grid place-items-center rounded-sm hover:bg-rail"
-          style={{ width: 16, height: 16, marginRight: 2 }}
-        >
-          <svg viewBox="0 0 24 24" width={11} height={11} aria-hidden>
-            <path
-              d="M15 6l-6 6 6 6"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2.4}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-      )}
-      <span className="truncate">{children}</span>
-    </div>
-  );
+  return <MenuHead onBack={onBack}>{children}</MenuHead>;
 }
 
 function BuilderRow({
@@ -1099,19 +1045,9 @@ function BuilderRow({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center rounded-lg text-left hover:bg-rail"
-      style={{ padding: "7px 10px", gap: 9, color: "var(--color-body)" }}
-    >
-      {leading}
-      <span
-        className="truncate"
-        style={{ flex: 1, minWidth: 0, fontSize: 14 }}
-      >
-        {children}
-      </span>
+    <button type="button" onClick={onClick} className="gio-mrow">
+      {leading != null && <MenuLead>{leading}</MenuLead>}
+      <span className="truncate">{children}</span>
       {trailing}
     </button>
   );
@@ -1197,7 +1133,7 @@ function SortControl({
     >
       {(close) =>
         picking !== null ? (
-          <div style={{ padding: "2px 0", maxHeight: 360, overflowY: "auto" }}>
+          <div style={{ maxHeight: 360, overflowY: "auto" }}>
             <StepTitle onBack={() => setPicking(null)}>
               {picking === 0 ? "Sort by" : "Then by"}
             </StepTitle>
@@ -1212,14 +1148,14 @@ function SortControl({
                     set(next);
                     setPicking(null);
                   }}
-                  trailing={sorts[picking]?.prop === t.prop ? <CheckIcon /> : null}
+                  trailing={sorts[picking]?.prop === t.prop ? <MenuCheck /> : null}
                 >
                   {t.label}
                 </BuilderRow>
               ))}
           </div>
         ) : (
-          <div style={{ padding: "2px 0" }}>
+          <div>
             <StepTitle>Sort</StepTitle>
             {sorts.map((x, i) => (
               <div key={i} className="flex items-center" style={{ gap: 6, padding: "3px 8px" }}>
@@ -1281,7 +1217,7 @@ function SortControl({
                     onChange(c.spec);
                     close();
                   }}
-                  trailing={on ? <CheckIcon /> : null}
+                  trailing={on ? <MenuCheck /> : null}
                 >
                   {c.label}
                 </BuilderRow>
@@ -1318,14 +1254,14 @@ function TableGroupControl({
       )}
     >
       {(close) => (
-        <div style={{ padding: "2px 0", maxHeight: 360, overflowY: "auto" }}>
+        <div style={{ maxHeight: 360, overflowY: "auto" }}>
           <StepTitle>Group by</StepTitle>
           <BuilderRow
             onClick={() => {
               onChange(null);
               close();
             }}
-            trailing={current ? null : <CheckIcon />}
+            trailing={current ? null : <MenuCheck />}
           >
             None
           </BuilderRow>
@@ -1336,7 +1272,7 @@ function TableGroupControl({
                 onChange(c.key);
                 close();
               }}
-              trailing={c.key === value ? <CheckIcon /> : null}
+              trailing={c.key === value ? <MenuCheck /> : null}
             >
               {c.label}
             </BuilderRow>
@@ -1378,7 +1314,7 @@ function GroupControl({
       )}
     >
       {(close) => (
-        <div style={{ padding: "2px 0" }}>
+        <div>
           <StepTitle>{title}</StepTitle>
           {defs.length === 0 && (
             <div
@@ -1394,7 +1330,7 @@ function GroupControl({
                 onChange(d.key);
                 close();
               }}
-              trailing={d.key === (current?.key ?? "") ? <CheckIcon /> : null}
+              trailing={d.key === (current?.key ?? "") ? <MenuCheck /> : null}
             >
               {d.label}
             </BuilderRow>
@@ -1458,21 +1394,6 @@ function ToolbarBorderlessButton({
       </svg>
       <span>{label}</span>
     </button>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width={13} height={13} aria-hidden>
-      <path
-        d="M5 12.5l4.5 4.5L19 7"
-        fill="none"
-        stroke="var(--color-accent)"
-        strokeWidth={2.4}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
 

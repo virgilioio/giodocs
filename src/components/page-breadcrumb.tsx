@@ -17,8 +17,8 @@
 
 import { useNavigate } from "@tanstack/react-router";
 import { ancestorsOf, type TreePage } from "@/lib/page-tree";
-import { Ico } from "./emoji-icon";
 import { Popover } from "./popover";
+import { MenuFoot, MenuPageRow } from "./menu-parts";
 
 const FOOTER = "A page is also reachable from any view that matches it.";
 
@@ -35,42 +35,11 @@ function MenuRow({
   label: string;
   onPick: () => void;
 }) {
-  return (
-    <button
-      type="button"
-      onClick={onPick}
-      className="flex w-full items-center hover:bg-sunken"
-      style={{
-        gap: 7,
-        border: 0,
-        background: "transparent",
-        borderRadius: 7,
-        padding: "5px 7px",
-        textAlign: "left",
-        cursor: "pointer",
-      }}
-    >
-      <Ico icon={icon} size={15} />
-      <span className="min-w-0 flex-1 truncate" style={{ fontSize: 13.5 }}>
-        {label}
-      </span>
-    </button>
-  );
+  return <MenuPageRow icon={icon ?? null} label={label} onPick={onPick} />;
 }
 
 function MenuFooter() {
-  return (
-    <div
-      style={{
-        padding: "6px 10px 8px",
-        fontSize: 11.5,
-        lineHeight: 1.45,
-        color: "var(--color-faint)",
-      }}
-    >
-      {FOOTER}
-    </div>
-  );
+  return <MenuFoot>{FOOTER}</MenuFoot>;
 }
 
 function Chev({

@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { Popover } from "./popover";
+import { MenuSep } from "./menu-parts";
 import { useToast } from "@/lib/toast";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { signPath, uploadFile } from "@/lib/images";
@@ -132,15 +133,15 @@ function FilesBody({
     <div>
       <div className="max-h-56 overflow-y-auto">
         {files.map((f) => (
-          <div key={f.path} className="group flex items-center gap-1 rounded-sm px-2 py-1 hover:bg-rail">
+          <div key={f.path} className="gio-mrow group">
             <button
               type="button"
-              className="min-w-0 flex-1 truncate text-left text-meta text-body"
+              className="min-w-0 flex-1 truncate text-left"
               onClick={() => void open(f)}
             >
               {f.name}
             </button>
-            {f.size > 0 ? <span className="tnum text-meta text-faint">{formatBytes(f.size)}</span> : null}
+            {f.size > 0 ? <span className="gio-mrow-hint">{formatBytes(f.size)}</span> : null}
             {onSet ? (
               <button
                 type="button"
@@ -154,11 +155,11 @@ function FilesBody({
             ) : null}
           </div>
         ))}
-        {files.length === 0 ? <p className="px-2 py-1 text-meta text-muted">No files yet.</p> : null}
+        {files.length === 0 ? <p className="gio-mfoot">No files yet.</p> : null}
       </div>
       {onSet ? (
         <>
-          <div className="my-1 border-t border-lineSoft" />
+          <MenuSep />
           <input
             ref={input}
             type="file"
@@ -172,10 +173,10 @@ function FilesBody({
           <button
             type="button"
             disabled={busy > 0}
-            className="w-full rounded-sm px-2 py-1 text-left text-meta text-body hover:bg-rail disabled:opacity-60"
+            className="gio-mrow"
             onClick={() => input.current?.click()}
           >
-            {busy > 0 ? "Uploading…" : "Upload a file"}
+            <span className="truncate">{busy > 0 ? "Uploading…" : "Upload a file"}</span>
           </button>
           <p className="min-h-[18px] px-2 text-meta text-danger" role="status">
             {error ?? ""}

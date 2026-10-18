@@ -7,6 +7,7 @@ import { CustomEmojiComposer } from "./custom-emoji-composer";
 import { EmojiPicker } from "./emoji-picker";
 import { Ico } from "./emoji-icon";
 import { Popover } from "./popover";
+import { MenuIcon, MenuLead, MenuSep } from "./menu-parts";
 
 /* The workspace's icon (Settings › General; Notion's "Upload an image or
  * pick an emoji", 2026-10-11): the page icon picker — every emoji, the
@@ -65,7 +66,7 @@ export function WorkspaceIconPicker({
                 close();
               }}
             />
-            <div className="mx-2 border-t border-lineSoft" />
+            <MenuSep />
             <button
               type="button"
               data-workspace-icon-upload
@@ -74,12 +75,12 @@ export function WorkspaceIconPicker({
                 close();
                 setComposer(r);
               }}
-              className="flex w-full items-center gap-2 rounded-sm px-3 py-1.5 text-left text-meta text-body hover:bg-rail"
+              className="gio-mrow"
             >
-              <svg viewBox="0 0 24 24" width={14} height={14} aria-hidden fill="none" className="text-muted">
-                <path d={ICON_UPLOAD} stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              Upload image
+              <MenuLead>
+                <MenuIcon path={ICON_UPLOAD} />
+              </MenuLead>
+              <span className="truncate">Upload image</span>
             </button>
           </div>
         )}

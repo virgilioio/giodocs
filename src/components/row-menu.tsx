@@ -28,6 +28,7 @@ import { PHONE_QUERY, useIsPhone } from "@/lib/use-media";
 import { MenuSheetFrame } from "./menu-sheet";
 import { IC } from "@/lib/menu-icons";
 import { exitRef } from "@/lib/exit-motion";
+import { MenuCheck, MenuChevron, MenuFoot, MenuHead, MenuIcon, MenuSep } from "./menu-parts";
 
 /* ═══════════════════════ SPEC TYPES (declarative API) ═══════════════════════ */
 
@@ -277,49 +278,10 @@ function cleanRows(rows: MenuRow[]): MenuRow[] {
 /** Shortcuts and values alike are in the UI font, as in Notion's menus; a
  *  "›" hint (a row that opens a submenu) is drawn as Notion's chevron. */
 function MenuHintView({ hint }: { hint: MenuHint }) {
-  if (hint.text === "›") return <SubmenuChevron />;
+  if (hint.text === "›") return <MenuChevron />;
   return <span className="gio-mrow-hint">{hint.text}</span>;
 }
 
-function SubmenuChevron() {
-  return (
-    <svg className="gio-mrow-chev" viewBox="0 0 24 24" width={16} height={16} aria-hidden>
-      <path d="m9 18 6-6-6-6" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-/** A 20px icon that fills the row's leading slot (colour from .gio-mrow-lead);
- *  a 1.6 stroke draws about 1.3px, the weight of Notion's menu icons. */
-function MenuIcon({ path }: { path: string }) {
-  return (
-    <svg viewBox="0 0 24 24" width={20} height={20} aria-hidden>
-      <path
-        d={path}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={1.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width={13} height={13} aria-hidden style={{ flex: "none" }}>
-      <path
-        d="M20 6 9 17l-5-5"
-        fill="none"
-        stroke="var(--color-accent)"
-        strokeWidth={2.4}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
 
 function SpecRow({
   row,
@@ -406,7 +368,7 @@ function SpecRow({
 
       <span className="truncate">{row.label}</span>
 
-      {row.checked && <CheckIcon />}
+      {row.checked && <MenuCheck />}
       {row.hintSwatch && (
         <span
           aria-hidden
@@ -504,22 +466,7 @@ function SpecBody({ spec, onClose }: { spec: MenuSpec; onClose: () => void }) {
     return (
       <div data-spec-body style={{ maxHeight: spec.maxHeight ?? 440, overflow: "auto" }}>
         {spec.onBack || spec.title ? (
-          <div className="gio-mhead truncate">
-            {spec.onBack && (
-              <button
-                type="button"
-                aria-label="Back"
-                onClick={spec.onBack}
-                className="grid place-items-center rounded-sm hover:bg-rail"
-                style={{ width: 20, height: 20 }}
-              >
-                <svg viewBox="0 0 24 24" width={14} height={14} aria-hidden>
-                  <path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-            )}
-            <span className="truncate">{spec.title}</span>
-          </div>
+          <MenuHead onBack={spec.onBack}>{spec.title}</MenuHead>
         ) : null}
         {spec.content(onClose)}
       </div>
@@ -531,34 +478,12 @@ function SpecBody({ spec, onClose }: { spec: MenuSpec; onClose: () => void }) {
   ) : null;
   return (
     <div data-spec-body style={{ maxHeight: spec.maxHeight ?? 280, overflow: "auto" }}>
-      <div className="gio-mhead truncate">
-        {spec.onBack && (
-          <button
-            type="button"
-            aria-label="Back"
-            onClick={spec.onBack}
-            className="grid place-items-center rounded-sm hover:bg-rail"
-            style={{ width: 20, height: 20 }}
-          >
-            <svg viewBox="0 0 24 24" width={14} height={14} aria-hidden>
-              <path
-                d="M15 6l-6 6 6 6"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2.4}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-        )}
-        <span className="truncate">{spec.title}</span>
-      </div>
+      <MenuHead onBack={spec.onBack}>{spec.title}</MenuHead>
       {spec.inputFirst ? input : null}
       <div>
         {rows.map((r, i) =>
           r.kind === "sep" ? (
-            <div key={`s-${i}`} aria-hidden className="gio-msep" />
+            <MenuSep key={`s-${i}`} />
           ) : (
             <SpecRow
               key={`r-${i}`}
@@ -582,10 +507,7 @@ function SpecBody({ spec, onClose }: { spec: MenuSpec; onClose: () => void }) {
       {spec.inputFirst ? null : input}
       {previewCard}
       {spec.footer && (
-        <>
-          <div aria-hidden className="gio-msep" />
-          <div className="gio-mfoot">{spec.footer}</div>
-        </>
+        <MenuFoot>{spec.footer}</MenuFoot>
       )}
     </div>
   );
@@ -924,33 +846,11 @@ export function RowMenuList({
 }) {
   return (
     <div style={{ maxHeight: 280, overflow: "auto" }}>
-      <div className="gio-mhead">
-        {onBack && (
-          <button
-            type="button"
-            aria-label="Back"
-            onClick={onBack}
-            className="grid place-items-center rounded-sm hover:bg-rail"
-            style={{ width: 20, height: 20 }}
-          >
-            <svg viewBox="0 0 24 24" width={14} height={14} aria-hidden>
-              <path
-                d="M15 6l-6 6 6 6"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2.4}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-        )}
-        <span className="truncate">{title}</span>
-      </div>
+      <MenuHead onBack={onBack}>{title}</MenuHead>
       <div>
         {items.map((it, i) =>
           it.kind === "divider" ? (
-            <div key={`d-${i}`} aria-hidden className="gio-msep" />
+            <MenuSep key={`d-${i}`} />
           ) : (
             <RowMenuRow key={it.id ?? `${it.label}-${i}`} item={it} />
           ),
@@ -958,10 +858,7 @@ export function RowMenuList({
       </div>
       {input && <RowMenuInput {...input} />}
       {footer && (
-        <>
-          <div aria-hidden className="gio-msep" />
-          <div className="gio-mfoot">{footer}</div>
-        </>
+        <MenuFoot>{footer}</MenuFoot>
       )}
     </div>
   );
@@ -1008,13 +905,13 @@ function RowMenuRow({ item }: { item: Exclude<RowMenuItem, { kind: "divider" }> 
         </span>
       )}
       <span className="truncate">{item.label}</span>
-      {item.check && <CheckIcon />}
+      {item.check && <MenuCheck />}
       {item.hint != null && (
         <span className="gio-mrow-hint" style={{ display: "inline-flex", alignItems: "center" }}>
           {item.hint}
         </span>
       )}
-      {item.submenu && <SubmenuChevron />}
+      {item.submenu && <MenuChevron />}
     </button>
   );
 }

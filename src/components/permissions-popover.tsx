@@ -33,6 +33,7 @@ import {
   type MemberInfo,
 } from "@/lib/share-panel";
 import { exitRef } from "@/lib/exit-motion";
+import { MenuCheck, MenuSep } from "./menu-parts";
 
 /* ────────────── Store ────────────── */
 
@@ -684,31 +685,19 @@ export function PermissionsPopoverHost({
 
           {query.trim().length > 0 && (
             <div
-              className="animate-popIn"
+              className="gio-menu animate-popIn"
               style={{
                 position: "absolute",
                 left: 15,
                 right: 15,
                 marginTop: 7,
-                border: "1px solid var(--color-line)",
-                borderRadius: 9,
-                background: "var(--color-surface)",
-                boxShadow: "0 3px 10px rgba(13,13,9,.06)",
                 maxHeight: 196,
                 overflowY: "auto",
-                padding: 4,
                 zIndex: 5,
               }}
             >
               {matches.length === 0 && !emailReady && (
-                <div
-                  style={{
-                    padding: "8px 8px",
-                    fontSize: 12.5,
-                    color: "var(--color-whisper)",
-                    lineHeight: 1.35,
-                  }}
-                >
+                <div className="gio-mfoot">
                   Nobody by that name. Type a full email address to invite a guest.
                 </div>
               )}
@@ -722,21 +711,7 @@ export function PermissionsPopoverHost({
                     setQuery("");
                     searchRef.current?.focus();
                   }}
-                  className="flex w-full items-center gap-2 text-left"
-                  style={{
-                    padding: "6px 6px",
-                    borderRadius: 7,
-                    background: "transparent",
-                    cursor: "pointer",
-                  }}
-                  onMouseEnter={(e) =>
-                    ((e.currentTarget as HTMLButtonElement).style.background =
-                      "var(--color-rail)")
-                  }
-                  onMouseLeave={(e) =>
-                    ((e.currentTarget as HTMLButtonElement).style.background =
-                      "transparent")
-                  }
+                  className="gio-mrow"
                 >
                   <MemberAvatar
                     name={m.full_name ?? ""}
@@ -744,26 +719,16 @@ export function PermissionsPopoverHost({
                     tint={m.avatar_tint}
                     ink={m.avatar_ink}
                   />
-                  <span
-                    className="min-w-0 flex-1 truncate"
-                    style={{ fontSize: 14, fontWeight: 700, color: "var(--color-body)" }}
-                    title={m.full_name ?? m.email ?? ""}
-                  >
+                  <span className="truncate" title={m.full_name ?? m.email ?? ""}>
                     {m.full_name || m.email || "Unnamed"}
                   </span>
-                  <span
-                    className="truncate"
-                    style={{
-                      fontSize: 12.5,
-                      color: "var(--color-faint)",
-                      maxWidth: 160,
-                    }}
-                  >
+                  <span className="gio-mrow-hint" style={{ maxWidth: 160 }}>
                     {m.email ?? ""}
                   </span>
                 </button>
               ))}
 
+              {emailReady && matches.length > 0 ? <MenuSep /> : null}
               {emailReady && (
                 <button
                   type="button"
@@ -772,27 +737,7 @@ export function PermissionsPopoverHost({
                     setQuery("");
                     searchRef.current?.focus();
                   }}
-                  className="flex w-full items-center gap-2 text-left"
-                  style={{
-                    padding: "6px 6px",
-                    borderRadius: 7,
-                    background: "transparent",
-                    cursor: "pointer",
-                    marginTop: matches.length > 0 ? 2 : 0,
-                    borderTop:
-                      matches.length > 0
-                        ? "1px solid var(--color-lineSoft)"
-                        : "none",
-                    paddingTop: matches.length > 0 ? 8 : 6,
-                  }}
-                  onMouseEnter={(e) =>
-                    ((e.currentTarget as HTMLButtonElement).style.background =
-                      "var(--color-rail)")
-                  }
-                  onMouseLeave={(e) =>
-                    ((e.currentTarget as HTMLButtonElement).style.background =
-                      "transparent")
-                  }
+                  className="gio-mrow"
                 >
                   <IconTile
                     path={ENVELOPE}
@@ -801,12 +746,7 @@ export function PermissionsPopoverHost({
                     size={24}
                     iconSize={13}
                   />
-                  <span
-                    className="min-w-0 flex-1 truncate"
-                    style={{ fontSize: 14, fontWeight: 700, color: "var(--color-body)" }}
-                  >
-                    Invite {query.trim().toLowerCase()}
-                  </span>
+                  <span className="truncate">Invite {query.trim().toLowerCase()}</span>
                   <span
                     className="font-display"
                     style={{
@@ -825,14 +765,7 @@ export function PermissionsPopoverHost({
                 </button>
               )}
               {emailReady && (
-                <div
-                  style={{
-                    padding: "3px 8px 4px 34px",
-                    fontSize: 12,
-                    color: "var(--color-faint)",
-                    lineHeight: 1.35,
-                  }}
-                >
+                <div className="gio-mfoot" style={{ paddingTop: 0, paddingLeft: 40 }}>
                   Outside {ws} — joins as a guest, view only
                 </div>
               )}
@@ -1251,17 +1184,9 @@ function PermRow({
 
       {openMenu && (
         <div
-          className="animate-popIn"
-          style={{
-            marginLeft: 37,
-            marginTop: 2,
-            marginBottom: 4,
-            border: "1px solid var(--color-line)",
-            borderRadius: 8,
-            background: "var(--color-surface)",
-            boxShadow: "0 3px 10px rgba(13,13,9,.06)",
-            padding: 4,
-          }}
+          role="menu"
+          className="gio-menu animate-popIn"
+          style={{ marginLeft: 37, marginTop: 2, marginBottom: 4 }}
         >
           <InlineRoleItem
             label="Can edit"
@@ -1303,43 +1228,15 @@ function InlineRoleItem({
   return (
     <button
       type="button"
+      role={danger ? "menuitem" : "menuitemradio"}
+      aria-checked={danger ? undefined : !!active}
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
-      className="flex w-full items-center gap-2"
-      style={{
-        padding: "5px 8px",
-        borderRadius: 6,
-        fontSize: 13.5,
-        color: disabled
-          ? "var(--color-whisper)"
-          : danger
-            ? "var(--color-amber)"
-            : "var(--color-body)",
-        background: "transparent",
-        cursor: disabled ? "default" : "pointer",
-        textAlign: "left",
-      }}
-      onMouseEnter={(e) => {
-        if (disabled) return;
-        (e.currentTarget as HTMLButtonElement).style.background =
-          "var(--color-rail)";
-      }}
-      onMouseLeave={(e) =>
-        ((e.currentTarget as HTMLButtonElement).style.background =
-          "transparent")
-      }
+      className="gio-mrow"
+      data-danger={danger || undefined}
     >
-      <span style={{ width: 14, display: "inline-grid", placeItems: "center" }}>
-        {active && (
-          <Ic
-            path={CHECK}
-            size={12}
-            color="var(--color-accent)"
-            strokeWidth={2.2}
-          />
-        )}
-      </span>
-      <span style={{ flex: 1 }}>{label}</span>
+      <span className="truncate">{label}</span>
+      {active ? <MenuCheck /> : null}
     </button>
   );
 }
