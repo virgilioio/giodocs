@@ -5,6 +5,7 @@ import { LAYOUT_NAMES, type StartLayout } from "@/hooks/use-start-database";
 import { TemplatePicker } from "./templates-ui";
 import { Ico } from "./emoji-icon";
 import { Popover } from "./popover";
+import { MenuHead, MenuIcon, MenuLead } from "./menu-parts";
 
 /* A blank page's starting points (Notion's new-page screen, 2026-10-11):
  * "Get started with" and a row of chips — Empty page, Templates ▾ (the
@@ -81,7 +82,7 @@ export function NewPageStarter({
             )}
           >
             {(close) => (
-              <div style={{ padding: 4, maxHeight: 420, overflowY: "auto" }}>
+              <div style={{ maxHeight: 420, overflowY: "auto" }}>
                 <TemplatePicker
                   databaseId={databaseId}
                   onPick={async (id) => {
@@ -122,11 +123,11 @@ export function NewPageStarter({
               )}
             >
               {(close) => (
-                <ul style={{ padding: 4 }}>
+                <ul>
                   {(Object.keys(LAYOUT_NAMES) as StartLayout[]).map((l) => (
                     <Item
                       key={l}
-                      icon={<Glyph d={LAYOUT_ICONS[l]} />}
+                      icon={<MenuIcon path={LAYOUT_ICONS[l]} />}
                       label={LAYOUT_NAMES[l]}
                       disabled={!!busy}
                       onClick={() => {
@@ -180,11 +181,7 @@ export function NewPageStarter({
 }
 
 function Heading({ children }: { children: ReactNode }) {
-  return (
-    <div className="text-label uppercase text-faint" style={{ margin: "12px 0 6px" }}>
-      {children}
-    </div>
-  );
+  return <MenuHead>{children}</MenuHead>;
 }
 
 function Glyph({ d }: { d: string }) {
@@ -210,16 +207,10 @@ function Item({
 }) {
   return (
     <li>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={onClick}
-        className="flex w-full min-w-0 items-center rounded-md text-left hover:bg-sunken disabled:opacity-60"
-        style={{ gap: 9, padding: "5px 6px", marginLeft: -6 }}
-      >
-        {icon}
-        <span className="min-w-0 truncate text-row text-body">{label}</span>
-        {hint ? <span className="ml-auto shrink-0 truncate text-caption text-faint">{hint}</span> : null}
+      <button type="button" disabled={disabled} onClick={onClick} className="gio-mrow">
+        <MenuLead>{icon}</MenuLead>
+        <span className="truncate">{label}</span>
+        {hint ? <span className="gio-mrow-hint">{hint}</span> : null}
       </button>
     </li>
   );
