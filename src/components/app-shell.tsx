@@ -666,7 +666,7 @@ export function AppShell() {
     <div
       ref={shellRootRef}
       className="flex h-screen overflow-hidden bg-canvas"
-      data-page-card={pageCardVariant()}
+      data-page-card={compact ? undefined : "true"}
       style={{ "--gio-sidebar-w": `${sidebarWidth}px` } as React.CSSProperties}
     >
       {compact && railOpen ? (
@@ -1472,17 +1472,6 @@ function EmptyWorkspace() {
 
 /* ─────────────────── Footer + account dropdown ─────────────────── */
 
-/** Experiment only: `localStorage["gio.exp.pageCard"] = "1"` floats the page
- *  as a rounded card beside the rail (variant B, Gio Sales' frame). */
-function pageCardVariant(): "true" | undefined {
-  if (typeof window === "undefined") return undefined;
-  try {
-    return window.localStorage.getItem("gio.exp.pageCard") === "1" ? "true" : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /** The collapsed sidebar: Gio's 64px rail (Gio ATS, Gio Sales). The
  *  controls first (unfold, Search, New page, Inbox), then Home and one tile
  *  per section: Favorites, Workspace and Private open their pages in a card
@@ -1565,7 +1554,7 @@ function CollapsedRail({
         <Glyph path={HOME_GLYPH} className="h-5 w-5" />
       </Link>
       {section("favorites", "Favorites", STAR_GLYPH)}
-      {section("workspace", `Workspace: shared with everyone at ${workspaceName}`, BUILDING_GLYPH)}
+      {section("workspace", `Workspace: shared with everyone at ${workspaceName}`, WORKSPACE_GLYPH)}
       {section("private", "Private: only you", LOCK_GLYPH)}
       <div className="mt-auto flex flex-col items-center" style={{ rowGap: 6 }}>
         <TemplatesButton variant="rail" />
@@ -1580,8 +1569,9 @@ function CollapsedRail({
   );
 }
 
-const BUILDING_GLYPH =
-  "M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M4 21h16M10 7h1M13 7h1M10 11h1M13 11h1M10 15h1M13 15h1M11 21v-3h2v3";
+/** Workspace: four tiles, a dashboard of everything the team shares. */
+const WORKSPACE_GLYPH =
+  "M4 3h5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM15 3h5a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM15 12h5a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1zM4 16h5a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1z";
 const LOCK_GLYPH = "M7 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2zM8 11V8a4 4 0 0 1 8 0v3";
 const GEAR_GLYPH =
   "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z";
@@ -2042,7 +2032,7 @@ function SectionHeader({
       </div>
     );
   return (
-    <div className="mt-4 flex items-center justify-between px-2 pb-1">
+    <div className="mt-5 flex items-center justify-between px-2 pb-1">
       <button
         type="button"
         onClick={onToggle}

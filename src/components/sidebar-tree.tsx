@@ -37,9 +37,9 @@ import { SpecMenuTrigger, type MenuSpec } from "./row-menu";
 export const TREE_EXPANDED_KEY = "gio.treeExpanded";
 
 const RAMP = [
-  { height: 28, fontSize: 14, color: "var(--color-secondary)" },
-  { height: 27, fontSize: 14, color: "var(--color-muted)" },
-  { height: 27, fontSize: 14, color: "var(--color-muted)" },
+  { height: 30, fontSize: 14, color: "var(--color-secondary)" },
+  { height: 30, fontSize: 14, color: "var(--color-muted)" },
+  { height: 30, fontSize: 14, color: "var(--color-muted)" },
 ] as const;
 
 export type TreeNode = TreePage & { is_database?: boolean };

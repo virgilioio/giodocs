@@ -612,19 +612,19 @@ button:is([class~="bg-btn"], [class~="border-line"][class~="bg-surface"], .gio-p
 @layer components {
   .gio-page-body {
     /* Between two ordinary blocks (paragraph → paragraph). */
-    --gio-block-gap: 13px;
+    --gio-block-gap: 6px;
     /* Between consecutive items of the same list — tight, so a list reads
        as one object rather than a stack of separate blocks. */
-    --gio-list-gap: 4px;
+    --gio-list-gap: 2px;
     /* Air above each heading level. */
-    --gio-h1-above: 46px;
-    --gio-h2-above: 34px;
-    --gio-h3-above: 26px;
+    --gio-h1-above: 32px;
+    --gio-h2-above: 24px;
+    --gio-h3-above: 16px;
     /* Air below a heading, before its first block. Deliberately small. */
-    --gio-head-below: 9px;
+    --gio-head-below: 4px;
     /* Set pieces that need room to read as distinct objects. */
-    --gio-block-y: 20px;
-    --gio-divider-y: 34px;
+    --gio-block-y: 12px;
+    --gio-divider-y: 14px;
 
     row-gap: 0;
   }
@@ -642,17 +642,28 @@ button:is([class~="bg-btn"], [class~="border-line"][class~="bg-surface"], .gio-p
   }
 
   /* Set pieces. */
+  /* Room on both sides (the spacing pass, Allan 2026-10-18): callouts,
+     quotes, code, tables, columns, images and inline databases read as
+     objects. After a heading the heading's own spacing still wins, and a
+     heading after one keeps its own air above. */
   .gio-page-body [data-block-type="quote"],
   .gio-page-body [data-block-type="code"],
   .gio-page-body [data-block-type="table"],
-  .gio-page-body [data-block-type="columns"] {
+  .gio-page-body [data-block-type="columns"],
+  .gio-page-body [data-block-type="callout"],
+  .gio-page-body [data-block-type="image"],
+  .gio-page-body [data-block-type="imagerow"],
+  .gio-page-body [data-block-type="view"],
+  .gio-page-body [data-block-type="quote"] + [data-block-id]:not([data-block-type^="h"]),
+  .gio-page-body [data-block-type="code"] + [data-block-id]:not([data-block-type^="h"]),
+  .gio-page-body [data-block-type="table"] + [data-block-id]:not([data-block-type^="h"]),
+  .gio-page-body [data-block-type="columns"] + [data-block-id]:not([data-block-type^="h"]),
+  .gio-page-body [data-block-type="callout"] + [data-block-id]:not([data-block-type^="h"]),
+  .gio-page-body [data-block-type="image"] + [data-block-id]:not([data-block-type^="h"]),
+  .gio-page-body [data-block-type="imagerow"] + [data-block-id]:not([data-block-type^="h"]),
+  .gio-page-body [data-block-type="view"] + [data-block-id]:not([data-block-type^="h"]) {
     margin-top: var(--gio-block-y);
   }
-
-  /* A callout keeps the ordinary text rhythm (Notion's): it's a paragraph
-     with a background, not a set piece. After a heading the heading's own
-     spacing wins (below). */
-  .gio-page-body [data-block-type="callout"] { margin-top: var(--gio-block-gap); }
 
   /* A caption belongs to the thing above it — almost touching. */
   .gio-page-body [data-block-type="caption"] { margin-top: 3px; }
@@ -680,7 +691,7 @@ button:is([class~="bg-btn"], [class~="border-line"][class~="bg-surface"], .gio-p
   /* A heading immediately after another heading (H1 → H2 → H3) needs less
      than a full gap — the pair is one unit. Last, so it beats both rules. */
   .gio-page-body [data-block-type^="h"] + [data-block-type^="h"] {
-    margin-top: 15px;
+    margin-top: 8px;
   }
 
   /* The first block of a column starts flush — the column track already
@@ -690,13 +701,13 @@ button:is([class~="bg-btn"], [class~="border-line"][class~="bg-surface"], .gio-p
   /* Small-text mode scales the rhythm with the type, or the page reads
      loose at a size chosen to be tighter. */
   .gio-page[data-small="1"] .gio-page-body {
-    --gio-block-gap: 11px;
-    --gio-h1-above: 38px;
-    --gio-h2-above: 28px;
-    --gio-h3-above: 22px;
-    --gio-head-below: 8px;
-    --gio-block-y: 17px;
-    --gio-divider-y: 28px;
+    --gio-block-gap: 5px;
+    --gio-h1-above: 28px;
+    --gio-h2-above: 20px;
+    --gio-h3-above: 14px;
+    --gio-head-below: 4px;
+    --gio-block-y: 10px;
+    --gio-divider-y: 12px;
   }
 }
 
@@ -1003,6 +1014,11 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
   background: #d7c5fb;
   transform: translateY(-50%);
 }
+/* The tree's rhythm in the rail (spacing pass, 2026-10-18): 30px rows, 2px
+   apart, 20px above each section label. */
+.gio-black-rail [data-tree-row] + [data-tree-row],
+.gio-black-rail [data-favorite] + [data-favorite] { margin-top: 2px; }
+.gio-black-rail [data-favorite] > button { height: 30px !important; }
 /* The two layers inside the card: the full tree and the 64px rail. The one
    going away fades first (120ms); the one arriving fades in after the width
    has mostly moved. Icons never move. */
