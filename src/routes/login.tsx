@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
+import { triggerGioSplash } from "@/components/gio-splash";
 
 export const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>): { next?: string } => {
@@ -117,6 +118,7 @@ function LoginPage() {
       passwordRef.current?.focus();
       return;
     }
+    triggerGioSplash();
     navigate({ to: next, replace: true });
   }
 
