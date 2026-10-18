@@ -19,10 +19,15 @@ import { TemplateRowsSkeleton } from "./phone-skeletons";
 
 export const TEMPLATE_ICON = "M5 4h14v5H5zM5 13h6v7H5zM15 13h4M15 17h4";
 
-/** `rail`: a 44px tile on the collapsed black rail. */
-export function TemplatesButton({ rail = false }: { rail?: boolean } = {}) {
+/** `variant`: a sidebar row, a 44px tile on the collapsed black rail, or a
+ *  32px icon in the sidebar's top row. */
+export function TemplatesButton({ variant = "row" }: { variant?: "row" | "rail" | "icon" } = {}) {
+  const rail = variant === "rail";
+  const icon = variant === "icon";
   return (
     <Popover
+      side={rail ? "right" : "bottom"}
+      align={icon ? "end" : "start"}
       width={400}
       trigger={({ open, onClick, ref }) => (
         <button

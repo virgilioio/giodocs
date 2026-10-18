@@ -37,7 +37,7 @@ import { useInboxUnread } from "@/hooks/use-visible-inbox";
 import { TemplatesButton, TemplatesPanel } from "./templates-panel";
 import { TrashPanel } from "./trash-panel";
 import { FavoritesList } from "./favorites-list";
-import { useFavoritePages } from "@/hooks/use-favorites";
+import { STAR_GLYPH, useFavoritePages } from "@/hooks/use-favorites";
 import { useInboxRealtime } from "@/hooks/use-inbox";
 import { describeNotification, openNotificationTarget } from "@/lib/inbox-text";
 import { openComments } from "@/lib/comments-store";
@@ -644,6 +644,9 @@ export function AppShell() {
   }
 
   const railShown = compact ? railOpen : sidebarOpen;
+  // A section opened from the collapsed rail (Favorites, Workspace, Private).
+  const [railFlyout, setRailFlyout] = useState<"favorites" | SectionKey | null>(null);
+  useEffect(() => setRailFlyout(null), [pathname, sidebarOpen]);
   const toggleRail = () => {
     setSidebarPopover(null);
     setAccountMenu(false);
@@ -677,7 +680,7 @@ export function AppShell() {
             className="gio-rail-over fixed inset-y-0 left-0 z-50 overflow-hidden border-r border-line bg-rail"
           >
             <div style={{ width: "var(--gio-sidebar-w)" }} className="flex h-screen flex-col">
-              <SidebarBody {...sidebarProps} />
+              <SidebarBody {...sidebarProps} onCollapse={toggleRail} />
             </div>
           </div>
         ) : null
@@ -701,7 +704,7 @@ export function AppShell() {
               inert={!sidebarOpen}
               style={{ width: sidebarWidth }}
             >
-              <SidebarBody {...sidebarProps} />
+              <SidebarBody {...sidebarProps} onCollapse={toggleRail} />
             </div>
             <div
               className="gio-rail-layer"
@@ -716,20 +719,20 @@ export function AppShell() {
                 onOpenPalette={() => setPaletteOpen(true)}
                 onOpenSettings={() => openSettings("preferences")}
                 onExpand={toggleRail}
+                flyout={railFlyout}
+                onFlyout={(k) => setRailFlyout((v) => (v === k ? null : k))}
               />
             </div>
           </div>
-          <button
-            type="button"
-            className="gio-rail-edge"
-            onClick={toggleRail}
-            aria-expanded={sidebarOpen}
-            aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-            title={sidebarOpen ? "Collapse sidebar  ⌘\\" : "Expand sidebar  ⌘\\"}
-            style={{ right: 0 }}
-          >
-            <Glyph path="M15 6l-6 6 6 6" className="h-3.5 w-3.5" />
-          </button>
+          {!sidebarOpen && railFlyout ? (
+            <RailFlyout
+              key={railFlyout}
+              width={sidebarWidth + 20}
+              onClose={() => setRailFlyout(null)}
+            >
+              <SidebarBody {...sidebarProps} only={railFlyout} />
+            </RailFlyout>
+          ) : null}
           {sidebarOpen && (
             <div
               role="separator"
@@ -938,8 +941,14 @@ function SidebarBody({
   onOpenSettings,
   onOpenInvite,
   onOpenPalette,
+  onCollapse,
+  only,
   phone = false,
 }: {
+  /** The lilac button in the top row that folds the sidebar into the rail. */
+  onCollapse?: () => void;
+  /** One section on its own: the card that opens beside the collapsed rail. */
+  only?: "favorites" | SectionKey;
   /** The phone's Home tab: Recents, Favorites, Workspace and Private as
    *  big touch rows, without the sidebar's search, links and account. */
   phone?: boolean;
@@ -1188,22 +1197,25 @@ function SidebarBody({
             pages={pages}
           />
         ) : null}
-        {phone ? null : (
+        {phone || only ? null : (
           <>
-        {/* Search, and New page (Notion's ✎): a new page inside the page
-            you're on, else in Private; it opens in a dialog. */}
-        <div className="flex items-center" style={{ gap: 4 }}>
-        <button
-          type="button"
-          onClick={onOpenPalette}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-line bg-surface px-2.5 py-1.5 text-ui text-secondary hover:bg-railHover"
-        >
-          <Glyph path="M11 4a7 7 0 100 14 7 7 0 000-14zm5.5 12.5l4 4" className="h-4 w-4 text-muted" />
-          <span className="flex-1 text-left">Search</span>
-          <span className="rounded-sm bg-sunken px-1.5 py-0.5 font-mono text-label text-muted">
-            ⌘K
-          </span>
-        </button>
+        {/* The top row (black rail, 2026-10-18): fold the sidebar on the
+            left; New page (Notion's ✎: inside the page you're on, else in
+            Private, in a dialog) and the Inbox on the right. Search below. */}
+        <div className="flex items-center" style={{ gap: 2, height: 32 }}>
+        {onCollapse ? (
+          <button
+            type="button"
+            className="gio-rail-fold"
+            onClick={onCollapse}
+            aria-expanded
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar  ⌘\\"
+          >
+            <Glyph path="M15 6l-6 6 6 6" className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+        <span className="flex-1" />
         <button
           type="button"
           aria-label="New page"
@@ -1225,7 +1237,19 @@ function SidebarBody({
         >
           <Glyph path="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" className="h-4 w-4" />
         </button>
+        <InboxButton variant="icon" />
         </div>
+        <button
+          type="button"
+          onClick={onOpenPalette}
+          className="mt-2 flex w-full min-w-0 items-center gap-2 rounded-md border border-line bg-surface px-2.5 py-1.5 text-ui text-secondary hover:bg-railHover"
+        >
+          <Glyph path="M11 4a7 7 0 100 14 7 7 0 000-14zm5.5 12.5l4 4" className="h-4 w-4 text-muted" />
+          <span className="flex-1 text-left">Search</span>
+          <span className="rounded-sm bg-sunken px-1.5 py-0.5 font-mono text-label text-muted">
+            ⌘K
+          </span>
+        </button>
         <Link
           to="/home"
           aria-current={selection?.kind === "home" ? "page" : undefined}
@@ -1234,16 +1258,32 @@ function SidebarBody({
           <Glyph path={HOME_GLYPH} className="h-4 w-4 text-muted" />
           <span className="flex-1 text-left">Home</span>
         </Link>
-        <InboxButton />
         <TemplatesButton />
           </>
         )}
+        {only ? (
+          <div className="flex items-center justify-between px-2 pb-1" style={{ height: 32 }}>
+            <span className="text-label uppercase text-faint">
+              {only === "favorites" ? "Favorites" : only === "workspace" ? "Workspace" : "Private"}
+            </span>
+            {only === "favorites" ? null : (
+              <NewTopLevelMenu section={only} onCreate={(k) => createTop(only, k)} />
+            )}
+          </div>
+        ) : null}
 
         {loading ? (
           phone ? <PhoneHomeSkeleton inner /> : <SkeletonList />
         ) : (
           <>
-            {favorites.length ? (
+            {only === "favorites" ? (
+              favorites.length ? (
+                <FavoritesList activeId={activeId} />
+              ) : (
+                <p className="px-2 py-1 text-caption italic text-faint">Star a page from its ⋯ menu to keep it here.</p>
+              )
+            ) : null}
+            {!only && favorites.length ? (
               <>
                 <SectionHeader
                   label="Favorites"
@@ -1254,7 +1294,8 @@ function SidebarBody({
                 {sections.favorites ? <FavoritesList activeId={activeId} phone={phone} /> : null}
               </>
             ) : null}
-            <div
+            {only && only !== "workspace" ? null : (<>
+            {only ? null : <div
               data-section-drop="workspace"
               {...headerDrop("workspace")}
               className="rounded-md"
@@ -1267,8 +1308,8 @@ function SidebarBody({
                 onToggle={() => toggleSection("workspace")}
                 trailing={<NewTopLevelMenu section="workspace" onCreate={(k) => createTop("workspace", k)} />}
               />
-            </div>
-            {sections.workspace && (
+            </div>}
+            {(only || sections.workspace) && (
               <SidebarTreeView
                 pages={workspaceTree}
                 expanded={expanded}
@@ -1283,8 +1324,10 @@ function SidebarBody({
                 onExpand={openExpanded}
               />
             )}
+            </>)}
 
-            <div
+            {only && only !== "private" ? null : (<>
+            {only ? null : <div
               data-section-drop="private"
               {...headerDrop("private")}
               className="rounded-md"
@@ -1297,8 +1340,8 @@ function SidebarBody({
                 onToggle={() => toggleSection("private")}
                 trailing={<NewTopLevelMenu section="private" onCreate={(k) => createTop("private", k)} />}
               />
-            </div>
-            {sections.private && (
+            </div>}
+            {(only || sections.private) && (
               <SidebarTreeView
                 pages={privateTree}
                 expanded={expanded}
@@ -1313,11 +1356,12 @@ function SidebarBody({
                 onExpand={openExpanded}
               />
             )}
+            </>)}
           </>
         )}
       </div>
 
-      {phone ? null : <FooterAccount
+      {phone || only ? null : <FooterAccount
         userEmail={userEmail}
         workspaceName={workspaceName}
         workspaceIcon={workspaceIcon}
@@ -1428,9 +1472,11 @@ function pageCardVariant(): "true" | undefined {
   }
 }
 
-/** The collapsed sidebar: Gio's 64px rail (Gio ATS, Gio Sales). Home, then
- *  Search, New page, Inbox and Templates; your favourite pages as tiles;
- *  Settings and the workspace at the bottom. Labels are tooltips. */
+/** The collapsed sidebar: Gio's 64px rail (Gio ATS, Gio Sales). The
+ *  controls first (unfold, Search, New page, Inbox), then Home and one tile
+ *  per section: Favorites, Workspace and Private open their pages in a card
+ *  beside the rail. Templates, Settings and the workspace at the bottom.
+ *  Labels are tooltips. */
 function CollapsedRail({
   selection,
   workspaceIcon,
@@ -1438,6 +1484,8 @@ function CollapsedRail({
   onOpenPalette,
   onOpenSettings,
   onExpand,
+  flyout,
+  onFlyout,
 }: {
   selection: Selection;
   workspaceIcon: string;
@@ -1445,23 +1493,30 @@ function CollapsedRail({
   onOpenPalette: () => void;
   onOpenSettings: () => void;
   onExpand: () => void;
+  flyout: "favorites" | SectionKey | null;
+  onFlyout: (k: "favorites" | SectionKey) => void;
 }) {
-  const navigate = useNavigate();
   const createAndOpen = useCreatePageAndOpen();
-  const favorites = useFavoritePages().slice(0, 6);
   const here = selection && (selection.kind === "page" || selection.kind === "database") ? selection.id : null;
+  const section = (k: "favorites" | SectionKey, label: string, path: string) => (
+    <button
+      type="button"
+      className="gio-rail-tile"
+      aria-label={label}
+      title={label}
+      aria-expanded={flyout === k}
+      data-rail-section={k}
+      data-open={flyout === k ? "" : undefined}
+      onClick={() => onFlyout(k)}
+    >
+      <Glyph path={path} className="h-5 w-5" />
+    </button>
+  );
   return (
-    <nav aria-label="Sidebar" className="flex h-full flex-col items-center" style={{ width: RAIL_W, padding: "12px 0", rowGap: 6 }}>
-      <Link
-        to="/home"
-        aria-label="Home"
-        title="Home"
-        aria-current={selection?.kind === "home" ? "page" : undefined}
-        className="gio-rail-tile"
-      >
-        <Glyph path={HOME_GLYPH} className="h-5 w-5" />
-      </Link>
-      <span className="gio-rail-divider" aria-hidden />
+    <nav aria-label="Sidebar" className="flex h-full flex-col items-center" style={{ width: RAIL_W, padding: "10px 0", rowGap: 6 }}>
+      <button type="button" className="gio-rail-fold gio-rail-fold-tile" aria-expanded={false} aria-label="Expand sidebar" title="Expand sidebar  ⌘\\" onClick={onExpand}>
+        <Glyph path="M9 6l6 6-6 6" className="h-4 w-4" />
+      </button>
       <button type="button" className="gio-rail-tile" aria-label="Search" title="Search  ⌘K" onClick={onOpenPalette}>
         <Glyph path="M11 4a7 7 0 100 14 7 7 0 000-14zm5.5 12.5l4 4" className="h-5 w-5" />
       </button>
@@ -1482,37 +1537,72 @@ function CollapsedRail({
       >
         <Glyph path="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" className="h-5 w-5" />
       </button>
-      <InboxButton rail />
-      <TemplatesButton rail />
-      {favorites.length ? <span className="gio-rail-divider" aria-hidden /> : null}
-      {favorites.map((p) => (
-        <button
-          key={p.id}
-          type="button"
-          className="gio-rail-tile"
-          aria-label={p.title?.trim() || "Untitled"}
-          title={p.title?.trim() || "Untitled"}
-          aria-current={here === p.id ? "page" : undefined}
-          onClick={() => {
-            setPageOrigin(p.id, { kind: "search" });
-            void navigate({ to: "/p/$pageId", params: { pageId: p.id } });
-          }}
-        >
-          <Ico icon={p.icon || (p.is_database ? "🗂️" : "📄")} size={20} />
-        </button>
-      ))}
+      <InboxButton variant="rail" />
+      <span className="gio-rail-divider" aria-hidden />
+      <Link
+        to="/home"
+        aria-label="Home"
+        title="Home"
+        aria-current={selection?.kind === "home" ? "page" : undefined}
+        className="gio-rail-tile"
+      >
+        <Glyph path={HOME_GLYPH} className="h-5 w-5" />
+      </Link>
+      {section("favorites", "Favorites", STAR_GLYPH)}
+      {section("workspace", `Workspace: shared with everyone at ${workspaceName}`, BUILDING_GLYPH)}
+      {section("private", "Private: only you", LOCK_GLYPH)}
       <div className="mt-auto flex flex-col items-center" style={{ rowGap: 6 }}>
+        <TemplatesButton variant="rail" />
         <button type="button" className="gio-rail-tile" aria-label="Settings" title="Settings" onClick={onOpenSettings}>
-          <Glyph
-            path="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"
-            className="h-5 w-5"
-          />
+          <Glyph path={GEAR_GLYPH} className="h-5 w-5" />
         </button>
         <button type="button" className="gio-rail-tile" aria-label={workspaceName} title={workspaceName} onClick={onExpand}>
           <Ico icon={workspaceIcon} size={20} />
         </button>
       </div>
     </nav>
+  );
+}
+
+const BUILDING_GLYPH =
+  "M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M4 21h16M10 7h1M13 7h1M10 11h1M13 11h1M10 15h1M13 15h1M11 21v-3h2v3";
+const LOCK_GLYPH = "M7 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2zM8 11V8a4 4 0 0 1 8 0v3";
+const GEAR_GLYPH =
+  "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z";
+
+/** A section's pages in a black card beside the collapsed rail. Closes on
+ *  Esc, a click outside (not on its own rail tile) and when a page opens. */
+function RailFlyout({ width, onClose, children }: { width: number; onClose: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Element | null;
+      if (!t || ref.current?.contains(t) || t.closest("[data-rail-section]")) return;
+      // Menus the card opens are portalled: clicks in them aren't outside.
+      if (t.closest("[role='menu'], .shadow-popover")) return;
+      onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+  return (
+    <div
+      ref={(el) => {
+        ref.current = el;
+        exitOnly("fade")(el);
+      }}
+      className="gio-rail-flyout gio-black-rail-card flex flex-col"
+      style={{ width }}
+    >
+      <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+    </div>
   );
 }
 

@@ -29,6 +29,7 @@ export function Popover({
   trigger,
   children,
   align = "start",
+  side = "bottom",
   width = 220,
   onOpenChange,
 }: {
@@ -39,6 +40,8 @@ export function Popover({
   }) => ReactNode;
   children: (close: () => void) => ReactNode;
   align?: "start" | "end";
+  /** "right": beside the trigger (a tile on the collapsed rail). */
+  side?: "bottom" | "right";
   width?: number;
   onOpenChange?: (open: boolean) => void;
 }) {
@@ -73,6 +76,11 @@ export function Popover({
       const panel = panelRef.current;
       const panelH = panel?.offsetHeight ?? 320;
 
+      if (side === "right") {
+        const top = Math.max(margin, Math.min(r.top, window.innerHeight - panelH - margin));
+        setPos({ top, left: r.right + 12, above: false });
+        return;
+      }
       // Horizontal: align to trigger's start or end, then clamp to viewport.
       let left = align === "end" ? r.right - width : r.left;
       if (left < margin) left = margin;
@@ -98,7 +106,7 @@ export function Popover({
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);
     };
-  }, [open, align, width]);
+  }, [open, align, side, width]);
 
   // Outside-click + Escape.
   useEffect(() => {

@@ -17,11 +17,16 @@ import { InboxRowsSkeleton } from "./phone-skeletons";
 
 const BELL = "M6 9a6 6 0 1 1 12 0c0 4.5 1.8 6 1.8 6H4.2S6 13.5 6 9zM10 19a2 2 0 0 0 4 0";
 
-/** `rail`: a 44px tile on the collapsed black rail. */
-export function InboxButton({ rail = false }: { rail?: boolean } = {}) {
+/** `variant`: a sidebar row, a 44px tile on the collapsed black rail, or a
+ *  32px icon in the sidebar's top row. */
+export function InboxButton({ variant = "row" }: { variant?: "row" | "rail" | "icon" } = {}) {
+  const rail = variant === "rail";
+  const icon = variant === "icon";
   const { unread } = useVisibleInbox();
   return (
     <Popover
+      side={rail ? "right" : "bottom"}
+      align={icon ? "end" : "start"}
       width={380}
       trigger={({ open: isOpen, onClick, ref }) => (
         <button
@@ -30,16 +35,17 @@ export function InboxButton({ rail = false }: { rail?: boolean } = {}) {
           onClick={onClick}
           aria-expanded={isOpen}
           aria-label={unread ? `Inbox, ${unread} unread` : "Inbox"}
-          title={rail ? "Inbox" : undefined}
-          className={rail ? `gio-rail-tile relative ${isOpen ? "bg-railHover" : ""}` : `mt-1 flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-ui text-secondary hover:bg-railHover ${isOpen ? "bg-railHover" : ""}`}
+          title={rail || icon ? "Inbox" : undefined}
+          style={icon ? { width: 32, height: 32 } : undefined}
+          className={rail ? `gio-rail-tile relative ${isOpen ? "bg-railHover" : ""}` : icon ? `relative grid shrink-0 place-items-center rounded-md text-muted hover:bg-railHover hover:text-strong ${isOpen ? "bg-railHover text-strong" : ""}` : `mt-1 flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-ui text-secondary hover:bg-railHover ${isOpen ? "bg-railHover" : ""}`}
         >
-          <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden className={rail ? "h-5 w-5" : "text-muted"}>
+          <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden className={rail ? "h-5 w-5" : icon ? "h-4 w-4" : "text-muted"}>
             <path d={BELL} />
           </svg>
-          {rail ? null : <span className="flex-1 text-left">Inbox</span>}
+          {rail || icon ? null : <span className="flex-1 text-left">Inbox</span>}
           {unread > 0 ? (
             <span
-              className={`tnum rounded-full bg-accent text-btnFg ${rail ? "absolute right-0.5 top-0.5" : ""}`}
+              className={`tnum rounded-full bg-accent text-btnFg ${rail ? "absolute right-0.5 top-0.5" : icon ? "absolute -right-1 -top-1" : ""}`}
               style={{ minWidth: 18, height: 18, padding: "0 5px", fontSize: 11.5, fontWeight: 700, lineHeight: "18px", textAlign: "center" }}
             >
               {unread > 99 ? "99+" : unread}
