@@ -14,6 +14,10 @@
  *
  * The text node is KEPT deliberately: it is what a screen reader
  * announces and what a copy-paste picks up. Never swap it for an <img>.
+ *
+ * `gio-ico` keeps the emoji at full strength: Chrome and Safari paint a
+ * colour emoji with the alpha of the text colour, so a faded label colour
+ * (the black rail's white at 58–74%) would fade the icon with it.
  */
 
 import { useInlineEmojiSet } from "@/lib/emoji-registry";
@@ -45,7 +49,7 @@ export function Ico({
   const box = size + pad * 2;
   return (
     <span
-      className={className}
+      className={className ? `gio-ico ${className}` : "gio-ico"}
       style={{
         display: "inline-block",
         width: box,
