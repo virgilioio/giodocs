@@ -1025,6 +1025,11 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
 /* Menus driven by arrow keys (slash, @): the highlighted row. Never
    animated; the pointer moves the highlight too. */
 .gio-mrow[data-active] { background: var(--color-rail); }
+/* In those menus the highlight is the only fill: a row the pointer rests
+   on doesn't stay lit while the arrows move away from it. */
+@media (hover: hover) and (pointer: fine) {
+  [data-keynav] .gio-mrow:not(:disabled):not([data-active]):hover { background: transparent; }
+}
 .gio-mrow:disabled { color: var(--color-faint); cursor: not-allowed; }
 .gio-mrow:disabled .gio-mrow-lead { color: inherit; }
 /* Delete and friends: red where there's no hover (phones), and on desktop
@@ -1034,6 +1039,11 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
 @media (hover: hover) and (pointer: fine) {
   .gio-mrow:not(:disabled):hover { background: var(--color-rail); }
   .gio-mrow[data-danger]:not(:hover):not(:focus-visible) { color: var(--color-body); }
+}
+/* Menus that stay menus on a touch screen (tablets; phones get sheets):
+   rows a finger can hit. */
+@media (pointer: coarse) {
+  .gio-menu .gio-mrow { min-height: 36px; }
 }
 .gio-msep { height: 1px; margin: 4px 8px; background: var(--color-line); }
 .gio-msearch-box { padding: 4px 4px 6px; }
