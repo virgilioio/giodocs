@@ -2135,7 +2135,7 @@ export function PageEditor({ pageId }: { pageId: string }) {
         style={{ display: "flex", alignItems: "flex-start", minHeight: 51, gap: 13 }}
       >
         <Popover
-          width={264}
+          width={328}
           trigger={({ open, onClick, ref }) => (
             <button
               ref={ref}

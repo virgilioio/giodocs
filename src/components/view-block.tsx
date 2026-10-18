@@ -34,6 +34,7 @@ import { useTemplates } from "@/hooks/use-workspace-data";
 import { useNewPageFromTemplate } from "@/hooks/use-templates";
 import type { MenuSpec } from "./row-menu";
 import type { PageListItem } from "@/lib/types";
+import { MenuHead } from "./menu-parts";
 
 /* A view placed inside a page: a live table, board or list of one
  * database's rows with its own filters, sort and properties. Its settings
@@ -151,35 +152,24 @@ function StartFrom({
       type="button"
       autoFocus={autoFocus && first}
       onClick={onClick}
-      className="flex w-full items-center rounded-md text-left text-row text-body hover:bg-rail"
-      style={{ gap: 8, padding: "6px 10px" }}
+      className="gio-mrow"
     >
-      <span className="min-w-0 flex-1 truncate">{label}</span>
-      {hint ? <span className="shrink-0 text-caption text-faint">{hint}</span> : null}
+      <span className="truncate">{label}</span>
+      {hint ? <span className="gio-mrow-hint">{hint}</span> : null}
     </button>
   );
   return (
-    <div
-      data-view-block-start
-      className="rounded-lg border border-line bg-surface"
-      style={{ padding: 8, maxWidth: 420 }}
-    >
+    <div data-view-block-start className="gio-menu" style={{ maxWidth: 420 }}>
       {db ? (
         <>
-          <div className="text-label uppercase text-faint" style={{ padding: "4px 10px 6px" }}>
-            {db.title?.trim() || "Untitled"}
-          </div>
+          <MenuHead>{db.title?.trim() || "Untitled"}</MenuHead>
           {row(
             "All rows",
             () => onPick({ ...defaultInlineView(db.id), name: db.title?.trim() || "" }),
             "all",
             true,
           )}
-          {viewsOf(db.id).length ? (
-            <div className="text-caption text-faint" style={{ padding: "8px 10px 2px" }}>
-              A copy of one of its views
-            </div>
-          ) : null}
+          {viewsOf(db.id).length ? <MenuHead>A copy of one of its views</MenuHead> : null}
           {viewsOf(db.id).map((v) =>
             row(v.name, () => onPick(inlineFromView(v)), v.id, false, v.scope === "team" ? "shared" : "mine"),
           )}
@@ -204,17 +194,11 @@ function StartFrom({
         </>
       ) : (
         <>
-          <div className="text-label uppercase text-faint" style={{ padding: "4px 10px 6px" }}>
-            Show rows from
-          </div>
+          <MenuHead>Show rows from</MenuHead>
           {hostPageId
             ? row(busy ? "Making a database…" : "A new database inside this page", () => void newDatabaseHere(), "new", true, "table")
             : null}
-          {databases.length ? (
-            <div className="text-caption text-faint" style={{ padding: "8px 10px 2px" }}>
-              An existing database
-            </div>
-          ) : null}
+          {databases.length ? <MenuHead>An existing database</MenuHead> : null}
           {databases.map((d, i) =>
             row(d.title?.trim() || "Untitled", () => setPicked(d.id), d.id, !hostPageId && i === 0),
           )}
@@ -230,7 +214,7 @@ function StartFrom({
       </div>
         </>
       )}
-      <p className="text-caption text-faint" style={{ padding: "4px 10px 2px" }}>
+      <p className="gio-mfoot">
         It keeps its own filters from here on. Changing it never changes the view it came from.
       </p>
     </div>

@@ -157,7 +157,7 @@ function DatabaseHeader({
       <div className="flex min-w-[min(100%,240px)] flex-1 items-center gap-2">
         {canEdit ? (
           <Popover
-            width={264}
+            width={328}
             trigger={({ open, onClick, ref }) => (
               <button
                 ref={ref}

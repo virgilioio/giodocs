@@ -13,6 +13,7 @@ import { useWorkspaceId } from "@/lib/workspace-context";
 import { usePages, useViews } from "@/hooks/use-workspace-data";
 import { useEmojiSet } from "@/hooks/use-custom-emoji";
 import { Ico } from "./emoji-icon";
+import { MenuSearch } from "./menu-parts";
 
 /**
  * Derive the "used in this workspace" set from already-cached data — same
@@ -213,23 +214,16 @@ export function EmojiPicker({
   };
 
   return (
-    <div
-      className="rounded-xl border border-line bg-surface shadow-popover animate-popIn"
-      style={{ width: 320 }}
-      onKeyDown={onKey}
-    >
-      <div className="p-2">
-        <input
-          ref={searchRef}
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search emoji…"
-          aria-label="Search emoji"
-          className="w-full rounded-md border border-line bg-track px-2 py-1.5 text-meta outline-none placeholder:text-faint focus:border-accent"
-          style={{ borderRadius: 9, padding: "7px 9px", fontSize: 14 }}
-        />
-      </div>
+    // Always inside a Popover: the menu panel is its frame.
+    <div style={{ width: "100%" }} onKeyDown={onKey}>
+      <MenuSearch
+        inputRef={searchRef}
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search emoji…"
+        aria-label="Search emoji"
+      />
 
       {!searching ? (
         <div
