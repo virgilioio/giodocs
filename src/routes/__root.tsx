@@ -17,6 +17,8 @@ import { ToastProvider } from "../lib/toast";
 import { installTooltips } from "../lib/tooltips";
 import { installThemeColor } from "../lib/theme-color";
 import { GioSplash } from "@/components/gio-splash";
+import { AppUpdateToast } from "@/components/app-update-toast";
+import { installStaleChunkReload } from "@/hooks/use-app-version-check";
 
 function NotFoundComponent() {
   return (
@@ -108,6 +110,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: appCss,
       },
+      // Inter 400/500 for the new-version toast, Gio ATS's toast face
+      // (Allan, 2026-10-19), from Google Fonts as Gio ATS loads it.
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap",
+      },
       // The dark tile with the cream mark (Allan, 2026-10-11). "?v=2" makes
       // phones and browsers fetch it again instead of keeping the old one.
       { rel: "icon", href: "/favicon.ico?v=2", sizes: "any" },
@@ -150,6 +160,7 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   useEffect(() => installTooltips(), []);
   useEffect(() => installThemeColor(), []);
+  useEffect(() => installStaleChunkReload(), []);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -159,6 +170,7 @@ function RootComponent() {
             <Outlet />
           </ToastProvider>
           <GioSplash ready />
+          <AppUpdateToast />
         </PreferencesProvider>
       </AuthProvider>
     </QueryClientProvider>

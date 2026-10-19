@@ -234,6 +234,16 @@ export function AppShell() {
   // desktop one with the sidebar over the page (closed until opened).
   const phone = useIsPhone();
   const compact = useIsCompact() && !phone;
+  // Where the page starts beside the black rail, for things placed from it
+  // (the new-version toast sits 24px in from here, as in Gio ATS).
+  const contentLeft = compact || phone ? 0 : (sidebarOpen ? sidebarWidth : RAIL_W) + 24;
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--gio-content-left", `${contentLeft}px`);
+    return () => {
+      root.style.removeProperty("--gio-content-left");
+    };
+  }, [contentLeft]);
   const [railOpen, setRailOpen] = useState(false);
   const [recentsOpen, setRecentsOpen] = useState(false);
   const [accountSheet, setAccountSheet] = useState(false);

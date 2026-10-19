@@ -1318,3 +1318,115 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
     to { opacity: 0; }
   }
 }
+
+/* ─────────────────────────── UPDATE TOAST (Allan, 2026-10-19) ───────────────────────────
+   "A new version of Gio Docs", exactly as Gio ATS shows it: its Sonner toast
+   (sonner 1.5.0) with Gio ATS's ink styling (index.css §2 Toast), rebuilt for
+   app-update-toast.tsx. 356px wide, 24px from the bottom and 24px from the
+   page beside the rail; ink card, cream text, Inter 500 12.5px title and
+   11.5px description, radius 12, Gio ATS's toast shadow; Later is quiet text,
+   Refresh a ghost button on ink (Poppins 600 11.5px, 26px). It rises from
+   below and leaves the same way over 400ms (Sonner's transitions). */
+.gio-update-toaster {
+  position: fixed;
+  z-index: var(--z-toast);
+  left: calc(var(--gio-content-left, 0px) + 24px);
+  bottom: 24px;
+  width: 356px;
+  pointer-events: none;
+}
+@media (max-width: 767px) {
+  /* Sonner's phone layout: the width of the screen less 16px a side, above
+     the floating bars (as Gio Docs' own toasts). */
+  .gio-update-toaster {
+    left: 16px;
+    right: 16px;
+    width: auto;
+    bottom: calc(86px + env(safe-area-inset-bottom));
+  }
+}
+.gio-update-toast {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #0d0d09;
+  color: #fffcf9;
+  box-shadow: 0 12px 32px -8px rgba(12, 12, 8, 0.4);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  pointer-events: auto;
+  touch-action: none;
+  transform: translateY(100%);
+  opacity: 0;
+  transition: transform 400ms ease, opacity 400ms ease, box-shadow 200ms ease;
+}
+.gio-update-toast[data-mounted="true"] {
+  transform: none;
+  opacity: 1;
+}
+.gio-update-toast[data-swiping] { transition: none; }
+/* On a dark page the ink card needs its edge drawn, as the black rail does. */
+[data-theme="dark"] .gio-update-toast {
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 252, 249, 0.09);
+}
+.gio-update-toast [data-content] {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gio-update-toast [data-title] {
+  font-weight: 500;
+  line-height: 1.5;
+}
+.gio-update-toast [data-description] {
+  color: rgb(255 252 249 / 0.72);
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+.gio-update-toast [data-button] {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 26px;
+  margin-left: auto;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: transparent;
+  color: #fffcf9;
+  border: 1px solid rgb(255 252 249 / 0.2);
+  font-family: Poppins, ui-sans-serif, system-ui, sans-serif;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: normal;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur-hover) ease, transform var(--dur-press) var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) {
+  .gio-update-toast [data-button]:hover { background: rgb(255 252 249 / 0.1); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .gio-update-toast [data-button]:active:not(:focus-visible) { transform: scale(0.97); }
+}
+/* Later: text only, quieter. */
+.gio-update-toast [data-button][data-cancel] {
+  border-color: transparent;
+  color: rgb(255 252 249 / 0.72);
+}
+.gio-update-toast [data-button]:focus-visible {
+  outline: 2px solid #6f3ff5;
+  outline-offset: 2px;
+  box-shadow: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gio-update-toast,
+  .gio-update-toast > * { transition: none !important; }
+}

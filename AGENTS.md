@@ -618,6 +618,18 @@ draws it), `.gio-msep` (dividers inset 12px from the panel's edge),
   (triggerGioSplash). Dark mode: the dark canvas with a cream mark. Reduced
   motion: the mark at rest and a fade.
 
+## Decisions (Allan, 2026-10-19: the new-version toast)
+- "A new version of Gio Docs" is Gio ATS's toast, exactly: its version
+  check (use-app-version-check.ts: the page's hashed entry script against
+  the one named in a fresh copy of "/", 30s after load, every 5 minutes
+  while visible, on return and on reconnect; Later hides it for that
+  version only) and its ink Sonner toast rebuilt to the same measurements
+  (app-update-toast.tsx, UPDATE TOAST in styles.css; Inter from Google
+  Fonts as in Gio ATS). Bottom-left, 24px from the page beside the rail
+  (--gio-content-left, set by AppShell); on phones above the floating bars.
+  Gio Docs' own toasts stay as they are. A failed lazy chunk after a deploy
+  reloads the page (installStaleChunkReload), at most once a minute.
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.
