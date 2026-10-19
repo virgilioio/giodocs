@@ -1232,7 +1232,7 @@ function SidebarBody({
             onClick={onCollapse}
             aria-expanded
             aria-label="Collapse sidebar"
-            title="Collapse sidebar  ⌘\\"
+            title={"Collapse sidebar  ⌘\\"}
           >
             <Glyph path="M15 6l-6 6 6 6" className="h-3.5 w-3.5" />
           </button>
@@ -1530,7 +1530,7 @@ function CollapsedRail({
   );
   return (
     <nav aria-label="Sidebar" className="flex h-full flex-col items-center" style={{ width: RAIL_W, padding: "10px 0", rowGap: 6 }}>
-      <button type="button" className="gio-rail-fold gio-rail-fold-tile" aria-expanded={false} aria-label="Expand sidebar" title="Expand sidebar  ⌘\\" onClick={onExpand}>
+      <button type="button" className="gio-rail-fold gio-rail-fold-tile" aria-expanded={false} aria-label="Expand sidebar" title={"Expand sidebar  ⌘\\"} onClick={onExpand}>
         <Glyph path="M9 6l6 6-6 6" className="h-4 w-4" />
       </button>
       <button type="button" className="gio-rail-tile" aria-label="Search" title="Search  ⌘K" onClick={onOpenPalette}>
