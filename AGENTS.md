@@ -15,6 +15,9 @@ These rules apply to EVERY task in this repository, whether or not the
 message repeats them. When a task message conflicts with this file, ask
 before proceeding.
 
+## How work ships
+- **"Go!" and "Apply!" (Allan, 2026-10-21):** after planning, Claude stops and waits for Allan's "Go!" before implementing. The work is tested and pushed to the working branch, then Claude reports what changed and waits for "Apply!" before pushing to `main` (which Lovable syncs from). Each "Go!" or "Apply!" covers the plan or change it answers, not the next one.
+
 ## Ownership and portability
 - The backend is the project owner's own Supabase project. NEVER enable
   Lovable Cloud or any Lovable-managed database, auth, storage, or
