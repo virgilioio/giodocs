@@ -633,6 +633,15 @@ draws it), `.gio-msep` (dividers inset 12px from the panel's edge),
   Gio Docs' own toasts stay as they are. A failed lazy chunk after a deploy
   reloads the page (installStaleChunkReload), at most once a minute.
 
+## Decisions (Allan, 2026-10-22: no blank screen, resend from Gio OS)
+- Someone signed in who isn't in a workspace sees NoWorkspace (the
+  signed-in email, open the invitation link or ask an admin, Check again,
+  Sign out); a failed membership lookup shows Try again. Never an empty
+  canvas.
+- Gio OS resends an invitation with os-provision { resend: true } →
+  os_resend_invite: a fresh link (create_workspace_invite) for anyone not in
+  the workspace, 'unchanged' for members.
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.
