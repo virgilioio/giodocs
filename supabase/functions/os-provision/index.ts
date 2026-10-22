@@ -2,8 +2,10 @@
 // Receives access grants from Gio OS (People & Access, in Gio ATS) and applies
 // them with os_apply_grant(), which keeps Gio Docs' own member rules.
 //
-// POST { request_id, email, role, actor_email }
+// POST { request_id, email, role, actor_email, resend? }
 //   role: 'member' | 'owner', or null to remove access.
+//   resend: true sends the invitation again (os_resend_invite): a fresh link
+//   for anyone not in the workspace yet, nothing for members.
 // Auth: x-gio-timestamp (unix seconds) and x-gio-signature, the hex HMAC-SHA256
 // of `${timestamp}.${rawBody}` with OS_PROVISION_SECRET (Gio Docs' own value,
 // not Gio Sales'). Requests older than 5 minutes are
@@ -95,6 +97,7 @@ Deno.serve(async (req) => {
   const email = String(p.email ?? '').trim().toLowerCase()
   const actorEmail = String(p.actor_email ?? '').trim().toLowerCase()
   const role = p.role === null || p.role === undefined ? null : String(p.role)
+  const resend = p.resend === true
   if (!UUID.test(requestId)) return json({ error: 'request_id must be a UUID.' }, 400)
   if (!email || !actorEmail) return json({ error: 'email and actor_email are required.' }, 400)
 
@@ -102,7 +105,7 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   })
 
-  const { data, error } = await db.rpc('os_apply_grant', {
+  const { data, error } = await db.rpc(resend ? 'os_resend_invite' : 'os_apply_grant', {
     p_request_id: requestId,
     p_email: email,
     p_role: role,
