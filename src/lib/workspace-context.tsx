@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "./auth-context";
 import { useIsPhone } from "./use-media";
 import { PhoneBootSkeleton } from "@/components/phone-skeletons";
+import { NoWorkspace } from "@/components/no-workspace";
 
 type WorkspaceCtx = { workspaceId: string };
 
@@ -13,7 +14,7 @@ const Ctx = createContext<WorkspaceCtx | null>(null);
  * Resolves the current user's workspace id once (first workspace_members row)
  * and provides it via context. Callers must be inside <RequireAuth> so
  * user is non-null; while the membership query resolves this renders a
- * neutral shell.
+ * neutral shell, and with no membership (or a failed lookup) NoWorkspace.
  */
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -35,9 +36,22 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     staleTime: 5 * 60_000,
   });
 
+  // Signed in but in no workspace, or the lookup failed: say so, never a
+  // blank screen (Allan, 2026-10-22).
+  if (q.data === null || (q.isError && q.data === undefined)) {
+    return (
+      <NoWorkspace
+        email={user?.email ?? null}
+        failed={q.data !== null}
+        checking={q.isFetching}
+        onCheckAgain={() => void q.refetch()}
+      />
+    );
+  }
+
   if (!q.data) {
     // A phone draws its frame and the screen's skeleton meanwhile.
-    if (phone && q.data === undefined) return <PhoneBootSkeleton />;
+    if (phone) return <PhoneBootSkeleton />;
     return <div className="min-h-screen bg-canvas" aria-hidden />;
   }
 
