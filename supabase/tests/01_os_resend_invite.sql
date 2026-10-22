@@ -1,4 +1,4 @@
--- Run after 20261023140000_os_resend_invite inside a transaction that is rolled back.
+-- Run after 20261022162403_os_resend_invite inside a transaction that is rolled back.
 -- Every row's ok is true.
 create temp table t_results (check_name text, ok boolean);
 
