@@ -1,4 +1,6 @@
 import { actionableDefs, valueLabel } from "@/lib/prop-actions";
+import { ADVANCED_FILTER_WIDTH, AdvancedFilterPanel } from "./advanced-filter";
+import { advancedOf, newGroup, withAdvanced } from "@/lib/filter-tree";
 import { openPageSomewhere } from "@/lib/peek";
 import { PROPERTY_KINDS } from "@/lib/property-kinds";
 import React, { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -7,6 +9,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useAllPropDefs } from "@/hooks/use-workspace-data";
 import {
+  isFilterGroup,
   isManualSort,
   MANUAL_SORT,
   sortsOf,
@@ -169,6 +172,55 @@ export function QueryToolbar({
     const p = pages.find((x) => x.id === id);
     return p ? p.title || "Untitled" : "a private page";
   };
+  const labelCtx = { people, staleDays, defs: labelDefs, pageTitle };
+
+  // The advanced filter (OR and groups, 2026-10-30): one per view, beside
+  // the plain filters; its rules use the same picker as a chip.
+  const setAdvanced = (g: Filter | null) => onChangeFilters(withAdvanced(filters, g));
+  const renderAdvanced = (group: Filter, onChange: (g: Filter | null) => void) => (
+    <AdvancedFilterPanel
+      group={group}
+      onChange={onChange}
+      labelOf={(f) => filterLabel(f, labelCtx)}
+      renderEditor={({ startAt, onPick, onBack }) => (
+        <FilterBuilderContent
+          propDefs={propDefs}
+          pages={pages}
+          people={people}
+          staleDays={staleDays}
+          startAt={startAt ? { prop: startAt.prop, op: startAt.op, value: startAt.value } : undefined}
+          onExit={onBack}
+          onPick={onPick}
+        />
+      )}
+    />
+  );
+  // A chip's picker: the advanced filter for a group, else the filter's step.
+  const chipPicker = (f: Filter, i: number) => (close: () => void) =>
+    isFilterGroup(f) ? (
+      renderAdvanced(f, (g) => {
+        setAdvanced(g);
+        if (!g) close();
+      })
+    ) : (
+      <FilterBuilderContent
+        propDefs={propDefs}
+        pages={pages}
+        people={people}
+        staleDays={staleDays}
+        startAt={{ prop: f.prop, op: f.op, value: f.value }}
+        onPick={(picked) => {
+          // Editing a chip changes that filter in place.
+          onChangeFilters(applyFilterReplacement(filters.filter((_, idx) => idx !== i), picked));
+          close();
+        }}
+      />
+    );
+  const addFilterProps = {
+    advanced: advancedOf(filters),
+    onAdvanced: setAdvanced,
+    renderAdvanced,
+  };
 
   if (compact) {
     const grouped = layout === "board" || layout === "calendar" || (layout === "table" && !!tableGroup);
@@ -185,23 +237,8 @@ export function QueryToolbar({
               clickable={clickable}
               removable={clickable}
               onRemove={() => onChangeFilters(filters.filter((_, idx) => idx !== i))}
-              renderPicker={
-                clickable
-                  ? (close) => (
-                      <FilterBuilderContent
-                        propDefs={propDefs}
-                        pages={pages}
-                        people={people}
-                        staleDays={staleDays}
-                        startAt={{ prop: f.prop, op: f.op, value: f.value }}
-                        onPick={(picked) => {
-                          onChangeFilters(applyFilterReplacement(filters.filter((_, idx) => idx !== i), picked));
-                          close();
-                        }}
-                      />
-                    )
-                  : undefined
-              }
+              renderPicker={clickable ? chipPicker(f, i) : undefined}
+              width={isFilterGroup(f) ? ADVANCED_FILTER_WIDTH : undefined}
             />
           );
         })}
@@ -213,6 +250,7 @@ export function QueryToolbar({
             staleDays={staleDays}
             onPick={pickFilter}
             ask={filterAsk ?? null}
+            {...addFilterProps}
           />
         )}
         <span aria-hidden className="inline-block bg-line" style={{ width: 1, height: 16 }} />
@@ -260,29 +298,8 @@ export function QueryToolbar({
                 onRemove={() =>
                   onChangeFilters(filters.filter((_, idx) => idx !== i))
                 }
-                renderPicker={
-                  clickable
-                    ? (close) => (
-                        <FilterBuilderContent
-                          propDefs={propDefs}
-                          pages={pages}
-                          people={people}
-                          staleDays={staleDays}
-                          startAt={{ prop: f.prop, op: f.op, value: f.value }}
-                          onPick={(picked) => {
-                            // Editing a chip changes that filter in place.
-                            onChangeFilters(
-                              applyFilterReplacement(
-                                filters.filter((_, idx) => idx !== i),
-                                picked,
-                              ),
-                            );
-                            close();
-                          }}
-                        />
-                      )
-                    : undefined
-                }
+                renderPicker={clickable ? chipPicker(f, i) : undefined}
+                width={isFilterGroup(f) ? ADVANCED_FILTER_WIDTH : undefined}
               />
             );
           })}
@@ -302,6 +319,7 @@ export function QueryToolbar({
               staleDays={staleDays}
               onPick={pickFilter}
               ask={filterAsk ?? null}
+              {...addFilterProps}
             />
           )}
         </>
@@ -362,12 +380,14 @@ function FilterChip({
   removable,
   onRemove,
   renderPicker,
+  width = 264,
 }: {
   label: string;
   clickable: boolean;
   removable: boolean;
   onRemove: () => void;
   renderPicker?: (close: () => void) => ReactNode;
+  width?: number;
 }) {
   const chipStyle: React.CSSProperties = {
     fontSize: 13,
@@ -428,7 +448,7 @@ function FilterChip({
 
   return (
     <Popover
-      width={264}
+      width={width}
       trigger={({ onClick, ref }) => (
         <span style={chipStyle}>
           <button
@@ -464,6 +484,9 @@ function AddFilterButton({
   staleDays,
   onPick,
   ask,
+  advanced,
+  onAdvanced,
+  renderAdvanced,
 }: {
   propDefs: PropDef[];
   pages: PageListItem[];
@@ -471,7 +494,14 @@ function AddFilterButton({
   staleDays: number;
   onPick: (f: Filter) => void;
   ask: { prop: string; n: number } | null;
+  /** The view's advanced filter, if any. */
+  advanced: Filter | null;
+  onAdvanced: (g: Filter | null) => void;
+  renderAdvanced: (group: Filter, onChange: (g: Filter | null) => void) => ReactNode;
 }) {
+  // "Advanced filter" turns this popover into the advanced filter (the
+  // view's own, or a new one saved with its first rule).
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   // A column's "Filter" opens this at its property: remember where to
   // start, then press the button.
   const btnRef = useRef<HTMLButtonElement | null>(null);
@@ -486,9 +516,12 @@ function AddFilterButton({
   }, [askN]);
   return (
     <Popover
-      width={264}
+      width={advancedOpen ? ADVANCED_FILTER_WIDTH : 264}
       onOpenChange={(o) => {
-        if (!o) setStartProp(null);
+        if (!o) {
+          setStartProp(null);
+          setAdvancedOpen(false);
+        }
       }}
       trigger={({ onClick, ref }) => (
         <button
@@ -534,20 +567,28 @@ function AddFilterButton({
         </button>
       )}
     >
-      {(close) => (
-        <FilterBuilderContent
-          key={startProp ?? "root"}
-          propDefs={propDefs}
-          pages={pages}
-          people={people}
-          staleDays={staleDays}
-          startAt={startProp ? { prop: startProp } : undefined}
-          onPick={(f) => {
-            onPick(f);
-            close();
-          }}
-        />
-      )}
+      {(close) =>
+        advancedOpen ? (
+          renderAdvanced(advanced ?? newGroup("and"), (g) => {
+            onAdvanced(g);
+            if (!g) close();
+          })
+        ) : (
+          <FilterBuilderContent
+            key={startProp ?? "root"}
+            propDefs={propDefs}
+            pages={pages}
+            people={people}
+            staleDays={staleDays}
+            startAt={startProp ? { prop: startProp } : undefined}
+            onAdvanced={() => setAdvancedOpen(true)}
+            onPick={(f) => {
+              onPick(f);
+              close();
+            }}
+          />
+        )
+      }
     </Popover>
   );
 }
@@ -563,6 +604,8 @@ function FilterBuilderContent({
   staleDays,
   onPick,
   startAt,
+  onExit,
+  onAdvanced,
 }: {
   propDefs: PropDef[];
   pages: PageListItem[];
@@ -570,6 +613,10 @@ function FilterBuilderContent({
   staleDays: number;
   onPick: (f: Filter) => void;
   startAt?: { prop?: string; op?: Filter["op"]; value?: Filter["value"] };
+  /** A rule in the advanced filter: the first step's ‹ goes back to it. */
+  onExit?: () => void;
+  /** +Filter: "Advanced filter" at the end of the first step. */
+  onAdvanced?: () => void;
 }) {
   // Chips reopen at their property's step 2. Freshness ops reopen at the
   // synthetic "__freshness" group.
@@ -582,6 +629,8 @@ function FilterBuilderContent({
     return { kind: "root" };
   })();
   const [step, setStep] = useState<BuilderStep>(initialStep);
+  // A rule's step back from the root goes to the advanced filter.
+  const backFromRoot = onExit;
 
   // Icons by TYPE: every database names its properties its own way.
   const TYPE_ICON: Record<string, string> = Object.fromEntries(
@@ -608,7 +657,7 @@ function FilterBuilderContent({
   if (step.kind === "root") {
     return (
       <div>
-        <StepTitle>Filter by</StepTitle>
+        <StepTitle onBack={backFromRoot}>{onExit ? "Rule" : "Filter by"}</StepTitle>
         {rootItems.map((it) => (
           <BuilderRow
             key={it.key}
@@ -619,10 +668,24 @@ function FilterBuilderContent({
             {it.label}
           </BuilderRow>
         ))}
-        <MenuFoot>
-          Filters combine with and. A new pick for a property replaces the old one; ranges
-          (above and below, before and after) and tags add up.
-        </MenuFoot>
+        {onAdvanced ? (
+          <>
+            <FilterDivider />
+            <BuilderRow
+              leading={<MenuIcon path={ADVANCED_ICON} />}
+              onClick={onAdvanced}
+              trailing={<MenuChevron />}
+            >
+              Advanced filter
+            </BuilderRow>
+          </>
+        ) : null}
+        {onExit ? null : (
+          <MenuFoot>
+            Filters combine with and; for or, use Advanced filter. A new pick for a property
+            replaces the old one; ranges (above and below, before and after) and tags add up.
+          </MenuFoot>
+        )}
       </div>
     );
   }
@@ -911,6 +974,9 @@ function FilterBuilderContent({
     </div>
   );
 }
+
+/** Advanced filter: rules in a group. */
+const ADVANCED_ICON = "M4 6h16M7 12h10M10 18h4";
 
 const NUMBER_OPS: Array<{ op: FilterOp; label: string }> = [
   { op: "gt", label: "Above" },

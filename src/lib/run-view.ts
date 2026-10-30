@@ -44,13 +44,43 @@ export type FilterOp =
   | "unchecked"
   // freshness (built in)
   | "stale"
-  | "edited_within";
+  | "edited_within"
+  // a group of filters (Notion's advanced filter, 2026-10-30)
+  | "group";
 
 export type Filter = {
   prop?: string;
   op: FilterOp;
   value?: string | number;
+  /** A group: how its filters combine. */
+  mode?: "and" | "or";
+  /** A group: its filters, which may be groups themselves. */
+  filters?: Filter[];
 };
+
+/* OR filters and filter groups (2026-10-30). A view's filters still combine
+ * with AND, so every saved view keeps its meaning; one of them may be a
+ * group, { op: "group", mode: "and" | "or", filters }, holding filters and
+ * further groups, three levels deep at most (the view's own list, a group,
+ * a group inside it), as in Notion. An empty group matches every row. */
+export const MAX_FILTER_DEPTH = 3;
+
+export function isFilterGroup(f: Filter): boolean {
+  return f.op === "group";
+}
+
+/** The filters in a group, read defensively. */
+export function groupFilters(f: Filter): Filter[] {
+  return Array.isArray(f.filters)
+    ? f.filters.filter((x) => !!x && typeof x === "object" && typeof x.op === "string")
+    : [];
+}
+
+/** How many plain filters a group holds, at any depth. */
+export function countRules(f: Filter): number {
+  if (!isFilterGroup(f)) return 1;
+  return groupFilters(f).reduce((n, x) => n + countRules(x), 0);
+}
 
 /** Words a date filter understands, besides an exact day. */
 export const DATE_RANGES = [
@@ -381,6 +411,13 @@ export function matches(page: PageListItem, f: Filter, ctx: RunViewCtx): boolean
     case "stale": {
       const threshold = daysAgo(now, ctx.staleDays);
       return new Date(page.verified_at).getTime() < threshold;
+    }
+    case "group": {
+      const list = groupFilters(f);
+      if (list.length === 0) return true;
+      return f.mode === "or"
+        ? list.some((x) => matches(page, x, ctx))
+        : list.every((x) => matches(page, x, ctx));
     }
     case "edited_within": {
       if (typeof f.value !== "number") {

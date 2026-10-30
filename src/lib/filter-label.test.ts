@@ -153,3 +153,21 @@ describe("filterLabel — relations", () => {
     expect(filterLabel({ op: "empty", prop: "project" }, ctx)).toBe("no project");
   });
 });
+
+describe("filterLabel — groups", () => {
+  it("counts the rules a group holds, nested ones too", () => {
+    const rule: Filter = { op: "eq", prop: "status", value: "done" };
+    expect(filterLabel({ op: "group", mode: "or", filters: [] }, ctx)).toBe("advanced filter");
+    expect(filterLabel({ op: "group", mode: "or", filters: [rule] }, ctx)).toBe("1 rule");
+    expect(
+      filterLabel(
+        {
+          op: "group",
+          mode: "or",
+          filters: [rule, { op: "group", mode: "and", filters: [rule, rule] }],
+        },
+        ctx,
+      ),
+    ).toBe("3 rules");
+  });
+});
