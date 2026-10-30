@@ -1403,6 +1403,9 @@ function ToolbarBorderlessButton({
 
 /* ─────────────────────────── Board body ─────────────────────────── */
 
+/** The board column for rows that have no value in the grouped property. */
+const NO_VALUE = "__none";
+
 export function BoardBody({
   rows,
   groupBy,
@@ -1421,9 +1424,11 @@ export function BoardBody({
   propDefs: PropDef[];
   members: MemberRow[];
   staleThreshold: number;
-  onMove: (pageId: string, value: string) => void;
-  /** + New page at the foot of a column: a page with that column's value. */
-  onNewCard?: (value: string) => void;
+  /** `null` is the "No …" column: the drop clears the value. */
+  onMove: (pageId: string, value: string | null) => void;
+  /** + New page at the foot of a column: a page with that column's value
+   *  (`null`: the "No …" column, a page without one). */
+  onNewCard?: (value: string | null) => void;
   selectedSet: Set<string>;
   anySelection: boolean;
   onCheckboxClick: (id: string, shift: boolean) => void;
@@ -1452,19 +1457,26 @@ export function BoardBody({
     const groups = new Map<string, PageListItem[]>();
     for (const p of rows) {
       const v = propsOf(p)[groupBy];
-      const key = typeof v === "string" && v ? v : "__none";
+      const key = typeof v === "string" && v ? v : NO_VALUE;
       const arr = groups.get(key);
       if (arr) arr.push(p);
       else groups.set(key, [p]);
     }
     const ordered: Array<{ value: string; opt?: (typeof opts)[number]; pages: PageListItem[] }> = [];
+    // Rows without a value get Notion's "No …" column, first (before
+    // 2026-10-30 they were left off the board). With none, it appears at
+    // the end only while a card is dragged — dropping there clears the
+    // value — so no column shifts under the pointer.
+    const none = groups.get(NO_VALUE) ?? [];
+    if (none.length) ordered.push({ value: NO_VALUE, pages: none });
     for (const o of opts) ordered.push({ value: o.value, opt: o, pages: groups.get(o.value) ?? [] });
     // Extra values not in options
     for (const [k, pgs] of groups)
-      if (k !== "__none" && !opts.some((o) => o.value === k))
+      if (k !== NO_VALUE && !opts.some((o) => o.value === k))
         ordered.push({ value: k, pages: pgs });
+    if (!none.length && dragId) ordered.push({ value: NO_VALUE, pages: [] });
     return ordered;
-  }, [rows, opts, groupBy]);
+  }, [rows, opts, groupBy, dragId]);
 
   return (
     <div className="flex gap-[14px] overflow-x-auto pb-2">
@@ -1489,7 +1501,7 @@ export function BoardBody({
             setDragId(null);
             if (!id) return;
             if (col.pages.some((x) => x.id === id)) return; // same column
-            onMove(id, col.value);
+            onMove(id, col.value === NO_VALUE ? null : col.value);
           }}
           className="shrink-0 rounded-xl bg-rail p-[10px] transition-[box-shadow,background-color] duration-150"
           style={{
@@ -1510,7 +1522,9 @@ export function BoardBody({
               style={{ background: `var(--color-${col.opt?.ink ?? "muted"})` }}
               aria-hidden
             />
-            <span className="font-bold text-body">{col.opt?.label ?? col.value}</span>
+            <span className="font-bold text-body">
+              {col.value === NO_VALUE ? `No ${def?.label ?? "value"}` : (col.opt?.label ?? col.value)}
+            </span>
             <span className="ml-auto text-faint">{col.pages.length}</span>
           </div>
           <div className="flex flex-col gap-2">
@@ -1611,7 +1625,7 @@ export function BoardBody({
           {onNewCard ? (
             <button
               type="button"
-              onClick={() => onNewCard(col.value)}
+              onClick={() => onNewCard(col.value === NO_VALUE ? null : col.value)}
               className="mt-2 flex w-full items-center rounded-md text-left text-meta text-faint hover:bg-railHover hover:text-strong"
               style={{ gap: 7, padding: "6px 6px" }}
             >

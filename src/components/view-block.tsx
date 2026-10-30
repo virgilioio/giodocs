@@ -351,7 +351,7 @@ function InlineViewBody({
             editable
               ? (value) =>
                   void createAndOpen({
-                    seedProps: { ...seed(), [boardGroup]: value },
+                    seedProps: { ...seed(), ...(value === null ? {} : { [boardGroup]: value }) },
                     parentId: view.database_id,
                   })
               : undefined
