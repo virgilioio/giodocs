@@ -56,8 +56,14 @@ export type BulkActions = {
    *  multi-select, `picked` is the option to ADD (the caller merges). */
   setValue: (pageIds: string[], def: PropDef, picked: unknown) => Promise<void> | void;
   archive: (pageIds: string[]) => Promise<void> | void;
+  /** Undo for archive: back in every view. */
+  unarchive: (pageIds: string[]) => Promise<void> | void;
   deletePages: (pageIds: string[]) => Promise<void> | void;
-  toast: (message: string) => void;
+  /** Undo for delete: every page restored, with the pages inside it.
+   *  The rows are as they were just before the delete. */
+  restorePages: (rows: PageListItem[]) => Promise<void> | void;
+  /** A toast, with an Undo when `undo` is given. */
+  toast: (message: string, undo?: () => void) => void;
   staleDays: number;
   meId: string;
 };
@@ -169,7 +175,7 @@ function buildRoot(ctx: BulkContext, mctx: MenuBuildCtx): MenuSpec {
         rows: [],
         confirm: {
           title: `Delete ${nPages(captured.length)}?`,
-          body: "They will leave every view at once. Undo is per-page.",
+          body: "They leave every view at once. You can undo for a moment afterwards.",
           cta: `Delete ${nPages(captured.length)}`,
           danger: true,
           onConfirm: () => {
@@ -265,12 +271,19 @@ async function doSetValue(
 
 async function doArchive(ctx: BulkContext, ids: string[]) {
   await ctx.actions.archive(ids);
-  ctx.actions.toast(`${nPages(ids.length)} archived — still in ⌘K.`);
+  ctx.actions.toast(`${nPages(ids.length)} archived — still in ⌘K.`, () => {
+    void ctx.actions.unarchive(ids);
+  });
 }
 
+/** One Undo brings every deleted page back, as a single row's delete does
+ *  (until 2026-10-30 bulk delete had none). */
 async function doDelete(ctx: BulkContext, ids: string[]) {
+  const rows = ctx.pages.filter((p) => ids.includes(p.id));
   await ctx.actions.deletePages(ids);
-  ctx.actions.toast(`${nPages(ids.length)} deleted — they left every view at once.`);
+  ctx.actions.toast(`${nPages(ids.length)} deleted — they left every view at once.`, () => {
+    void ctx.actions.restorePages(rows);
+  });
 }
 
 /* keep runView referenced so `views` prop stays typechecked even if a

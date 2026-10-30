@@ -1213,10 +1213,21 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
             archive: async (ids) => {
               await Promise.all(ids.map((id) => archivePage.mutateAsync({ pageId: id, archived: true })));
             },
+            unarchive: async (ids) => {
+              await Promise.all(ids.map((id) => archivePage.mutateAsync({ pageId: id, archived: false })));
+            },
             deletePages: async (ids) => {
               await Promise.all(ids.map((id) => deletePage.mutateAsync(id)));
             },
-            toast: (message) => toast.push(message),
+            restorePages: async (rows) => {
+              await Promise.all(rows.map((row) => restorePage.mutateAsync({ pageId: row.id, row })));
+            },
+            toast: (message, undo) =>
+              toast.push(
+                undo
+                  ? { message, action: { label: "Undo", onClick: undo }, durationMs: 10_000 }
+                  : message,
+              ),
           }}
         />
 
