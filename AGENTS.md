@@ -642,6 +642,32 @@ draws it), `.gio-msep` (dividers inset 12px from the panel's edge),
   os_resend_invite: a fresh link (create_workspace_invite) for anyone not in
   the workspace, 'unchanged' for members.
 
+## Decisions (Allan, 2026-10-30: database tables, first batch)
+From the Notion comparison; Allan picked A1–A6, B1, B2 and C1.
+- Every view sees every row: the workspace page list is read 1000 at a
+  time (Supabase's cap per request), not cut at the newest 2,000.
+- Boards have a "No <property>" column for rows without a value; grouping
+  choices (tableGroupChoices, view-config.ts) are one list for the database
+  page, inline views and the heading menu; Edited and Verified filter as
+  dates; bulk delete and archive come with Undo.
+- Manual order is a sort of its own ({ prop: "manual" }): the database's own
+  order (move_page; bySiblingOrder). Existing views keep their sorts.
+- A row has Notion's handle: ⋮⋮ in the gutter (and "+" in manual order: a
+  row below, ⌥ above). Click ⋮⋮ or right-click the row for the row menu:
+  Open · Open as full page · Open in new tab — Edit property › · Re-verify
+  — Copy link · Duplicate · Move to › — Delete. Drag ⋮⋮ to reorder; in a
+  sorted view the drop offers "Use manual order"; a drop in another group
+  sets its select, status or checkbox value. useRowActions
+  (src/hooks/use-row-actions.tsx) serves the database page and inline views.
+- Selecting rows: drag a marquee from the margin, around the table or a
+  row's gutter; Shift+↑/↓ grows or shrinks it, Delete deletes with Undo, ⌘/
+  opens Actions, ⌘A selects every row, Esc clears. Ranges follow the order
+  shown. Board cards and list rows show their box on hover.
+- The bulk bar's Actions: Edit property › (picked values and typed text,
+  number, date, link, email, phone, checked as their cells check) · Mark
+  verified — Duplicate · Move to › — Archive · Delete. Moves and duplicates
+  come with Undo (a move back restores the row's values).
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.

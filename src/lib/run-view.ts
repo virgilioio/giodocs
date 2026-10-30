@@ -2,6 +2,7 @@ import type { PageListItem } from "./types";
 import { dateSpan, isTerminalStatus, toDueString, type DateSpan } from "./due-date";
 import { groupOfValue } from "./status-groups";
 import { personIds } from "./person-value";
+import { bySiblingOrder } from "./page-tree";
 
 /* The one place a view's filter, sort and grouping run (AGENTS.md: "View
  * filtering happens in EXACTLY one place"). Everything here is pure.
@@ -397,6 +398,16 @@ export function matches(page: PageListItem, f: Filter, ctx: RunViewCtx): boolean
 
 /* ─────────────────────────── Sorting ─────────────────────────── */
 
+/** "Manual order" (2026-10-30): the rows as they were dragged into place,
+ *  the order move_page keeps among a database's rows (position, then
+ *  newest edit, then id; bySiblingOrder). A sort of its own: it never
+ *  combines with another. */
+export const MANUAL_SORT = "manual";
+
+export function isManualSort(sort: SortSpec | SortSpec[] | null | undefined): boolean {
+  return sortsOf(sort)[0]?.prop === MANUAL_SORT;
+}
+
 /** A saved sort is one spec (older views) or a list (first wins). */
 export function sortsOf(sort: SortSpec | SortSpec[] | null | undefined): SortSpec[] {
   const list = Array.isArray(sort) ? sort : sort ? [sort] : [];
@@ -504,6 +515,8 @@ export function runView(pages: PageListItem[], view: ViewSpec, ctx: RunViewCtx):
     if (page.archived_at) return false;
     return view.filter.every((f) => matches(page, f, ctx));
   });
+
+  if (isManualSort(view.sort)) return filtered.slice().sort(bySiblingOrder);
 
   const sorts = sortsOf(view.sort).map((s) => ({
     key: sortProp(s.prop),

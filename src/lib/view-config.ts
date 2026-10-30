@@ -288,3 +288,21 @@ export function insertProp(shown: string[], key: string, index: number): string[
   const at = Math.max(0, Math.min(index, rest.length));
   return [...rest.slice(0, at), key, ...rest.slice(at)];
 }
+
+/** What a table can be grouped by: select, status, person and checkbox
+ *  properties (in the database's order), then Created by and Last edited
+ *  by. The one list for the database page, inline views and the heading
+ *  menu, so a choice offered in one is never dropped by another
+ *  (Edited by was, until 2026-10-30). */
+export const GROUPABLE_TYPES = ["select", "status", "person", "checkbox"];
+export const GROUPABLE_BUILT_INS = ["@created_by", "@edited_by"];
+
+export function tableGroupChoices(defs: ConfigPropDef[]): Array<{ key: string; label: string }> {
+  return [
+    ...defs
+      .filter((d) => GROUPABLE_TYPES.includes(d.type))
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+      .map((d) => ({ key: d.key, label: d.label ?? d.key })),
+    ...GROUPABLE_BUILT_INS.map((k) => ({ key: k, label: BUILT_IN_LABELS[k] ?? k })),
+  ];
+}

@@ -6,7 +6,14 @@ import { setViewDateMode, viewTime } from "@/lib/view-time";
 import { useNavigate } from "@tanstack/react-router";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useAllPropDefs } from "@/hooks/use-workspace-data";
-import { sortsOf, type Filter, type FilterOp, type SortSpec } from "@/lib/run-view";
+import {
+  isManualSort,
+  MANUAL_SORT,
+  sortsOf,
+  type Filter,
+  type FilterOp,
+  type SortSpec,
+} from "@/lib/run-view";
 import { sortLabel as sortLabelOf } from "@/lib/sort-label";
 import { RowCheckbox } from "./view-table";
 import { relationConfig, rollupKind } from "@/lib/relations";
@@ -20,6 +27,7 @@ import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
 import { personIds } from "@/lib/person-value";
 import { MenuCheck, MenuChevron, MenuFoot, MenuHead, MenuIcon, MenuLead, MenuSep } from "./menu-parts";
+import { BUILT_IN_LABELS } from "@/lib/view-config";
 
 type Layout = "table" | "board" | "list" | "calendar";
 
@@ -589,7 +597,10 @@ function FilterBuilderContent({
     rootItems.push({ key: def.key, label: def.label });
     ROOT_ICON[def.key] = TYPE_ICON[def.type] ?? "";
   }
+  for (const k of ["@created", "@edited", "@verified"]) ROOT_ICON[k] = TYPE_ICON.date ?? "";
   rootItems.push({ key: "@created", label: "Created" });
+  rootItems.push({ key: "@edited", label: "Edited" });
+  rootItems.push({ key: "@verified", label: "Verified" });
   rootItems.push({ key: "@created_by", label: "Created by" });
   rootItems.push({ key: "@edited_by", label: "Last edited by" });
   rootItems.push({ key: "__freshness", label: "Freshness" });
@@ -639,10 +650,13 @@ function FilterBuilderContent({
 
   const initialValue = startAt && startAt.prop === key ? startAt.value : undefined;
 
-  if (key === "@created") {
+  // Created, Edited and Verified are dates on every row. Edited and
+  // Verified are also columns whose heading menu opens this step (they
+  // read "Property no longer exists." until 2026-10-30).
+  if (key === "@created" || key === "@edited" || key === "@verified") {
     return (
       <div>
-        <StepTitle onBack={back}>Created</StepTitle>
+        <StepTitle onBack={back}>{BUILT_IN_LABELS[key]}</StepTitle>
         <DateFilterRows
           prop={key}
           ranges={["today", "this_week", "past_7", "past_30", "this_month"]}
@@ -1057,7 +1071,9 @@ function BuilderRow({
 
 /* Sort by any property, with an optional second sort that breaks ties.
  * The quick picks below keep the familiar orders one click away. */
-const QUICK_SORTS: Array<{ label: string; spec: SortSpec }> = [
+const QUICK_SORTS: Array<{ label: string; spec: SortSpec; hint?: string }> = [
+  // Rows in the order they're dragged into (⋮⋮), as Notion's unsorted view.
+  { label: "Manual order", spec: { prop: MANUAL_SORT, dir: "asc" }, hint: "drag rows" },
   { label: "Newest edits", spec: { prop: "edited", dir: "desc" } },
   { label: "Oldest verification", spec: { prop: "verified", dir: "asc" } },
   { label: "Title A–Z", spec: { prop: "title", dir: "asc" } },
@@ -1100,6 +1116,7 @@ function SortControl({
   ask?: number;
 }) {
   const sorts = sortsOf(sort);
+  const manual = isManualSort(sort);
   const btnRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     if (!ask) return;
@@ -1157,7 +1174,13 @@ function SortControl({
         ) : (
           <div>
             <StepTitle>Sort</StepTitle>
-            {sorts.map((x, i) => (
+            {manual ? (
+              <div className="gio-mfoot" style={{ paddingTop: 0 }}>
+                Rows stay in the order you drag them into. Pick a sort below to order them by a
+                property instead.
+              </div>
+            ) : null}
+            {(manual ? [] : sorts).map((x, i) => (
               <div key={i} className="flex items-center" style={{ gap: 6, padding: "3px 8px" }}>
                 <span className="text-meta text-faint" style={{ width: 34 }}>
                   {i === 0 ? "By" : "Then"}
@@ -1201,7 +1224,7 @@ function SortControl({
                 ) : null}
               </div>
             ))}
-            {sorts.length < 2 ? (
+            {!manual && sorts.length < 2 ? (
               <BuilderRow onClick={() => setPicking(sorts.length)}>
                 <span className="text-muted">+ Then by…</span>
               </BuilderRow>
@@ -1217,7 +1240,13 @@ function SortControl({
                     onChange(c.spec);
                     close();
                   }}
-                  trailing={on ? <MenuCheck /> : null}
+                  trailing={
+                    on ? (
+                      <MenuCheck />
+                    ) : c.hint ? (
+                      <span className="gio-mrow-hint">{c.hint}</span>
+                    ) : null
+                  }
                 >
                   {c.label}
                 </BuilderRow>
@@ -1403,6 +1432,42 @@ function ToolbarBorderlessButton({
 
 /* ─────────────────────────── Board body ─────────────────────────── */
 
+/** A card's or list row's icon that turns into its selection box on hover,
+ *  so a selection can start on a board or a list too (until 2026-10-30 the
+ *  boxes showed only once something was already selected in a table). */
+function HoverCheckbox({
+  icon,
+  size,
+  selectable,
+  onClick,
+}: {
+  icon: string;
+  size: number;
+  selectable: boolean;
+  onClick: (shift: boolean) => void;
+}) {
+  if (!selectable) return <Ico icon={icon} size={size} />;
+  return (
+    <span
+      className="relative grid flex-none place-items-center"
+      style={{ width: size, height: size }}
+    >
+      <span className="group-hover:invisible">
+        <Ico icon={icon} size={size} />
+      </span>
+      <span
+        data-row-checkbox
+        className="invisible absolute inset-0 grid place-items-center group-hover:visible"
+      >
+        <RowCheckbox checked={false} alwaysVisible onClick={onClick} />
+      </span>
+    </span>
+  );
+}
+
+/** The board column for rows that have no value in the grouped property. */
+const NO_VALUE = "__none";
+
 export function BoardBody({
   rows,
   groupBy,
@@ -1413,6 +1478,7 @@ export function BoardBody({
   selectedSet,
   anySelection,
   onCheckboxClick,
+  selectable = true,
   getPageMenuBuild,
   onNewCard,
 }: {
@@ -1421,12 +1487,16 @@ export function BoardBody({
   propDefs: PropDef[];
   members: MemberRow[];
   staleThreshold: number;
-  onMove: (pageId: string, value: string) => void;
-  /** + New page at the foot of a column: a page with that column's value. */
-  onNewCard?: (value: string) => void;
+  /** `null` is the "No …" column: the drop clears the value. */
+  onMove: (pageId: string, value: string | null) => void;
+  /** + New page at the foot of a column: a page with that column's value
+   *  (`null`: the "No …" column, a page without one). */
+  onNewCard?: (value: string | null) => void;
   selectedSet: Set<string>;
   anySelection: boolean;
   onCheckboxClick: (id: string, shift: boolean) => void;
+  /** False: no selection (a view inside a page). */
+  selectable?: boolean;
   getPageMenuBuild: (p: PageListItem) => (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
 }) {
   const navigate = useNavigate();
@@ -1452,19 +1522,26 @@ export function BoardBody({
     const groups = new Map<string, PageListItem[]>();
     for (const p of rows) {
       const v = propsOf(p)[groupBy];
-      const key = typeof v === "string" && v ? v : "__none";
+      const key = typeof v === "string" && v ? v : NO_VALUE;
       const arr = groups.get(key);
       if (arr) arr.push(p);
       else groups.set(key, [p]);
     }
     const ordered: Array<{ value: string; opt?: (typeof opts)[number]; pages: PageListItem[] }> = [];
+    // Rows without a value get Notion's "No …" column, first (before
+    // 2026-10-30 they were left off the board). With none, it appears at
+    // the end only while a card is dragged — dropping there clears the
+    // value — so no column shifts under the pointer.
+    const none = groups.get(NO_VALUE) ?? [];
+    if (none.length) ordered.push({ value: NO_VALUE, pages: none });
     for (const o of opts) ordered.push({ value: o.value, opt: o, pages: groups.get(o.value) ?? [] });
     // Extra values not in options
     for (const [k, pgs] of groups)
-      if (k !== "__none" && !opts.some((o) => o.value === k))
+      if (k !== NO_VALUE && !opts.some((o) => o.value === k))
         ordered.push({ value: k, pages: pgs });
+    if (!none.length && dragId) ordered.push({ value: NO_VALUE, pages: [] });
     return ordered;
-  }, [rows, opts, groupBy]);
+  }, [rows, opts, groupBy, dragId]);
 
   return (
     <div className="flex gap-[14px] overflow-x-auto pb-2">
@@ -1489,7 +1566,7 @@ export function BoardBody({
             setDragId(null);
             if (!id) return;
             if (col.pages.some((x) => x.id === id)) return; // same column
-            onMove(id, col.value);
+            onMove(id, col.value === NO_VALUE ? null : col.value);
           }}
           className="shrink-0 rounded-xl bg-rail p-[10px] transition-[box-shadow,background-color] duration-150"
           style={{
@@ -1510,7 +1587,9 @@ export function BoardBody({
               style={{ background: `var(--color-${col.opt?.ink ?? "muted"})` }}
               aria-hidden
             />
-            <span className="font-bold text-body">{col.opt?.label ?? col.value}</span>
+            <span className="font-bold text-body">
+              {col.value === NO_VALUE ? `No ${def?.label ?? "value"}` : (col.opt?.label ?? col.value)}
+            </span>
             <span className="ml-auto text-faint">{col.pages.length}</span>
           </div>
           <div className="flex flex-col gap-2">
@@ -1568,7 +1647,12 @@ export function BoardBody({
                         />
                       </span>
                     ) : (
-                      <Ico icon={p.icon ?? "📄"} size={18} />
+                      <HoverCheckbox
+                        icon={p.icon ?? "📄"}
+                        size={18}
+                        selectable={selectable}
+                        onClick={(shift) => onCheckboxClick(p.id, shift)}
+                      />
                     )}
                     <span className="min-w-0 flex-1 truncate text-row font-bold text-noir">
                       {p.title || "Untitled"}
@@ -1611,7 +1695,7 @@ export function BoardBody({
           {onNewCard ? (
             <button
               type="button"
-              onClick={() => onNewCard(col.value)}
+              onClick={() => onNewCard(col.value === NO_VALUE ? null : col.value)}
               className="mt-2 flex w-full items-center rounded-md text-left text-meta text-faint hover:bg-railHover hover:text-strong"
               style={{ gap: 7, padding: "6px 6px" }}
             >
@@ -1646,6 +1730,7 @@ export function ListBody({
   selectedSet,
   anySelection,
   onCheckboxClick,
+  selectable = true,
   getPageMenuBuild,
 }: {
   rows: PageListItem[];
@@ -1655,6 +1740,8 @@ export function ListBody({
   selectedSet: Set<string>;
   anySelection: boolean;
   onCheckboxClick: (id: string, shift: boolean) => void;
+  /** False: no selection (a view inside a page). */
+  selectable?: boolean;
   getPageMenuBuild: (p: PageListItem) => (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
 }) {
   const navigate = useNavigate();
@@ -1721,7 +1808,12 @@ export function ListBody({
                 />
               </span>
             ) : (
-              <Ico icon={p.icon ?? "📄"} size={21} />
+              <HoverCheckbox
+                icon={p.icon ?? "📄"}
+                size={21}
+                selectable={selectable}
+                onClick={(shift) => onCheckboxClick(p.id, shift)}
+              />
             )}
             <div className="min-w-0">
               <div className="truncate text-row font-bold text-noir">

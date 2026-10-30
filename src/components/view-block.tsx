@@ -28,13 +28,18 @@ import { BoardBody, ListBody, QueryToolbar } from "./main-view";
 import { ViewTable } from "./view-table";
 import { DatabaseToolbar } from "./database-toolbar";
 import { useViewSettings } from "./view-settings";
-import { allPropKeys, labelOfProp, shownProps } from "@/lib/view-config";
+import {
+  allPropKeys,
+  labelOfProp,
+  shownProps,
+  tableGroupChoices as tableGroupChoicesFor,
+} from "@/lib/view-config";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useTemplates } from "@/hooks/use-workspace-data";
 import { useNewPageFromTemplate } from "@/hooks/use-templates";
-import type { MenuSpec } from "./row-menu";
 import type { PageListItem } from "@/lib/types";
 import { MenuHead } from "./menu-parts";
+import { useRowActions } from "@/hooks/use-row-actions";
 
 /* A view placed inside a page: a live table, board or list of one
  * database's rows with its own filters, sort and properties. Its settings
@@ -281,29 +286,34 @@ function InlineViewBody({
     view.group_by && groupable.some((d) => d.key === view.group_by)
       ? view.group_by
       : (groupable.find((d) => d.key === "status") ?? groupable[0])?.key ?? "status";
-  const tableGroupChoices = useMemo(
-    () => [
-      ...rt.propDefs
-        .filter((d) => ["select", "status", "person", "checkbox"].includes(d.type))
-        .map((d) => ({ key: d.key, label: d.label })),
-      { key: "@created_by", label: "Created by" },
-    ],
-    [rt.propDefs],
-  );
+  const tableGroupChoices = useMemo(() => tableGroupChoicesFor(rt.propDefs), [rt.propDefs]);
   const tableGroup =
     view.config.group && tableGroupChoices.some((c) => c.key === view.config.group)
       ? view.config.group
       : null;
 
   const open = (id: string) => openPageSomewhere(navigate, id);
-  const menuFor = (p: PageListItem) => () =>
-    ({
-      title: p.title || "Untitled",
-      rows: [{ kind: "row", label: "Open", icon: "open", onPick: () => open(p.id) }],
-    }) as MenuSpec;
+  // The same row menu, moves and placement as the database page
+  // (until 2026-10-30 an inline row's menu held only Open).
+  const rowActions = useRowActions({
+    // Shown only for a view with a database (the outer block checks).
+    databaseId: view.database_id ?? "",
+    rows,
+    sort,
+    groupKey: tableGroup,
+    propDefs: rt.propDefs,
+    members: rt.members,
+    staleThreshold,
+    canEdit: editable,
+    onChangeSort: editable ? (s) => changeSort(s) : undefined,
+  });
+  const menuFor = rowActions.getMenu;
 
   const seed = () => seedFromFilters(view.filter, rt.propDefs, user?.id);
-  const onNewRow = async (groupValue: string | null | undefined): Promise<string | null> => {
+  const onNewRow = async (
+    groupValue: string | null | undefined,
+    placeBefore?: string | null,
+  ): Promise<string | null> => {
     try {
       const seedProps = {
         ...seed(),
@@ -316,6 +326,7 @@ function InlineViewBody({
       });
       const listed = { ...(row as unknown as PageListItem), database_id: view.database_id };
       const fits = runView([listed], { filter: view.filter, sort }, rt.runCtx).length > 0;
+      rowActions.placeNewRow(row.id, placeBefore);
       if (!fits) {
         toast.push({
           message: "Row added. It doesn’t match this view’s filters, so it isn’t listed here.",
@@ -346,12 +357,13 @@ function InlineViewBody({
           selectedSet={EMPTY_SET}
           anySelection={false}
           onCheckboxClick={noop}
+          selectable={false}
           getPageMenuBuild={menuFor}
           onNewCard={
             editable
               ? (value) =>
                   void createAndOpen({
-                    seedProps: { ...seed(), [boardGroup]: value },
+                    seedProps: { ...seed(), ...(value === null ? {} : { [boardGroup]: value }) },
                     parentId: view.database_id,
                   })
               : undefined
@@ -386,6 +398,7 @@ function InlineViewBody({
             selectedSet={EMPTY_SET}
             anySelection={false}
             onCheckboxClick={noop}
+            selectable={false}
             getPageMenuBuild={menuFor}
           />
           {rows.length > shown.length ? (
@@ -423,6 +436,8 @@ function InlineViewBody({
         onSort={(s: SortSpec) => changeSort(s)}
         groupKey={tableGroup}
         onNewRow={editable ? onNewRow : undefined}
+        onMoveRow={editable ? rowActions.onMoveRow : undefined}
+        manualOrder={rowActions.manualOrder}
         relations={rt.tableRelations}
         databaseId={view.database_id ?? undefined}
         selectable={false}
@@ -537,7 +552,7 @@ function InlineViewBody({
                       onPick: () => void fromTemplate(t.id),
                     })),
                   ],
-                  footer: dbTemplates.length ? undefined : "No templates yet. Make one from a row's ⋯ menu (Use as template).",
+                  footer: dbTemplates.length ? undefined : "No templates yet. Open a row, then ⋯ › Use as template.",
                 })
               : undefined
           }

@@ -9,7 +9,7 @@
  * `mctx.setSpec` and `onBack`, so a stray click never leaves the panel
  * anchored on an empty selection.
  */
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { RowMenu, type MenuSpec, type MenuRow, type MenuBuildCtx } from "./row-menu";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
@@ -20,8 +20,11 @@ import {
   actionIcon,
   actionLabel,
   actionableDefs,
+  parseTyped,
+  typedDefs,
   valueRows,
 } from "@/lib/prop-actions";
+import { PROPERTY_KINDS } from "@/lib/property-kinds";
 
 type PropDef = Database["public"]["Tables"]["property_defs"]["Row"];
 type ViewRow = Database["public"]["Tables"]["views"]["Row"];
@@ -56,8 +59,19 @@ export type BulkActions = {
    *  multi-select, `picked` is the option to ADD (the caller merges). */
   setValue: (pageIds: string[], def: PropDef, picked: unknown) => Promise<void> | void;
   archive: (pageIds: string[]) => Promise<void> | void;
+  /** Undo for archive: back in every view. */
+  unarchive: (pageIds: string[]) => Promise<void> | void;
   deletePages: (pageIds: string[]) => Promise<void> | void;
-  toast: (message: string) => void;
+  /** Undo for delete: every page restored, with the pages inside it.
+   *  The rows are as they were just before the delete. */
+  restorePages: (rows: PageListItem[]) => Promise<void> | void;
+  /** A toast, with an Undo when `undo` is given. */
+  toast: (message: string, undo?: () => void) => void;
+  /** Duplicate every selected row (2026-10-30); absent: no Duplicate. */
+  duplicate?: (pageIds: string[]) => Promise<void> | void;
+  /** Move to…: a page picker that calls `onPick` with the new place. */
+  renderMoveTo?: (thisPageId: string, onPick: (parentId: string, title: string) => void) => ReactNode;
+  moveTo?: (pageIds: string[], parentId: string, title: string) => Promise<void> | void;
   staleDays: number;
   meId: string;
 };
@@ -129,18 +143,54 @@ function buildRoot(ctx: BulkContext, mctx: MenuBuildCtx): MenuSpec {
     },
   });
 
-  // The database's own properties, by type — never a property found by
-  // name (src/lib/prop-actions.ts).
-  for (const def of actionableDefs(ctx.propDefs)) {
+  // Edit property ›: the database's own properties, by type — never a
+  // property found by name (src/lib/prop-actions.ts). Picked values and,
+  // since 2026-10-30, typed ones (text, number, date, link, email, phone).
+  if (actionableDefs(ctx.propDefs).length || typedDefs(ctx.propDefs).length)
+    rows.unshift({
+      kind: "row",
+      label: "Edit property",
+      icon: "pencil",
+      hint: { text: "›" },
+      onPick: () => mctx.setSpec(buildEditSubmenu(ctx, ids, mctx)),
+    });
+
+  rows.push({ kind: "sep" });
+  if (ctx.actions.duplicate) {
+    const duplicate = ctx.actions.duplicate;
     rows.push({
       kind: "row",
-      label: actionLabel(def),
-      icon: actionIcon(def),
-      hint: { text: "›" },
-      onPick: () => mctx.setSpec(buildValueSubmenu(ctx, ids, def, mctx)),
+      label: `Duplicate ${nPages(n)}`,
+      icon: "dup",
+      onPick: () => {
+        void duplicate(ids);
+        mctx.close();
+        ctx.onClear();
+      },
     });
   }
-
+  if (ctx.actions.renderMoveTo && ctx.actions.moveTo) {
+    const { renderMoveTo, moveTo } = ctx.actions;
+    rows.push({
+      kind: "row",
+      label: "Move to",
+      icon: "M5 12h14M13 6l6 6-6 6",
+      hint: { text: "›" },
+      onPick: () =>
+        mctx.setSpec({
+          title: "Move to",
+          onBack: () => mctx.setSpec(buildRoot(ctx, mctx)),
+          rows: [],
+          width: 300,
+          content: () =>
+            renderMoveTo(ids[0], (parentId, title) => {
+              mctx.close();
+              ctx.onClear();
+              void moveTo(ids, parentId, title);
+            }),
+        }),
+    });
+  }
   rows.push({ kind: "sep" });
 
   rows.push({
@@ -169,7 +219,7 @@ function buildRoot(ctx: BulkContext, mctx: MenuBuildCtx): MenuSpec {
         rows: [],
         confirm: {
           title: `Delete ${nPages(captured.length)}?`,
-          body: "They will leave every view at once. Undo is per-page.",
+          body: "They leave every view at once. You can undo for a moment afterwards.",
           cta: `Delete ${nPages(captured.length)}`,
           danger: true,
           onConfirm: () => {
@@ -189,11 +239,89 @@ function buildRoot(ctx: BulkContext, mctx: MenuBuildCtx): MenuSpec {
   };
 }
 
+function buildEditSubmenu(ctx: BulkContext, ids: string[], mctx: MenuBuildCtx): MenuSpec {
+  const picked = actionableDefs(ctx.propDefs);
+  const typed = typedDefs(ctx.propDefs);
+  const order = new Map(ctx.propDefs.map((d, i) => [d.key, d.position ?? i]));
+  const all = [...picked, ...typed].sort(
+    (a, b) => (order.get(a.key) ?? 0) - (order.get(b.key) ?? 0),
+  );
+  return {
+    title: "Edit property",
+    onBack: () => mctx.setSpec(buildRoot(ctx, mctx)),
+    maxHeight: 420,
+    rows: all.map((def) => ({
+      kind: "row" as const,
+      label: actionLabel(def),
+      icon: PROPERTY_KINDS.find((k) => k.type === def.type)?.icon ?? actionIcon(def),
+      hint: { text: "›" },
+      onPick: () =>
+        mctx.setSpec(
+          typed.includes(def)
+            ? buildTypedSubmenu(ctx, ids, def, mctx)
+            : buildValueSubmenu(ctx, ids, def, mctx, () =>
+                mctx.setSpec(buildEditSubmenu(ctx, ids, mctx)),
+              ),
+        ),
+    })),
+  };
+}
+
+/** Type one value for every selected row; empty clears it. A value its
+ *  cell would refuse is not set: the reason shows under the field. */
+function buildTypedSubmenu(
+  ctx: BulkContext,
+  ids: string[],
+  def: PropDef,
+  mctx: MenuBuildCtx,
+  error?: string,
+): MenuSpec {
+  const name = def.label || def.key;
+  const placeholder =
+    def.type === "date"
+      ? "tomorrow, Mar 14…"
+      : def.type === "number"
+        ? "A number"
+        : `${name} for ${nPages(ids.length)}`;
+  return {
+    title: name,
+    onBack: () => mctx.setSpec(buildEditSubmenu(ctx, ids, mctx)),
+    rows: [],
+    inputFirst: true,
+    input: {
+      placeholder,
+      onCommit: (raw) => {
+        const r = parseTyped(def, raw);
+        if (!r.ok) {
+          mctx.setSpec(buildTypedSubmenu(ctx, ids, def, mctx, r.error));
+          return;
+        }
+        const label =
+          r.value === null
+            ? ""
+            : def.type === "date"
+              ? new Date(`${String(r.value)}T00:00:00`).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })
+              : String(r.value);
+        void doSetValue(ctx, ids, def, r.value, label);
+        mctx.close();
+        ctx.onClear();
+      },
+      keepOpen: true,
+    },
+    footer: error ?? `Enter sets it on every selected page. Leave it empty to clear ${name}.`,
+  };
+}
+
 function buildValueSubmenu(
   ctx: BulkContext,
   ids: string[],
   def: PropDef,
   mctx: MenuBuildCtx,
+  back: () => void = () => mctx.setSpec(buildRoot(ctx, mctx)),
 ): MenuSpec {
   const selected = ctx.pages.filter((p) => ids.includes(p.id));
   // Checked only when every selected page already has that value.
@@ -210,7 +338,7 @@ function buildValueSubmenu(
   }
   return {
     title: actionLabel(def),
-    onBack: () => mctx.setSpec(buildRoot(ctx, mctx)),
+    onBack: back,
     rows: valueRows(
       def,
       current,
@@ -265,12 +393,19 @@ async function doSetValue(
 
 async function doArchive(ctx: BulkContext, ids: string[]) {
   await ctx.actions.archive(ids);
-  ctx.actions.toast(`${nPages(ids.length)} archived — still in ⌘K.`);
+  ctx.actions.toast(`${nPages(ids.length)} archived — still in ⌘K.`, () => {
+    void ctx.actions.unarchive(ids);
+  });
 }
 
+/** One Undo brings every deleted page back, as a single row's delete does
+ *  (until 2026-10-30 bulk delete had none). */
 async function doDelete(ctx: BulkContext, ids: string[]) {
+  const rows = ctx.pages.filter((p) => ids.includes(p.id));
   await ctx.actions.deletePages(ids);
-  ctx.actions.toast(`${nPages(ids.length)} deleted — they left every view at once.`);
+  ctx.actions.toast(`${nPages(ids.length)} deleted — they left every view at once.`, () => {
+    void ctx.actions.restorePages(rows);
+  });
 }
 
 /* keep runView referenced so `views` prop stays typechecked even if a
@@ -287,6 +422,8 @@ export function BulkBar(props: {
   views: ViewRow[];
   actions: BulkActions;
   onClear: () => void;
+  /** Opens Actions when it changes (⌘/ on a selection). */
+  menuAsk?: number;
 }) {
   const ctx: BulkContext = props;
   const n = props.selectedIds.length;
@@ -308,6 +445,11 @@ export function BulkBar(props: {
   };
 
   const btnRef = useRef<HTMLButtonElement>(null);
+  const openRef = useRef(openMenu);
+  openRef.current = openMenu;
+  useEffect(() => {
+    if (props.menuAsk && btnRef.current) openRef.current(btnRef.current);
+  }, [props.menuAsk]);
 
   if (n === 0) return null;
 
@@ -342,7 +484,7 @@ export function BulkBar(props: {
           {n === 1 ? "1 page selected" : `${n} pages selected`}
         </span>
         <span style={{ fontSize: 13, color: "var(--color-whisper)" }}>
-          shift-click to extend · esc to clear
+          drag or shift-click to add · ⌘/ for actions · esc to clear
         </span>
         <span style={{ flex: 1 }} />
         <VerifyPill

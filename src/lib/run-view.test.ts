@@ -497,3 +497,44 @@ describe("date ranges in views (2026-10-10)", () => {
     ).toEqual(["r", "d", "s"]);
   });
 });
+
+describe("date filters on Edited and Verified (heading menu › Filter)", () => {
+  it("date_is past_7 on @edited keeps rows edited in the last week", () => {
+    const r = runView(
+      pages,
+      { filter: [{ prop: "@edited", op: "date_is", value: "past_7" }], sort: sortEditedDesc },
+      ctx,
+    );
+    const expected = pages
+      .filter((p) => NOW.getTime() - new Date(p.edited_at).getTime() <= 7 * 86_400_000)
+      .map((p) => p.id)
+      .sort();
+    expect(expected.length).toBeGreaterThan(0);
+    expect(r.map((p) => p.id).sort()).toEqual(expected);
+  });
+
+  it("date_is past_30 on @verified uses the verified date", () => {
+    const r = runView(
+      pages,
+      { filter: [{ prop: "@verified", op: "date_is", value: "past_30" }], sort: sortEditedDesc },
+      ctx,
+    );
+    const expected = pages
+      .filter((p) => NOW.getTime() - new Date(p.verified_at).getTime() <= 30 * 86_400_000)
+      .map((p) => p.id)
+      .sort();
+    expect(r.map((p) => p.id).sort()).toEqual(expected);
+  });
+});
+
+describe("manual order", () => {
+  it("orders rows by position, unplaced rows last newest edit first, like move_page", () => {
+    const base = pages.slice(0, 4).map((p, i) => ({ ...p, position: [2, null, 1, null][i] }));
+    const r = runView(base, { filter: [], sort: [{ prop: "manual", dir: "asc" }] }, ctx);
+    const unplaced = base
+      .filter((p) => p.position === null)
+      .sort((a, b) => b.edited_at.localeCompare(a.edited_at) || (a.id < b.id ? -1 : 1))
+      .map((p) => p.id);
+    expect(r.map((p) => p.id)).toEqual([base[2].id, base[0].id, ...unplaced]);
+  });
+});
