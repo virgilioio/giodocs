@@ -697,7 +697,11 @@ export function useDuplicatePage() {
   const { user } = useAuth();
   const toast = useToast();
   return useMutation({
-    mutationFn: async (pageId: string) => {
+    /** A page id, or `{ pageId, quiet }`: quiet (a table row's Duplicate)
+     *  says "Duplicated" instead of "you're on the copy", since the caller
+     *  stays where it is. */
+    mutationFn: async (input: string | { pageId: string; quiet?: boolean }) => {
+      const pageId = typeof input === "string" ? input : input.pageId;
       const { data: src, error: e1 } = await supabase
         .from("pages")
         .select("title, icon, props, blocks, access_type, parent_id, database_id, is_database")
@@ -774,11 +778,12 @@ export function useDuplicatePage() {
       if (error) throw error;
       return data as PageListItem;
     },
-    onSuccess: (row) => {
+    onSuccess: (row, input) => {
       qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) =>
         prev ? [row, ...prev] : [row],
       );
-      toast.push("Duplicated — you're on the copy.");
+      const quiet = typeof input !== "string" && input.quiet;
+      toast.push(quiet ? `Duplicated "${row.title || "Untitled"}".` : "Duplicated — you're on the copy.");
     },
     onError: (err) => {
       toast.push(`Couldn't duplicate: ${(err as Error).message}`);
@@ -1249,6 +1254,8 @@ export function useMovePage() {
       props?: unknown;
       message?: string;
       undo?: boolean;
+      /** No toast (a placement that's part of another action). */
+      quiet?: boolean;
     }) => {
       const { data, error } = await supabase.rpc("move_page", {
         p_page: v.pageId,
@@ -1289,6 +1296,7 @@ export function useMovePage() {
       toast.push((err as Error).message || "Couldn't move that page.");
     },
     onSuccess: (prev, v) => {
+      if (v.quiet) return;
       if (v.undo) {
         toast.push("Moved back.");
         return;

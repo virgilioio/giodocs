@@ -37,9 +37,9 @@ import {
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useTemplates } from "@/hooks/use-workspace-data";
 import { useNewPageFromTemplate } from "@/hooks/use-templates";
-import type { MenuSpec } from "./row-menu";
 import type { PageListItem } from "@/lib/types";
 import { MenuHead } from "./menu-parts";
+import { useRowActions } from "@/hooks/use-row-actions";
 
 /* A view placed inside a page: a live table, board or list of one
  * database's rows with its own filters, sort and properties. Its settings
@@ -293,14 +293,28 @@ function InlineViewBody({
       : null;
 
   const open = (id: string) => openPageSomewhere(navigate, id);
-  const menuFor = (p: PageListItem) => () =>
-    ({
-      title: p.title || "Untitled",
-      rows: [{ kind: "row", label: "Open", icon: "open", onPick: () => open(p.id) }],
-    }) as MenuSpec;
+  // The same row menu, moves and placement as the database page
+  // (until 2026-10-30 an inline row's menu held only Open).
+  const rowActions = useRowActions({
+    // Shown only for a view with a database (the outer block checks).
+    databaseId: view.database_id ?? "",
+    databaseTitle: rt.database?.title ?? null,
+    rows,
+    sort,
+    groupKey: tableGroup,
+    propDefs: rt.propDefs,
+    members: rt.members,
+    staleThreshold,
+    canEdit: editable,
+    onChangeSort: editable ? (s) => changeSort(s) : undefined,
+  });
+  const menuFor = rowActions.getMenu;
 
   const seed = () => seedFromFilters(view.filter, rt.propDefs, user?.id);
-  const onNewRow = async (groupValue: string | null | undefined): Promise<string | null> => {
+  const onNewRow = async (
+    groupValue: string | null | undefined,
+    placeBefore?: string | null,
+  ): Promise<string | null> => {
     try {
       const seedProps = {
         ...seed(),
@@ -313,6 +327,7 @@ function InlineViewBody({
       });
       const listed = { ...(row as unknown as PageListItem), database_id: view.database_id };
       const fits = runView([listed], { filter: view.filter, sort }, rt.runCtx).length > 0;
+      rowActions.placeNewRow(row.id, placeBefore);
       if (!fits) {
         toast.push({
           message: "Row added. It doesn’t match this view’s filters, so it isn’t listed here.",
@@ -420,6 +435,8 @@ function InlineViewBody({
         onSort={(s: SortSpec) => changeSort(s)}
         groupKey={tableGroup}
         onNewRow={editable ? onNewRow : undefined}
+        onMoveRow={editable ? rowActions.onMoveRow : undefined}
+        manualOrder={rowActions.manualOrder}
         relations={rt.tableRelations}
         databaseId={view.database_id ?? undefined}
         selectable={false}

@@ -1,4 +1,14 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { useDragSession } from "@/hooks/use-drag-session";
 import { openPageSomewhere } from "@/lib/peek";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
@@ -610,6 +620,11 @@ function ValueCell({ page, k, ctx }: { page: PageListItem; k: string; ctx: CellC
 
 /* ─────────────────────────── Row ─────────────────────────── */
 
+/** The first column: a row's ⋮⋮ handle and its selection box. */
+const GUTTER_PX = 34;
+/** …with "+" (add a row) in front, in manual order. */
+const GUTTER_INSERT_PX = 50;
+
 function cellClass(selected: boolean, edge?: boolean, extra = ""): string {
   return (
     "min-w-0 border-b border-lineSoft gio-cell-pad flex items-center whitespace-nowrap " +
@@ -647,9 +662,19 @@ const TableRow = memo(function TableRow({
   selectable,
   wrapped,
   frozen,
+  groupValue,
+  onHandleDown,
+  onInsert,
 }: {
   p: PageListItem;
   shown: string[];
+  /** The group the row is shown in (a grouped table), for drag and drop. */
+  groupValue?: string | null;
+  /** ⋮⋮ pressed: may become a drag that reorders rows (the click still
+   *  opens the row menu). Absent: the handle only opens the menu. */
+  onHandleDown?: (e: React.PointerEvent, pageId: string) => void;
+  /** "+": add a row below this one (above with ⌥/Alt), manual order only. */
+  onInsert?: (pageId: string, above: boolean) => void;
   /** Freeze: the title and properties that stay while the table scrolls. */
   frozen: readonly string[];
   ctx: CellCtx;
@@ -664,15 +689,111 @@ const TableRow = memo(function TableRow({
   /** Properties whose cells wrap (Wrap text). */
   wrapped: ReadonlySet<string>;
 }) {
+  // The row menu, opened from ⋮⋮ or a right-click anywhere on the row
+  // (Notion's row menu; the ⋯ at the right edge opens the same one).
+  const handleRef = useRef<HTMLButtonElement>(null);
+  const [menu, setMenu] = useState<{ anchor: HTMLElement; spec: MenuSpec } | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
+  const openMenu = (anchor: HTMLElement) => {
+    const ctx: MenuBuildCtx = {
+      setSpec: (spec) => setMenu((m) => (m ? { ...m, spec } : m)),
+      close: closeMenu,
+    };
+    setMenu({ anchor, spec: getMenu(p)(ctx) });
+  };
   return (
-    <div className="contents group" role="row">
-      <div data-page-id={p.id} className={cellClass(selected, true) + frozenOf(frozen, "").cls} style={frozenOf(frozen, "").style}>
-        {selectable ? (
-          <RowCheckbox
-            checked={selected}
-            alwaysVisible={anySelection}
-            onClick={(shift) => onCheckboxClick(p.id, shift)}
-          />
+    <div
+      className="contents group"
+      role="row"
+      onContextMenu={(e) => {
+        // Inside a text field the browser's own menu (spelling, paste) wins.
+        if ((e.target as HTMLElement).closest("input, textarea, [contenteditable='true']")) return;
+        if (!handleRef.current) return;
+        e.preventDefault();
+        openMenu(handleRef.current);
+      }}
+    >
+      <div
+        data-page-id={p.id}
+        data-row-gutter={p.id}
+        data-group={groupValue ?? undefined}
+        className={cellClass(selected, true) + frozenOf(frozen, "").cls}
+        style={frozenOf(frozen, "").style}
+      >
+        <div className="flex w-full items-center justify-end" style={{ gap: 1, paddingRight: 4 }}>
+          {onInsert ? (
+            <button
+              type="button"
+              aria-label="Add a row below"
+              title="Add a row below · ⌥-click to add above"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onInsert(p.id, e.altKey);
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="invisible grid place-items-center rounded-[4px] text-faint hover:bg-line hover:text-strong group-hover:visible focus-visible:visible"
+              style={{ width: 14, height: 22, flex: "none" }}
+            >
+              <svg viewBox="0 0 24 24" width={12} height={12} aria-hidden>
+                <path
+                  d="M12 5v14M5 12h14"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2.2}
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          ) : null}
+          <button
+            ref={handleRef}
+            type="button"
+            data-row-handle
+            aria-label={onHandleDown ? "Row actions. Drag to move." : "Row actions"}
+            title={onHandleDown ? "Drag to move · click for actions" : "Click for actions"}
+            onPointerDown={(e) => {
+              if (e.button !== 0 || !onHandleDown) return;
+              onHandleDown(e, p.id);
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              openMenu(e.currentTarget);
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            className={
+              "grid place-items-center rounded-[4px] text-faint hover:bg-line hover:text-strong " +
+              (menu ? "visible" : "invisible group-hover:visible focus-visible:visible")
+            }
+            style={{
+              width: 12,
+              height: 22,
+              flex: "none",
+              cursor: onHandleDown ? "grab" : "pointer",
+              touchAction: "none",
+            }}
+          >
+            <svg viewBox="0 0 10 16" width={8} height={14} aria-hidden>
+              {[3, 7].map((x) =>
+                [3, 8, 13].map((y) => (
+                  <circle key={`${x}${y}`} cx={x} cy={y} r={1.3} fill="currentColor" />
+                )),
+              )}
+            </svg>
+          </button>
+          {selectable ? (
+            <RowCheckbox
+              checked={selected}
+              alwaysVisible={anySelection}
+              onClick={(shift) => onCheckboxClick(p.id, shift)}
+            />
+          ) : (
+            <span aria-hidden style={{ width: 16, flex: "none" }} />
+          )}
+        </div>
+        {menu ? (
+          <RowMenu spec={menu.spec} anchor={menu.anchor} onClose={closeMenu} align="start" />
         ) : null}
       </div>
       <div data-page-id={p.id} role="cell" data-wrap={wrapped.has(TITLE_KEY) || undefined} className={cellClass(selected) + frozenOf(frozen, TITLE_KEY).cls} style={frozenOf(frozen, TITLE_KEY).style}>
@@ -1415,6 +1536,8 @@ export function ViewTable({
   onShowAll,
   isOwner,
   onFilter,
+  onMoveRow,
+  manualOrder,
 }: {
   rows: PageListItem[];
   pages: PageListItem[];
@@ -1438,7 +1561,10 @@ export function ViewTable({
   groupKey: string | null;
   /** Adds a page from the + New page row (seeded with the group's value);
    *  resolves to its id, or null if it wasn't made. */
-  onNewRow?: (groupValue: string | null | undefined) => Promise<string | null>;
+  onNewRow?: (
+    groupValue: string | null | undefined,
+    placeBefore?: string | null,
+  ) => Promise<string | null>;
   /** Relations and rollups: their pages, figures and edits. */
   relations?: TableRelations;
   /** False hides the selection boxes (a view inside a page). */
@@ -1453,9 +1579,22 @@ export function ViewTable({
   isOwner?: boolean;
   /** Opens the view's filter builder at this property. */
   onFilter?: (key: string) => void;
+  /** A row dragged by its ⋮⋮ (2026-10-30): put it before `beforeId` in
+   *  the database's own order (null: last), in group `groupValue` when the
+   *  table is grouped. The caller decides what that means for a sorted
+   *  view. Absent: rows can't be dragged. */
+  onMoveRow?: (
+    pageId: string,
+    target: { beforeId: string | null; groupValue?: string | null },
+  ) => void;
+  /** The view is in manual order: "+" beside each row adds one right there. */
+  manualOrder?: boolean;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  // Manual order with rows that can be made and moved: "+" beside each row
+  // (the gutter widens for it).
+  const canInsert = !!manualOrder && !!onNewRow && !!onMoveRow;
   const suppressClick = useRef(false);
   const nudged = useRef<string | null>(null);
   const [drag, setDrag] = useState<{ key: string; x: number; index: number } | null>(null);
@@ -1545,7 +1684,8 @@ export function ViewTable({
   const minTableWidth = 16 + endW + tracks.reduce((n, t) => n + t.min, 0);
   const templateWith = (override?: { key: string; px: number }) =>
     [
-      "16px",
+      // The gutter: ⋮⋮ and the selection box (2026-10-30; was the box alone).
+      `${canInsert ? GUTTER_INSERT_PX : GUTTER_PX}px`,
       ...tracks.map((t) => (override && override.key === t.k ? `${override.px}px` : t.css)),
       endTrack,
     ].join(" ");
@@ -1875,10 +2015,22 @@ export function ViewTable({
   const [editId, setEditId] = useState<string | null>(null);
   const clearEdit = useMemo(() => () => setEditId(null), []);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
-  const addRow = async (groupValue: string | null | undefined) => {
+  const addRow = async (groupValue: string | null | undefined, placeBefore?: string | null) => {
     if (!onNewRow) return;
-    const id = await onNewRow(groupValue);
+    const id = await onNewRow(groupValue, placeBefore);
     if (id) setEditId(id);
+  };
+  /** "+" beside a row (manual order): a row below it, or above with ⌥. */
+  const insertRow = useCallback(
+    (pageId: string, above: boolean) => insertRowRef.current(pageId, above),
+    [],
+  );
+  const insertRowRef = useRef((_pageId: string, _above: boolean) => {});
+  insertRowRef.current = (pageId, above) => {
+    const at = rows.findIndex((r) => r.id === pageId);
+    if (at < 0) return;
+    const before = above ? pageId : (rows[at + 1]?.id ?? null);
+    void addRow(groups ? (rowGroup.get(pageId) ?? null) : undefined, before);
   };
 
   // Grouping keeps each group's rows in the view's sort order.
@@ -1898,11 +2050,92 @@ export function ViewTable({
     return groupRows(rows, groupKey, { props: info, nameOf });
   }, [rows, groupKey, groupDef, members]);
 
-  const renderRow = (p: PageListItem) => {
+  /* Rows dragged by their ⋮⋮. The hit test reads the rows on screen (their
+     gutter cells, in order); the drop names the row it lands before in the
+     database's own order, and its group. */
+  type RowDrag = { pageId: string };
+  type RowDrop = { beforeId: string | null; groupValue: string | null; y: number };
+  const rowDrag = useDragSession<RowDrop, RowDrag>({
+    hitTest: (pt, d) => {
+      const grid = gridRef.current;
+      const wrap = wrapRef.current;
+      if (!grid || !wrap) return null;
+      const cells = Array.from(grid.querySelectorAll<HTMLElement>("[data-row-gutter]")).filter(
+        (c) => c.dataset.rowGutter !== d.pageId,
+      );
+      if (cells.length === 0) return null;
+      const top = wrap.getBoundingClientRect().top;
+      for (const c of cells) {
+        const r = c.getBoundingClientRect();
+        if (pt.y < r.top + r.height / 2)
+          return {
+            beforeId: c.dataset.rowGutter!,
+            groupValue: c.dataset.group ?? null,
+            y: r.top - top,
+          };
+      }
+      const last = cells[cells.length - 1];
+      return {
+        beforeId: null,
+        groupValue: last.dataset.group ?? null,
+        y: last.getBoundingClientRect().bottom - top,
+      };
+    },
+    commit: (drop, d) => {
+      if (!onMoveRow) return;
+      const order = rows.filter((r) => r.id !== d.pageId);
+      let beforeId = drop.beforeId;
+      if (beforeId === null && groups) {
+        // The end of a group: after its last row, so before whatever
+        // follows that row in the database's order.
+        const g = groups.find((x) => (x.value ?? null) === drop.groupValue);
+        const lastInGroup = g ? [...g.pages].reverse().find((r) => r.id !== d.pageId) : undefined;
+        const at = lastInGroup ? order.findIndex((r) => r.id === lastInGroup.id) : -1;
+        beforeId = at >= 0 ? (order[at + 1]?.id ?? null) : null;
+      }
+      const from = rows.findIndex((r) => r.id === d.pageId);
+      const next = rows[from + 1]?.id ?? null;
+      const groupChanged = !!groups && (rowGroup.get(d.pageId) ?? null) !== drop.groupValue;
+      if (!groupChanged && beforeId === next) return; // dropped where it was
+      onMoveRow(d.pageId, groups ? { beforeId, groupValue: drop.groupValue } : { beforeId });
+    },
+    makeGhost: (d) => {
+      const page = rows.find((r) => r.id === d.pageId);
+      if (!page) return null;
+      const ghost = document.createElement("div");
+      ghost.className =
+        "rounded-md border border-line bg-surface text-row text-body shadow-popover";
+      ghost.style.padding = "6px 12px";
+      ghost.style.maxWidth = "360px";
+      ghost.style.whiteSpace = "nowrap";
+      ghost.style.overflow = "hidden";
+      ghost.style.textOverflow = "ellipsis";
+      ghost.textContent = `${page.icon ? `${page.icon} ` : ""}${page.title || "Untitled"}`;
+      return ghost;
+    },
+    scrollTargets: () => [wrapRef.current?.closest("main") as HTMLElement | null],
+  });
+  const rowGroup = useMemo(() => {
+    const m = new Map<string, string | null>();
+    for (const g of groups ?? []) for (const r of g.pages) m.set(r.id, g.value ?? null);
+    return m;
+  }, [groups]);
+  const beginRowDrag = useCallback(
+    (e: React.PointerEvent, pageId: string) => rowDragBegin.current(e, { pageId }),
+    [],
+  );
+  const rowDragBegin = useRef(rowDrag.begin);
+  rowDragBegin.current = rowDrag.begin;
+  const rowDrop = rowDrag.active ? rowDrag.target : null;
+
+  const renderRow = (p: PageListItem, groupValue?: string | null) => {
     const stale = new Date(p.verified_at).getTime() < staleThreshold;
     return (
       <TableRow
         key={p.id}
+        groupValue={groupValue}
+        onHandleDown={onMoveRow ? beginRowDrag : undefined}
+        onInsert={canInsert ? insertRow : undefined}
         p={p}
         shown={shown}
         ctx={stale ? ctxStale : ctxOk}
@@ -1987,7 +2220,10 @@ export function ViewTable({
         onClickCapture={onGridClickCapture}
       >
         <div className="contents" role="row">
-          <div className={HEAD_CLASS + " justify-center" + frozenOf(frozenKeys, "").cls} style={{ ...HEAD_STYLE, ...frozenOf(frozenKeys, "").style }}>
+          <div
+            className={HEAD_CLASS + " justify-end" + frozenOf(frozenKeys, "").cls}
+            style={{ ...HEAD_STYLE, paddingRight: 4, ...frozenOf(frozenKeys, "").style }}
+          >
             {selectable ? (
               <HeaderSelectAll
                 state={selectAllState}
@@ -2051,7 +2287,7 @@ export function ViewTable({
                 >
                   {open ? (
                     <>
-                      {limited(g.pages).map(renderRow)}
+                      {limited(g.pages).map((p) => renderRow(p, g.value ?? null))}
                       {onNewRow ? <NewRowButton onAdd={() => addRow(g.value)} /> : null}
                       {calcRow(g.pages)}
                     </>
@@ -2059,7 +2295,7 @@ export function ViewTable({
                 </GroupBlock>
               );
             })
-          : limited(rows).map(renderRow)}
+          : limited(rows).map((p) => renderRow(p))}
         {rows.length === 0 ? (
           <div className="contents" role="row">
             <div
@@ -2088,6 +2324,20 @@ export function ViewTable({
           </div>
         ) : null}
       </div>
+      {rowDrop ? (
+        <div
+          aria-hidden
+          className="gio-drop-line pointer-events-none absolute"
+          style={{
+            left: 0,
+            right: 0,
+            top: 0,
+            height: 2,
+            transform: `translateY(${rowDrop.y - 1}px)`,
+            background: "var(--color-accent)",
+          }}
+        />
+      ) : null}
       {drag ? (
         <div
           aria-hidden

@@ -35,7 +35,6 @@ import { useTemplates } from "@/hooks/use-workspace-data";
 import { useNewPageFromTemplate, useSetTemplate } from "@/hooks/use-templates";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { personalViewFooter } from "@/lib/personal-view-footer";
-import { buildPageRowSpec, firstNameOf } from "@/lib/page-row-spec";
 import { rangeSelect } from "@/lib/row-selection";
 import {
   useSetPageProperty,
@@ -54,6 +53,7 @@ import {
   useRestorePage,
   useArchivePage,
 } from "@/hooks/use-page-mutations";
+import { useRowActions } from "@/hooks/use-row-actions";
 import { BulkBar } from "./bulk-bar";
 import { nextValue } from "@/lib/prop-actions";
 import { CalendarViewBody } from "./calendar-view";
@@ -639,7 +639,13 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
   const onNewPage = () => {
     void createAndOpen({ seedProps: seedForView(), parentId: databaseId });
   };
-  const onNewRow = async (groupValue: string | null | undefined): Promise<string | null> => {
+  /** A row made in the table: "+ New page" at the foot (of a group), or "+"
+   *  beside a row (`placeBefore`). In manual order it's placed where it was
+   *  asked for (last for the foot), else it would land among the unplaced. */
+  const onNewRow = async (
+    groupValue: string | null | undefined,
+    placeBefore?: string | null,
+  ): Promise<string | null> => {
     const seed = {
       ...seedForView(),
       ...(groupValue !== undefined ? seedForGroup(tableGroup, groupValue, propDefs) : {}),
@@ -648,6 +654,7 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
       const row = await create.mutateAsync({ seedProps: seed, parentId: databaseId, quiet: true });
       const listed = { ...(row as unknown as PageListItem), database_id: databaseId };
       const fits = runView([listed], { filter: filters, sort }, runCtx).length > 0;
+      rowActions.placeNewRow(row.id, placeBefore);
       if (!fits) {
         toast.push({
           message: "Row added. It doesn’t match this view’s filters, so it isn’t listed here.",
@@ -862,47 +869,27 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
   }, [view, isTeamView, canManageView]);
 
   /* --- rows' menus ----------------------------------------------------- */
-  const onDeleteWithUndo = (row: PageListItem) => {
-    const snap = row;
-    deletePage.mutate(row.id, {
-      onSuccess: () => {
-        toast.push({
-          message: "Row deleted, with the pages inside it.",
-          action: { label: "Undo", onClick: () => restorePage.mutate({ pageId: snap.id, row: snap }) },
-          durationMs: 10_000,
-        });
-      },
-    });
-  };
-  const specPropDefs = useMemo(
-    () =>
-      propDefs.map((d) => ({
-        key: d.key,
-        label: d.label ?? d.key,
-        type: d.type,
-        options: d.options,
-        archived_at: d.archived_at,
-      })),
-    [propDefs],
-  );
-  const getPageMenuBuild = (p: PageListItem) => {
-    const editedByFirstName = firstNameOf(members.find((m) => m.user_id === p.edited_by));
-    return (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) =>
-      buildPageRowSpec(
-        {
-          p,
-          isStale: new Date(p.verified_at).getTime() < staleThreshold,
-          propDefs: specPropDefs,
-          members,
-          editedByFirstName,
-          onOpen: () => navigate({ to: "/p/$pageId", params: { pageId: p.id } }),
-          onVerify: () => verifyPage.mutate(p.id),
-          onSetValue: (key, value) => setProp.mutate({ pageId: p.id, key, value }),
-          onDelete: () => onDeleteWithUndo(p),
-        },
-        mctx,
-      );
-  };
+  const rowActions = useRowActions({
+    databaseId,
+    databaseTitle: database?.title ?? null,
+    rows,
+    sort,
+    groupKey: tableGroup,
+    propDefs,
+    members,
+    staleThreshold,
+    canEdit: canEditDb,
+    origin: {
+      kind: "database",
+      databaseId,
+      viewId: view?.id ?? null,
+      name: database?.title || "Untitled",
+    },
+    onChangeSort: (s) => onChangeSort(s),
+  });
+  const manualOrder = rowActions.manualOrder;
+  const onMoveRow = rowActions.onMoveRow;
+  const getPageMenuBuild = rowActions.getMenu;
   const menuBuildRef = useRef(getPageMenuBuild);
   menuBuildRef.current = getPageMenuBuild;
   const stableMenuBuild = useCallback(
@@ -996,6 +983,8 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
         onSort={onChangeSort}
         groupKey={tableGroup}
         onNewRow={canEditDb ? onNewRow : undefined}
+        onMoveRow={canEditDb ? onMoveRow : undefined}
+        manualOrder={manualOrder}
         relations={tableRelations}
         databaseId={canEditDb ? databaseId : undefined}
         isOwner={isWorkspaceOwner}
