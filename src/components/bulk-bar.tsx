@@ -9,7 +9,7 @@
  * `mctx.setSpec` and `onBack`, so a stray click never leaves the panel
  * anchored on an empty selection.
  */
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { RowMenu, type MenuSpec, type MenuRow, type MenuBuildCtx } from "./row-menu";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
@@ -300,6 +300,8 @@ export function BulkBar(props: {
   views: ViewRow[];
   actions: BulkActions;
   onClear: () => void;
+  /** Opens Actions when it changes (⌘/ on a selection). */
+  menuAsk?: number;
 }) {
   const ctx: BulkContext = props;
   const n = props.selectedIds.length;
@@ -321,6 +323,11 @@ export function BulkBar(props: {
   };
 
   const btnRef = useRef<HTMLButtonElement>(null);
+  const openRef = useRef(openMenu);
+  openRef.current = openMenu;
+  useEffect(() => {
+    if (props.menuAsk && btnRef.current) openRef.current(btnRef.current);
+  }, [props.menuAsk]);
 
   if (n === 0) return null;
 

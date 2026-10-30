@@ -358,6 +358,7 @@ function InlineViewBody({
           selectedSet={EMPTY_SET}
           anySelection={false}
           onCheckboxClick={noop}
+          selectable={false}
           getPageMenuBuild={menuFor}
           onNewCard={
             editable
@@ -398,6 +399,7 @@ function InlineViewBody({
             selectedSet={EMPTY_SET}
             anySelection={false}
             onCheckboxClick={noop}
+            selectable={false}
             getPageMenuBuild={menuFor}
           />
           {rows.length > shown.length ? (

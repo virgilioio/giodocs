@@ -1538,6 +1538,7 @@ export function ViewTable({
   onFilter,
   onMoveRow,
   manualOrder,
+  displayOrderRef,
 }: {
   rows: PageListItem[];
   pages: PageListItem[];
@@ -1589,6 +1590,9 @@ export function ViewTable({
   ) => void;
   /** The view is in manual order: "+" beside each row adds one right there. */
   manualOrder?: boolean;
+  /** Filled with the rows' ids in the order shown (groups flattened), so
+   *  selection ranges follow the screen, not the sort. */
+  displayOrderRef?: React.MutableRefObject<string[]>;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -2115,6 +2119,12 @@ export function ViewTable({
     },
     scrollTargets: () => [wrapRef.current?.closest("main") as HTMLElement | null],
   });
+  useLayoutEffect(() => {
+    if (displayOrderRef)
+      displayOrderRef.current = groups
+        ? groups.flatMap((g) => g.pages.map((p) => p.id))
+        : rows.map((r) => r.id);
+  }, [displayOrderRef, groups, rows]);
   const rowGroup = useMemo(() => {
     const m = new Map<string, string | null>();
     for (const g of groups ?? []) for (const r of g.pages) m.set(r.id, g.value ?? null);

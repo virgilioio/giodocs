@@ -1432,6 +1432,39 @@ function ToolbarBorderlessButton({
 
 /* ─────────────────────────── Board body ─────────────────────────── */
 
+/** A card's or list row's icon that turns into its selection box on hover,
+ *  so a selection can start on a board or a list too (until 2026-10-30 the
+ *  boxes showed only once something was already selected in a table). */
+function HoverCheckbox({
+  icon,
+  size,
+  selectable,
+  onClick,
+}: {
+  icon: string;
+  size: number;
+  selectable: boolean;
+  onClick: (shift: boolean) => void;
+}) {
+  if (!selectable) return <Ico icon={icon} size={size} />;
+  return (
+    <span
+      className="relative grid flex-none place-items-center"
+      style={{ width: size, height: size }}
+    >
+      <span className="group-hover:invisible">
+        <Ico icon={icon} size={size} />
+      </span>
+      <span
+        data-row-checkbox
+        className="invisible absolute inset-0 grid place-items-center group-hover:visible"
+      >
+        <RowCheckbox checked={false} alwaysVisible onClick={onClick} />
+      </span>
+    </span>
+  );
+}
+
 /** The board column for rows that have no value in the grouped property. */
 const NO_VALUE = "__none";
 
@@ -1445,6 +1478,7 @@ export function BoardBody({
   selectedSet,
   anySelection,
   onCheckboxClick,
+  selectable = true,
   getPageMenuBuild,
   onNewCard,
 }: {
@@ -1461,6 +1495,8 @@ export function BoardBody({
   selectedSet: Set<string>;
   anySelection: boolean;
   onCheckboxClick: (id: string, shift: boolean) => void;
+  /** False: no selection (a view inside a page). */
+  selectable?: boolean;
   getPageMenuBuild: (p: PageListItem) => (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
 }) {
   const navigate = useNavigate();
@@ -1611,7 +1647,12 @@ export function BoardBody({
                         />
                       </span>
                     ) : (
-                      <Ico icon={p.icon ?? "📄"} size={18} />
+                      <HoverCheckbox
+                        icon={p.icon ?? "📄"}
+                        size={18}
+                        selectable={selectable}
+                        onClick={(shift) => onCheckboxClick(p.id, shift)}
+                      />
                     )}
                     <span className="min-w-0 flex-1 truncate text-row font-bold text-noir">
                       {p.title || "Untitled"}
@@ -1689,6 +1730,7 @@ export function ListBody({
   selectedSet,
   anySelection,
   onCheckboxClick,
+  selectable = true,
   getPageMenuBuild,
 }: {
   rows: PageListItem[];
@@ -1698,6 +1740,8 @@ export function ListBody({
   selectedSet: Set<string>;
   anySelection: boolean;
   onCheckboxClick: (id: string, shift: boolean) => void;
+  /** False: no selection (a view inside a page). */
+  selectable?: boolean;
   getPageMenuBuild: (p: PageListItem) => (mctx: { setSpec: (s: MenuSpec) => void; close: () => void }) => MenuSpec;
 }) {
   const navigate = useNavigate();
@@ -1764,7 +1808,12 @@ export function ListBody({
                 />
               </span>
             ) : (
-              <Ico icon={p.icon ?? "📄"} size={21} />
+              <HoverCheckbox
+                icon={p.icon ?? "📄"}
+                size={21}
+                selectable={selectable}
+                onClick={(shift) => onCheckboxClick(p.id, shift)}
+              />
             )}
             <div className="min-w-0">
               <div className="truncate text-row font-bold text-noir">
