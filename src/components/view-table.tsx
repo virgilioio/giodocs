@@ -817,7 +817,7 @@ const TableRow = memo(function TableRow({
         className={cellClass(
           selected,
           false,
-          "sticky right-0 justify-end " + (selected ? "" : "bg-surface"),
+          "gio-pin-end sticky right-0 justify-end " + (selected ? "" : "bg-surface"),
         )}
       >
         <SpecMenuTrigger
@@ -1501,7 +1501,7 @@ function CalcRow({
           </div>
         );
       })}
-      <div className={cell + " sticky right-0 bg-surface"} />
+      <div className={cell + " gio-pin-end sticky right-0 bg-surface"} />
     </div>
   );
 }
@@ -2245,7 +2245,7 @@ export function ViewTable({
           {heading(TITLE_KEY)}
           {shown.map(heading)}
           <div
-            className={HEAD_CLASS + " sticky right-0 z-[1] justify-end bg-surface"}
+            className={HEAD_CLASS + " gio-pin-end sticky right-0 z-[1] justify-end bg-surface"}
             style={{ padding: "3px 0" }}
           >
             {canArrange && databaseId ? (

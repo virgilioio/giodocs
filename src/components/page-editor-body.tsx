@@ -57,7 +57,7 @@ import { writeBlocksClipboard } from "@/lib/blocks-clipboard";
 import { renderInlineWithOffsets } from "@/lib/inline-markdown";
 import { Ico } from "./emoji-icon";
 import { numberedOrdinals } from "@/lib/blocks";
-import { rowsInBand } from "@/lib/marquee";
+import { BLOCKS_SELECTED, ROWS_SELECTED, rowsInBand } from "@/lib/marquee";
 import { rowsInScope, sameScope, type ScopeRef } from "@/lib/marquee-scope";
 import { blockHandleFooter } from "@/lib/block-handle-footer";
 import { useToast } from "@/lib/toast";
@@ -2126,6 +2126,23 @@ export function EditableBody({
     },
     [containerPoint, containerAtPoint, scopedList],
   );
+
+  // Blocks and a table's rows are never selected at once
+  // (use-row-selection.tsx): rows selected in a view here clear the blocks,
+  // and blocks selected here clear the rows.
+  useEffect(() => {
+    const onRows = () => {
+      setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
+      setSelScope(null);
+      anchorId.current = null;
+    };
+    window.addEventListener(ROWS_SELECTED, onRows);
+    return () => window.removeEventListener(ROWS_SELECTED, onRows);
+  }, []);
+  const anyBlockSelected = selectedIds.size > 0;
+  useEffect(() => {
+    if (anyBlockSelected) window.dispatchEvent(new CustomEvent(BLOCKS_SELECTED));
+  }, [anyBlockSelected]);
 
   // The narrow `.gio-page-body` column is centred inside `<main>`, so a
   // press in the lateral margin (outside the text column but still in
