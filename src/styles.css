@@ -1294,6 +1294,8 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
 [data-theme="dark"] .gio-splash { color: #fffcf9; }
 .gio-splash-overlay.leaving {
   animation: gio-overlay-out 0.55s cubic-bezier(0.7, 0, 0.3, 1) both 0.25s;
+  /* The app underneath is live: clicks reach it while the sheet slides away. */
+  pointer-events: none;
 }
 .gio-splash-overlay.leaving .gio-splash {
   animation: gio-logo-out 0.55s cubic-bezier(0.7, 0, 0.3, 1) both 0.25s;
