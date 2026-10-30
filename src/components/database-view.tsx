@@ -52,7 +52,11 @@ import {
   useDeletePage,
   useRestorePage,
   useArchivePage,
+  useDuplicatePage,
+  useMovePage,
 } from "@/hooks/use-page-mutations";
+import { usePages } from "@/hooks/use-workspace-data";
+import { PlacePicker } from "./page-block";
 import { useRowActions } from "@/hooks/use-row-actions";
 import { BulkBar } from "./bulk-bar";
 import { nextValue } from "@/lib/prop-actions";
@@ -454,6 +458,10 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
   const deletePage = useDeletePage();
   const restorePage = useRestorePage();
   const archivePage = useArchivePage();
+  const duplicatePage = useDuplicatePage();
+  const movePage = useMovePage();
+  // The bulk bar's Move to… lists every page in the workspace.
+  const allPages = usePages(useWorkspaceId()).data ?? [];
 
   const view = useMemo(() => pickView(views, selection.viewId), [views, selection.viewId]);
   const [filterAsk, setFilterAsk] = useState<{ prop: string; n: number } | null>(null);
@@ -1029,7 +1037,6 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
   /* --- rows' menus ----------------------------------------------------- */
   const rowActions = useRowActions({
     databaseId,
-    databaseTitle: database?.title ?? null,
     rows,
     sort,
     groupKey: tableGroup,
@@ -1386,6 +1393,62 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
             },
             restorePages: async (rows) => {
               await Promise.all(rows.map((row) => restorePage.mutateAsync({ pageId: row.id, row })));
+            },
+            duplicate: canEditDb
+              ? async (ids) => {
+                  const copies = await Promise.all(
+                    ids.map((id) => duplicatePage.mutateAsync({ pageId: id, silent: true })),
+                  );
+                  const made = copies.filter((c): c is PageListItem => !!c);
+                  toast.push({
+                    message:
+                      made.length === 1 ? "Duplicated 1 row." : `Duplicated ${made.length} rows.`,
+                    action: {
+                      label: "Undo",
+                      onClick: () => made.forEach((c) => deletePage.mutate(c.id)),
+                    },
+                    durationMs: 10_000,
+                  });
+                }
+              : undefined,
+            renderMoveTo: canEditDb
+              ? (thisPageId, onPick) => (
+                  <PlacePicker
+                    pages={allPages}
+                    thisPageId={thisPageId}
+                    onPick={(to) => onPick(to.id, to.title?.trim() || "Untitled")}
+                    onCreate={() => {}}
+                  />
+                )
+              : undefined,
+            moveTo: async (ids, parentId, title) => {
+              // move_page hands back where each row was and its values, so
+              // Undo returns them to the database with their properties.
+              const before = await Promise.all(
+                ids.map((id) =>
+                  movePage.mutateAsync({
+                    pageId: id,
+                    target: { parentId, beforeId: null },
+                    quiet: true,
+                  }),
+                ),
+              );
+              toast.push({
+                message: `Moved ${ids.length === 1 ? "1 row" : `${ids.length} rows`} to "${title}".`,
+                action: {
+                  label: "Undo",
+                  onClick: () =>
+                    ids.forEach((id, i) =>
+                      movePage.mutate({
+                        pageId: id,
+                        target: { parentId: before[i].parent_id, beforeId: before[i].before },
+                        props: before[i].props,
+                        undo: true,
+                      }),
+                    ),
+                },
+                durationMs: 10_000,
+              });
             },
             toast: (message, undo) =>
               toast.push(

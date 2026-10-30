@@ -298,7 +298,6 @@ function InlineViewBody({
   const rowActions = useRowActions({
     // Shown only for a view with a database (the outer block checks).
     databaseId: view.database_id ?? "",
-    databaseTitle: rt.database?.title ?? null,
     rows,
     sort,
     groupKey: tableGroup,

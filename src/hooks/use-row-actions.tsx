@@ -19,7 +19,6 @@ import {
   useDuplicatePage,
   useMovePage,
   useRestorePage,
-  useSetPageParent,
   useSetPageProperty,
   useVerifyPage,
 } from "@/hooks/use-page-mutations";
@@ -45,7 +44,6 @@ function propsOf(p: PageListItem): Record<string, unknown> {
  */
 export function useRowActions(o: {
   databaseId: string;
-  databaseTitle: string | null;
   /** The view's rows, in the order shown. */
   rows: PageListItem[];
   sort: SortSpec | SortSpec[];
@@ -69,7 +67,6 @@ export function useRowActions(o: {
   const restorePage = useRestorePage();
   const duplicatePage = useDuplicatePage();
   const movePage = useMovePage();
-  const setParent = useSetPageParent();
   // Move to… lists every page in the workspace, not just this database's rows.
   const allPages = usePages(useWorkspaceId()).data ?? [];
   const manualOrder = isManualSort(o.sort);
@@ -192,11 +189,11 @@ export function useRowActions(o: {
                   thisPageId={p.id}
                   onPick={(to) => {
                     close();
-                    setParent.mutate({
+                    // With Undo, which brings the row back with its values.
+                    movePage.mutate({
                       pageId: p.id,
-                      parentId: to.id,
-                      title: p.title ?? "",
-                      oldParentTitle: o.databaseTitle,
+                      target: { parentId: to.id, beforeId: null },
+                      message: `Moved "${p.title || "Untitled"}" to "${to.title?.trim() || "Untitled"}".`,
                     });
                   }}
                   onCreate={() => close()}

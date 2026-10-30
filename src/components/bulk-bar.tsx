@@ -20,8 +20,11 @@ import {
   actionIcon,
   actionLabel,
   actionableDefs,
+  parseTyped,
+  typedDefs,
   valueRows,
 } from "@/lib/prop-actions";
+import { PROPERTY_KINDS } from "@/lib/property-kinds";
 
 type PropDef = Database["public"]["Tables"]["property_defs"]["Row"];
 type ViewRow = Database["public"]["Tables"]["views"]["Row"];
@@ -64,6 +67,11 @@ export type BulkActions = {
   restorePages: (rows: PageListItem[]) => Promise<void> | void;
   /** A toast, with an Undo when `undo` is given. */
   toast: (message: string, undo?: () => void) => void;
+  /** Duplicate every selected row (2026-10-30); absent: no Duplicate. */
+  duplicate?: (pageIds: string[]) => Promise<void> | void;
+  /** Move to…: a page picker that calls `onPick` with the new place. */
+  renderMoveTo?: (thisPageId: string, onPick: (parentId: string, title: string) => void) => ReactNode;
+  moveTo?: (pageIds: string[], parentId: string, title: string) => Promise<void> | void;
   staleDays: number;
   meId: string;
 };
@@ -135,18 +143,54 @@ function buildRoot(ctx: BulkContext, mctx: MenuBuildCtx): MenuSpec {
     },
   });
 
-  // The database's own properties, by type — never a property found by
-  // name (src/lib/prop-actions.ts).
-  for (const def of actionableDefs(ctx.propDefs)) {
+  // Edit property ›: the database's own properties, by type — never a
+  // property found by name (src/lib/prop-actions.ts). Picked values and,
+  // since 2026-10-30, typed ones (text, number, date, link, email, phone).
+  if (actionableDefs(ctx.propDefs).length || typedDefs(ctx.propDefs).length)
+    rows.unshift({
+      kind: "row",
+      label: "Edit property",
+      icon: "pencil",
+      hint: { text: "›" },
+      onPick: () => mctx.setSpec(buildEditSubmenu(ctx, ids, mctx)),
+    });
+
+  rows.push({ kind: "sep" });
+  if (ctx.actions.duplicate) {
+    const duplicate = ctx.actions.duplicate;
     rows.push({
       kind: "row",
-      label: actionLabel(def),
-      icon: actionIcon(def),
-      hint: { text: "›" },
-      onPick: () => mctx.setSpec(buildValueSubmenu(ctx, ids, def, mctx)),
+      label: `Duplicate ${nPages(n)}`,
+      icon: "dup",
+      onPick: () => {
+        void duplicate(ids);
+        mctx.close();
+        ctx.onClear();
+      },
     });
   }
-
+  if (ctx.actions.renderMoveTo && ctx.actions.moveTo) {
+    const { renderMoveTo, moveTo } = ctx.actions;
+    rows.push({
+      kind: "row",
+      label: "Move to",
+      icon: "M5 12h14M13 6l6 6-6 6",
+      hint: { text: "›" },
+      onPick: () =>
+        mctx.setSpec({
+          title: "Move to",
+          onBack: () => mctx.setSpec(buildRoot(ctx, mctx)),
+          rows: [],
+          width: 300,
+          content: () =>
+            renderMoveTo(ids[0], (parentId, title) => {
+              mctx.close();
+              ctx.onClear();
+              void moveTo(ids, parentId, title);
+            }),
+        }),
+    });
+  }
   rows.push({ kind: "sep" });
 
   rows.push({
@@ -195,11 +239,89 @@ function buildRoot(ctx: BulkContext, mctx: MenuBuildCtx): MenuSpec {
   };
 }
 
+function buildEditSubmenu(ctx: BulkContext, ids: string[], mctx: MenuBuildCtx): MenuSpec {
+  const picked = actionableDefs(ctx.propDefs);
+  const typed = typedDefs(ctx.propDefs);
+  const order = new Map(ctx.propDefs.map((d, i) => [d.key, d.position ?? i]));
+  const all = [...picked, ...typed].sort(
+    (a, b) => (order.get(a.key) ?? 0) - (order.get(b.key) ?? 0),
+  );
+  return {
+    title: "Edit property",
+    onBack: () => mctx.setSpec(buildRoot(ctx, mctx)),
+    maxHeight: 420,
+    rows: all.map((def) => ({
+      kind: "row" as const,
+      label: actionLabel(def),
+      icon: PROPERTY_KINDS.find((k) => k.type === def.type)?.icon ?? actionIcon(def),
+      hint: { text: "›" },
+      onPick: () =>
+        mctx.setSpec(
+          typed.includes(def)
+            ? buildTypedSubmenu(ctx, ids, def, mctx)
+            : buildValueSubmenu(ctx, ids, def, mctx, () =>
+                mctx.setSpec(buildEditSubmenu(ctx, ids, mctx)),
+              ),
+        ),
+    })),
+  };
+}
+
+/** Type one value for every selected row; empty clears it. A value its
+ *  cell would refuse is not set: the reason shows under the field. */
+function buildTypedSubmenu(
+  ctx: BulkContext,
+  ids: string[],
+  def: PropDef,
+  mctx: MenuBuildCtx,
+  error?: string,
+): MenuSpec {
+  const name = def.label || def.key;
+  const placeholder =
+    def.type === "date"
+      ? "tomorrow, Mar 14…"
+      : def.type === "number"
+        ? "A number"
+        : `${name} for ${nPages(ids.length)}`;
+  return {
+    title: name,
+    onBack: () => mctx.setSpec(buildEditSubmenu(ctx, ids, mctx)),
+    rows: [],
+    inputFirst: true,
+    input: {
+      placeholder,
+      onCommit: (raw) => {
+        const r = parseTyped(def, raw);
+        if (!r.ok) {
+          mctx.setSpec(buildTypedSubmenu(ctx, ids, def, mctx, r.error));
+          return;
+        }
+        const label =
+          r.value === null
+            ? ""
+            : def.type === "date"
+              ? new Date(`${String(r.value)}T00:00:00`).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })
+              : String(r.value);
+        void doSetValue(ctx, ids, def, r.value, label);
+        mctx.close();
+        ctx.onClear();
+      },
+      keepOpen: true,
+    },
+    footer: error ?? `Enter sets it on every selected page. Leave it empty to clear ${name}.`,
+  };
+}
+
 function buildValueSubmenu(
   ctx: BulkContext,
   ids: string[],
   def: PropDef,
   mctx: MenuBuildCtx,
+  back: () => void = () => mctx.setSpec(buildRoot(ctx, mctx)),
 ): MenuSpec {
   const selected = ctx.pages.filter((p) => ids.includes(p.id));
   // Checked only when every selected page already has that value.
@@ -216,7 +338,7 @@ function buildValueSubmenu(
   }
   return {
     title: actionLabel(def),
-    onBack: () => mctx.setSpec(buildRoot(ctx, mctx)),
+    onBack: back,
     rows: valueRows(
       def,
       current,
@@ -362,7 +484,7 @@ export function BulkBar(props: {
           {n === 1 ? "1 page selected" : `${n} pages selected`}
         </span>
         <span style={{ fontSize: 13, color: "var(--color-whisper)" }}>
-          shift-click to extend · esc to clear
+          drag or shift-click to add · ⌘/ for actions · esc to clear
         </span>
         <span style={{ flex: 1 }} />
         <VerifyPill

@@ -8,6 +8,8 @@
 
 import type { MenuRow } from "@/components/row-menu";
 import { onePersonOnly, personIds, togglePerson } from "./person-value";
+import { parseDateInput } from "./date-parse";
+import { checkTypedValue } from "./property-kinds";
 
 export type ActionDef = {
   key: string;
@@ -182,5 +184,45 @@ export function actionIcon(def: ActionDef): string {
       return "shield";
     default:
       return "dot";
+  }
+}
+
+/* ─────────── typed values (the bulk bar's Edit property, 2026-10-30) ─────────── */
+
+/** Types set by typing a value (one value for every selected row). */
+const TYPED = new Set(["text", "number", "date", "url", "email", "phone"]);
+
+/** The properties the bulk bar lets you type a value into, in order. */
+export function typedDefs<D extends ActionDef>(defs: D[]): D[] {
+  return defs.filter((d) => TYPED.has(d.type) && !d.archived_at && !d.key.startsWith("@"));
+}
+
+export type TypedResult = { ok: true; value: unknown } | { ok: false; error: string };
+
+/** What a typed value becomes, checked as its cell would: an empty field
+ *  clears the property; a number must be one; a date reads "tomorrow",
+ *  "Mar 14" or 2026-11-03; links, emails and phones as their cells check. */
+export function parseTyped(def: ActionDef, raw: string, today: Date = new Date()): TypedResult {
+  const t = raw.trim();
+  if (!t) return { ok: true, value: null };
+  switch (def.type) {
+    case "number": {
+      const n = Number(t.replace(/,/g, ""));
+      return Number.isFinite(n) ? { ok: true, value: n } : { ok: false, error: "Type a number." };
+    }
+    case "date": {
+      const d = parseDateInput(t, today);
+      return d
+        ? { ok: true, value: d }
+        : { ok: false, error: 'Try a date like "Mar 14", "tomorrow" or 2026-11-03.' };
+    }
+    case "url":
+    case "email":
+    case "phone": {
+      const c = checkTypedValue(def.type, t);
+      return c.ok ? { ok: true, value: c.value } : { ok: false, error: c.error };
+    }
+    default:
+      return { ok: true, value: t };
   }
 }

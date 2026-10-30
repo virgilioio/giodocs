@@ -700,7 +700,7 @@ export function useDuplicatePage() {
     /** A page id, or `{ pageId, quiet }`: quiet (a table row's Duplicate)
      *  says "Duplicated" instead of "you're on the copy", since the caller
      *  stays where it is. */
-    mutationFn: async (input: string | { pageId: string; quiet?: boolean }) => {
+    mutationFn: async (input: string | { pageId: string; quiet?: boolean; silent?: boolean }) => {
       const pageId = typeof input === "string" ? input : input.pageId;
       const { data: src, error: e1 } = await supabase
         .from("pages")
@@ -782,6 +782,8 @@ export function useDuplicatePage() {
       qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) =>
         prev ? [row, ...prev] : [row],
       );
+      // silent: the caller says it once for several (the bulk bar).
+      if (typeof input !== "string" && input.silent) return;
       const quiet = typeof input !== "string" && input.quiet;
       toast.push(quiet ? `Duplicated "${row.title || "Untitled"}".` : "Duplicated — you're on the copy.");
     },

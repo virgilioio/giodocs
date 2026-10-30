@@ -47,6 +47,7 @@ beforeEach(() => {
     unarchive: vi.fn(),
     deletePages: vi.fn(),
     restorePages: vi.fn(),
+    duplicate: vi.fn(),
     toast: vi.fn((_m: string, u?: () => void) => {
       undo = u;
     }),
@@ -57,7 +58,17 @@ beforeEach(() => {
       <BulkBar
         pages={pages}
         selectedIds={["a", "c"]}
-        propDefs={[]}
+        propDefs={[
+          {
+            id: "d1",
+            key: "due",
+            label: "Due",
+            type: "date",
+            options: [],
+            position: 0,
+            archived_at: null,
+          } as never,
+        ]}
         members={[]}
         views={[]}
         actions={actions}
@@ -99,5 +110,40 @@ describe("BulkBar", () => {
     expect(actions.archive).toHaveBeenCalledWith(["a", "c"]);
     undo!();
     expect(actions.unarchive).toHaveBeenCalledWith(["a", "c"]);
+  });
+
+  it("Duplicate copies every selected row", async () => {
+    click(byText("Actions"));
+    click(byText("Duplicate 2 pages"));
+    await flush();
+    expect(actions.duplicate).toHaveBeenCalledWith(["a", "c"]);
+  });
+
+  it("Edit property › a date takes a typed value, refuses one it can't read", async () => {
+    click(byText("Actions"));
+    click(byText("Edit property"));
+    click(byText("Due"));
+    const input = document.querySelector<HTMLInputElement>('[role="menu"] input')!;
+    const type = (v: string) => {
+      act(() => {
+        const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+        set.call(input, v);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      act(() => {
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      });
+    };
+    type("someday");
+    await flush();
+    expect(actions.setValue).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="menu"]')?.textContent).toContain("Try a date like");
+    type("2026-11-03");
+    await flush();
+    expect(actions.setValue).toHaveBeenCalledWith(
+      ["a", "c"],
+      expect.objectContaining({ key: "due" }),
+      "2026-11-03",
+    );
   });
 });
