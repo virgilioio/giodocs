@@ -13,6 +13,7 @@ const NAMED: Record<string, string> = {
   "title:desc": "Title Z–A",
   "@created:desc": "Newest first",
   "@created:asc": "Oldest first",
+  "manual:asc": "Manual order",
 };
 
 type LabelDef = { key: string; label: string };
@@ -31,6 +32,7 @@ export function sortLabel(
   defs: LabelDef[],
 ): string {
   const list = sortsOf(sort);
+  if (list[0]?.prop === "manual") return "Manual order";
   if (list.length === 1) {
     const named = NAMED[`${list[0].prop}:${list[0].dir}`];
     if (named) return named;

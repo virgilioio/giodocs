@@ -6,7 +6,14 @@ import { setViewDateMode, viewTime } from "@/lib/view-time";
 import { useNavigate } from "@tanstack/react-router";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useAllPropDefs } from "@/hooks/use-workspace-data";
-import { sortsOf, type Filter, type FilterOp, type SortSpec } from "@/lib/run-view";
+import {
+  isManualSort,
+  MANUAL_SORT,
+  sortsOf,
+  type Filter,
+  type FilterOp,
+  type SortSpec,
+} from "@/lib/run-view";
 import { sortLabel as sortLabelOf } from "@/lib/sort-label";
 import { RowCheckbox } from "./view-table";
 import { relationConfig, rollupKind } from "@/lib/relations";
@@ -1064,7 +1071,9 @@ function BuilderRow({
 
 /* Sort by any property, with an optional second sort that breaks ties.
  * The quick picks below keep the familiar orders one click away. */
-const QUICK_SORTS: Array<{ label: string; spec: SortSpec }> = [
+const QUICK_SORTS: Array<{ label: string; spec: SortSpec; hint?: string }> = [
+  // Rows in the order they're dragged into (⋮⋮), as Notion's unsorted view.
+  { label: "Manual order", spec: { prop: MANUAL_SORT, dir: "asc" }, hint: "drag rows" },
   { label: "Newest edits", spec: { prop: "edited", dir: "desc" } },
   { label: "Oldest verification", spec: { prop: "verified", dir: "asc" } },
   { label: "Title A–Z", spec: { prop: "title", dir: "asc" } },
@@ -1107,6 +1116,7 @@ function SortControl({
   ask?: number;
 }) {
   const sorts = sortsOf(sort);
+  const manual = isManualSort(sort);
   const btnRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     if (!ask) return;
@@ -1164,7 +1174,13 @@ function SortControl({
         ) : (
           <div>
             <StepTitle>Sort</StepTitle>
-            {sorts.map((x, i) => (
+            {manual ? (
+              <div className="gio-mfoot" style={{ paddingTop: 0 }}>
+                Rows stay in the order you drag them into. Pick a sort below to order them by a
+                property instead.
+              </div>
+            ) : null}
+            {(manual ? [] : sorts).map((x, i) => (
               <div key={i} className="flex items-center" style={{ gap: 6, padding: "3px 8px" }}>
                 <span className="text-meta text-faint" style={{ width: 34 }}>
                   {i === 0 ? "By" : "Then"}
@@ -1208,7 +1224,7 @@ function SortControl({
                 ) : null}
               </div>
             ))}
-            {sorts.length < 2 ? (
+            {!manual && sorts.length < 2 ? (
               <BuilderRow onClick={() => setPicking(sorts.length)}>
                 <span className="text-muted">+ Then by…</span>
               </BuilderRow>
@@ -1224,7 +1240,13 @@ function SortControl({
                     onChange(c.spec);
                     close();
                   }}
-                  trailing={on ? <MenuCheck /> : null}
+                  trailing={
+                    on ? (
+                      <MenuCheck />
+                    ) : c.hint ? (
+                      <span className="gio-mrow-hint">{c.hint}</span>
+                    ) : null
+                  }
                 >
                   {c.label}
                 </BuilderRow>

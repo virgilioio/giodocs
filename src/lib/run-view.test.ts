@@ -526,3 +526,15 @@ describe("date filters on Edited and Verified (heading menu › Filter)", () => 
     expect(r.map((p) => p.id).sort()).toEqual(expected);
   });
 });
+
+describe("manual order", () => {
+  it("orders rows by position, unplaced rows last newest edit first, like move_page", () => {
+    const base = pages.slice(0, 4).map((p, i) => ({ ...p, position: [2, null, 1, null][i] }));
+    const r = runView(base, { filter: [], sort: [{ prop: "manual", dir: "asc" }] }, ctx);
+    const unplaced = base
+      .filter((p) => p.position === null)
+      .sort((a, b) => b.edited_at.localeCompare(a.edited_at) || (a.id < b.id ? -1 : 1))
+      .map((p) => p.id);
+    expect(r.map((p) => p.id)).toEqual([base[2].id, base[0].id, ...unplaced]);
+  });
+});
