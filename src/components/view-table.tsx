@@ -2082,7 +2082,7 @@ export function ViewTable({
                 className="w-full text-left text-meta text-muted hover:bg-sunken hover:text-strong"
                 style={{ padding: "7px 11px 7px 27px" }}
               >
-                Show all {rows.length} pages
+                Show all {rows.length} rows
               </button>
             </div>
           </div>

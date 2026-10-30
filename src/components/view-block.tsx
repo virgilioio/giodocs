@@ -534,7 +534,7 @@ function InlineViewBody({
                       onPick: () => void fromTemplate(t.id),
                     })),
                   ],
-                  footer: dbTemplates.length ? undefined : "No templates yet. Make one from a row's ⋯ menu (Use as template).",
+                  footer: dbTemplates.length ? undefined : "No templates yet. Open a row, then ⋯ › Use as template.",
                 })
               : undefined
           }
