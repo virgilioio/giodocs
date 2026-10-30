@@ -1,5 +1,5 @@
 import type { PageListItem } from "./types";
-import { dateSpan, isTerminalStatus, toDueString, type DateSpan } from "./due-date";
+import { dateSpan, isTerminalStatus, timesOf, toDueString, type DateSpan } from "./due-date";
 import { groupOfValue } from "./status-groups";
 import { personIds } from "./person-value";
 import { bySiblingOrder } from "./page-tree";
@@ -489,8 +489,10 @@ function sortKey(page: PageListItem, key: string, ctx: RunViewCtx): Key {
     case "checkbox":
       return { empty: false, v: raw === true || raw === "true" ? 1 : 0 };
     case "date": {
+      // By day, then by time on that day (a day without one comes first).
       const d = dayOfValue(raw, key);
-      return d ? { empty: false, v: d } : { empty: true, v: "" };
+      const t = key.startsWith("@") ? null : timesOf(raw);
+      return d ? { empty: false, v: t ? `${d}T${t.start}` : d } : { empty: true, v: "" };
     }
     case "select":
     case "status": {

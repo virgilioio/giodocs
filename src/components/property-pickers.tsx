@@ -9,10 +9,14 @@ import {
   dueParts,
   dueRelative,
   formatDue,
+  hasTime,
   isDateRange,
+  timesOf,
+  toDateTimeValue,
   toDateValue,
   toDueString,
 } from "@/lib/due-date";
+import { remindChoices, remindLabel, useDateReminder, type RemindCode } from "@/lib/reminders";
 import { parseDateInput } from "@/lib/date-parse";
 import { checkTypedValue, displayFor, hrefFor } from "@/lib/property-kinds";
 import { personIds, togglePerson } from "@/lib/person-value";
@@ -407,12 +411,15 @@ export function DateValue({
   variant = "strip",
   emptyLabel = "Empty",
   now,
+  reminded = false,
 }: {
   value: unknown;
   terminal?: boolean;
   variant?: Variant;
   emptyLabel?: string;
   now?: Date;
+  /** I'm reminded of this date: a small bell after it. */
+  reminded?: boolean;
 }) {
   const { state, text } = dueLabel(value, now ?? new Date(), { terminal });
   if (state === "empty") return emptyNode(variant, emptyLabel);
@@ -440,6 +447,25 @@ export function DateValue({
         </svg>
       ) : null}
       <span className="truncate">{text}</span>
+      {reminded ? (
+        <svg
+          viewBox="0 0 24 24"
+          width={12}
+          height={12}
+          aria-label="Reminder set"
+          role="img"
+          style={{ flex: "none", color: "var(--color-faint)" }}
+        >
+          <path
+            d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      ) : null}
     </span>
   );
 }
@@ -453,6 +479,7 @@ export function DatePicker({
   triggerClassName,
   triggerStyle,
   onOpenChange,
+  reminder,
 }: {
   value: unknown;
   onSet: (v: string | null) => void;
@@ -462,10 +489,13 @@ export function DatePicker({
   triggerClassName?: string;
   triggerStyle?: React.CSSProperties;
   onOpenChange?: (open: boolean) => void;
+  /** A database row's date: my reminder of it (Remind, 2026-10-30). */
+  reminder?: { value: RemindCode | null; onChange: (r: RemindCode | null) => void };
 }) {
-  // One day, or a start/end range, in its canonical form.
+  // One day, or a start/end range, in its canonical form; with a time as
+  // stored.
   const span = dateSpan(value);
-  const stored = span ? toDateValue(span.start, span.end) : null;
+  const stored = span ? (hasTime(value) ? String(value) : toDateValue(span.start, span.end)) : null;
   return (
     <Popover
       width={272}
@@ -478,21 +508,38 @@ export function DatePicker({
           className={triggerClassName}
           style={triggerStyle}
         >
-          <DateValue value={stored} terminal={terminal} variant={variant} emptyLabel={emptyLabel} />
+          <DateValue
+            value={stored}
+            terminal={terminal}
+            variant={variant}
+            emptyLabel={emptyLabel}
+            reminded={!!stored && !!reminder?.value}
+          />
         </button>
       )}
     >
       {(close) => (
         <CalendarBody
           stored={stored}
-          onCommit={(v) => {
+          reminder={reminder}
+          onCommit={(v, keepOpen) => {
             onSet(v);
-            close();
+            if (!keepOpen) close();
           }}
         />
       )}
     </Popover>
   );
+}
+
+/** A database row's date: the picker with my reminder of it. */
+export function RowDatePicker({
+  pageId,
+  propKey,
+  ...rest
+}: Omit<Parameters<typeof DatePicker>[0], "reminder"> & { pageId: string; propKey: string }) {
+  const reminder = useDateReminder(pageId, propKey);
+  return <DatePicker {...rest} reminder={reminder} />;
 }
 
 /* ── The calendar ──
@@ -600,14 +647,50 @@ function QuickBtn({
   );
 }
 
+/** A small on/off switch, as End date's. */
+function PickerSwitch({ on, label, onClick }: { on: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      onClick={onClick}
+      className="relative shrink-0 rounded-full"
+      style={{
+        width: 30,
+        height: 17,
+        background: on ? "var(--color-accent)" : "var(--color-lineStrong)",
+        transition: "background-color var(--dur-hover) var(--ease-out)",
+      }}
+    >
+      <span
+        className="absolute rounded-full bg-surface"
+        style={{
+          top: 2,
+          left: 2,
+          width: 13,
+          height: 13,
+          transform: on ? "translateX(13px)" : "none",
+          transition: "transform var(--dur-switch) var(--ease-out)",
+        }}
+      />
+    </button>
+  );
+}
+
 export function CalendarBody({
   stored,
   onCommit,
   now,
+  reminder,
 }: {
   stored: string | null;
-  onCommit: (v: string | null) => void;
+  /** keepOpen: a change made inside the picker (a time, Include time)
+   *  saves without closing it. */
+  onCommit: (v: string | null, keepOpen?: boolean) => void;
   now?: Date;
+  reminder?: { value: RemindCode | null; onChange: (r: RemindCode | null) => void };
 }) {
   const today = now ?? new Date();
   const todayKey = toDueString(
@@ -618,27 +701,44 @@ export function CalendarBody({
   // End date: the next two clicks pick a start and an end. Turning it on
   // over a single day keeps that day as the start and asks for the end.
   const span = dateSpan(stored);
-  const [withEnd, setWithEnd] = useState(() => isDateRange(stored));
+  const [withEnd, setWithEnd] = useState(() => isDateRange(stored) || !!stored?.includes("/"));
   const [pendingStart, setPendingStart] = useState<string | null>(null);
   const [hoverDay, setHoverDay] = useState<string | null>(null);
+  // Include time (2026-10-30): every day picked keeps the times set here.
+  const [withTime, setWithTime] = useState(() => hasTime(stored));
+  const [times, setTimes] = useState(() => timesOf(stored) ?? { start: "09:00", end: "10:00" });
+  const build = (start: string, end: string | null, t = withTime ? times : null) =>
+    toDateTimeValue(start, end, t);
   const pickDay = (key: string) => {
-    if (!withEnd) return onCommit(key);
+    if (!withEnd) return onCommit(build(key, null));
     if (!pendingStart) {
       setPendingStart(key);
       return;
     }
-    onCommit(toDateValue(pendingStart, key));
+    onCommit(build(pendingStart, key));
   };
   const toggleEnd = () => {
     if (withEnd) {
       setWithEnd(false);
       setPendingStart(null);
       // Turning it off keeps the start.
-      if (span && span.end !== span.start) onCommit(span.start);
+      if (span && (span.end !== span.start || !!stored?.includes("/")))
+        onCommit(build(span.start, null));
       return;
     }
     setWithEnd(true);
     setPendingStart(span?.start ?? null);
+  };
+  const toggleTime = () => {
+    const next = !withTime;
+    setWithTime(next);
+    if (span) onCommit(build(span.start, withEnd ? span.end : null, next ? times : null), true);
+  };
+  const setTime = (which: "start" | "end", hhmm: string) => {
+    if (!/^\d{2}:\d{2}$/.test(hhmm)) return;
+    const next = { ...times, [which]: hhmm };
+    setTimes(next);
+    if (span) onCommit(build(span.start, withEnd ? span.end : null, next), true);
   };
   // What the grid shows as chosen: the stored days, or the range being picked.
   const shown = pendingStart
@@ -772,33 +872,65 @@ export function CalendarBody({
         <span className="text-caption text-secondary">
           {withEnd ? (pendingStart ? "Now pick the end date" : "Pick the start date") : "End date"}
         </span>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={withEnd}
-          aria-label="End date"
-          onClick={toggleEnd}
-          className="relative shrink-0 rounded-full"
-          style={{
-            width: 30,
-            height: 17,
-            background: withEnd ? "var(--color-accent)" : "var(--color-lineStrong)",
-            transition: "background-color var(--dur-hover) var(--ease-out)",
-          }}
-        >
-          <span
-            className="absolute rounded-full bg-surface"
-            style={{
-              top: 2,
-              left: 2,
-              width: 13,
-              height: 13,
-              transform: withEnd ? "translateX(13px)" : "none",
-              transition: "transform var(--dur-switch) var(--ease-out)",
-            }}
-          />
-        </button>
+        <PickerSwitch on={withEnd} label="End date" onClick={toggleEnd} />
       </div>
+
+      {/* INCLUDE TIME */}
+      <div className="flex items-center justify-between" style={{ padding: "2px 3px" }}>
+        <span className="text-caption text-secondary">Include time</span>
+        <PickerSwitch on={withTime} label="Include time" onClick={toggleTime} />
+      </div>
+      {withTime ? (
+        <div className="flex items-center" style={{ gap: 6, padding: "0 3px" }}>
+          <input
+            type="time"
+            aria-label={withEnd ? "Start time" : "Time"}
+            value={times.start}
+            onChange={(e) => setTime("start", e.target.value)}
+            className="tnum min-w-0 flex-1 border border-line bg-track"
+            style={{ borderRadius: 7, padding: "4px 7px", fontSize: 13 }}
+          />
+          {withEnd ? (
+            <>
+              <span aria-hidden className="text-caption text-faint">
+                {"\u2192"}
+              </span>
+              <input
+                type="time"
+                aria-label="End time"
+                value={times.end}
+                onChange={(e) => setTime("end", e.target.value)}
+                className="tnum min-w-0 flex-1 border border-line bg-track"
+                style={{ borderRadius: 7, padding: "4px 7px", fontSize: 13 }}
+              />
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* REMIND (a database row's date, once it has one) */}
+      {reminder && stored ? (
+        <label className="flex items-center justify-between" style={{ gap: 8, padding: "2px 3px" }}>
+          <span className="text-caption text-secondary">Remind</span>
+          <select
+            aria-label="Remind"
+            value={reminder.value ?? ""}
+            onChange={(e) => reminder.onChange((e.target.value || null) as RemindCode | null)}
+            className="min-w-0 border border-line bg-track text-body"
+            style={{ borderRadius: 7, padding: "3px 6px", fontSize: 12.5, maxWidth: 170 }}
+          >
+            <option value="">None</option>
+            {reminder.value && !remindChoices(withTime).some((c) => c.code === reminder.value) ? (
+              <option value={reminder.value}>{remindLabel(reminder.value, withTime)}</option>
+            ) : null}
+            {remindChoices(withTime).map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
 
       {/* QUICK ROW */}
       <div
@@ -808,18 +940,20 @@ export function CalendarBody({
         <span className="flex items-center" style={{ gap: 2 }}>
           <QuickBtn
             label="Today"
-            active={stored === quick.today}
-            onClick={() => onCommit(quick.today)}
+            active={!!span && span.start === quick.today && span.end === span.start}
+            onClick={() => onCommit(build(quick.today!, null))}
           />
           <QuickBtn
             label="Tomorrow"
-            active={!!quick.tomorrow && stored === quick.tomorrow}
-            onClick={() => onCommit(quick.tomorrow)}
+            active={
+              !!quick.tomorrow && !!span && span.start === quick.tomorrow && span.end === span.start
+            }
+            onClick={() => quick.tomorrow && onCommit(build(quick.tomorrow, null))}
           />
           <QuickBtn
             label="Next week"
-            active={!!quick.week && stored === quick.week}
-            onClick={() => onCommit(quick.week)}
+            active={!!quick.week && !!span && span.start === quick.week && span.end === span.start}
+            onClick={() => quick.week && onCommit(build(quick.week, null))}
           />
         </span>
         {stored ? <QuickBtn label="Clear" danger onClick={() => onCommit(null)} /> : null}
@@ -833,7 +967,7 @@ export function CalendarBody({
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              if (parsed) onCommit(parsed);
+              if (parsed) onCommit(build(parsed, null));
               return;
             }
             if (!draft && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {

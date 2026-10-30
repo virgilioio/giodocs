@@ -81,7 +81,7 @@ import { useWorkspaceId } from "@/lib/workspace-context";
 import { RelatedLinks } from "./related-links";
 import {
   CheckboxToggle,
-  DatePicker,
+  RowDatePicker,
   MiniAvatar,
   NumberEditor,
   OwnerPicker,
@@ -601,7 +601,9 @@ function ValueCell({ page, k, ctx }: { page: PageListItem; k: string; ctx: CellC
       );
     case "date":
       return (
-        <DatePicker
+        <RowDatePicker
+          pageId={page.id}
+          propKey={k}
           value={raw}
           onSet={set}
           variant="cell"

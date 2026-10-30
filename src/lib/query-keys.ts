@@ -26,6 +26,8 @@ export const qk = {
   homePrefs: (userId: string) => ["homePrefs", userId] as const,
   /** This person's visits in a workspace, newest first. */
   recentVisits: (ws: string) => ["recentVisits", ws] as const,
+  /** This person's date reminders (date_reminders), by page and property. */
+  dateReminders: (userId: string) => ["dateReminders", userId] as const,
   /** Deleted pages the person can bring back (list_trash), by search. */
   trash: (ws: string, q = "") => ["trash", ws, q] as const,
 };

@@ -3,7 +3,12 @@ import type { InboxItem } from "@/hooks/use-inbox";
 
 /** "Sam Rivera mentioned you in Sales playbook", in parts. */
 export function describeNotification(n: Pick<InboxItem, "actor_id" | "kind" | "page_id">): { who: string; what: string; page: string; icon: string } {
-  const who = (n.actor_id && mentionUserName(n.actor_id)) || "Someone";
+  // A date reminder (2026-10-30) reads "Reminder about <page>", its date
+  // property under it (the excerpt).
+  const who =
+    n.kind === "date_reminder"
+      ? "Reminder"
+      : (n.actor_id && mentionUserName(n.actor_id)) || "Someone";
   const page = mentionPage(n.page_id);
   return {
     who,
@@ -16,7 +21,9 @@ export function describeNotification(n: Pick<InboxItem, "actor_id" | "kind" | "p
             ? "replied to a comment on"
             : n.kind === "person_added"
               ? "added you to"
-              : "updated",
+              : n.kind === "date_reminder"
+                ? "about"
+                : "updated",
     page: page?.title || "Untitled",
     icon: page?.icon || "📄",
   };

@@ -1,6 +1,14 @@
 import { parseTyped } from "./prop-actions";
 import { personIds } from "./person-value";
-import { toDateValue, toDueString } from "./due-date";
+import {
+  dateSpan,
+  timedInstant,
+  timesOf,
+  toDateTimeValue,
+  toDateValue,
+  toDueString,
+  toTimed,
+} from "./due-date";
 
 /* A table cell as text and back (2026-10-30): what copying cells puts on
  * the clipboard, and what pasting, filling right or typing a value across
@@ -72,6 +80,15 @@ export function cellText(
         .join(", ");
     case "number":
       return typeof raw === "number" ? String(raw) : String(raw);
+    case "date": {
+      // A time reads as a spreadsheet writes one: "2026-11-03 14:45", in
+      // the reader's time.
+      const t = timesOf(raw);
+      const d = dateSpan(raw);
+      if (!t || !d) return String(raw);
+      const a = `${d.start} ${t.start}`;
+      return typeof raw === "string" && raw.includes("/") ? `${a}/${d.end} ${t.end}` : a;
+    }
     default:
       return typeof raw === "string" ? raw : Array.isArray(raw) ? raw.join(", ") : String(raw);
   }
@@ -114,6 +131,27 @@ export function parseCell(
     }
     case "date": {
       if (!t) return { ok: true, value: null };
+      // A day and a time ("2026-11-03 14:45"), a stored moment, or a range
+      // of either.
+      const moment = (x: string): string | null => {
+        const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{1,2}:\d{2})$/.exec(x.trim());
+        if (m && toDueString(m[1])) return toTimed(m[1], m[2].padStart(5, "0"));
+        return timedInstant(x.trim()) ? x.trim() : null;
+      };
+      const parts = t.split("/");
+      if (parts.length <= 2 && parts.every((x) => moment(x))) {
+        const [a, b] = parts.map((x) => moment(x)!);
+        if (!b) return { ok: true, value: a };
+        const ta = timesOf(a)!;
+        const tb = timesOf(b)!;
+        return {
+          ok: true,
+          value: toDateTimeValue(dateSpan(a)!.start, dateSpan(b)!.start, {
+            start: ta.start,
+            end: tb.start,
+          }),
+        };
+      }
       const range = /^(\d{4}-\d{2}-\d{2})\s*(?:\/|–|—|\s-\s|→)\s*(\d{4}-\d{2}-\d{2})$/.exec(t);
       if (range && toDueString(range[1]) && toDueString(range[2]))
         return { ok: true, value: toDateValue(range[1], range[2]) };

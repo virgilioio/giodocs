@@ -71,6 +71,18 @@ describe("parseCell", () => {
     expect(parseCell("r", "rollup", "3").ok).toBe(false);
   });
 
+  it("carries a date's time both ways", () => {
+    const v = parseCell("due", "date", "2026-11-03 14:45");
+    expect(v.ok).toBe(true);
+    const stored = (v as { value: string }).value;
+    expect(stored).toMatch(/^2026-11-03T14:45[+-]\d{2}:\d{2}$/);
+    expect(cellText("due", "date", stored)).toBe("2026-11-03 14:45");
+    const r = parseCell("due", "date", "2026-11-03 09:00/2026-11-03 10:30");
+    expect(cellText("due", "date", (r as { value: string }).value)).toBe(
+      "2026-11-03 09:00/2026-11-03 10:30",
+    );
+  });
+
   it("knows what can be written", () => {
     expect(cellWritable("title", undefined)).toBe(true);
     expect(cellWritable("@edited", "date")).toBe(false);
