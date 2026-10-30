@@ -36,3 +36,11 @@ export function rowsInBand(
   }
   return out;
 }
+
+/* A page holds either a block selection or a table's row selection, never
+ * both, so Delete and Esc act on one of them. A view whose rows become
+ * selected sends ROWS_SELECTED (the page's blocks let go); a page whose
+ * blocks become selected sends BLOCKS_SELECTED (the rows let go). Both on
+ * window. */
+export const ROWS_SELECTED = "gio:rows-selected";
+export const BLOCKS_SELECTED = "gio:blocks-selected";

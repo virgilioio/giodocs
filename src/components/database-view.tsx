@@ -35,7 +35,6 @@ import { useTemplates } from "@/hooks/use-workspace-data";
 import { useNewPageFromTemplate, useSetTemplate } from "@/hooks/use-templates";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { personalViewFooter } from "@/lib/personal-view-footer";
-import { rangeSelect } from "@/lib/row-selection";
 import {
   useSetPageProperty,
   useRenamePage,
@@ -48,18 +47,9 @@ import {
   usePublishView,
   useDeleteView,
   useUnpublishView,
-  useVerifyPage,
-  useDeletePage,
-  useRestorePage,
-  useArchivePage,
-  useDuplicatePage,
-  useMovePage,
 } from "@/hooks/use-page-mutations";
-import { usePages } from "@/hooks/use-workspace-data";
-import { PlacePicker } from "./page-block";
 import { useRowActions } from "@/hooks/use-row-actions";
 import { BulkBar } from "./bulk-bar";
-import { nextValue } from "@/lib/prop-actions";
 import { CalendarViewBody } from "./calendar-view";
 import { ExportViewDialog } from "./export-view-dialog";
 import { useDelayedPending } from "./sk";
@@ -76,7 +66,7 @@ import type { ExportViewColumn, ExportViewRow } from "@/lib/export";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
 import { isTypingTarget } from "@/lib/is-typing";
-import { useDragSession } from "@/hooks/use-drag-session";
+import { MarqueeRect, useBulkActions, useRowSelection } from "@/hooks/use-row-selection";
 import { DatabaseToolbar } from "./database-toolbar";
 import { useViewSettings } from "./view-settings";
 import { useHomePrefs, useSaveHomePrefs } from "@/hooks/use-home";
@@ -454,14 +444,7 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
   const publishView = usePublishView();
   const deleteView = useDeleteView();
   const unpublishView = useUnpublishView();
-  const verifyPage = useVerifyPage();
-  const deletePage = useDeletePage();
-  const restorePage = useRestorePage();
-  const archivePage = useArchivePage();
-  const duplicatePage = useDuplicatePage();
-  const movePage = useMovePage();
   // The bulk bar's Move to… lists every page in the workspace.
-  const allPages = usePages(useWorkspaceId()).data ?? [];
 
   const view = useMemo(() => pickView(views, selection.viewId), [views, selection.viewId]);
   const [filterAsk, setFilterAsk] = useState<{ prop: string; n: number } | null>(null);
@@ -479,8 +462,6 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
   const drafts = useDrafts();
   const [renamingView, setRenamingView] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
-  const [selPages, setSelPages] = useState<string[]>([]);
-  const [selPageAnchor, setSelPageAnchor] = useState<string | null>(null);
 
   const goToView = useCallback(
     (viewId: string | null, replace = false) =>
@@ -554,205 +535,30 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
   );
 
   /* --- selection ------------------------------------------------------- */
+  // Rows are selected the same way here and in views inside pages
+  // (use-row-selection.tsx): checkboxes, the marquee, keys.
   const rowIds = useMemo(() => rows.map((r) => r.id), [rows]);
-  const selectedSet = useMemo(() => new Set(selPages), [selPages]);
-  const anySelection = selPages.length > 0;
-  const toggleOne = (id: string) => {
-    setSelPages((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-    setSelPageAnchor(id);
-  };
-  // The order rows are shown in (a grouped table differs from the sort),
-  // reported by the table: shift-click and Shift+↑/↓ ranges follow it.
-  const displayOrderRef = useRef<string[]>([]);
-  const shownOrder = () => (displayOrderRef.current.length ? displayOrderRef.current : rowIds);
-  const toggleShift = (id: string) => {
-    setSelPages((prev) => rangeSelect(shownOrder(), selPageAnchor, id, prev));
-    setSelPageAnchor(id);
-  };
-  const checkboxRef = useRef({ toggleOne, toggleShift });
-  checkboxRef.current = { toggleOne, toggleShift };
-  const onCheckboxClick = useCallback((id: string, shift: boolean) => {
-    if (shift) checkboxRef.current.toggleShift(id);
-    else checkboxRef.current.toggleOne(id);
-  }, []);
-  const clearSelection = () => {
-    setSelPages([]);
-    setSelPageAnchor(null);
-  };
-  const selectAllState: "none" | "some" | "all" =
-    selPages.length === 0
-      ? "none"
-      : rowIds.length > 0 && rowIds.every((id) => selectedSet.has(id))
-        ? "all"
-        : "some";
-  const onHeaderCheckboxClick = () => {
-    if (selectAllState === "none") {
-      setSelPages(rowIds);
-      setSelPageAnchor(rowIds[rowIds.length - 1] ?? null);
-    } else clearSelection();
-  };
-  /* Keys on a selection (Notion's, 2026-10-30): Esc clears, Shift+↑/↓
-     grows or shrinks it from the row it started at, Delete/Backspace
-     deletes the rows (with Undo), ⌘/ opens Actions. ⌘A selects every row
-     of a table view when nothing is being typed. */
-  const [bulkMenuAsk, setBulkMenuAsk] = useState(0);
-  const shiftRef = useRef<{ base: string[]; cursor: string } | null>(null);
-  const keyStateRef = useRef({ selPages, selPageAnchor });
-  keyStateRef.current = { selPages, selPageAnchor };
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (isPeekOpen()) return; // the page in the dialog owns the keys
-      if (isTypingTarget(e.target)) return;
-      if (document.querySelector('[role="menu"], [role="dialog"], .gio-menu')) return;
-      const { selPages: sel, selPageAnchor: anchor } = keyStateRef.current;
-      const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.key.toLowerCase() === "a" && layout === "table" && rowIds.length) {
-        e.preventDefault();
-        setSelPages(rowIds);
-        setSelPageAnchor(rowIds[0] ?? null);
-        return;
-      }
-      if (!sel.length) return;
-      if (e.key === "Escape") {
-        shiftRef.current = null;
-        clearSelection();
-        return;
-      }
-      if (mod && e.key === "/") {
-        e.preventDefault();
-        setBulkMenuAsk((n) => n + 1);
-        return;
-      }
-      if ((e.key === "Delete" || e.key === "Backspace") && !mod && canEditDb) {
-        e.preventDefault();
-        deleteRowsRef.current(sel);
-        return;
-      }
-      if (e.shiftKey && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
-        e.preventDefault();
-        const order = shownOrder();
-        const from = anchor && order.includes(anchor) ? anchor : sel[sel.length - 1];
-        const sh =
-          shiftRef.current && shiftRef.current.base.every((id) => sel.includes(id))
-            ? shiftRef.current
-            : { base: sel.filter((id) => id !== from), cursor: from };
-        const at = order.indexOf(sh.cursor);
-        const next = order[at + (e.key === "ArrowDown" ? 1 : -1)];
-        if (!next) return;
-        const a = order.indexOf(from);
-        const b = order.indexOf(next);
-        const range = order.slice(Math.min(a, b), Math.max(a, b) + 1);
-        shiftRef.current = { base: sh.base, cursor: next };
-        setSelPages([...sh.base.filter((id) => !range.includes(id)), ...range]);
-        setSelPageAnchor(from);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-    // Live values are read from refs; these decide whether keys apply.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layout, rowIds, canEditDb]);
-
-  /** Delete these rows at once; one Undo brings them all back. */
-  const deleteRowsRef = useRef((ids: string[]) => deleteRowsWithUndo(ids));
-  deleteRowsRef.current = (ids: string[]) => deleteRowsWithUndo(ids);
-  const deleteRowsWithUndo = (ids: string[]) => {
-    const snaps = pages.filter((p) => ids.includes(p.id));
-    clearSelection();
-    void Promise.all(ids.map((id) => deletePage.mutateAsync(id))).then(() =>
-      toast.push({
-        message: ids.length === 1 ? "Row deleted." : `${ids.length} rows deleted.`,
-        action: {
-          label: "Undo",
-          onClick: () => snaps.forEach((row) => restorePage.mutate({ pageId: row.id, row })),
-        },
-        durationMs: 10_000,
-      }),
-    );
-  };
-
-  /* Marquee (Notion's drag-to-select, 2026-10-30): press in the page's
-     margin, the space around the table or a row's gutter, and drag across
-     rows; every row the box crosses is selected (added to the selection with
-     ⇧/⌘). Shared useDragSession: 4px threshold, autoscroll, Esc. */
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  // The page's root mounts after the loading skeleton: the listener below
-  // waits for it.
-  const [rootEl, setRootEl] = useState<HTMLDivElement | null>(null);
-  const setRoot = useCallback((el: HTMLDivElement | null) => {
-    rootRef.current = el;
-    setRootEl(el);
-  }, []);
-  type Marquee = { startX: number; startY: number; scroll0: number; base: string[] };
-  type MarqueeBox = { top: number; bottom: number; left: number; right: number; ids: string[] };
-  const marquee = useDragSession<MarqueeBox, Marquee>({
-    hitTest: (pt, m) => {
-      const root = rootRef.current;
-      const main = root?.closest("main");
-      if (!root) return null;
-      const y0 = m.startY - ((main?.scrollTop ?? 0) - m.scroll0);
-      const box = {
-        top: Math.min(y0, pt.y),
-        bottom: Math.max(y0, pt.y),
-        left: Math.min(m.startX, pt.x),
-        right: Math.max(m.startX, pt.x),
-      };
-      const table = root.querySelector('[role="table"]')?.getBoundingClientRect();
-      const across = !!table && box.right >= table.left && box.left <= table.right;
-      const ids = across
-        ? Array.from(root.querySelectorAll<HTMLElement>("[data-row-gutter]"))
-            .filter((c) => {
-              const r = c.getBoundingClientRect();
-              return r.bottom > box.top && r.top < box.bottom;
-            })
-            .map((c) => c.dataset.rowGutter!)
-        : [];
-      const next = [...m.base, ...ids.filter((id) => !m.base.includes(id))];
-      setSelPages((prev) =>
-        prev.length === next.length && prev.every((id, i) => id === next[i]) ? prev : next,
-      );
-      return { ...box, ids };
-    },
-    commit: (box, m) => {
-      if (!box.ids.length) return;
-      // Shift+↑/↓ then moves the box's far edge: anchored at its first row,
-      // growing or shrinking from its last.
-      setSelPageAnchor(box.ids[0]);
-      shiftRef.current = {
-        base: m.base.filter((id) => !box.ids.includes(id)),
-        cursor: box.ids[box.ids.length - 1],
-      };
-    },
-    scrollTargets: () => [rootRef.current?.closest("main") as HTMLElement | null],
+  const [rootEl, setRoot] = useState<HTMLDivElement | null>(null);
+  const {
+    selPages,
+    selectedSet,
+    anySelection,
+    onCheckboxClick,
+    selectAllState,
+    onHeaderCheckboxClick,
+    clearSelection,
+    displayOrderRef,
+    bulkMenuAsk,
+    marqueeBox,
+  } = useRowSelection({
+    rowIds,
+    pages,
+    rootEl,
+    marquee: layout === "table" ? "page" : false,
+    selectAllKey: layout === "table",
+    canDelete: canEditDb,
   });
-  const marqueeBegin = useRef(marquee.begin);
-  marqueeBegin.current = marquee.begin;
-  useEffect(() => {
-    const main = rootEl?.closest("main");
-    if (!main || layout !== "table") return;
-    const onDown = (e: PointerEvent) => {
-      if (e.button !== 0 || e.pointerType === "touch" || isPeekOpen()) return;
-      const t = e.target as HTMLElement;
-      if (
-        t.closest(
-          'button, a, input, textarea, select, label, [contenteditable="true"], [role="menu"], [role="dialog"], [role="toolbar"], .gio-menu',
-        )
-      )
-        return;
-      // Inside the table only a row's gutter starts one; cells keep their clicks.
-      if (t.closest('[role="table"]') && !t.closest("[data-row-gutter]")) return;
-      const additive = e.shiftKey || e.metaKey || e.ctrlKey;
-      marqueeBegin.current(e as unknown as React.PointerEvent, {
-        startX: e.clientX,
-        startY: e.clientY,
-        scroll0: main.scrollTop,
-        base: additive ? keyStateRef.current.selPages : [],
-      });
-    };
-    main.addEventListener("pointerdown", onDown);
-    return () => main.removeEventListener("pointerdown", onDown);
-  }, [layout, rootEl]);
-  const marqueeBox = marquee.active ? marquee.target : null;
+  const bulkActions = useBulkActions({ pages, staleDays, meId: me, canEdit: canEditDb });
 
 
   const unfilteredCount = useMemo(() => pages.filter((p) => !p.archived_at).length, [pages]);
@@ -1271,18 +1077,7 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
         className="mx-auto"
         style={{ maxWidth: "var(--container-view)", padding: "34px 40px" }}
       >
-        {marqueeBox ? (
-          <div
-            aria-hidden
-            className="marquee-rect fixed"
-            style={{
-              left: marqueeBox.left,
-              top: marqueeBox.top,
-              width: marqueeBox.right - marqueeBox.left,
-              height: marqueeBox.bottom - marqueeBox.top,
-            }}
-          />
-        ) : null}
+        <MarqueeRect box={marqueeBox} />
         <DatabaseHeader
           database={database}
           canEdit={canEditDb}
@@ -1367,96 +1162,7 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
           views={views}
           onClear={clearSelection}
           menuAsk={bulkMenuAsk}
-          actions={{
-            staleDays,
-            meId: me,
-            verify: async (ids) => {
-              await Promise.all(ids.map((id) => verifyPage.mutateAsync(id)));
-            },
-            setValue: async (ids, def, picked) => {
-              await Promise.all(
-                ids.map((id) => {
-                  const p = pages.find((x) => x.id === id);
-                  const value = nextValue(def, propsOf(p ?? ({} as PageListItem))[def.key], picked);
-                  return setProp.mutateAsync({ pageId: id, key: def.key, value });
-                }),
-              );
-            },
-            archive: async (ids) => {
-              await Promise.all(ids.map((id) => archivePage.mutateAsync({ pageId: id, archived: true })));
-            },
-            unarchive: async (ids) => {
-              await Promise.all(ids.map((id) => archivePage.mutateAsync({ pageId: id, archived: false })));
-            },
-            deletePages: async (ids) => {
-              await Promise.all(ids.map((id) => deletePage.mutateAsync(id)));
-            },
-            restorePages: async (rows) => {
-              await Promise.all(rows.map((row) => restorePage.mutateAsync({ pageId: row.id, row })));
-            },
-            duplicate: canEditDb
-              ? async (ids) => {
-                  const copies = await Promise.all(
-                    ids.map((id) => duplicatePage.mutateAsync({ pageId: id, silent: true })),
-                  );
-                  const made = copies.filter((c): c is PageListItem => !!c);
-                  toast.push({
-                    message:
-                      made.length === 1 ? "Duplicated 1 row." : `Duplicated ${made.length} rows.`,
-                    action: {
-                      label: "Undo",
-                      onClick: () => made.forEach((c) => deletePage.mutate(c.id)),
-                    },
-                    durationMs: 10_000,
-                  });
-                }
-              : undefined,
-            renderMoveTo: canEditDb
-              ? (thisPageId, onPick) => (
-                  <PlacePicker
-                    pages={allPages}
-                    thisPageId={thisPageId}
-                    onPick={(to) => onPick(to.id, to.title?.trim() || "Untitled")}
-                    onCreate={() => {}}
-                  />
-                )
-              : undefined,
-            moveTo: async (ids, parentId, title) => {
-              // move_page hands back where each row was and its values, so
-              // Undo returns them to the database with their properties.
-              const before = await Promise.all(
-                ids.map((id) =>
-                  movePage.mutateAsync({
-                    pageId: id,
-                    target: { parentId, beforeId: null },
-                    quiet: true,
-                  }),
-                ),
-              );
-              toast.push({
-                message: `Moved ${ids.length === 1 ? "1 row" : `${ids.length} rows`} to "${title}".`,
-                action: {
-                  label: "Undo",
-                  onClick: () =>
-                    ids.forEach((id, i) =>
-                      movePage.mutate({
-                        pageId: id,
-                        target: { parentId: before[i].parent_id, beforeId: before[i].before },
-                        props: before[i].props,
-                        undo: true,
-                      }),
-                    ),
-                },
-                durationMs: 10_000,
-              });
-            },
-            toast: (message, undo) =>
-              toast.push(
-                undo
-                  ? { message, action: { label: "Undo", onClick: undo }, durationMs: 10_000 }
-                  : message,
-              ),
-          }}
+          actions={bulkActions}
         />
 
         {body}

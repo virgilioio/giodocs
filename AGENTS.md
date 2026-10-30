@@ -663,6 +663,12 @@ From the Notion comparison; Allan picked A1–A6, B1, B2 and C1.
   row's gutter; Shift+↑/↓ grows or shrinks it, Delete deletes with Undo, ⌘/
   opens Actions, ⌘A selects every row, Esc clears. Ranges follow the order
   shown. Board cards and list rows show their box on hover.
+  useRowSelection and useBulkActions (src/hooks/use-row-selection.tsx)
+  serve the database page and views inside pages alike. Inside a page the
+  marquee starts beside the table's rows (the margin at their height, the
+  space around the table, a gutter); above or below them the page's block
+  marquee runs. Blocks and rows are never selected at once (ROWS_SELECTED /
+  BLOCKS_SELECTED in src/lib/marquee.ts), so Delete acts on one of them.
 - The bulk bar's Actions: Edit property › (picked values and typed text,
   number, date, link, email, phone, checked as their cells check) · Mark
   verified — Duplicate · Move to › — Archive · Delete. Moves and duplicates

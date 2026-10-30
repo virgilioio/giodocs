@@ -13,6 +13,8 @@ import {
 import { runView, sortsOf, type Filter, type SortSpec } from "@/lib/run-view";
 import { seedForGroup, seedFromFilters } from "@/lib/view-seed";
 import { useViewRuntime } from "@/hooks/use-view-runtime";
+import { MarqueeRect, useBulkActions, useRowSelection } from "@/hooks/use-row-selection";
+import { BulkBar } from "./bulk-bar";
 import {
   useCreatePage,
   useCreatePageAndOpen,
@@ -49,8 +51,6 @@ import { useRowActions } from "@/hooks/use-row-actions";
  * reads it. */
 
 const ROW_LIMIT = 25;
-const EMPTY_SET = new Set<string>();
-const noop = () => {};
 
 
 export function ViewBlock({
@@ -309,6 +309,25 @@ function InlineViewBody({
   });
   const menuFor = rowActions.getMenu;
 
+  // Rows are selected as on the database page (use-row-selection.tsx):
+  // checkboxes, the marquee beside the rows, keys, the bulk bar.
+  const [rootEl, setRootEl] = useState<HTMLDivElement | null>(null);
+  const rowIds = useMemo(() => rows.map((r) => r.id), [rows]);
+  const sel = useRowSelection({
+    rowIds,
+    pages: rt.pages,
+    rootEl,
+    marquee: editable && view.layout === "table" ? "block" : false,
+    canDelete: editable,
+  });
+  const bulkActions = useBulkActions({
+    pages: rt.pages,
+    staleDays: rt.staleDays,
+    meId: user?.id ?? "",
+    canEdit: editable,
+  });
+  const selectable = editable;
+
   const seed = () => seedFromFilters(view.filter, rt.propDefs, user?.id);
   const onNewRow = async (
     groupValue: string | null | undefined,
@@ -354,10 +373,10 @@ function InlineViewBody({
           members={rt.members}
           staleThreshold={staleThreshold}
           onMove={(pageId, value) => setProp.mutate({ pageId, key: boardGroup, value })}
-          selectedSet={EMPTY_SET}
-          anySelection={false}
-          onCheckboxClick={noop}
-          selectable={false}
+          selectedSet={sel.selectedSet}
+          anySelection={sel.anySelection}
+          onCheckboxClick={sel.onCheckboxClick}
+          selectable={selectable}
           getPageMenuBuild={menuFor}
           onNewCard={
             editable
@@ -395,10 +414,10 @@ function InlineViewBody({
             members={rt.members}
             propDefs={rt.propDefs}
             staleThreshold={staleThreshold}
-            selectedSet={EMPTY_SET}
-            anySelection={false}
-            onCheckboxClick={noop}
-            selectable={false}
+            selectedSet={sel.selectedSet}
+            anySelection={sel.anySelection}
+            onCheckboxClick={sel.onCheckboxClick}
+            selectable={selectable}
             getPageMenuBuild={menuFor}
           />
           {rows.length > shown.length ? (
@@ -422,11 +441,12 @@ function InlineViewBody({
         staleThreshold={staleThreshold}
         rename={rename}
         setProp={setProp}
-        selectedSet={EMPTY_SET}
-        anySelection={false}
-        onCheckboxClick={noop}
-        selectAllState="none"
-        onHeaderCheckboxClick={noop}
+        selectedSet={sel.selectedSet}
+        anySelection={sel.anySelection}
+        onCheckboxClick={sel.onCheckboxClick}
+        selectAllState={sel.selectAllState}
+        onHeaderCheckboxClick={sel.onHeaderCheckboxClick}
+        displayOrderRef={sel.displayOrderRef}
         getPageMenuBuild={menuFor}
         propDefs={rt.propDefs}
         config={view.config}
@@ -440,7 +460,7 @@ function InlineViewBody({
         manualOrder={rowActions.manualOrder}
         relations={rt.tableRelations}
         databaseId={view.database_id ?? undefined}
-        selectable={false}
+        selectable={selectable}
         rowLimit={showAll ? undefined : ROW_LIMIT}
         onShowAll={() => setShowAll(true)}
       />
@@ -495,7 +515,13 @@ function InlineViewBody({
     canEditDatabase: editable,
   });
   return (
-    <div data-view-block className="gio-db-host min-w-0" style={{ padding: "4px 0" }}>
+    <div
+      ref={setRootEl}
+      data-view-block
+      className="gio-db-host min-w-0"
+      style={{ padding: "4px 0" }}
+    >
+      <MarqueeRect box={sel.marqueeBox} />
       <div className="flex items-center" style={{ gap: 8, minHeight: 36 }}>
         {editable ? (
           <input
@@ -582,6 +608,16 @@ function InlineViewBody({
         menuSpec={settings.build}
       />
       {settings.dialog}
+      <BulkBar
+        pages={rt.pages}
+        selectedIds={sel.selPages}
+        propDefs={rt.propDefs}
+        members={rt.members as unknown as Parameters<typeof BulkBar>[0]["members"]}
+        views={rt.views}
+        onClear={sel.clearSelection}
+        menuAsk={sel.bulkMenuAsk}
+        actions={bulkActions}
+      />
       {body}
     </div>
   );
