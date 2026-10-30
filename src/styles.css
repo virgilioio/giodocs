@@ -836,6 +836,12 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
     box-shadow: inset -1px 0 0 var(--color-line);
   }
 }
+/* A table in a selected block (the page's marquee): its pinned cells are
+   opaque so rows scroll under them, so they take the block's tint over
+   their surface, or they'd stand out from the rest of the table. */
+[data-selected="true"] :is(.gio-frozen, .gio-pin-end) {
+  background-image: linear-gradient(var(--color-blueTint), var(--color-blueTint));
+}
 
 /* ─────────────── Phone frame (2026-10-11) ───────────────
  * Below 768px (src/lib/use-media.ts, phone-shell.tsx): top tabs, floating
