@@ -497,3 +497,32 @@ describe("date ranges in views (2026-10-10)", () => {
     ).toEqual(["r", "d", "s"]);
   });
 });
+
+describe("date filters on Edited and Verified (heading menu › Filter)", () => {
+  it("date_is past_7 on @edited keeps rows edited in the last week", () => {
+    const r = runView(
+      pages,
+      { filter: [{ prop: "@edited", op: "date_is", value: "past_7" }], sort: sortEditedDesc },
+      ctx,
+    );
+    const expected = pages
+      .filter((p) => NOW.getTime() - new Date(p.edited_at).getTime() <= 7 * 86_400_000)
+      .map((p) => p.id)
+      .sort();
+    expect(expected.length).toBeGreaterThan(0);
+    expect(r.map((p) => p.id).sort()).toEqual(expected);
+  });
+
+  it("date_is past_30 on @verified uses the verified date", () => {
+    const r = runView(
+      pages,
+      { filter: [{ prop: "@verified", op: "date_is", value: "past_30" }], sort: sortEditedDesc },
+      ctx,
+    );
+    const expected = pages
+      .filter((p) => NOW.getTime() - new Date(p.verified_at).getTime() <= 30 * 86_400_000)
+      .map((p) => p.id)
+      .sort();
+    expect(r.map((p) => p.id).sort()).toEqual(expected);
+  });
+});

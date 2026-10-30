@@ -20,6 +20,7 @@ import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
 import { personIds } from "@/lib/person-value";
 import { MenuCheck, MenuChevron, MenuFoot, MenuHead, MenuIcon, MenuLead, MenuSep } from "./menu-parts";
+import { BUILT_IN_LABELS } from "@/lib/view-config";
 
 type Layout = "table" | "board" | "list" | "calendar";
 
@@ -589,7 +590,10 @@ function FilterBuilderContent({
     rootItems.push({ key: def.key, label: def.label });
     ROOT_ICON[def.key] = TYPE_ICON[def.type] ?? "";
   }
+  for (const k of ["@created", "@edited", "@verified"]) ROOT_ICON[k] = TYPE_ICON.date ?? "";
   rootItems.push({ key: "@created", label: "Created" });
+  rootItems.push({ key: "@edited", label: "Edited" });
+  rootItems.push({ key: "@verified", label: "Verified" });
   rootItems.push({ key: "@created_by", label: "Created by" });
   rootItems.push({ key: "@edited_by", label: "Last edited by" });
   rootItems.push({ key: "__freshness", label: "Freshness" });
@@ -639,10 +643,13 @@ function FilterBuilderContent({
 
   const initialValue = startAt && startAt.prop === key ? startAt.value : undefined;
 
-  if (key === "@created") {
+  // Created, Edited and Verified are dates on every row. Edited and
+  // Verified are also columns whose heading menu opens this step (they
+  // read "Property no longer exists." until 2026-10-30).
+  if (key === "@created" || key === "@edited" || key === "@verified") {
     return (
       <div>
-        <StepTitle onBack={back}>Created</StepTitle>
+        <StepTitle onBack={back}>{BUILT_IN_LABELS[key]}</StepTitle>
         <DateFilterRows
           prop={key}
           ranges={["today", "this_week", "past_7", "past_30", "this_month"]}
