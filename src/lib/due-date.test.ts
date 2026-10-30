@@ -14,6 +14,11 @@ import {
   dueLabel,
   isPropSet,
   isTerminalStatus,
+  hasTime,
+  timesOf,
+  toTimed,
+  toDateTimeValue,
+  formatTime,
 } from "./due-date";
 
 /* Local noon "now" — the 4pm trap is the whole point of the midnight
@@ -166,5 +171,42 @@ describe("date ranges (2026-10-10)", () => {
     expect(dueState("2026-10-15/2026-10-20", now)).toBe("future");
     expect(dueLabel("2026-10-12/2026-10-15", now).text).toBe("Oct 12 → 15");
     expect(dueLabel("2026-10-01/2026-10-13", now).text).toBe("Oct 1 → 13 · yesterday");
+  });
+});
+
+describe("dates with a time", () => {
+  const now = new Date(2026, 9, 30, 12, 0);
+  it("writes a day and a local time with its offset, and reads it back", () => {
+    const v = toTimed("2026-11-03", "09:30");
+    expect(v).toMatch(/^2026-11-03T09:30[+-]\d{2}:\d{2}$/);
+    expect(hasTime(v)).toBe(true);
+    expect(timesOf(v)).toEqual({ start: "09:30", end: "09:30" });
+    expect(toDueString(v)).toBe("2026-11-03");
+    expect(dateSpan(v)).toEqual({ start: "2026-11-03", end: "2026-11-03" });
+  });
+
+  it("keeps older timestamps on their written day", () => {
+    expect(hasTime("2026-08-15T00:00:00Z")).toBe(false);
+    expect(toDueString("2026-08-15T00:00:00Z")).toBe("2026-08-15");
+  });
+
+  it("formats times and ranges with times", () => {
+    expect(formatTime("09:05")).toBe("9:05 AM");
+    expect(formatTime("00:00")).toBe("12:00 AM");
+    expect(formatTime("13:30")).toBe("1:30 PM");
+    expect(formatDue(toTimed("2026-11-03", "09:00"), now)).toBe("Nov 3, 9:00 AM");
+    const sameDay = toDateTimeValue("2026-11-03", "2026-11-03", { start: "09:00", end: "10:30" });
+    expect(formatDue(sameDay, now)).toBe("Nov 3, 9:00 AM → 10:30 AM");
+    const days = toDateTimeValue("2026-11-03", "2026-11-05", { start: "09:00", end: "17:00" });
+    expect(formatDue(days, now)).toBe("Nov 3, 9:00 AM → Nov 5, 5:00 PM");
+    expect(dueLabel(toTimed("2026-10-30", "15:00"), now).text).toBe("Today, 3:00 PM");
+  });
+
+  it("drops the time when there is none, and keeps it when a date moves", () => {
+    expect(toDateTimeValue("2026-11-03", null, null)).toBe("2026-11-03");
+    const v = toTimed("2026-11-03", "09:00");
+    const moved = moveDateValue(v, "2026-11-10");
+    expect(toDueString(moved)).toBe("2026-11-10");
+    expect(timesOf(moved)?.start).toBe("09:00");
   });
 });

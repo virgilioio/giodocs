@@ -34,7 +34,7 @@ import {
   OwnerPicker,
   SelectPicker,
   TagsPicker,
-  DatePicker,
+  RowDatePicker,
   NumberEditor,
   TextEditor,
   TypedValueEditor,
@@ -574,7 +574,9 @@ function EditableValue({
    * finished page is never late. */
   if (def?.type === "date") {
     return (
-      <DatePicker
+      <RowDatePicker
+        pageId={page.id}
+        propKey={propKey}
         value={raw}
         onSet={onSet}
         onOpenChange={onOpenChange}

@@ -7,7 +7,7 @@
  * The replacement rule for adding a filter (`applyFilterReplacement`) also
  * lives here so both the picker and any programmatic caller share one path.
  */
-import type { Filter } from "./run-view";
+import { countRules, type Filter } from "./run-view";
 import { BUILT_IN_LABELS } from "./view-config";
 
 /** Just enough profile shape to render "owner is {full_name}". */
@@ -137,6 +137,10 @@ export function filterLabel(f: Filter, ctx: FilterLabelCtx): string {
       return `not verified in ${ctx.staleDays}+ days`;
     case "edited_within":
       return `edited in the last ${f.value} days`;
+    case "group": {
+      const n = countRules(f);
+      return n === 0 ? "advanced filter" : n === 1 ? "1 rule" : `${n} rules`;
+    }
     default:
       return "";
   }

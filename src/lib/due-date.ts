@@ -25,10 +25,87 @@ export function isTerminalStatus(status: unknown): boolean {
   return typeof status === "string" && TERMINAL_STATUS.has(status.toLowerCase());
 }
 
+/* ── Dates with a time (2026-10-30) ──
+ * A date may carry a time, written with the writer's offset and no seconds:
+ * "2026-10-31T09:00-05:00" (a range: start/end, both timed). It's one
+ * moment, so every reader sees it in their own time and on their own day.
+ * An older stored timestamp (with seconds, "…T00:00:00Z") is not a time:
+ * it keeps its written date part, as before. */
+const TIMED = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(Z|[+-]\d{2}:\d{2})$/;
+
+/** The moment a timed date (one end of it) names, or null. */
+export function timedInstant(value: unknown): Date | null {
+  if (typeof value !== "string" || !TIMED.test(value.trim())) return null;
+  const d = new Date(value.trim());
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Does this date value carry a time? */
+export function hasTime(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  return value.split("/").some((part) => timedInstant(part) !== null);
+}
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/** "09:00", the reader's local time of a timed date's start and end. */
+export function timesOf(value: unknown): { start: string; end: string } | null {
+  if (typeof value !== "string" || !hasTime(value)) return null;
+  const [a, b] = value.split("/");
+  const sa = timedInstant(a);
+  const sb = b !== undefined ? timedInstant(b) : sa;
+  if (!sa) return null;
+  const hm = (d: Date) => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  return { start: hm(sa), end: hm(sb ?? sa) };
+}
+
+/** A day and a local time as a stored timed date, with this moment's
+ *  offset ("2026-10-31T09:00-05:00"). */
+export function toTimed(dayKey: string, hhmm: string): string {
+  const p = dueParts(dayKey);
+  const t = /^(\d{1,2}):(\d{2})$/.exec(hhmm);
+  if (!p || !t) return dayKey;
+  const d = new Date(p[0], p[1] - 1, p[2], Number(t[1]), Number(t[2]));
+  const off = -d.getTimezoneOffset();
+  const sign = off >= 0 ? "+" : "-";
+  const oh = pad2(Math.floor(Math.abs(off) / 60));
+  const om = pad2(Math.abs(off) % 60);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}${sign}${oh}:${om}`;
+}
+
+/** What to store for days and, optionally, times: one day or a range, with
+ *  a time on each end when `times` is given. */
+export function toDateTimeValue(
+  start: string,
+  end: string | null | undefined,
+  times: { start: string; end: string } | null,
+): string {
+  const days = dateSpan(toDateValue(start, end));
+  if (!days) return start;
+  if (!times) return toDateValue(days.start, days.end);
+  const ranged = days.end !== days.start || (!!end && times.end !== times.start);
+  const a = toTimed(days.start, times.start);
+  if (!ranged) return a;
+  const b = toTimed(days.end, times.end);
+  // On one day an end before the start swaps them, like a range of days.
+  return timedInstant(b)!.getTime() < timedInstant(a)!.getTime() ? `${b}/${a}` : `${a}/${b}`;
+}
+
+/** "9:00 AM", in the reader's time. */
+export function formatTime(hhmm: string): string {
+  const t = /^(\d{1,2}):(\d{2})$/.exec(hhmm);
+  if (!t) return hhmm;
+  const h = Number(t[1]);
+  return `${h % 12 === 0 ? 12 : h % 12}:${t[2]} ${h < 12 ? "AM" : "PM"}`;
+}
+
 /** Accepts "YYYY-MM-DD" and tolerates a legacy ISO timestamp by keeping
- * only its date part. Anything else is not a date. */
+ * only its date part; a timed date is the reader's local day of its
+ * moment. Anything else is not a date. */
 export function dueParts(value: unknown): [number, number, number] | null {
   if (typeof value !== "string") return null;
+  const at = timedInstant(value);
+  if (at) return [at.getFullYear(), at.getMonth() + 1, at.getDate()];
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value.trim());
   if (!m) return null;
   const y = Number(m[1]);
@@ -95,11 +172,16 @@ export function daysBetweenKeys(a: string, b: string): number {
   );
 }
 
-/** Move a value so it starts on `start`, keeping a range's length. */
+/** Move a value so it starts on `start`, keeping a range's length and
+ *  its times. */
 export function moveDateValue(value: unknown, start: string): string {
   const s = dateSpan(value);
-  if (!s || s.end === s.start) return start;
-  return toDateValue(start, addDaysKey(start, daysBetweenKeys(s.start, s.end)));
+  const times = timesOf(value);
+  if (!s) return start;
+  const end = s.end === s.start ? null : addDaysKey(start, daysBetweenKeys(s.start, s.end));
+  if (times)
+    return toDateTimeValue(start, end ?? (times.end !== times.start ? start : null), times);
+  return end ? toDateValue(start, end) : start;
 }
 
 /** Every day a value covers, in order, at most `max` of them. */
@@ -146,6 +228,16 @@ export function dueState(
 /** "Mar 14", or "Mar 14, 2027" when the year differs from now. The year
  * guard stays: a bare month-day in another year is ambiguous. */
 export function formatDue(value: unknown, now: Date = new Date()): string {
+  const times = timesOf(value);
+  if (times) {
+    // With a time: "Nov 3, 9:00 AM", "Nov 3, 9:00 AM → 10:30 AM",
+    // "Nov 3, 9:00 AM → Nov 5, 5:00 PM".
+    const span = dateSpan(value)!;
+    const left = `${formatDue(span.start, now)}, ${formatTime(times.start)}`;
+    if (span.end === span.start && times.end === times.start) return left;
+    if (span.end === span.start) return `${left} \u2192 ${formatTime(times.end)}`;
+    return `${left} \u2192 ${formatDue(span.end, now)}, ${formatTime(times.end)}`;
+  }
   const span = dateSpan(value);
   if (span && span.end !== span.start) {
     const a = dueParts(span.start)!;
@@ -216,6 +308,9 @@ export function dueLabel(
   const state = dueState(value, now, opts);
   if (state === "empty") return { state, text: "" };
   const range = isDateRange(value);
+  const times = timesOf(value);
+  if (state === "today" && times && !range)
+    return { state, text: `Today, ${formatTime(times.start)}` };
   if (state === "today") return { state, text: range ? formatDue(value, now) : "Today" };
   if (state === "overdue")
     return {

@@ -538,3 +538,43 @@ describe("manual order", () => {
     expect(r.map((p) => p.id)).toEqual([base[2].id, base[0].id, ...unplaced]);
   });
 });
+
+describe("filter groups (OR filters)", () => {
+  const ids = (filter: Filter[]) =>
+    runView(pages, { filter, sort: sortEditedDesc }, ctx)
+      .map((p) => p.id)
+      .sort();
+  const eng: Filter = { prop: "area", op: "eq", value: "Engineering" };
+  const design: Filter = { prop: "area", op: "eq", value: "Design" };
+  const mine: Filter = { prop: "owner", op: "is_me" };
+
+  it("an OR group matches a row any of its filters matches", () => {
+    const both = ids([{ op: "group", mode: "or", filters: [eng, design] }]);
+    expect(both).toEqual([...new Set([...ids([eng]), ...ids([design])])].sort());
+    expect(both.length).toBeGreaterThan(ids([eng]).length);
+  });
+
+  it("an AND group is the same as the filters side by side", () => {
+    expect(ids([{ op: "group", mode: "and", filters: [eng, mine] }])).toEqual(ids([eng, mine]));
+  });
+
+  it("a group sits beside plain filters, which still combine with AND", () => {
+    const r = ids([mine, { op: "group", mode: "or", filters: [eng, design] }]);
+    expect(r).toEqual(
+      ids([mine]).filter((id) => ids([eng]).includes(id) || ids([design]).includes(id)),
+    );
+  });
+
+  it("groups nest", () => {
+    const nested: Filter = {
+      op: "group",
+      mode: "or",
+      filters: [design, { op: "group", mode: "and", filters: [eng, mine] }],
+    };
+    expect(ids([nested])).toEqual([...new Set([...ids([design]), ...ids([eng, mine])])].sort());
+  });
+
+  it("an empty group matches every row", () => {
+    expect(ids([{ op: "group", mode: "or", filters: [] }])).toEqual(ids([]));
+  });
+});

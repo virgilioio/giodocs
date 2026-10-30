@@ -674,6 +674,40 @@ From the Notion comparison; Allan picked A1–A6, B1, B2 and C1.
   verified — Duplicate · Move to › — Archive · Delete. Moves and duplicates
   come with Undo (a move back restores the row's values).
 
+## Decisions (Allan, 2026-10-30: database tables, second batch)
+- OR filters (C6): a view's filters still combine with AND, so saved views
+  keep their meaning. One of them may be a group, { op: "group", mode:
+  "and" | "or", filters }, holding rules and groups three levels deep
+  (MAX_FILTER_DEPTH). runView matches groups like any filter. A view has
+  at most one: the advanced filter (+Filter › Advanced filter,
+  advanced-filter.tsx; editing helpers in filter-tree.ts), shown as one
+  chip ("3 rules"). Its rules use the same picker as a filter chip. New
+  rows take values only from plain filters, never from a group.
+- Cells (C2–C4): use-cell-grid.tsx gives every table (database page and
+  views inside pages) a spreadsheet's keys, blocks, fill (⌘D, ⌘R, the
+  corner handle: values copied, never counted on) and clipboard. Keys
+  arrive in one hidden field (the sink) so copy and paste reach it.
+  cell-values.ts is the one place a cell becomes text and text a value,
+  for copy, paste and fill across columns. Read-only columns (formulas,
+  rollups, IDs, relations, files, built-ins) are skipped. A paste adds a
+  select's new options, reports what didn't fit, and adds rows past the
+  last one (PASTE_ROW_LIMIT 500). Every write is one toast with one Undo.
+  Cells and rows are never selected at once.
+- Dates with a time (C5): one moment written with the writer's offset and
+  no seconds ("2026-10-31T09:00-05:00"), or a range of them. Each reader
+  sees it in their own time and on their own day (due-date.ts dueParts);
+  an older stored timestamp (with seconds) keeps its written day. Views
+  still place and filter by day; sorting breaks ties by time.
+- Reminders (C5): date_reminders, one per person, page and date property
+  (migration 20261030060519_date_times_reminders). The
+  picker's Remind (RowDatePicker, src/lib/reminders.tsx) sets mine through
+  set_date_reminder. A day without a time reminds at 9:00 in the setter's
+  time zone. deliver_date_reminders (pg_cron, every minute) files them in
+  the Inbox (kind date_reminder, "Reminder about <page>") of whoever set it
+  and, in a task database, the row's assignee: only people who can open
+  the page, never for an archived, template or finished row, never for a
+  moment already passed when it was set. Moving the date moves it.
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.

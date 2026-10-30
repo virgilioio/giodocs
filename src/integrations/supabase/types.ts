@@ -149,6 +149,50 @@ export type Database = {
           },
         ]
       }
+      date_reminders: {
+        Row: {
+          page_id: string
+          prop_key: string
+          remind: string | null
+          remind_at: string | null
+          sent_at: string | null
+          tz: string
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          page_id: string
+          prop_key: string
+          remind?: string | null
+          remind_at?: string | null
+          sent_at?: string | null
+          tz?: string
+          updated_at?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          page_id?: string
+          prop_key?: string
+          remind?: string | null
+          remind_at?: string | null
+          sent_at?: string | null
+          tz?: string
+          updated_at?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "date_reminders_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       home_prefs: {
         Row: {
           emoji: string | null
@@ -744,7 +788,15 @@ export type Database = {
           undone_at?: string | null
           workspace_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "property_type_changes_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       views: {
         Row: {
@@ -1075,6 +1127,10 @@ export type Database = {
       }
       can_manage_page_access: { Args: { p_page: string }; Returns: boolean }
       can_read_page: { Args: { p_page: string }; Returns: boolean }
+      change_property_type: {
+        Args: { p_def: string; p_type: string }
+        Returns: Json
+      }
       comment_thread_open: { Args: { p_thread: string }; Returns: boolean }
       create_workspace_invite: {
         Args: {
@@ -1112,6 +1168,7 @@ export type Database = {
         }[]
       }
       delete_page: { Args: { p_page: string }; Returns: undefined }
+      deliver_date_reminders: { Args: never; Returns: number }
       domain_status: { Args: { p_email: string }; Returns: string }
       dup_view_json: { Args: { j: Json; m: Json }; Returns: Json }
       duplicate_database: { Args: { p_database: string }; Returns: string }
@@ -1172,22 +1229,18 @@ export type Database = {
           page_count: number
         }[]
       }
-      change_property_type: {
-        Args: { p_def: string; p_type: string }
-        Returns: Json
-      }
       list_trash: {
         Args: { p_query?: string }
         Returns: {
           access_type: string
           deleted_at: string
-          excerpt: string | null
-          icon: string | null
+          excerpt: string
+          icon: string
           id: string
           inside: number
           is_database: boolean
-          parent_id: string | null
-          parent_title: string | null
+          parent_id: string
+          parent_title: string
           title: string
           trashed_ancestors: string[]
         }[]
@@ -1200,6 +1253,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           database_id: string
+          description: string
           id: string
           is_system: boolean
           key: string
@@ -1232,8 +1286,16 @@ export type Database = {
         Returns: undefined
       }
       option_palette: { Args: { p_color: string }; Returns: Json }
-      person_ids: { Args: { v: Json }; Returns: string[] }
       os_apply_grant: {
+        Args: {
+          p_actor_email: string
+          p_email: string
+          p_request_id: string
+          p_role: string
+        }
+        Returns: Json
+      }
+      os_resend_invite: {
         Args: {
           p_actor_email: string
           p_email: string
@@ -1255,9 +1317,32 @@ export type Database = {
         Args: { p_page: string; p_paths: string[] }
         Returns: number
       }
+      page_is_finished: { Args: { p_page: string }; Returns: boolean }
       page_search_text: {
         Args: { p_blocks: Json; p_title: string }
         Returns: string
+      }
+      person_ids: { Args: { v: Json }; Returns: string[] }
+      prop_value_from_words: {
+        Args: {
+          one_person: boolean
+          opts: Json
+          t: string
+          words: string[]
+          ws: string
+        }
+        Returns: Json
+      }
+      prop_value_words: {
+        Args: {
+          d: Database["public"]["Tables"]["property_defs"]["Row"]
+          v: Json
+        }
+        Returns: string[]
+      }
+      property_default_value: {
+        Args: { d: Database["public"]["Tables"]["property_defs"]["Row"] }
+        Returns: Json
       }
       publish_view: {
         Args: { p_view: string }
@@ -1285,6 +1370,10 @@ export type Database = {
         }
       }
       record_page_visit: { Args: { p_page: string }; Returns: undefined }
+      reminder_time: {
+        Args: { p_remind: string; p_tz: string; p_value: string }
+        Returns: string
+      }
       remove_property_option: {
         Args: { p_def: string; p_value: string }
         Returns: undefined
@@ -1328,6 +1417,10 @@ export type Database = {
       set_comment_removed: {
         Args: { p_comment: string; p_removed: boolean }
         Returns: undefined
+      }
+      set_date_reminder: {
+        Args: { p_key: string; p_page: string; p_remind: string; p_tz: string }
+        Returns: string
       }
       set_page_access: {
         Args: {
@@ -1384,7 +1477,10 @@ export type Database = {
         Returns: undefined
       }
       text_mentions: { Args: { p_text: string }; Returns: string[] }
-      undo_property_type_change: { Args: { p_change: string }; Returns: undefined }
+      undo_property_type_change: {
+        Args: { p_change: string }
+        Returns: undefined
+      }
       user_can_read_page: {
         Args: { p_page: string; p_user: string }
         Returns: boolean
