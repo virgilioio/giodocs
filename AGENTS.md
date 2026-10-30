@@ -699,7 +699,7 @@ From the Notion comparison; Allan picked A1–A6, B1, B2 and C1.
   an older stored timestamp (with seconds) keeps its written day. Views
   still place and filter by day; sorting breaks ties by time.
 - Reminders (C5): date_reminders, one per person, page and date property
-  (migration 20261030120000_date_times_reminders, not applied yet). The
+  (migration 20261030060519_date_times_reminders). The
   picker's Remind (RowDatePicker, src/lib/reminders.tsx) sets mine through
   set_date_reminder. A day without a time reminds at 9:00 in the setter's
   time zone. deliver_date_reminders (pg_cron, every minute) files them in

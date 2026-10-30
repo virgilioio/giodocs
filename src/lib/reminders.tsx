@@ -60,20 +60,6 @@ export function remindLabel(code: RemindCode, timed: boolean): string {
 }
 
 type Row = { page_id: string; prop_key: string; remind: RemindCode | null };
-type Result<T> = { data: T | null; error: { message: string } | null };
-// date_reminders and set_date_reminder join the generated types when the
-// migration is applied; until then this is their shape.
-const db = supabase as unknown as {
-  from: (table: "date_reminders") => {
-    select: (cols: string) => {
-      not: (col: string, op: "is", v: null) => PromiseLike<Result<Row[]>>;
-    };
-  };
-  rpc: (
-    fn: "set_date_reminder",
-    args: Record<string, unknown>,
-  ) => PromiseLike<Result<string | null>>;
-};
 
 const keyOf = (pageId: string, propKey: string) => `${pageId}\u0000${propKey}`;
 
@@ -86,11 +72,11 @@ export function useMyReminders(): ReadonlyMap<string, RemindCode> {
     enabled: !!user,
     staleTime: 60_000,
     queryFn: async (): Promise<Row[]> => {
-      const { data, error } = await db
+      const { data, error } = await supabase
         .from("date_reminders")
         .select("page_id,prop_key,remind")
         .not("remind", "is", null);
-      return error ? [] : (data ?? []);
+      return error ? [] : ((data ?? []) as Row[]);
     },
   });
   return useMemo(
@@ -114,10 +100,12 @@ export function useDateReminder(pageId: string, propKey: string) {
   const set = useMutation({
     mutationFn: async (remind: RemindCode | null) => {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-      const { error } = await db.rpc("set_date_reminder", {
+      const { error } = await supabase.rpc("set_date_reminder", {
         p_page: pageId,
         p_key: propKey,
-        p_remind: remind,
+        // Null clears it; the generated types can't say an argument may be
+        // null.
+        p_remind: remind as string,
         p_tz: tz,
       });
       if (error) throw new Error(error.message);
