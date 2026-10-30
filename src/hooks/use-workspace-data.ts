@@ -11,22 +11,37 @@ const PAGE_LIST_COLUMNS =
 const PAGE_FULL_COLUMNS =
   "id, workspace_id, title, icon, props, blocks, access_type, ws_role, verified_at, verified_by, edited_at, edited_by, created_by, created_at, deleted_at, archived_at, template_at, parent_id, database_id, is_database, position, task_config, row_number";
 
-async function fetchPages(ws: string): Promise<PageListItem[]> {
+/** Supabase hands back at most 1000 rows per request, whatever `limit` asks
+ *  for. Lists that can outgrow that are read a page at a time in a stable
+ *  order (by id), so nothing is skipped or read twice between pages. */
+const LIST_PAGE = 1000;
+
+export async function fetchPages(ws: string): Promise<PageListItem[]> {
   // Archived pages and templates leave every view, area list, and sidebar
   // count. They stay reachable by direct URL and by search_pages (⌘K),
   // which is the "stays searchable" promise; templates are also offered
   // when starting a new page (useTemplates).
-  const { data, error } = await supabase
-    .from("pages")
-    .select(PAGE_LIST_COLUMNS)
-    .eq("workspace_id", ws)
-    .is("deleted_at", null)
-    .is("archived_at", null)
-    .is("template_at", null)
-    .order("edited_at", { ascending: false })
-    .limit(2000);
-  if (error) throw error;
-  return (data ?? []) as PageListItem[];
+  //
+  // Every live page, not the most recently edited few thousand: database
+  // views filter their rows from this list, so a cap silently dropped old
+  // rows from views, counts and exports (2026-10-30).
+  const out: PageListItem[] = [];
+  for (let from = 0; ; from += LIST_PAGE) {
+    const { data, error } = await supabase
+      .from("pages")
+      .select(PAGE_LIST_COLUMNS)
+      .eq("workspace_id", ws)
+      .is("deleted_at", null)
+      .is("archived_at", null)
+      .is("template_at", null)
+      .order("id", { ascending: true })
+      .range(from, from + LIST_PAGE - 1);
+    if (error) throw error;
+    out.push(...((data ?? []) as PageListItem[]));
+    if (!data || data.length < LIST_PAGE) break;
+  }
+  // Newest edits first, as callers have always had it.
+  return out.sort((a, b) => (a.edited_at < b.edited_at ? 1 : a.edited_at > b.edited_at ? -1 : 0));
 }
 
 async function fetchPage(id: string): Promise<PageFull | null> {
@@ -49,15 +64,19 @@ async function fetchPageAccess(id: string): Promise<PageAccessRow[]> {
 }
 
 async function fetchViews(ws: string) {
-  const { data, error } = await supabase
-    .from("views")
-    .select("*")
-    .eq("workspace_id", ws)
-    // Every database has its own views; don't cut them off at a few dozen
-    // databases.
-    .limit(2000);
-  if (error) throw error;
-  return data ?? [];
+  // Every database has its own views; read them all, a page at a time.
+  const out: Database["public"]["Tables"]["views"]["Row"][] = [];
+  for (let from = 0; ; from += LIST_PAGE) {
+    const { data, error } = await supabase
+      .from("views")
+      .select("*")
+      .eq("workspace_id", ws)
+      .order("id", { ascending: true })
+      .range(from, from + LIST_PAGE - 1);
+    if (error) throw error;
+    out.push(...(data ?? []));
+    if (!data || data.length < LIST_PAGE) return out;
+  }
 }
 
 async function fetchMembers(ws: string) {
