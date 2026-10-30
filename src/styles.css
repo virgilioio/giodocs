@@ -836,6 +836,42 @@ div.gio-line[data-empty="true"][data-placeholder]::before {
     box-shadow: inset -1px 0 0 var(--color-line);
   }
 }
+/* A table's selected cells (use-cell-grid.tsx, 2026-10-30): an outline
+   over the grid, tinted for a block, with the fill handle on its corner.
+   The sink is the hidden field that takes the keys and the clipboard. */
+.gio-cell-sel {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 2px var(--color-blue);
+}
+.gio-cell-sel[data-multi] {
+  background: color-mix(in srgb, var(--color-blue) 8%, transparent);
+}
+.gio-cell-fill {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--color-blue);
+  box-shadow: 0 0 0 2px var(--color-surface);
+  pointer-events: auto;
+  cursor: ns-resize;
+}
+.gio-cell-sink {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  resize: none;
+  overflow: hidden;
+  pointer-events: none;
+}
 /* A table in a selected block (the page's marquee): its pinned cells are
    opaque so rows scroll under them, so they take the block's tint over
    their surface, or they'd stand out from the rest of the table. */

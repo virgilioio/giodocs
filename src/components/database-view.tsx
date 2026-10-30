@@ -643,6 +643,25 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
     }
   };
 
+  /** Rows for a paste that runs past the last one: made a few at a time,
+   *  with the view's values, last in manual order. */
+  const createRows = async (n: number): Promise<string[]> => {
+    const ids: string[] = [];
+    for (let i = 0; i < n; i += 6) {
+      const made = await Promise.all(
+        Array.from({ length: Math.min(6, n - i) }, () =>
+          create
+            .mutateAsync({ seedProps: seedForView(), parentId: databaseId, quiet: true })
+            .then((row) => row.id as string)
+            .catch(() => null),
+        ),
+      );
+      for (const id of made) if (id) ids.push(id);
+    }
+    ids.forEach((id) => rowActions.placeNewRow(id, null));
+    return ids;
+  };
+
   const isModified = current._modified && !canPersist;
 
   /* --- view operations ------------------------------------------------- */
@@ -954,6 +973,8 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
         onSort={onChangeSort}
         groupKey={tableGroup}
         onNewRow={canEditDb ? onNewRow : undefined}
+        onCreateRows={canEditDb ? createRows : undefined}
+        onCellsActive={clearSelection}
         onMoveRow={canEditDb ? onMoveRow : undefined}
         displayOrderRef={displayOrderRef}
         manualOrder={manualOrder}

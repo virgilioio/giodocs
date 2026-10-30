@@ -359,6 +359,24 @@ function InlineViewBody({
     }
   };
 
+  /** Rows for a paste that runs past the last one (as on the database page). */
+  const createRows = async (n: number): Promise<string[]> => {
+    const ids: string[] = [];
+    for (let i = 0; i < n; i += 6) {
+      const made = await Promise.all(
+        Array.from({ length: Math.min(6, n - i) }, () =>
+          create
+            .mutateAsync({ seedProps: seed(), parentId: view.database_id, quiet: true })
+            .then((row) => row.id as string)
+            .catch(() => null),
+        ),
+      );
+      for (const id of made) if (id) ids.push(id);
+    }
+    ids.forEach((id) => rowActions.placeNewRow(id, null));
+    return ids;
+  };
+
   let body;
   if (view.layout === "board") {
     // A board shows its columns even before it has rows (Notion's way).
@@ -456,6 +474,8 @@ function InlineViewBody({
         onSort={(s: SortSpec) => changeSort(s)}
         groupKey={tableGroup}
         onNewRow={editable ? onNewRow : undefined}
+        onCreateRows={editable ? createRows : undefined}
+        onCellsActive={sel.clearSelection}
         onMoveRow={editable ? rowActions.onMoveRow : undefined}
         manualOrder={rowActions.manualOrder}
         relations={rt.tableRelations}

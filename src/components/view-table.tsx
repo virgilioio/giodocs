@@ -11,6 +11,11 @@ import {
 import { useDragSession } from "@/hooks/use-drag-session";
 import { openPageSomewhere } from "@/lib/peek";
 import { useNavigate } from "@tanstack/react-router";
+import { useToast } from "@/lib/toast";
+import { useAuth } from "@/lib/auth-context";
+import { useDeletePage } from "@/hooks/use-page-mutations";
+import { useCellGrid, type CellVerb, type CellWrite } from "@/hooks/use-cell-grid";
+import { cellText, cellWritable, parseCell, type CellOption } from "@/lib/cell-values";
 import { useQueryClient } from "@tanstack/react-query";
 import { pageQuery } from "@/hooks/use-workspace-data";
 import { useSetPageOrigin } from "@/lib/page-origin";
@@ -796,7 +801,7 @@ const TableRow = memo(function TableRow({
           <RowMenu spec={menu.spec} anchor={menu.anchor} onClose={closeMenu} align="start" />
         ) : null}
       </div>
-      <div data-page-id={p.id} role="cell" data-wrap={wrapped.has(TITLE_KEY) || undefined} className={cellClass(selected) + frozenOf(frozen, TITLE_KEY).cls} style={frozenOf(frozen, TITLE_KEY).style}>
+      <div data-page-id={p.id} data-prop={TITLE_KEY} role="cell" data-wrap={wrapped.has(TITLE_KEY) || undefined} className={cellClass(selected) + frozenOf(frozen, TITLE_KEY).cls} style={frozenOf(frozen, TITLE_KEY).style}>
         <PageTitleCell
           page={p}
           onSave={(t) => rename({ pageId: p.id, title: t })}
@@ -1539,6 +1544,8 @@ export function ViewTable({
   onMoveRow,
   manualOrder,
   displayOrderRef,
+  onCreateRows,
+  onCellsActive,
 }: {
   rows: PageListItem[];
   pages: PageListItem[];
@@ -1593,6 +1600,11 @@ export function ViewTable({
   /** Filled with the rows' ids in the order shown (groups flattened), so
    *  selection ranges follow the screen, not the sort. */
   displayOrderRef?: React.MutableRefObject<string[]>;
+  /** A paste that runs past the last row adds rows (at the end); resolves
+   *  to their ids. Absent: a paste stops at the last row. */
+  onCreateRows?: (n: number) => Promise<string[]>;
+  /** Cells were selected (use-cell-grid.tsx): selected rows let go. */
+  onCellsActive?: () => void;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -1705,6 +1717,150 @@ export function ViewTable({
     const i = config.freeze ? all.indexOf(config.freeze) : -1;
     return i >= 0 ? all.slice(0, i + 1) : [];
   }, [config.freeze, shown]);
+
+  /* Cells like a spreadsheet's (C2–C4, 2026-10-30): moving with the keys,
+     blocks, fill, copy and paste (use-cell-grid.tsx). Writing reads text
+     into each column as its cell would (cell-values.ts), adds a select's
+     new options, and comes with one Undo. */
+  const toast = useToast();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const addOption = useAddPropertyOption();
+  const deletePage = useDeletePage();
+  const cellsEditable = !!onNewRow;
+  const cellPeople = useMemo(
+    () =>
+      members.map((m) => ({
+        id: m.user_id,
+        name: m.profiles?.full_name || m.profiles?.email || "",
+        email: m.profiles?.email || "",
+      })),
+    [members],
+  );
+  const pageById = useMemo(() => new Map(pages.map((p) => [p.id, p])), [pages]);
+  const cellCols = useMemo(() => [TITLE_KEY, ...shown], [shown]);
+  const cellType = (k: string) =>
+    k === TITLE_KEY
+      ? undefined
+      : (defs.get(k)?.type ?? (k.startsWith("@") ? "built_in" : undefined));
+  const cellRaw = (row: string, col: string): unknown => {
+    const p = pageById.get(row);
+    if (!p) return null;
+    if (col === TITLE_KEY) return p.title ?? "";
+    return propsOf(p)[col] ?? null;
+  };
+  const cellOptions = (k: string) => (defs.get(k)?.options as unknown as CellOption[] | null) ?? [];
+  const cellTextOf = (row: string, col: string): string => {
+    const t = cellType(col);
+    if (cellWritable(col, t))
+      return cellText(col, t, cellRaw(row, col), { options: cellOptions(col), people: cellPeople });
+    // Worked out (formulas, rollups, relations, the built-in columns): as shown.
+    const el = gridRef.current?.querySelector(
+      `[data-page-id="${CSS.escape(row)}"][data-prop="${CSS.escape(col)}"]`,
+    );
+    const shownText = el?.textContent?.trim() ?? "";
+    return shownText === "—" ? "" : shownText;
+  };
+  const writeCells = async (writes: CellWrite[], verb: CellVerb, created: string[] = []) => {
+    if (!cellsEditable) {
+      toast.push("These cells can't be changed from here.");
+      return;
+    }
+    const misfits: string[] = [];
+    const newOptions = new Map<string, string>();
+    const resolved: Array<{ row: string; col: string; value: unknown }> = [];
+    for (const w of writes) {
+      const def = defs.get(w.col);
+      let value = w.value;
+      if (w.text !== undefined) {
+        const r = parseCell(w.col, cellType(w.col), w.text, {
+          options: cellOptions(w.col),
+          people: cellPeople,
+          me: user?.id,
+          onePerson: def?.type === "person" && onePersonOnly(def),
+        });
+        if (r.ok === true) value = r.value;
+        else if (r.ok === "new-option" && def && !def.is_system) {
+          const key = `${w.col}\u0000${r.label.toLowerCase()}`;
+          if (!newOptions.has(key)) {
+            try {
+              newOptions.set(
+                key,
+                (await addOption.mutateAsync({ id: def.id, label: r.label })).value,
+              );
+            } catch {
+              misfits.push(`${labelOf(w.col)}: \u201C${r.label}\u201D`);
+              continue;
+            }
+          }
+          value = newOptions.get(key);
+        } else {
+          misfits.push(`${labelOf(w.col)}: \u201C${w.text.trim().slice(0, 40)}\u201D`);
+          continue;
+        }
+      }
+      const before = cellRaw(w.row, w.col);
+      if (
+        !created.includes(w.row) &&
+        JSON.stringify(before ?? null) === JSON.stringify(value ?? null)
+      )
+        continue;
+      resolved.push({ row: w.row, col: w.col, value });
+    }
+    const previous = resolved.map((r) => ({ ...r, value: cellRaw(r.row, r.col) }));
+    const put = (list: Array<{ row: string; col: string; value: unknown }>) =>
+      list.forEach((r) =>
+        r.col === TITLE_KEY
+          ? rename.mutate({ pageId: r.row, title: String(r.value ?? "") })
+          : setProp.mutate({ pageId: r.row, key: r.col, value: r.value ?? null, quiet: true }),
+      );
+    put(resolved);
+    const n = resolved.length;
+    const misfitNote = misfits.length
+      ? ` ${misfits.length === 1 ? "1 value didn\u2019t fit" : `${misfits.length} values didn\u2019t fit`} (${misfits.slice(0, 2).join(", ")}${misfits.length > 2 ? ", \u2026" : ""}).`
+      : "";
+    if (!n && !created.length) {
+      if (misfitNote) toast.push(misfitNote.trim());
+      return;
+    }
+    const rowsNote = created.length
+      ? ` Added ${created.length === 1 ? "1 row" : `${created.length} rows`}.`
+      : "";
+    toast.push({
+      message: `${verb} ${n === 1 ? "1 cell" : `${n} cells`}.${rowsNote}${misfitNote}`,
+      action: {
+        label: "Undo",
+        onClick: () => {
+          put(previous);
+          created.forEach((id) => deletePage.mutate(id));
+        },
+      },
+      durationMs: 10_000,
+    });
+  };
+  const cells = useCellGrid({
+    gridRef,
+    enabled: !phone,
+    // The rows on screen (collapsed groups and "Show all" leave theirs out).
+    rowOrder: () =>
+      Array.from(gridRef.current?.querySelectorAll<HTMLElement>("[data-row-gutter]") ?? []).map(
+        (el) => el.dataset.rowGutter!,
+      ),
+    cols: cellCols,
+    layoutKey: rows.map((r) => r.id).join(","),
+    typeOf: cellType,
+    rawOf: cellRaw,
+    textOf: cellTextOf,
+    write: (w, verb, created) => void writeCells(w, verb, created),
+    createRows: cellsEditable ? onCreateRows : undefined,
+    onActivate: () => onCellsActive?.(),
+    openRow: (id) => openPageSomewhere(navigate, id),
+    notify: (m) => toast.push(m),
+  });
+  const clearCells = cells.clear;
+  useEffect(() => {
+    if (anySelection) clearCells();
+  }, [anySelection, clearCells]);
 
   const headingMenu = (k: string, mctx: MenuBuildCtx): MenuSpec => {
     // Every plain choice is final: do it, then close.
@@ -2229,6 +2385,8 @@ export function ViewTable({
         style={{ gridTemplateColumns: template, minWidth: minTableWidth }}
         onClickCapture={onGridClickCapture}
       >
+        {cells.overlay}
+        {cells.sink}
         <div className="contents" role="row">
           <div
             className={HEAD_CLASS + " justify-end" + frozenOf(frozenKeys, "").cls}
