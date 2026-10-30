@@ -7,7 +7,14 @@ import { usePrefs } from "@/lib/preferences";
 import { useAuth } from "@/lib/auth-context";
 import { usePage, usePageAccess } from "@/hooks/use-workspace-data";
 import { runView, sortsOf, type Filter, type SortSpec } from "@/lib/run-view";
-import { allPropKeys, labelOfProp, readConfig, shownProps, type ViewConfig } from "@/lib/view-config";
+import {
+  allPropKeys,
+  labelOfProp,
+  readConfig,
+  shownProps,
+  tableGroupChoices as tableGroupChoicesFor,
+  type ViewConfig,
+} from "@/lib/view-config";
 import { sortLabel as sortLabelOf } from "@/lib/sort-label";
 import { seedForGroup, seedFromFilters } from "@/lib/view-seed";
 import { ViewTable } from "./view-table";
@@ -606,16 +613,7 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
   const onChangeGroupBy = (g: string) => persistOrDraft({ group_by: g });
   const onChangeConfig = (next: ViewConfig) => persistOrDraft({ config: next });
 
-  const tableGroupChoices = useMemo(
-    () => [
-      ...propDefs
-        .filter((d) => ["select", "status", "person", "checkbox"].includes(d.type))
-        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-        .map((d) => ({ key: d.key, label: d.label })),
-      { key: "@created_by", label: "Created by" },
-    ],
-    [propDefs],
-  );
+  const tableGroupChoices = useMemo(() => tableGroupChoicesFor(propDefs), [propDefs]);
   const tableGroup: string | null =
     viewConfig.group && tableGroupChoices.some((c) => c.key === viewConfig.group)
       ? viewConfig.group

@@ -163,3 +163,22 @@ describe("wrap and insert", () => {
     expect(insertProp(["a", "b"], "x", 9)).toEqual(["a", "b", "x"]);
   });
 });
+
+describe("tableGroupChoices", () => {
+  it("offers select, status, person and checkbox in order, then Created by and Edited by", async () => {
+    const { tableGroupChoices } = await import("./view-config");
+    const choices = tableGroupChoices([
+      { key: "owner", type: "person", label: "Owner", position: 2 },
+      { key: "notes", type: "text", label: "Notes", position: 0 },
+      { key: "status", type: "status", label: "Status", position: 1 },
+      { key: "done", type: "checkbox", label: "Done", position: 3 },
+    ]);
+    expect(choices).toEqual([
+      { key: "status", label: "Status" },
+      { key: "owner", label: "Owner" },
+      { key: "done", label: "Done" },
+      { key: "@created_by", label: "Created by" },
+      { key: "@edited_by", label: "Edited by" },
+    ]);
+  });
+});

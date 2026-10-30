@@ -28,7 +28,12 @@ import { BoardBody, ListBody, QueryToolbar } from "./main-view";
 import { ViewTable } from "./view-table";
 import { DatabaseToolbar } from "./database-toolbar";
 import { useViewSettings } from "./view-settings";
-import { allPropKeys, labelOfProp, shownProps } from "@/lib/view-config";
+import {
+  allPropKeys,
+  labelOfProp,
+  shownProps,
+  tableGroupChoices as tableGroupChoicesFor,
+} from "@/lib/view-config";
 import { useWorkspaceId } from "@/lib/workspace-context";
 import { useTemplates } from "@/hooks/use-workspace-data";
 import { useNewPageFromTemplate } from "@/hooks/use-templates";
@@ -281,15 +286,7 @@ function InlineViewBody({
     view.group_by && groupable.some((d) => d.key === view.group_by)
       ? view.group_by
       : (groupable.find((d) => d.key === "status") ?? groupable[0])?.key ?? "status";
-  const tableGroupChoices = useMemo(
-    () => [
-      ...rt.propDefs
-        .filter((d) => ["select", "status", "person", "checkbox"].includes(d.type))
-        .map((d) => ({ key: d.key, label: d.label })),
-      { key: "@created_by", label: "Created by" },
-    ],
-    [rt.propDefs],
-  );
+  const tableGroupChoices = useMemo(() => tableGroupChoicesFor(rt.propDefs), [rt.propDefs]);
   const tableGroup =
     view.config.group && tableGroupChoices.some((c) => c.key === view.config.group)
       ? view.config.group

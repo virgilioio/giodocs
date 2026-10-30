@@ -50,6 +50,8 @@ import {
   trackOf,
   widthOf,
   type ViewConfig,
+  GROUPABLE_BUILT_INS,
+  GROUPABLE_TYPES,
 } from "@/lib/view-config";
 import type { PageListItem } from "@/lib/types";
 import type { Database } from "@/integrations/supabase/types";
@@ -1612,7 +1614,7 @@ export function ViewTable({
     });
     if (canArrange) {
       const groupable =
-        !isTitle && (["select", "status", "person", "checkbox"].includes(type) || k === "@created_by" || k === "@edited_by");
+        !isTitle && (GROUPABLE_TYPES.includes(type) || GROUPABLE_BUILT_INS.includes(k));
       if (groupable)
         rowsOut.push(
           final({
