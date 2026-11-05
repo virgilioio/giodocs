@@ -756,11 +756,43 @@ engines are never invited in.
   src/lib/public-page.ts) shows no sidebar and needs no sign-in. A thin bar
   shows the workspace and the path. The page is its own document (the
   page-history preview, in the app's fonts) in a sandboxed frame that runs
-  no scripts; links open in a new tab, pages inside it in place. Inline
-  databases and database pages show a note for now. robots: noindex.
+  no scripts; links open in a new tab, pages inside it in place. Databases
+  show as below. robots: noindex.
 - Share panel: Publish to web (publish-section.tsx). Settings › Public
   pages: the workspace switch and every published page (owners see all),
   with Copy link and Unpublish.
+
+## Decisions (Allan, 2026-11-05: databases on public pages)
+Allan took the recommended answers (migration …_public_databases.sql,
+src/lib/public-database.ts).
+- A database placed on a page the link shows (a view block naming one of
+  the page's own child databases, as "Table view" makes) is public with
+  the page, with every live row, whatever their sharing: publishing a
+  private page publishes the table it holds. Archived, deleted and template
+  rows never show (public_db_ok, public_places; public_path_ok now also
+  lets a row of a shown database and a placed database through).
+- Rows open as pages only while the link includes the pages inside it;
+  inside a row the usual sub-page rules apply. Without it the table still
+  lists the rows.
+- A linked view of a database that lives elsewhere shows only when that
+  database is public through some live link of the workspace
+  (database_is_public); its rows are listed but don't open from this link.
+  Otherwise the visitor reads "This database isn't public".
+- get_published_page returns databases (live properties, the first 1000
+  live rows, row_count, and a database page's shared views; never personal
+  ones), unavailable, people (names and avatar colours only, never an
+  email) and stale_days. A relation's public target database comes along
+  for titles and rollups (mode "related"). page_is_published covers the
+  rows a public view lists, so their files can be signed.
+- The visitor's views run through run-view exactly as members' do, as
+  "visitor" (a filter on "me" matches nothing). Tables keep their shown
+  properties, widths, frozen columns, wrap, grouping and Calculate row;
+  boards their option columns and "No <property>"; calendars a month with
+  ‹ Today › (?m=YYYY-MM); a database page its shared views as tabs
+  (?v=<view>). Relations show pages the visitor may see, others "Private
+  page"; rollups count only those. A row page starts with its properties
+  (the row-page layout, the rest in an "N more properties" fold): a
+  property hidden in a view isn't a secret, and the Share panel says so.
 
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.

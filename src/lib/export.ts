@@ -1008,6 +1008,13 @@ const HTML_CSS = `
     --color-pinkTint: #FBE0EE;   --color-pink: #BE185D;   --color-pinkInk: #BE185D;
     --color-sunken: ${sunken};   --color-muted: ${muted};
     --color-accent: #0B7A57;     --color-amber: #B45309;  --color-danger: #B91C1C;
+    /* What public pages' databases draw with (option colours, people,
+       grid lines): the same light tokens. */
+    --color-surface: #FFFFFF;    --color-track: #FAFAF7;  --color-lineSoft: #F1F0EC;
+    --color-noir: ${noir};       --color-body: ${ink};    --color-strong: #3A3A33;
+    --color-secondary: #5A6072;  --color-faint: #8B8F9E;  --color-whisper: #A8ACB8;
+    --color-accentDot: #12B886;  --color-amberInk: #92400E; --color-amberDot: #D98324;
+    --color-dangerDot: #DC4B45;  --color-blue: #2563EB;   --color-blueWash: #DCEAFE;
   }
   /* Real per-page margins. Applies to every sheet, not just the first —
      that was the fixed-footer / body-padding trap. printPdf appends its
