@@ -46,23 +46,6 @@ export type PublicPageRow = {
   created_at: string;
 };
 
-type Result<T> = { data: T | null; error: { message: string } | null };
-// The tables and functions join the generated types when the migration is
-// applied; until then this is their shape.
-const db = supabase as unknown as {
-  from: (table: "page_public_links") => {
-    select: (cols: string) => {
-      eq: (
-        col: string,
-        v: string,
-      ) => {
-        is: (col: string, v: null) => { maybeSingle: () => PromiseLike<Result<PublicLink>> };
-      };
-    };
-  };
-  rpc: <T>(fn: string, args: Record<string, unknown>) => PromiseLike<Result<T>>;
-};
-
 /** The address a link opens: the published page, or a page inside it. */
 export function publicPageUrl(token: string, pageId?: string | null): string {
   const base = typeof window === "undefined" ? "" : window.location.origin;
@@ -78,7 +61,7 @@ export function usePagePublicLink(pageId: string | null) {
     queryKey: linkKey(pageId ?? ""),
     enabled: !!pageId,
     queryFn: async (): Promise<PublicLink | null> => {
-      const { data, error } = await db
+      const { data, error } = await supabase
         .from("page_public_links")
         .select("token, include_children, created_by, created_at")
         .eq("page_id", pageId!)
@@ -96,14 +79,14 @@ export function useSetPagePublic(pageId: string, workspaceId?: string | null) {
   const toast = useToast();
   return useMutation({
     mutationFn: async (v: { on: boolean; includeChildren?: boolean; reset?: boolean }) => {
-      const { data, error } = await db.rpc<PublicLink | null>("set_page_public", {
+      const { data, error } = await supabase.rpc("set_page_public", {
         p_page: pageId,
         p_on: v.on,
         p_include_children: v.includeChildren ?? true,
         p_reset: v.reset ?? false,
       });
       if (error) throw new Error(error.message);
-      return data ?? null;
+      return (data as unknown as PublicLink | null) ?? null;
     },
     onSuccess: (link) => {
       qc.setQueryData(linkKey(pageId), link);
@@ -119,7 +102,7 @@ export function usePublicPages(ws: string | null) {
     queryKey: listKey(ws ?? ""),
     enabled: !!ws,
     queryFn: async (): Promise<PublicPageRow[]> => {
-      const { data, error } = await db.rpc<PublicPageRow[]>("list_public_pages", { p_ws: ws });
+      const { data, error } = await supabase.rpc("list_public_pages", { p_ws: ws! });
       if (error) throw new Error(error.message);
       return data ?? [];
     },
@@ -132,7 +115,7 @@ export function useSetWorkspacePublicLinks(ws: string) {
   const toast = useToast();
   return useMutation({
     mutationFn: async (on: boolean) => {
-      const { error } = await db.rpc<boolean>("set_workspace_public_links", { p_ws: ws, p_on: on });
+      const { error } = await supabase.rpc("set_workspace_public_links", { p_ws: ws, p_on: on });
       if (error) throw new Error(error.message);
       return on;
     },
@@ -150,10 +133,10 @@ export async function fetchPublishedPage(
   token: string,
   pageId?: string | null,
 ): Promise<PublishedPage | null> {
-  const { data, error } = await db.rpc<PublishedPage | null>("get_published_page", {
+  const { data, error } = await supabase.rpc("get_published_page", {
     p_token: token,
-    p_page: pageId ?? null,
+    ...(pageId ? { p_page: pageId } : {}),
   });
   if (error) throw new Error(error.message);
-  return data ?? null;
+  return (data as unknown as PublishedPage | null) ?? null;
 }
