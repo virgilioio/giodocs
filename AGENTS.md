@@ -763,7 +763,7 @@ engines are never invited in.
   with Copy link and Unpublish.
 
 ## Decisions (Allan, 2026-11-05: databases on public pages)
-Allan took the recommended answers (migration …_public_databases.sql,
+Allan took the recommended answers (migration 20261105231643_public_databases.sql,
 src/lib/public-database.ts).
 - A database placed on a page the link shows (a view block naming one of
   the page's own child databases, as "Table view" makes) is public with
