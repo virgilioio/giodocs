@@ -1211,6 +1211,7 @@ export type Database = {
           pages: number
         }[]
       }
+      database_is_public: { Args: { p_db: string }; Returns: boolean }
       delete_page: { Args: { p_page: string }; Returns: undefined }
       deliver_date_reminders: { Args: never; Returns: number }
       domain_status: { Args: { p_email: string }; Returns: string }
@@ -1406,8 +1407,25 @@ export type Database = {
         Args: { d: Database["public"]["Tables"]["property_defs"]["Row"] }
         Returns: Json
       }
+      public_database_json: {
+        Args: {
+          p_db: string
+          p_mode: string
+          p_rows_open: boolean
+          p_views: boolean
+        }
+        Returns: Json
+      }
+      public_db_ok: {
+        Args: { p_db: string; p_include: boolean; p_root: string }
+        Returns: boolean
+      }
       public_path_ok: {
         Args: { p_include: boolean; p_page: string; p_root: string }
+        Returns: boolean
+      }
+      public_places: {
+        Args: { p_db: string; p_parent: string }
         Returns: boolean
       }
       publish_view: {

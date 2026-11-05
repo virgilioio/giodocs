@@ -117,6 +117,10 @@ export function PublishSection({
           <div className="text-caption text-faint" style={{ marginLeft: 21, lineHeight: 1.4 }}>
             Only those shared with the whole workspace. Private pages stay private.
           </div>
+          <div className="mt-2 text-caption text-faint" style={{ lineHeight: 1.4 }}>
+            Databases on the page are public with it. A property hidden in a view still shows on its
+            row’s page.
+          </div>
           {canManage ? (
             <button
               type="button"

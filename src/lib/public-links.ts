@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/lib/toast";
+import type { PublicDatabase, PublicPerson } from "@/lib/public-database";
 
 /* Public links (Allan, 2026-11-05): Notion's Share › Publish to web. A
  * published page has a link with a random code, `/s/<code>`, never its id;
@@ -27,6 +28,15 @@ export type PublishedPage = {
     blocks: unknown[];
     is_database: boolean;
     edited_at: string | null;
+    /** A row: its database, values and built-ins (its property strip). */
+    database_id?: string | null;
+    props?: unknown;
+    row_number?: number | null;
+    created_at?: string | null;
+    created_by?: string | null;
+    edited_by?: string | null;
+    verified_at?: string | null;
+    verified_by?: string | null;
   };
   /** From the published page down to this one. */
   path: Array<{ id: string; title: string | null; icon: string | null }>;
@@ -34,6 +44,13 @@ export type PublishedPage = {
   /** Pages it mentions that the link shows (others read "Private page"). */
   mentioned: Array<{ id: string; title: string | null; icon: string | null }>;
   emoji: Array<{ name: string; path: string }>;
+  /** The databases it shows (public-database.ts), and the ones its views
+   *  name that aren't public. */
+  databases?: PublicDatabase[];
+  unavailable?: string[];
+  /** People its values name: names only. */
+  people?: PublicPerson[];
+  stale_days?: number;
 };
 
 export type PublicPageRow = {
