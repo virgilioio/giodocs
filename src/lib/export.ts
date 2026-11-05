@@ -239,7 +239,17 @@ export function blockToMarkdown(b: Block, ordinal = 1): string {
     case "todo":
       return `${pad}- [${b.checked ? "x" : " "}] ${text}`;
     case "toggle": {
-      const body = typeof b.body === "string" ? b.body : "";
+      // What it holds (2026-11-05): its blocks, written as Markdown, or an
+      // older import's body text.
+      const kids = Array.isArray((b as { children?: unknown }).children)
+        ? ((b as { children: Block[] }).children as Block[])
+        : null;
+      const kidOrds = kids ? numberedOrdinals(kids) : null;
+      const body = kids
+        ? kids.map((k) => blockToMarkdown(k, (k.id && kidOrds!.get(k.id)) || 1)).join("\n\n")
+        : typeof b.body === "string"
+          ? b.body
+          : "";
       // Levelled toggle: emit summary at heading depth then body. Plain
       // toggle: keep today's `**text**` + indented body output.
       const level = typeof b.level === "string" ? (b.level as string) : "text";
@@ -600,9 +610,16 @@ function blockHtml(b: Block, ordinal = 1): string {
             : level === "h3"
               ? `<h4>${inline(text)}</h4>`
               : inline(text);
-      return `<details${b.open ? " open" : ""}><summary>${summaryInner}</summary>${
-        body ? `<p>${inline(body)}</p>` : ""
-      }</details>`;
+      const kids = Array.isArray((b as { children?: unknown }).children)
+        ? ((b as { children: Block[] }).children as Block[])
+        : null;
+      const kidOrds = kids ? numberedOrdinals(kids) : null;
+      const inner = kids
+        ? kids.map((k) => blockHtml(k, (k.id && kidOrds!.get(k.id)) || 1)).join("\n")
+        : body
+          ? `<p>${inline(body)}</p>`
+          : "";
+      return `<details${b.open ? " open" : ""}><summary>${summaryInner}</summary>${inner}</details>`;
     }
     case "quote":
       return `<blockquote>${inline(text)}</blockquote>`;

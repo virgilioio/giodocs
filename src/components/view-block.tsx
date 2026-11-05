@@ -480,6 +480,9 @@ function InlineViewBody({
         manualOrder={rowActions.manualOrder}
         relations={rt.tableRelations}
         databaseId={view.database_id ?? undefined}
+        // Owners delete (archive) a property from its column, as on the
+        // database page (missing here until 2026-10-31).
+        isOwner={rt.members.some((m) => m.user_id === user?.id && m.role === "owner")}
         selectable={selectable}
         rowLimit={showAll ? undefined : ROW_LIMIT}
         onShowAll={() => setShowAll(true)}

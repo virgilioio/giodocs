@@ -427,3 +427,54 @@ describe("container list round-trip for handle ops", () => {
     expect(setContainerList(doc, null, next).map((b) => b.id)).toEqual(["cols"]);
   });
 });
+
+describe("toggles hold blocks (2026-11-05)", () => {
+  type T = { id: string; type?: string; text?: string; children?: T[]; cols?: T[][]; open?: boolean };
+  const make = (): T[] => [
+    { id: "p", type: "text", text: "para" },
+    {
+      id: "c",
+      type: "callout",
+      children: [{ id: "t", type: "toggle", text: "Inner toggle", open: true, children: [{ id: "k", type: "text", text: "kid" }] }],
+    },
+  ];
+  const empty = () => ({ id: "n", type: "text", text: "" });
+  const tRef = { blockId: "t", callout: true as const };
+
+  it("finds a toggle's blocks wherever it sits, and keeps its title", () => {
+    expect(getContainerList(make(), tRef)!.map((b) => b.id)).toEqual(["k"]);
+    const out = setContainerList(make(), tRef, [{ id: "z", type: "text" }]);
+    const t = (out[1].children as T[])[0];
+    expect(t.text).toBe("Inner toggle");
+    expect(t.children!.map((b) => b.id)).toEqual(["z"]);
+  });
+
+  it("moves a block into a toggle inside a callout, and out again leaving it empty", () => {
+    const into = moveBlockAcross(make(), { col: null, index: 0 }, { col: tRef, index: 1 }, empty);
+    expect(into.map((b) => b.id)).toEqual(["c"]);
+    expect(getContainerList(into, tRef)!.map((b) => b.id)).toEqual(["k", "p"]);
+    const out1 = moveBlockAcross(into, { col: tRef, index: 0 }, { col: null, index: 1 }, empty);
+    const out2 = moveBlockAcross(out1, { col: tRef, index: 0 }, { col: null, index: 1 }, empty);
+    expect(getContainerList(out2, tRef)).toEqual([]);
+  });
+
+  it("never puts a toggle inside itself, and never columns into a toggle", () => {
+    const doc: T[] = [
+      { id: "t", type: "toggle", open: true, children: [{ id: "k", type: "text" }] },
+      { id: "cols", type: "columns", cols: [[{ id: "x" }], [{ id: "y" }]] },
+    ];
+    const self = moveBlockAcross(doc, { col: null, index: 0 }, { col: tRef, index: 0 }, empty);
+    expect(self.map((b) => b.id)).toEqual(["t", "cols"]);
+    const cols = moveBlockAcross(doc, { col: null, index: 1 }, { col: tRef, index: 0 }, empty);
+    expect(cols.map((b) => b.id)).toEqual(["t", "cols"]);
+  });
+
+  it("lets a callout go into a toggle", () => {
+    const doc: T[] = [
+      { id: "t", type: "toggle", open: true, children: [] },
+      { id: "c2", type: "callout", children: [{ id: "q", type: "text" }] },
+    ];
+    const out = moveBlockAcross(doc, { col: null, index: 1 }, { col: tRef, index: 0 }, empty);
+    expect(getContainerList(out, tRef)!.map((b) => b.id)).toEqual(["c2"]);
+  });
+});

@@ -50,6 +50,7 @@ import {
   moveRunAcross,
   getContainerList,
   setContainerList,
+  findBlockDeep,
   type Path as ReorderPath,
   type ColumnRef,
 } from "@/lib/reorder";
@@ -168,6 +169,7 @@ import {
   newSheetGrid,
   tryMarkdownShortcut,
   splitBlock as opsSplit,
+  withTypeChanged,
   mergeIntoPrev as opsMerge,
   convertToText as opsConvert,
   removeBlock as opsRemove,
@@ -214,6 +216,7 @@ import { Editable } from "./editable";
 import { EmojiPicker } from "./emoji-picker";
 import { Popover } from "./popover";
 import { readCaret, writeCaret } from "@/lib/caret-shim";
+import { lastShownId, toggleKey, toggleKids } from "@/lib/toggle-ops";
 import { inlineToHtml } from "@/lib/inline-markdown";
 import { useDragSession } from "@/hooks/use-drag-session";
 
@@ -283,8 +286,68 @@ type ColumnBridge = {
    *  columns block when EVERY column is empty. Returns false (no-op) when
    *  any column still has content. */
   dissolveColumns: (colRef: ColumnRef) => boolean;
+  /** ⇧Tab in a toggle's block: it moves out, right after the toggle, in
+   *  the list the toggle sits in (2026-11-05). */
+  outOfToggle: (colRef: ColumnRef, id: string, caret: number) => void;
 };
 const ColumnBridgeCtx = createContext<ColumnBridge | null>(null);
+
+/** Put the caret in block `id` once it's on screen, wherever it is (inside
+ *  a toggle, a callout or a column), by its element. Used where a list
+ *  change puts the caret in another list (toggles, 2026-11-05). */
+function focusBlockSoon(id: string, caret: "start" | "end" | number = "start") {
+  let tries = 0;
+  const go = () => {
+    const row = document.querySelector(`[data-block-id="${CSS.escape(id)}"]`);
+    const el = row?.querySelector<HTMLElement>('[contenteditable="true"], textarea');
+    if (!el) {
+      if (tries++ < 5) requestAnimationFrame(go);
+      return;
+    }
+    el.focus({ preventScroll: true });
+    const src = readEditableSource(el);
+    const c = caret === "start" ? 0 : caret === "end" ? src.length : Math.min(caret, src.length);
+    try {
+      writeCaret(el, src, c, c);
+    } catch {
+      /* noop */
+    }
+  };
+  requestAnimationFrame(go);
+}
+
+/** An open toggle with nothing in it: Notion's line, a place to click or
+ *  drop into (2026-11-05). */
+function ToggleEmpty({
+  blockId,
+  locked,
+  onAdd,
+}: {
+  blockId: string;
+  locked: boolean;
+  onAdd: () => void;
+}) {
+  const bridge = useContext(ColumnBridgeCtx);
+  const ref = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    const colRef: ColumnRef = { blockId, callout: true };
+    bridge?.registerTrack(colRef, ref.current);
+    return () => bridge?.registerTrack(colRef, null);
+  }, [bridge, blockId]);
+  return (
+    <button
+      ref={ref}
+      type="button"
+      data-toggle-empty
+      disabled={locked}
+      onClick={onAdd}
+      className="block w-full rounded-sm text-left text-prose text-faint hover:bg-rail disabled:hover:bg-transparent"
+      style={{ padding: "1px 2px" }}
+    >
+      {locked ? "Empty toggle." : "Empty toggle. Click or drop blocks inside."}
+    </button>
+  );
+}
 
 
 
@@ -1217,6 +1280,35 @@ export function EditableBody({
     };
   }, [activateDrag]);
 
+  /** The innermost open toggle whose blocks (or "Empty toggle" line) are
+   *  under the point, skipping toggles inside the blocks in `skipIds`. */
+  const innermostToggleTrack = useCallback(
+    (clientX: number, clientY: number, skipIds: readonly string[]) => {
+      let best: { ref: ColumnRef; el: HTMLElement; rect: DOMRect; area: number } | null = null;
+      for (const [key, el] of colTracks.current) {
+        if (!key.endsWith(":callout")) continue;
+        const id = key.slice(0, -":callout".length);
+        const tb = findBlockDeep(blocksRef.current, id);
+        if (tb?.type !== "toggle" || !tb.open) continue;
+        if (
+          skipIds.some((s) => {
+            const sb = findBlockDeep(blocksRef.current, s);
+            return !!sb && !!findBlockDeep([sb], id);
+          })
+        )
+          continue;
+        const r = el.getBoundingClientRect();
+        if (clientY < r.top || clientY > r.bottom || clientX < r.left - 24 || clientX > r.right)
+          continue;
+        const area = r.width * r.height;
+        if (!best || area < best.area)
+          best = { ref: { blockId: id, callout: true }, el, rect: r, area };
+      }
+      return best;
+    },
+    [],
+  );
+
   const computeGap = useCallback(
     (
       clientX: number,
@@ -1319,6 +1411,14 @@ export function EditableBody({
         };
       };
 
+      // Step 0: an open toggle's blocks (2026-11-05), at any depth — the
+      // innermost one under the pointer wins. A toggle never takes itself
+      // or what holds it, and columns never go into one.
+      if (!draggingColumnsBlock) {
+        const t = innermostToggleTrack(clientX, clientY, d?.ids ?? []);
+        if (t) return hitContainer(t.ref, t.rect, t.el, getContainerList(blocks, t.ref));
+      }
+
       // Step 1: is the pointer inside any columns block's bounding box?
       // If so, hit-test against its column tracks (unless we're dragging
       // a columns block itself, in which case only top-level applies).
@@ -1417,7 +1517,7 @@ export function EditableBody({
         indicator: { x, y: last.bottom - cRect.top + 2, width },
       };
     },
-    [blocks],
+    [blocks, innermostToggleTrack],
   );
 
   /* ────────── Which container is this point in? ──────────
@@ -1435,6 +1535,9 @@ export function EditableBody({
         clientY <= r.bottom &&
         clientX >= r.left &&
         clientX <= r.right;
+      // Inside an open toggle's blocks, at any depth: that toggle.
+      const t = innermostToggleTrack(clientX, clientY, []);
+      if (t) return t.ref;
       for (const b of blocksRef.current) {
         if (b.type === "columns" && Array.isArray(b.cols)) {
           const colsEl = rowEls.current.get(b.id);
@@ -1461,7 +1564,7 @@ export function EditableBody({
       }
       return null;
     },
-    [],
+    [innermostToggleTrack],
   );
 
 
@@ -2354,8 +2457,7 @@ export function EditableBody({
       // normalizeSheet padded it up to its 2×1 floors.
       if (type === "sheet" && !nb.cells) Object.assign(nb, newSheetGrid());
       if (type === "divider") nb.text = "";
-      const next = [...blocks];
-      next[idx] = nb;
+      const next = withTypeChanged(blocks, idx, nb);
       if (type === "divider") {
         const spawn = newBlock("text");
         next.splice(idx + 1, 0, spawn);
@@ -2587,8 +2689,10 @@ export function EditableBody({
     (blockId: string, type: BlockType, extra?: Partial<Blk>) => {
       const t = runTargetFor(blockId);
       if (!t || !t.run.length) return;
-      const nextList = [...t.list];
-      for (const i of t.run) {
+      let nextList = [...t.list];
+      // From the end, so a toggle that lets go of its blocks (they follow
+      // it) never shifts the ones still to change.
+      for (const i of [...t.run].sort((a, b) => b - a)) {
         const prev = nextList[i];
         const nb: Blk = { ...prev, type, ...(extra ?? {}) };
         if (type === "todo" && nb.checked == null) nb.checked = false;
@@ -2605,7 +2709,7 @@ export function EditableBody({
           if (type !== "toggle") delete nb.level;
           else if (!extra?.level) delete nb.level;
         }
-        nextList[i] = nb;
+        nextList = withTypeChanged(nextList, i, nb);
       }
       commitScoped(t.scope, nextList);
     },
@@ -3133,8 +3237,70 @@ export function EditableBody({
    * optionally removing the now-empty inner block. Reuses an existing
    * empty text neighbour if one is already there — never leaves a stray
    * empty. */
+  /* Toggles (2026-11-05). A toggle can sit in any list (the page, a
+   * column, a callout, another toggle), so these find it by id and work in
+   * the list it sits in (rowColRefById), wherever that is. */
+  const isToggleRef = useCallback(
+    (colRef: ColumnRef) =>
+      !("colIndex" in colRef) &&
+      findBlockDeep(blocksRef.current, colRef.blockId)?.type === "toggle",
+    [],
+  );
+  /** The list a toggle sits in, and where. */
+  const toggleHome = useCallback((toggleId: string, doc: Blk[]) => {
+    const ref = rowColRefById.current.get(toggleId) ?? null;
+    const list = getContainerList(doc, ref);
+    const at = list ? list.findIndex((x) => x.id === toggleId) : -1;
+    return list && at >= 0 ? { ref, list, at } : null;
+  }, []);
+  /** ⇧Tab: the block leaves the toggle, right after it. */
+  const outOfToggle = useCallback(
+    (colRef: ColumnRef, id: string, caret: number) => {
+      if (locked) return;
+      const doc = blocksRef.current;
+      const kids = getContainerList(doc, colRef);
+      const from = kids ? kids.findIndex((x) => x.id === id) : -1;
+      const home = toggleHome(colRef.blockId, doc);
+      if (from < 0 || !home) return;
+      const next = moveBlockAcross(
+        doc,
+        { col: colRef, index: from },
+        { col: home.ref, index: home.at + 1 },
+        () => newBlock("text"),
+      );
+      if (next === doc) return;
+      commit(next);
+      focusBlockSoon(id, caret);
+    },
+    [commit, locked, toggleHome],
+  );
+  /** Enter on an empty last block in a toggle: it goes, and a new line
+   *  starts after the toggle. */
+  const afterToggle = useCallback(
+    (colRef: ColumnRef, removeBlockId: string | null) => {
+      let doc = blocksRef.current;
+      if (removeBlockId) {
+        const kids = getContainerList(doc, colRef) ?? [];
+        doc = setContainerList(
+          doc,
+          colRef,
+          kids.filter((x) => x.id !== removeBlockId),
+        );
+      }
+      const home = toggleHome(colRef.blockId, doc);
+      if (!home) return;
+      const spawn = newBlock("text");
+      const list = [...home.list];
+      list.splice(home.at + 1, 0, spawn);
+      commit(setContainerList(doc, home.ref, list));
+      focusBlockSoon(spawn.id);
+    },
+    [commit, toggleHome],
+  );
+
   const escapeColumn = useCallback(
     (colRef: ColumnRef, removeBlockId: string | null) => {
+      if (isToggleRef(colRef)) return afterToggle(colRef, removeBlockId);
       const pi = blocks.findIndex((b) => b.id === colRef.blockId);
       if (pi === -1) return;
       const parent = blocks[pi];
@@ -3183,7 +3349,7 @@ export function EditableBody({
       commit(inserted);
       setFocusRequest({ id: spawn.id, caret: "start" });
     },
-    [blocks, commit],
+    [blocks, commit, isToggleRef, afterToggle],
   );
 
   /* Backspace in an empty block that is the ONLY block of its column, when
@@ -3195,6 +3361,13 @@ export function EditableBody({
   const dissolveColumnsIfEmpty = useCallback(
     (colRef: ColumnRef) => {
       if (locked) return false;
+      // A toggle's only block, empty: the toggle is empty again and the
+      // caret goes back to its title.
+      if (isToggleRef(colRef)) {
+        commit(setContainerList(blocksRef.current, colRef, []));
+        focusBlockSoon(colRef.blockId, "end");
+        return true;
+      }
       const pi = blocks.findIndex((b) => b.id === colRef.blockId);
       if (pi === -1) return false;
       const parent = blocks[pi];
@@ -3207,7 +3380,7 @@ export function EditableBody({
       setFocusRequest({ id: spawn.id, caret: "start" });
       return true;
     },
-    [blocks, commit, locked],
+    [blocks, commit, locked, isToggleRef],
   );
 
   const selectAllTopLevel = useCallback(() => {
@@ -3221,6 +3394,16 @@ export function EditableBody({
    * would go above index 0. */
   const exitVerticalFromColumn = useCallback(
     (colRef: ColumnRef, dir: 1 | -1, caret: "start" | "end") => {
+      // Out of a toggle: up to its title, or down to what follows it.
+      if (isToggleRef(colRef)) {
+        if (dir === -1) return focusBlockSoon(colRef.blockId, "end");
+        const home = toggleHome(colRef.blockId, blocksRef.current);
+        if (!home) return;
+        const t = nextEditableIndex(home.list, home.at, 1);
+        if (t !== null) focusBlockSoon(home.list[t].id, caret);
+        else if (home.ref) exitVerticalFromColumn(home.ref, 1, caret);
+        return;
+      }
       const pi = blocks.findIndex((b) => b.id === colRef.blockId);
       if (pi === -1) return;
       const target = nextEditableIndex(blocks, pi, dir);
@@ -3241,7 +3424,7 @@ export function EditableBody({
         }
       }
     },
-    [blocks],
+    [blocks, isToggleRef, toggleHome],
   );
 
   const columnBridge = useMemo<ColumnBridge>(
@@ -3255,8 +3438,9 @@ export function EditableBody({
       selectedIds,
       shiftClick: (id, colRef) => handleShiftClick(id, colRef),
       dissolveColumns: dissolveColumnsIfEmpty,
+      outOfToggle,
     }),
-    [registerRowEl, registerColTrack, beginDrag, escapeColumn, selectAllTopLevel, exitVerticalFromColumn, selectedIds, handleShiftClick, dissolveColumnsIfEmpty],
+    [registerRowEl, registerColTrack, beginDrag, escapeColumn, selectAllTopLevel, exitVerticalFromColumn, selectedIds, handleShiftClick, dissolveColumnsIfEmpty, outOfToggle],
   );
 
 
@@ -3528,6 +3712,25 @@ export function EditableBody({
               return;
             }
 
+            // Toggles (2026-11-05): Enter in an open toggle's title starts
+            // its first block, ↓/→ at its end step in, Tab tucks a block
+            // into the toggle above it.
+            if (slash?.blockId !== b.id) {
+              const tk = toggleKey(
+                blocks,
+                b.id,
+                { key: e.key, shift: e.shiftKey, meta: primaryMod(e), alt: e.altKey },
+                ss,
+                se,
+              );
+              if (tk) {
+                e.preventDefault();
+                if (tk.next) applyOp({ next: tk.next });
+                focusBlockSoon(tk.focus.id, tk.focus.caret);
+                return;
+              }
+            }
+
             // Delegate to the shared resolver — the same decision layer
             // used by ColumnStack. Everything below dispatches an `Op`
             // back into local state / undo. The four legitimate scope-
@@ -3559,7 +3762,10 @@ export function EditableBody({
               const idx = blocks.findIndex((x) => x.id === b.id);
               const target = nextEditableIndex(blocks, idx, dir);
               if (target !== null) {
-                setFocusRequest({ id: blocks[target].id, caret });
+                // Up into an open toggle lands on the last block it shows.
+                const into = dir === -1 ? lastShownId(blocks[target]) : blocks[target].id;
+                if (into !== blocks[target].id) focusBlockSoon(into, caret);
+                else setFocusRequest({ id: blocks[target].id, caret });
                 return true;
               }
               return false;
@@ -3709,7 +3915,9 @@ export function EditableBody({
                       const idx = blocks.findIndex((x) => x.id === bid);
                       const target = nextEditableIndex(blocks, idx, -1);
                       if (target !== null) {
-                        setFocusRequest({ id: blocks[target].id, caret: "end" });
+                        const into = lastShownId(blocks[target]);
+                        if (into !== blocks[target].id) focusBlockSoon(into, "end");
+                        else setFocusRequest({ id: blocks[target].id, caret: "end" });
                       } else {
                         focusTitle();
                       }
@@ -4401,8 +4609,27 @@ function BlockContent({
           {renderProse(summaryCls, { placeholder: "Toggle" })}
         </div>
         {block.open ? (
-          <div className="ml-5 mt-1 text-meta text-muted">
-            Toggles can’t hold blocks yet, so there’s nothing inside.
+          // What it holds, under the title (the 16px arrow and its gap).
+          <div className="ml-5 mt-1" data-toggle-body={block.id}>
+            {toggleKids(block).length ? (
+              <ColumnStack
+                colRef={{ blockId: block.id, callout: true }}
+                container="toggle"
+                blocks={toggleKids(block)}
+                setBlocks={(next) => onChange({ children: next, body: undefined } as Partial<Blk>)}
+                locked={locked}
+              />
+            ) : (
+              <ToggleEmpty
+                blockId={block.id}
+                locked={locked}
+                onAdd={() => {
+                  const first = newBlock("text");
+                  onChange({ children: [first], body: undefined } as Partial<Blk>);
+                  focusBlockSoon(first.id);
+                }}
+              />
+            )}
           </div>
         ) : null}
       </div>
@@ -4789,17 +5016,21 @@ function ColumnStack({
   blocks,
   setBlocks,
   locked,
+  container,
 }: {
   /** The container this stack renders. Column: `{blockId, colIndex}`.
-   *  Callout: `{blockId, callout: true}`. See ColumnRef in block-ops. */
+   *  Callout or toggle: `{blockId, callout: true}`. See ColumnRef in
+   *  reorder.ts. */
   colRef: ColumnRef;
   blocks: Blk[];
   setBlocks: (next: Blk[]) => void;
   locked: boolean;
+  /** A toggle's blocks (2026-11-05): callouts may go in. */
+  container?: "toggle";
 }) {
   const bridge = useContext(ColumnBridgeCtx);
   const parentBlockId = colRef.blockId;
-  const isCallout = !("colIndex" in colRef);
+  const isCallout = !("colIndex" in colRef) && container !== "toggle";
   const trackRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     bridge?.registerTrack(colRef, trackRef.current);
@@ -4910,9 +5141,7 @@ function ColumnStack({
     if (type === "divider") nb.text = "";
     if (type !== "toggle") delete nb.level;
     else if (!extra?.level && !("level" in (extra ?? {}))) delete nb.level;
-    const next = [...blocks];
-    next[idx] = nb;
-    setBlocks(next);
+    setBlocks(withTypeChanged(blocks, idx, nb));
     setSlash(null);
     setFocusRequest({ id: blockId, caret: at >= 0 ? at : stripped.length });
   }
@@ -5195,6 +5424,52 @@ function ColumnStack({
               }
             }
 
+            // Toggles (2026-11-05), as at the page's top level; and ⇧Tab in
+            // a toggle's block takes it out, right after the toggle.
+            if (slash?.blockId !== b.id) {
+              const tk = toggleKey(
+                blocks,
+                b.id,
+                { key: e.key, shift: e.shiftKey, meta: primaryMod(e), alt: e.altKey },
+                ss,
+                se,
+              );
+              if (tk) {
+                e.preventDefault();
+                if (tk.next) applyOp({ next: tk.next });
+                focusBlockSoon(tk.focus.id, tk.focus.caret);
+                return;
+              }
+              // Backspace on an empty first block of a toggle: it goes, and
+              // the caret moves up to the title (the only block: see
+              // dissolveColumns).
+              if (
+                e.key === "Backspace" &&
+                container === "toggle" &&
+                ss === 0 &&
+                se === 0 &&
+                v === "" &&
+                blocks.length > 1 &&
+                blocks[0]?.id === b.id
+              ) {
+                e.preventDefault();
+                applyOp({ next: blocks.slice(1) });
+                focusBlockSoon(colRef.blockId, "end");
+                return;
+              }
+              if (
+                e.key === "Tab" &&
+                e.shiftKey &&
+                container === "toggle" &&
+                !((b as { indent?: number }).indent ?? 0) &&
+                bridge
+              ) {
+                e.preventDefault();
+                bridge.outOfToggle(colRef, b.id, ss);
+                return;
+              }
+            }
+
             const idxInList = blocks.findIndex((x) => x.id === b.id);
             const op: KeyOp = resolveKey("column", blocks, idxInList, {
               key: e.key,
@@ -5209,7 +5484,9 @@ function ColumnStack({
             const jumpTo = (dir: 1 | -1, caret: "start" | "end") => {
               const target = nextEditableIndex(blocks, idxInList, dir);
               if (target !== null) {
-                setFocusRequest({ id: blocks[target].id, caret });
+                const into = dir === -1 ? lastShownId(blocks[target]) : blocks[target].id;
+                if (into !== blocks[target].id) focusBlockSoon(into, caret);
+                else setFocusRequest({ id: blocks[target].id, caret });
                 return true;
               }
               return false;

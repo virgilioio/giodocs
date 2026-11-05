@@ -76,9 +76,12 @@ export function deleteIndices<T>(
  * keeps working unchanged.
  *
  *   Column:   { blockId, colIndex }
- *   Callout:  { blockId, callout: true }
+ *   Children: { blockId, callout: true } — a callout's or (2026-11-05) a
+ *             toggle's `children`. The flag keeps its first name.
  *
- * `col: null` still means "the top-level block list".
+ * `col: null` still means "the top-level block list". A container is found
+ * wherever it sits (a toggle inside a callout, a column or another toggle):
+ * block ids are unique across the page.
  */
 export type ColumnRef =
   | { blockId: string; colIndex: number }
@@ -95,6 +98,63 @@ type BlkLite = {
 
 function isCalloutRef(r: ColumnRef): r is { blockId: string; callout: true } {
   return (r as { callout?: unknown }).callout === true;
+}
+
+/** Blocks that hold a `children` list: callouts and toggles. */
+const HOLDS_CHILDREN = new Set(["callout", "toggle"]);
+
+/** A block anywhere in the tree (columns, children). */
+function findDeep<B extends BlkLite>(blocks: readonly B[], id: string): B | null {
+  for (const b of blocks) {
+    if (b.id === id) return b;
+    if (Array.isArray(b.children)) {
+      const hit = findDeep(b.children as B[], id);
+      if (hit) return hit;
+    }
+    if (Array.isArray(b.cols)) {
+      for (const col of b.cols) {
+        const hit = findDeep(col as B[], id);
+        if (hit) return hit;
+      }
+    }
+  }
+  return null;
+}
+
+/** The tree with block `id` replaced by `fn(it)`, wherever it sits. Lists
+ *  that don't hold it keep their identity. */
+function mapDeep<B extends BlkLite>(blocks: readonly B[], id: string, fn: (b: B) => B): B[] {
+  let changed = false;
+  const out = blocks.map((b) => {
+    if (b.id === id) {
+      changed = true;
+      return fn(b);
+    }
+    let next = b;
+    if (Array.isArray(b.children)) {
+      const kids = mapDeep(b.children as B[], id, fn);
+      if (kids !== b.children) next = { ...next, children: kids } as B;
+    }
+    if (Array.isArray(b.cols)) {
+      const cols = b.cols.map((c) => mapDeep(c as B[], id, fn));
+      if (cols.some((c, i) => c !== b.cols![i])) next = { ...next, cols } as B;
+    }
+    if (next !== b) changed = true;
+    return next;
+  });
+  return changed ? out : (blocks as B[]);
+}
+
+/** Is block `id` the block `root` or inside it? */
+function containsId(root: BlkLite, id: string): boolean {
+  if (root.id === id) return true;
+  return findDeep([root], id) !== null;
+}
+
+/** A toggle may hold nothing (it shows "Empty toggle"); columns and
+ *  callouts keep at least one block. */
+function mayBeEmpty<B extends BlkLite>(blocks: readonly B[], col: ColumnRef): boolean {
+  return isCalloutRef(col) && findDeep(blocks, col.blockId)?.type === "toggle";
 }
 
 function samePath(a: Path, b: Path): boolean {
@@ -125,12 +185,13 @@ function getList<B extends BlkLite>(
   makeMigratedText?: (text: string) => B,
 ): B[] | null {
   if (col === null) return blocks.slice();
-  const b = blocks.find((x) => x.id === col.blockId);
+  const b = findDeep(blocks, col.blockId);
   if (!b) return null;
   if (isCalloutRef(col)) {
-    if (b.type !== "callout") return null;
+    if (!HOLDS_CHILDREN.has(b.type ?? "")) return null;
     if (Array.isArray(b.children)) return (b.children as B[]).slice();
-    if (makeMigratedText) return [makeMigratedText(b.text ?? "")];
+    // A toggle's text is its summary, never its first child.
+    if (makeMigratedText && b.type === "callout") return [makeMigratedText(b.text ?? "")];
     return [];
   }
   if (!Array.isArray(b.cols)) return null;
@@ -149,9 +210,15 @@ function setList<B extends BlkLite>(
   next: readonly B[],
 ): B[] {
   if (col === null) return next.slice() as B[];
-  return blocks.map((b) => {
-    if (b.id !== col.blockId) return b;
+  return mapDeep(blocks, col.blockId, (b) => {
     if (isCalloutRef(col)) {
+      if (b.type === "toggle") {
+        // A toggle keeps its summary; an old imported `body` is now its
+        // children.
+        const t = { ...b, children: (next as B[]).slice() } as B & { body?: unknown };
+        delete t.body;
+        return t as B;
+      }
       if (b.type !== "callout") return b;
       return { ...b, children: (next as B[]).slice(), text: "" } as B;
     }
@@ -167,10 +234,15 @@ function setList<B extends BlkLite>(
 /** Whether inserting `item` into `to` is refused by a container invariant.
  *  Columns must never nest (existing rule). Callouts refuse other callouts
  *  and columns blocks (new rule) — see block-ops.ts's `children` note. */
-function isRefusedInsertion<B extends BlkLite>(item: B, to: Path): boolean {
+function isRefusedInsertion<B extends BlkLite>(item: B, to: Path, blocks?: readonly B[]): boolean {
   if (to.col === null) return false;
+  // Never into itself (a toggle dropped into its own children).
+  if (containsId(item, to.col.blockId)) return true;
   if (isCalloutRef(to.col)) {
-    return item.type === "callout" || item.type === "columns";
+    if (item.type === "columns") return true;
+    // Callouts never hold callouts; a toggle holds anything but columns.
+    const holder = blocks ? findDeep(blocks, to.col.blockId) : null;
+    return holder?.type !== "toggle" && item.type === "callout";
   }
   // Column target: existing invariant.
   return item.type === "columns";
@@ -205,7 +277,7 @@ export function moveBlockAcross<B extends BlkLite>(
   const item = source[from.index];
 
   // Container invariants.
-  if (isRefusedInsertion(item, to)) return blocks.slice() as B[];
+  if (isRefusedInsertion(item, to, blocks)) return blocks.slice() as B[];
 
   const same = samePath(from, to);
   if (same && (to.index === from.index || to.index === from.index + 1)) {
@@ -223,7 +295,7 @@ export function moveBlockAcross<B extends BlkLite>(
   const nextSource = source.slice();
   nextSource.splice(from.index, 1);
   const sourceNeedsSeed =
-    from.col !== null && nextSource.length === 0;
+    from.col !== null && nextSource.length === 0 && !mayBeEmpty(blocks, from.col);
   const seededSource = sourceNeedsSeed ? [makeEmpty()] : nextSource;
   let intermediate = setList(blocks, from.col, seededSource);
 
@@ -273,7 +345,7 @@ export function moveRunAcross<B extends BlkLite>(
   const items = source.slice(runStart, runEnd + 1);
 
   // Container invariants: any refused item aborts the whole run.
-  if (items.some((x) => isRefusedInsertion(x, to))) {
+  if (items.some((x) => isRefusedInsertion(x, to, blocks))) {
     return blocks.slice() as B[];
   }
 
@@ -289,7 +361,9 @@ export function moveRunAcross<B extends BlkLite>(
 
   const nextSource = source.slice(0, runStart).concat(source.slice(runEnd + 1));
   const seededSource =
-    first.col !== null && nextSource.length === 0 ? [makeEmpty()] : nextSource;
+    first.col !== null && nextSource.length === 0 && !mayBeEmpty(blocks, first.col)
+      ? [makeEmpty()]
+      : nextSource;
   let intermediate = setList(blocks, first.col, seededSource);
 
   const target = getList(intermediate, to.col, makeMigratedText);
@@ -317,4 +391,9 @@ export function setContainerList<B extends BlkLite>(
   next: readonly B[],
 ): B[] {
   return setList(blocks, col, next);
+}
+
+/** A block anywhere in the page (columns, callouts, toggles), by id. */
+export function findBlockDeep<B extends BlkLite>(blocks: readonly B[], id: string): B | null {
+  return findDeep(blocks, id);
 }

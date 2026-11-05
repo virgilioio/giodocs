@@ -718,3 +718,21 @@ describe("sheet font size survives export", () => {
     expect(html).not.toContain("font-size:12.5px");
   });
 });
+
+describe("toggles that hold blocks", () => {
+  const t = B("toggle", {
+    id: "t",
+    text: "Plans",
+    open: true,
+    children: [B("text", { id: "a", text: "First" }), B("bullet", { id: "b", text: "Item" })],
+  });
+  it("writes its blocks under the title in Markdown", () => {
+    expect(blockToMarkdown(t)).toBe("**Plans**\n  First\n  \n  - Item");
+  });
+  it("writes its blocks inside <details> in HTML", () => {
+    const html = toHtml({ title: "Doc", blocks: [t] });
+    expect(html).toContain("<details open><summary>Plans</summary>");
+    expect(html).toContain("First");
+    expect(html).toContain("Item</li>");
+  });
+});
