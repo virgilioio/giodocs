@@ -50,8 +50,16 @@ import {
 import { exitOnly } from "@/lib/exit-motion";
 import { PropertiesPaneBody } from "./properties-pane";
 import { MenuCheck } from "./menu-parts";
+import {
+  publicPageUrl,
+  usePublicPages,
+  useSetPagePublic,
+  useSetWorkspacePublicLinks,
+  type PublicPageRow,
+} from "@/lib/public-links";
 
-export type SettingsPane = "profile" | "preferences" | "general" | "people" | "properties" | "emoji";
+export type SettingsPane =
+  "profile" | "preferences" | "general" | "people" | "properties" | "emoji" | "public";
 
 type MemberRow = {
   user_id: string;
@@ -108,6 +116,8 @@ const ICON_GEAR =
   "M12 9.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6zM19.6 14.4a1.5 1.5 0 0 0 .3 1.7l.1.1a1.9 1.9 0 1 1-2.7 2.7l-.1-.1a1.5 1.5 0 0 0-2.6 1.1v.2a1.9 1.9 0 1 1-3.8 0v-.1a1.5 1.5 0 0 0-2.6-1.1l-.1.1a1.9 1.9 0 1 1-2.7-2.7l.1-.1a1.5 1.5 0 0 0-1.1-2.6h-.2a1.9 1.9 0 1 1 0-3.8h.1a1.5 1.5 0 0 0 1.1-2.6l-.1-.1a1.9 1.9 0 1 1 2.7-2.7l.1.1a1.5 1.5 0 0 0 2.6-1.1v-.2a1.9 1.9 0 1 1 3.8 0v.1a1.5 1.5 0 0 0 2.6 1.1l.1-.1a1.9 1.9 0 1 1 2.7 2.7l-.1.1a1.5 1.5 0 0 0 1.1 2.6h.2a1.9 1.9 0 1 1 0 3.8h-.1a1.5 1.5 0 0 0-1.4.9z";
 const ICON_PEOPLE =
   "M9 3.6a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2zM2 20.4v-1.8a4 4 0 0 1 4-4h6a4 4 0 0 1 4 4v1.8M16.5 3.9a3.6 3.6 0 0 1 0 7M22 20.4v-1.8a4 4 0 0 0-3-3.8";
+const ICON_GLOBE =
+  "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3.5 9h17M3.5 15h17M12 3c2.5 2.6 3.6 5.6 3.6 9s-1.1 6.4-3.6 9c-2.5-2.6-3.6-5.6-3.6-9S9.5 5.6 12 3z";
 const ICON_SMILEY =
   "M12 3.2a8.8 8.8 0 1 0 0 17.6 8.8 8.8 0 0 0 0-17.6zM8.7 14.4a4.4 4.4 0 0 0 6.6 0M9.2 9.6h.01M14.8 9.6h.01";
 const ICON_PERSON =
@@ -209,6 +219,7 @@ export function SettingsModal({
             </div>
           )}
           {pane === "emoji" && <EmojiPane />}
+          {pane === "public" && <PublicPagesPane onClose={onClose} />}
         </div>
       </div>
     </div>
@@ -231,6 +242,7 @@ function SettingsNav({ pane, onPick }: { pane: SettingsPane; onPick: (p: Setting
     { key: "people", label: "People", path: ICON_PEOPLE, group: "WORKSPACE" },
     { key: "properties", label: "Properties", path: ICON_PROPERTIES, group: "WORKSPACE" },
     { key: "emoji", label: "Custom emoji", path: ICON_SMILEY, group: "WORKSPACE" },
+    { key: "public", label: "Public pages", path: ICON_GLOBE, group: "WORKSPACE" },
   ];
 
   const groups: Array<{ name: "ACCOUNT" | "WORKSPACE"; items: NavItem[] }> = [];
@@ -1305,6 +1317,147 @@ function MemberAvatar({
  * or authored — so it has nothing to manage. The one derived thing kept
  * is the usage count, because it is what blocks a delete.
  */
+
+/* ─────────────────────────── Public pages (2026-11-05) ─────────────────────────── */
+
+/** Pages on the open web: owners switch public links on or off for the
+ *  workspace and see every published page; anyone can copy a link or
+ *  unpublish what they can edit. */
+function PublicPagesPane({ onClose }: { onClose: () => void }) {
+  const ws = useWorkspaceId();
+  const shell = useWorkspaceShell(ws);
+  const workspace = shell.workspace.data as { public_links?: boolean } | null | undefined;
+  const members = (shell.members.data ?? []) as unknown as MemberRow[];
+  const { user } = useAuth();
+  const isOwner = members.find((m) => m.user_id === user?.id)?.role === "owner";
+  const on = workspace?.public_links !== false;
+  const setWs = useSetWorkspacePublicLinks(ws);
+  const listQ = usePublicPages(ws);
+  const rows = listQ.data ?? [];
+  return (
+    <div>
+      <PaneHeader
+        title="Public pages"
+        sub="Pages anyone with the link can view, without signing in. Publish one from its Share menu."
+      />
+      <div style={{ padding: "0 30px 30px" }}>
+        <Row
+          label="Allow public links"
+          help={
+            on
+              ? "People who can edit a page can publish it. Search engines are never invited in."
+              : "Every public link has stopped working and nobody can publish. Switching this back on brings the links back."
+          }
+        >
+          {isOwner ? (
+            <Toggle value={on} onChange={(v) => setWs.mutate(v)} />
+          ) : (
+            <span className="text-muted" style={{ fontSize: 13.5 }}>
+              {on ? "On" : "Off"} · owners decide
+            </span>
+          )}
+        </Row>
+        <div className="border-t border-lineSoft" style={{ paddingTop: 16 }}>
+          <div className="text-noir" style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 6 }}>
+            Published pages{rows.length ? ` (${rows.length})` : ""}
+          </div>
+          {listQ.isLoading ? (
+            <div className="text-muted" style={{ fontSize: 13.5 }}>
+              Loading…
+            </div>
+          ) : rows.length === 0 ? (
+            <div className="text-muted" style={{ fontSize: 13.5 }}>
+              No pages are published. Open a page’s Share menu to publish it.
+            </div>
+          ) : (
+            rows.map((r) => (
+              <PublicPageItem
+                key={r.page_id}
+                row={r}
+                ws={ws}
+                publisher={members.find((m) => m.user_id === r.created_by)}
+                onOpen={onClose}
+              />
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PublicPageItem({
+  row,
+  ws,
+  publisher,
+  onOpen,
+}: {
+  row: PublicPageRow;
+  ws: string;
+  publisher: MemberRow | undefined;
+  onOpen: () => void;
+}) {
+  const navigate = useNavigate();
+  const toast = useToast();
+  const fmt = useFormatDate();
+  const set = useSetPagePublic(row.page_id, ws);
+  const { user } = useAuth();
+  const by =
+    row.created_by === user?.id
+      ? "you"
+      : publisher?.profiles?.full_name || publisher?.profiles?.email || "someone";
+  return (
+    <div
+      className="flex items-center border-t border-lineSoft"
+      style={{ gap: 10, padding: "10px 0" }}
+      data-public-page={row.page_id}
+    >
+      <Ico icon={row.icon || "📄"} size={18} />
+      <div className="min-w-0 flex-1">
+        <button
+          type="button"
+          onClick={() => {
+            onOpen();
+            void navigate({ to: "/p/$pageId", params: { pageId: row.page_id } });
+          }}
+          className="block max-w-full truncate text-left text-noir hover:underline"
+          style={{ fontSize: 14, fontWeight: 700 }}
+        >
+          {row.title || "Untitled"}
+        </button>
+        <div className="truncate text-muted" style={{ fontSize: 12.5 }}>
+          Published by {by} · {fmt(row.created_at)}
+          {row.include_children ? " · with the pages inside it" : ""}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          toClipboard(publicPageUrl(row.token));
+          toast.push("Public link copied");
+        }}
+        className="shrink-0 rounded-md border border-line text-secondary hover:bg-rail"
+        style={{ padding: "4px 10px", fontSize: 13 }}
+      >
+        Copy link
+      </button>
+      <button
+        type="button"
+        disabled={set.isPending}
+        onClick={() =>
+          set.mutate(
+            { on: false },
+            { onSuccess: () => toast.push(`“${row.title || "Untitled"}” is no longer public.`) },
+          )
+        }
+        className="shrink-0 rounded-md border border-line text-secondary hover:bg-rail disabled:opacity-60"
+        style={{ padding: "4px 10px", fontSize: 13 }}
+      >
+        Unpublish
+      </button>
+    </div>
+  );
+}
 
 function EmojiPane() {
   const ws = useWorkspaceId();

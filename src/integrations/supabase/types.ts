@@ -376,6 +376,47 @@ export type Database = {
           },
         ]
       }
+      page_public_links: {
+        Row: {
+          created_at: string
+          created_by: string
+          include_children: boolean
+          page_id: string
+          revoked_at: string | null
+          revoked_by: string | null
+          token: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          include_children?: boolean
+          page_id: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          token: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          include_children?: boolean
+          page_id?: string
+          revoked_at?: string | null
+          revoked_by?: string | null
+          token?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "page_public_links_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       page_verifications: {
         Row: {
           id: string
@@ -967,6 +1008,7 @@ export type Database = {
           id: string
           members_managed_by_os: boolean
           name: string
+          public_links: boolean
           slug: string
           stale_days: number
         }
@@ -976,6 +1018,7 @@ export type Database = {
           id?: string
           members_managed_by_os?: boolean
           name: string
+          public_links?: boolean
           slug: string
           stale_days?: number
         }
@@ -985,6 +1028,7 @@ export type Database = {
           id?: string
           members_managed_by_os?: boolean
           name?: string
+          public_links?: boolean
           slug?: string
           stale_days?: number
         }
@@ -1208,6 +1252,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      get_published_page: {
+        Args: { p_page?: string; p_token: string }
+        Returns: Json
+      }
       invite_preview: {
         Args: { p_token: string }
         Returns: {
@@ -1227,6 +1275,18 @@ export type Database = {
         Returns: {
           area: string
           page_count: number
+        }[]
+      }
+      list_public_pages: {
+        Args: { p_ws: string }
+        Returns: {
+          created_at: string
+          created_by: string
+          icon: string
+          include_children: boolean
+          page_id: string
+          title: string
+          token: string
         }[]
       }
       list_trash: {
@@ -1318,6 +1378,8 @@ export type Database = {
         Returns: number
       }
       page_is_finished: { Args: { p_page: string }; Returns: boolean }
+      page_is_published: { Args: { p_page: string }; Returns: boolean }
+      page_public_link_json: { Args: { p_page: string }; Returns: Json }
       page_search_text: {
         Args: { p_blocks: Json; p_title: string }
         Returns: string
@@ -1343,6 +1405,10 @@ export type Database = {
       property_default_value: {
         Args: { d: Database["public"]["Tables"]["property_defs"]["Row"] }
         Returns: Json
+      }
+      public_path_ok: {
+        Args: { p_include: boolean; p_page: string; p_root: string }
+        Returns: boolean
       }
       publish_view: {
         Args: { p_view: string }
@@ -1468,6 +1534,15 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      set_page_public: {
+        Args: {
+          p_include_children?: boolean
+          p_on: boolean
+          p_page: string
+          p_reset?: boolean
+        }
+        Returns: Json
+      }
       set_property_option_color: {
         Args: { p_color: string; p_def: string; p_value: string }
         Returns: undefined
@@ -1475,6 +1550,10 @@ export type Database = {
       set_property_option_group: {
         Args: { p_def: string; p_group: string; p_value: string }
         Returns: undefined
+      }
+      set_workspace_public_links: {
+        Args: { p_on: boolean; p_ws: string }
+        Returns: boolean
       }
       text_mentions: { Args: { p_text: string }; Returns: string[] }
       undo_property_type_change: {
@@ -1521,6 +1600,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      workspace_publishes: { Args: { p_ws: string }; Returns: boolean }
     }
     Enums: {
       member_role: "owner" | "member"
