@@ -708,6 +708,28 @@ From the Notion comparison; Allan picked A1–A6, B1, B2 and C1.
   the page, never for an archived, template or finished row, never for a
   moment already passed when it was set. Moving the date moves it.
 
+## Decisions (Allan, 2026-11-05: toggles hold blocks)
+- A toggle's `text` is its title; it holds blocks in `children` (an older
+  Markdown import's `body` text reads as one text block until first
+  edited). Open, it shows them under the title (ColumnStack with
+  container="toggle"); empty, "Empty toggle. Click or drop blocks inside."
+- A toggle's blocks are a container like a callout's: the ref
+  `{ blockId, callout: true }` names any callout's or toggle's children,
+  found at any depth (reorder.ts findBlockDeep), so toggles work inside
+  columns, callouts and other toggles. A toggle holds anything but columns
+  (callouts included) and never itself; it may be empty.
+- Keys (src/lib/toggle-ops.ts toggleKey, shared by the page and every
+  container): Enter in an open toggle's title starts its first block; ↓/→
+  at its end step in, ↑ from below lands on its last block; Tab tucks the
+  block below a toggle into it; ⇧Tab takes a block out, right after the
+  toggle; Enter on an empty last block steps out below it; Backspace on an
+  empty first block goes back to the title. Drags and the marquee reach
+  the innermost open toggle under the pointer.
+- Turning a toggle into another type (Turn into, Backspace at the start of
+  its title) never loses what it held: its blocks follow it
+  (withTypeChanged). Exports write them (Markdown indented under the title,
+  HTML inside <details>).
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.

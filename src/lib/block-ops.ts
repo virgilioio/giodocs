@@ -295,7 +295,7 @@ export function isTextBearing(b: Blk | undefined): boolean {
   return true;
 }
 
-/** Deep copy with fresh ids, including a callout's children and every
+/** Deep copy with fresh ids, including a callout's or toggle's children and every
  *  block inside a columns block, so no two blocks ever share an id. */
 export function cloneWithFreshIds(b: Blk): Blk {
   const copy: Blk = { ...b, id: nanoid(10) };
@@ -368,8 +368,10 @@ export function mergeNextInto(list: Blk[], id: string): OpResult | null {
     return { next, focus: { id, caret: curText.length } };
   }
   if (!isTextBearing(nxt) || nxt.type === "code") return null;
-  // A toggle keeps its hidden content in `body`: merging would lose it.
+  // A toggle keeps what it holds in `children` (older imports: `body`):
+  // merging would lose it.
   if (typeof nxt.body === "string" && nxt.body !== "") return null;
+  if (nxt.type === "toggle" && Array.isArray(nxt.children) && nxt.children.length) return null;
   const next = [...list];
   next[idx] = { ...cur, text: curText + (nxt.text ?? "") };
   next.splice(idx + 1, 1);
@@ -380,9 +382,30 @@ export function convertToText(list: Blk[], id: string): OpResult | null {
   const idx = list.findIndex((b) => b.id === id);
   if (idx === -1) return null;
   const cur = list[idx];
-  const next = [...list];
-  next[idx] = { ...cur, type: "text", checked: undefined, open: undefined };
+  const next = withTypeChanged(list, idx, {
+    ...cur,
+    type: "text",
+    checked: undefined,
+    open: undefined,
+  });
   return { next, focus: { id, caret: "start" } };
+}
+
+/** `list` with the block at `idx` replaced by `nb`. A toggle that becomes
+ *  another type lets go of what it held (2026-11-05): its blocks follow it,
+ *  in order, rather than being lost. */
+export function withTypeChanged(list: Blk[], idx: number, nb: Blk): Blk[] {
+  const prev = list[idx];
+  const next = [...list];
+  if (prev?.type === "toggle" && nb.type !== "toggle") {
+    const kids = Array.isArray(prev.children) ? prev.children : [];
+    const rest = { ...nb };
+    delete rest.children;
+    next.splice(idx, 1, rest, ...kids);
+    return next;
+  }
+  next[idx] = nb;
+  return next;
 }
 
 /** Remove `id` from `list`. If `ensureOne` is true (column scope) and this
