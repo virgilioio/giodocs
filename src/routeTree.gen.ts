@@ -16,6 +16,7 @@ import { Route as AAreaRouteImport } from './routes/a.$area'
 import { Route as AcceptInviteTokenRouteImport } from './routes/accept-invite.$token'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as PPageIdRouteImport } from './routes/p.$pageId'
+import { Route as STokenRouteImport } from './routes/s.$token'
 import { Route as VViewIdRouteImport } from './routes/v.$viewId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -53,6 +54,11 @@ const PPageIdRoute = PPageIdRouteImport.update({
   path: '/p/$pageId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const STokenRoute = STokenRouteImport.update({
+  id: '/s/$token',
+  path: '/s/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VViewIdRoute = VViewIdRouteImport.update({
   id: '/v/$viewId',
   path: '/v/$viewId',
@@ -67,6 +73,7 @@ export interface FileRoutesByFullPath {
   '/accept-invite/$token': typeof AcceptInviteTokenRoute
   '/invite/$token': typeof InviteTokenRoute
   '/p/$pageId': typeof PPageIdRoute
+  '/s/$token': typeof STokenRoute
   '/v/$viewId': typeof VViewIdRoute
 }
 export interface FileRoutesByTo {
@@ -77,6 +84,7 @@ export interface FileRoutesByTo {
   '/accept-invite/$token': typeof AcceptInviteTokenRoute
   '/invite/$token': typeof InviteTokenRoute
   '/p/$pageId': typeof PPageIdRoute
+  '/s/$token': typeof STokenRoute
   '/v/$viewId': typeof VViewIdRoute
 }
 export interface FileRoutesById {
@@ -88,6 +96,7 @@ export interface FileRoutesById {
   '/accept-invite/$token': typeof AcceptInviteTokenRoute
   '/invite/$token': typeof InviteTokenRoute
   '/p/$pageId': typeof PPageIdRoute
+  '/s/$token': typeof STokenRoute
   '/v/$viewId': typeof VViewIdRoute
 }
 export interface FileRouteTypes {
@@ -100,6 +109,7 @@ export interface FileRouteTypes {
     | '/accept-invite/$token'
     | '/invite/$token'
     | '/p/$pageId'
+    | '/s/$token'
     | '/v/$viewId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -110,6 +120,7 @@ export interface FileRouteTypes {
     | '/accept-invite/$token'
     | '/invite/$token'
     | '/p/$pageId'
+    | '/s/$token'
     | '/v/$viewId'
   id:
     | '__root__'
@@ -120,6 +131,7 @@ export interface FileRouteTypes {
     | '/accept-invite/$token'
     | '/invite/$token'
     | '/p/$pageId'
+    | '/s/$token'
     | '/v/$viewId'
   fileRoutesById: FileRoutesById
 }
@@ -131,6 +143,7 @@ export interface RootRouteChildren {
   AcceptInviteTokenRoute: typeof AcceptInviteTokenRoute
   InviteTokenRoute: typeof InviteTokenRoute
   PPageIdRoute: typeof PPageIdRoute
+  STokenRoute: typeof STokenRoute
   VViewIdRoute: typeof VViewIdRoute
 }
 
@@ -185,6 +198,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PPageIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/s/$token': {
+      id: '/s/$token'
+      path: '/s/$token'
+      fullPath: '/s/$token'
+      preLoaderRoute: typeof STokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/v/$viewId': {
       id: '/v/$viewId'
       path: '/v/$viewId'
@@ -203,6 +223,7 @@ const rootRouteChildren: RootRouteChildren = {
   AcceptInviteTokenRoute: AcceptInviteTokenRoute,
   InviteTokenRoute: InviteTokenRoute,
   PPageIdRoute: PPageIdRoute,
+  STokenRoute: STokenRoute,
   VViewIdRoute: VViewIdRoute,
 }
 export const routeTree = rootRouteImport

@@ -123,8 +123,9 @@ once. The decisions below replace it wherever an older section disagrees.
   as plain pages.
 
 ## Scope (exclusions — do not build)
-AI features, public sharing on the open web, real-time co-editing
-cursors, multi-workspace UI. (Dark mode was listed here, but the app has a
+AI features, real-time co-editing cursors, multi-workspace UI. (Public
+sharing on the open web was listed here until 2026-11-05: Allan added
+public links, see "Decisions (Allan, 2026-11-05: public links)".) (Dark mode was listed here, but the app has a
 Light / Dark / System theme in Settings › Preferences; Allan, 2026-10-11:
 keep it.) (Folder trees were excluded until
 2026-10-10; the page tree is now the navigation.)
@@ -729,6 +730,37 @@ From the Notion comparison; Allan picked A1–A6, B1, B2 and C1.
   its title) never loses what it held: its blocks follow it
   (withTypeChanged). Exports write them (Markdown indented under the title,
   HTML inside <details>).
+
+## Decisions (Allan, 2026-11-05: public links)
+Notion's Share › Publish to web. Allan's "Go!" took the recommended
+answers: editors publish, owners can switch it off for the workspace;
+sub-pages come along by default; databases wait for a second step; search
+engines are never invited in.
+- page_public_links holds a page's link: a random 32-character code
+  (`/s/<code>`, never the page id). set_page_public publishes, changes,
+  resets (a new code; the old link stops) and unpublishes (revoked_at, so
+  a link dies at once); people who can edit the page and workspace owners
+  may. workspaces.public_links (set_workspace_public_links, owners) stops
+  every link at once and brings them back when switched on again.
+- With "Include the pages inside it" (the default), sub-pages shared with
+  the whole workspace are public too; a private page never goes public
+  unless it is published itself, and neither does anything under it.
+  Archived, deleted and template pages never show (public_path_ok).
+- Visitors read only through get_published_page(code, page): title, icon,
+  blocks, the path from the published page, its published sub-pages, the
+  titles of published pages it mentions and the custom emoji it uses. No
+  table policy opens to them. Images, files and custom emoji are signed
+  for them by page_images_read_published (page_is_published /
+  workspace_publishes); page_images_read is now for signed-in people.
+- The public page (/s/$token, ?p=<page> for a sub-page; public-page.tsx,
+  src/lib/public-page.ts) shows no sidebar and needs no sign-in. A thin bar
+  shows the workspace and the path. The page is its own document (the
+  page-history preview, in the app's fonts) in a sandboxed frame that runs
+  no scripts; links open in a new tab, pages inside it in place. Inline
+  databases and database pages show a note for now. robots: noindex.
+- Share panel: Publish to web (publish-section.tsx). Settings › Public
+  pages: the workspace switch and every published page (owners see all),
+  with Copy link and Unpublish.
 
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.

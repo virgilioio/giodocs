@@ -34,6 +34,7 @@ import {
 } from "@/lib/share-panel";
 import { exitRef } from "@/lib/exit-motion";
 import { MenuCheck, MenuSep } from "./menu-parts";
+import { PublishSection } from "./publish-section";
 
 /* ────────────── Store ────────────── */
 
@@ -899,6 +900,9 @@ export function PermissionsPopoverHost({
             })}
           </div>
         </div>
+
+        {/* Publish to web (2026-11-05) */}
+        <PublishSection pageId={page.id} workspaceId={page.workspace_id} canManage={canManage} />
 
         {/* Warnings */}
         {copy.warnings.length > 0 && (
