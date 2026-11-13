@@ -794,6 +794,33 @@ src/lib/public-database.ts).
   (the row-page layout, the rest in an "N more properties" fold): a
   property hidden in a view isn't a secret, and the Share panel says so.
 
+## Decisions (Allan, 2026-11-13: search everything)
+Search (⌘K, the sidebar's Search, the phone's) finds pages by what's in
+them, Notion's way. Allan took the recommended answers: row values are
+searched; one list of pages; no comments and no filters yet.
+- pages.search_tsv holds every word both as its English root and as
+  written: the title (weight A), every block at any depth (B: toggles,
+  callouts, columns, tables, sheets, code, captions, file names, a view's
+  name; mentions as the name they show, links as their words; search_clean,
+  block_search_text, page_block_tree) and a row's text, link, email, phone
+  and option values (C, options by their labels; page_props_search_parts).
+  pages_tsv rebuilds it when the title or blocks change, pages_tsv_props
+  when only a row's values change. An option renamed later is found by its
+  new name once the row is next edited.
+- search_tsquery: every typed word must appear, each as the start of a
+  word as written or of its root ("intervi" finds "interviews", "planning"
+  finds "planned"); a lone letter counts only when it's all there is; at
+  most ten words.
+- search_workspace (as the caller, so RLS decides what's found; archived
+  pages and templates included, deleted never): one row per page, title
+  matches first, then by how well the words match, then the newest edit;
+  with up to two matching blocks in document order (a block inside a closed
+  toggle answers with the toggle) or the row's matching value.
+  search_pages is no longer used.
+- The palette shows each page with its title, the matching line (the typed
+  words highlighted, src/lib/search-text.ts) and where it lives; opening a
+  content match opens the page at that block.
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.
