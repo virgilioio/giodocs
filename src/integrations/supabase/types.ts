@@ -1164,6 +1164,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      block_search_text: { Args: { b: Json }; Returns: string }
       can_edit_page: { Args: { p_page: string }; Returns: boolean }
       can_edit_page_row: {
         Args: { p: Database["public"]["Tables"]["pages"]["Row"] }
@@ -1374,16 +1375,41 @@ export type Database = {
           title: string
         }[]
       }
+      page_block_tree: {
+        Args: { p_blocks: Json }
+        Returns: {
+          anchor: string
+          b: Json
+          ord: number[]
+        }[]
+      }
       page_images_gc: {
         Args: { p_page: string; p_paths: string[] }
         Returns: number
       }
       page_is_finished: { Args: { p_page: string }; Returns: boolean }
       page_is_published: { Args: { p_page: string }; Returns: boolean }
+      page_props_search_parts: {
+        Args: { p_db: string; p_props: Json }
+        Returns: {
+          key: string
+          label: string
+          words: string
+        }[]
+      }
+      page_props_search_text: {
+        Args: { p_db: string; p_props: Json }
+        Returns: string
+      }
       page_public_link_json: { Args: { p_page: string }; Returns: Json }
+      page_search_body: { Args: { p_blocks: Json }; Returns: string }
       page_search_text: {
         Args: { p_blocks: Json; p_title: string }
         Returns: string
+      }
+      page_search_vector: {
+        Args: { p_body: string; p_props: string; p_title: string }
+        Returns: unknown
       }
       person_ids: { Args: { v: Json }; Returns: string[] }
       prop_value_from_words: {
@@ -1487,6 +1513,7 @@ export type Database = {
       }
       restore_page_version: { Args: { p_version: string }; Returns: undefined }
       safe_uuid: { Args: { t: string }; Returns: string }
+      search_clean: { Args: { p_text: string }; Returns: string }
       search_pages: {
         Args: { p_limit?: number; p_q: string; p_workspace: string }
         Returns: {
@@ -1496,6 +1523,25 @@ export type Database = {
           rank: number
           snippets: Json
           title: string
+        }[]
+      }
+      search_prefix_patterns: { Args: { p_q: string }; Returns: string[] }
+      search_tsquery: { Args: { p_q: string }; Returns: unknown }
+      search_workspace: {
+        Args: { p_limit?: number; p_q: string; p_workspace: string }
+        Returns: {
+          archived: boolean
+          database_id: string
+          edited_at: string
+          icon: string
+          id: string
+          is_database: boolean
+          parent_id: string
+          rank: number
+          snippets: Json
+          template: boolean
+          title: string
+          title_hit: boolean
         }[]
       }
       set_comment_removed: {

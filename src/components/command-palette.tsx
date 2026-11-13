@@ -17,6 +17,7 @@ import { useWorkspaceShell } from "@/hooks/use-workspace-data";
 import { useCreatePage } from "@/hooks/use-page-mutations";
 import { Ico } from "./emoji-icon";
 import { setPageOrigin } from "@/lib/page-origin";
+import { excerpt, highlightParts } from "@/lib/search-text";
 
 import { filterLabel } from "@/lib/filter-label";
 import type { PageListItem } from "@/lib/types";
@@ -30,22 +31,30 @@ type MemberRow = {
   profiles: { full_name: string | null; email: string | null } | null;
 };
 
+/** One page search_workspace found (2026-11-13: everything on a page is
+ *  searched, not only titles). `snippets` are its first matching blocks,
+ *  in order (`id` is the block to open it at, null for a row's value). */
 type SearchHit = {
   id: string;
   title: string;
   icon: string | null;
-  props: Record<string, unknown>;
+  parent_id: string | null;
+  database_id: string | null;
+  is_database: boolean;
+  archived: boolean;
+  template: boolean;
+  edited_at: string;
+  title_hit: boolean;
   snippets: Array<{ id: string | null; text: string | null }>;
   rank: number;
 };
 
 type Row =
-  | { kind: "page"; page: SearchHit | PageListItem }
-  | { kind: "block"; pageId: string; pageTitle: string; pageIcon: string | null; blockId: string | null; sentence: string; term: string }
+  | { kind: "page"; page: SearchHit | PageListItem; hit?: SearchHit }
   | { kind: "view"; view: ViewRow }
   | { kind: "action"; label: string; run: () => void };
 
-const GROUP_ORDER = ["Pages", "Blocks", "Views", "Actions"] as const;
+const GROUP_ORDER = ["Pages", "Views", "Actions"] as const;
 type Group = (typeof GROUP_ORDER)[number];
 
 function useDebounced<T>(value: T, ms: number): T {
@@ -57,34 +66,17 @@ function useDebounced<T>(value: T, ms: number): T {
   return v;
 }
 
-function extractSentence(text: string, term: string): string {
-  const lower = text.toLowerCase();
-  const at = lower.indexOf(term.toLowerCase());
-  if (at < 0) return text.slice(0, 120);
-  let start = at;
-  while (start > 0 && !".!?\n".includes(text[start - 1]!)) start--;
-  let end = at + term.length;
-  while (end < text.length && !".!?\n".includes(text[end]!)) end++;
-  let s = text.slice(start, Math.min(end + 1, text.length)).trim();
-  if (s.length > 140) {
-    const relAt = at - start;
-    const from = Math.max(0, relAt - 60);
-    const to = Math.min(s.length, relAt + term.length + 60);
-    s = (from > 0 ? "…" : "") + s.slice(from, to).trim() + (to < s.length ? "…" : "");
-  }
-  return s;
-}
-
-function highlight(text: string, term: string): ReactNode {
+/** Text with the typed words highlighted. */
+function Marked({ text, term }: { text: string; term: string }): ReactNode {
   if (!term) return text;
-  const idx = text.toLowerCase().indexOf(term.toLowerCase());
-  if (idx < 0) return text;
-  return (
-    <>
-      {text.slice(0, idx)}
-      <mark className="bg-highlight text-body">{text.slice(idx, idx + term.length)}</mark>
-      {text.slice(idx + term.length)}
-    </>
+  return highlightParts(text, term).map((p, i) =>
+    p.hit ? (
+      <mark key={i} className="bg-highlight text-body">
+        {p.text}
+      </mark>
+    ) : (
+      <span key={i}>{p.text}</span>
+    ),
   );
 }
 
@@ -124,10 +116,10 @@ export function CommandPalette({
   const searchQ = useQuery({
     queryKey: ["search", ws, debounced],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("search_pages", {
+      const { data, error } = await supabase.rpc("search_workspace", {
         p_workspace: ws,
         p_q: debounced,
-        p_limit: 12,
+        p_limit: 20,
       });
       if (error) throw error;
       return (data ?? []) as unknown as SearchHit[];
@@ -180,30 +172,8 @@ export function CommandPalette({
 
     const hits = searchQ.data ?? [];
 
-    // Pages
-    for (const h of hits) list.push({ kind: "page", page: h });
-
-    // Blocks — max 2 per page, 8 total
-    let blockTotal = 0;
-    for (const h of hits) {
-      if (blockTotal >= 8) break;
-      const snips = (h.snippets ?? []).slice(0, 2);
-      for (const s of snips) {
-        if (blockTotal >= 8) break;
-        const text = s?.text ?? "";
-        if (!text) continue;
-        list.push({
-          kind: "block",
-          pageId: h.id,
-          pageTitle: h.title || "Untitled",
-          pageIcon: h.icon,
-          blockId: s?.id ?? null,
-          sentence: extractSentence(text, term),
-          term,
-        });
-        blockTotal++;
-      }
-    }
+    // Pages, best first, each with where it matched (Notion's way).
+    for (const h of hits) list.push({ kind: "page", page: h, hit: h });
 
     // Views
     const lowered = term.toLowerCase();
@@ -237,14 +207,7 @@ export function CommandPalette({
   const grouped = useMemo(() => {
     const m = new Map<Group, { row: Row; index: number }[]>();
     rows.forEach((row, index) => {
-      const g: Group =
-        row.kind === "page"
-          ? "Pages"
-          : row.kind === "block"
-            ? "Blocks"
-            : row.kind === "view"
-              ? "Views"
-              : "Actions";
+      const g: Group = row.kind === "page" ? "Pages" : row.kind === "view" ? "Views" : "Actions";
       if (!m.has(g)) m.set(g, []);
       m.get(g)!.push({ row, index });
     });
@@ -261,13 +224,13 @@ export function CommandPalette({
     (row: Row) => {
       if (row.kind === "page") {
         onClose();
-        (setPageOrigin(row.page.id, { kind: "search" }), navigate({ to: "/p/$pageId", params: { pageId: row.page.id } }));
-      } else if (row.kind === "block") {
-        onClose();
+        // A match in its content opens the page at that block.
+        const blockId = row.hit && !row.hit.title_hit ? row.hit.snippets?.[0]?.id : null;
+        setPageOrigin(row.page.id, { kind: "search" });
         navigate({
           to: "/p/$pageId",
-          params: { pageId: row.pageId },
-          hash: row.blockId ? `block-${row.blockId}` : undefined,
+          params: { pageId: row.page.id },
+          hash: blockId ? `block-${blockId}` : undefined,
         });
       } else if (row.kind === "view") {
         onClose();
@@ -332,7 +295,7 @@ export function CommandPalette({
               setQ(e.target.value);
               setCursor(0);
             }}
-            placeholder="Search pages, blocks, views…"
+            placeholder="Search pages and what’s in them…"
             className="flex-1 bg-transparent text-ui text-body outline-none placeholder:text-faint"
           />
         </div>
@@ -384,7 +347,7 @@ export function CommandPalette({
             <Chip>↵</Chip><span>open</span>
             <Chip>esc</Chip><span>close</span>
           </div>
-          <em className="text-caption text-faint">Pages, rows and databases.</em>
+          <em className="text-caption text-faint">Titles, page content and row values.</em>
         </div>
       </div>
     </div>
@@ -426,10 +389,10 @@ function PaletteRow({
 
   if (row.kind === "page") {
     const p = row.page as SearchHit | PageListItem;
-    const props = (p.props ?? {}) as Record<string, unknown>;
+    const full = pages.find((x) => x.id === p.id);
+    const props = (full?.props ?? ("props" in p ? p.props : null) ?? {}) as Record<string, unknown>;
     // Where it lives (its database, or the page it's inside), and who it's
     // assigned to by its database's first person property.
-    const full = pages.find((x) => x.id === p.id);
     const where = placeOf(full, pages);
     const personKey = full?.database_id
       ? propDefs.find((d) => d.database_id === full.database_id && d.type === "person" && !d.archived_at)?.key
@@ -437,30 +400,30 @@ function PaletteRow({
     const personId = personKey && typeof props[personKey] === "string" ? (props[personKey] as string) : "";
     const person = personId ? memberBy.get(personId) ?? "" : "";
     const sub = [where, person].filter(Boolean).join(" · ");
+    // The line it matched in, when the match is in its content.
+    const snippet = row.hit?.snippets?.find((x) => x?.text)?.text ?? "";
+    const line = snippet ? excerpt(snippet, term) : "";
+    const state = row.hit?.template ? "Template" : row.hit?.archived ? "Archived" : "";
     return (
       <button type="button" className={cls} onMouseEnter={onEnter} onClick={onSelect}>
         <Ico icon={p.icon || "📄"} size={20} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-ui text-body">
-            {highlight(p.title || "Untitled", term)}
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-ui text-body">
+              <Marked text={p.title || "Untitled"} term={term} />
+            </span>
+            {state ? (
+              <span className="shrink-0 rounded-sm bg-sunken px-1.5 text-label text-muted">
+                {state}
+              </span>
+            ) : null}
           </span>
-          {sub && <span className="block text-meta text-muted">{sub}</span>}
-        </span>
-      </button>
-    );
-  }
-  if (row.kind === "block") {
-    const sub = [row.pageTitle, placeOf(pages.find((x) => x.id === row.pageId), pages).replace(/^in /, "")]
-      .filter(Boolean)
-      .join(" · ");
-    return (
-      <button type="button" className={cls} onMouseEnter={onEnter} onClick={onSelect}>
-        <span className="text-ui">{row.pageIcon || "📄"}</span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-ui text-body">
-            {highlight(row.sentence, row.term)}
-          </span>
-          <span className="block text-meta text-muted">in {sub}</span>
+          {line ? (
+            <span className="block truncate text-meta text-secondary" data-search-snippet>
+              <Marked text={line} term={term} />
+            </span>
+          ) : null}
+          {sub && <span className="block truncate text-meta text-muted">{sub}</span>}
         </span>
       </button>
     );
@@ -491,7 +454,7 @@ function PaletteRow({
         </svg>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-ui text-body">
-            {highlight(v.name, term)}
+            <Marked text={v.name} term={term} />
           </span>
           <span className="block text-meta text-muted">{desc}</span>
         </span>
