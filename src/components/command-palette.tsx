@@ -116,13 +116,7 @@ export function CommandPalette({
   const searchQ = useQuery({
     queryKey: ["search", ws, debounced],
     queryFn: async () => {
-      // search_workspace joins the generated types when its migration is
-      // applied; until then this is its shape.
-      const rpc = supabase.rpc.bind(supabase) as unknown as (
-        fn: "search_workspace",
-        args: { p_workspace: string; p_q: string; p_limit: number },
-      ) => PromiseLike<{ data: unknown; error: Error | null }>;
-      const { data, error } = await rpc("search_workspace", {
+      const { data, error } = await supabase.rpc("search_workspace", {
         p_workspace: ws,
         p_q: debounced,
         p_limit: 20,
