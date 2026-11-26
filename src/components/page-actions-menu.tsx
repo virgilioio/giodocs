@@ -41,6 +41,7 @@ const P = {
   small: "M4 17V7M4 7h7M14 17v-6M14 11h5",
   wide: "m8 8-4 4 4 4M16 8l4 4-4 4M4 12h16",
   lock: "M5 11h14v9H5zM8 11V7a4 4 0 0 1 8 0v4",
+  cover: "M3 5h18v14H3zM3 16l5-5 4 4 3-3 6 6",
   history: "M3.5 12a8.5 8.5 0 1 0 2.5-6M3.5 4v4h4M12 7.5V12l3 2",
   template: "M5 4h14v5H5zM5 13h6v7H5zM15 13h4M15 17h4",
   tasks: "M4 5h4v4H4zM4 15h4v4H4zM11 7h9M11 17h9M5 7l1 1 2-2",
@@ -272,6 +273,9 @@ export type PageActionsHandlers = {
   onCopyContents?: () => void;
   /** Phones: pick where the page lives (move_page). */
   onMoveTo?: () => void;
+  /** Phones: add or change the page's cover (page-cover.tsx). */
+  onCover?: () => void;
+  coverLabel?: string;
 };
 
 export function PageActionsMenu({
@@ -364,6 +368,13 @@ export function PageActionsMenu({
             {handlers.onCopyContents ? <SheetRow icon={P.clipboard} label="Copy page contents" onClick={pick(handlers.onCopyContents)} /> : null}
             <SheetRow icon={P.copy} label="Duplicate" onClick={pick(handlers.onDuplicate)} />
             {handlers.onMoveTo ? <SheetRow icon={P.moveTo} label="Move to" onClick={pick(handlers.onMoveTo)} /> : null}
+            {handlers.onCover ? (
+              <SheetRow
+                icon={P.cover}
+                label={handlers.coverLabel ?? "Add cover"}
+                onClick={pick(handlers.onCover)}
+              />
+            ) : null}
             <SheetRow icon={P.trash} label="Delete page" danger onClick={() => setConfirmDelete(true)} />
           </SheetGroup>
           <SheetGroup>

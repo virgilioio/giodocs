@@ -39,6 +39,7 @@ import {
   useSetPageProperty,
   useRenamePage,
   useSetPageIcon,
+  useSetPageCover,
   useCreatePage,
   useCreatePageAndOpen,
   useUpdateView,
@@ -68,6 +69,10 @@ import type { Database } from "@/integrations/supabase/types";
 import { isTypingTarget } from "@/lib/is-typing";
 import { MarqueeRect, useBulkActions, useRowSelection } from "@/hooks/use-row-selection";
 import { DatabaseToolbar } from "./database-toolbar";
+import { AddCoverButton, CoverPicker, PageCoverBanner } from "./page-cover";
+import { BottomSheet } from "./phone-shell";
+import { randomGalleryCover, readCover } from "@/lib/page-cover";
+import { useIsPhone } from "@/lib/use-media";
 import { useViewSettings } from "./view-settings";
 import { useHomePrefs, useSaveHomePrefs } from "@/hooks/use-home";
 import { togglePinned } from "@/lib/home";
@@ -436,6 +441,20 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
   const setProp = useSetPageProperty();
   const rename = useRenamePage();
   const setIcon = useSetPageIcon();
+  // The database page's cover, as on any page (page-cover.tsx).
+  const { setCover } = useSetPageCover();
+  const dbCover = readCover(dbQ.data?.cover);
+  const [headHover, setHeadHover] = useState(false);
+  const phone = useIsPhone();
+  const [coverSheet, setCoverSheet] = useState(false);
+  useEffect(() => {
+    const open = (e: Event) => {
+      if ((e as CustomEvent<{ pageId?: string }>).detail?.pageId === databaseId)
+        setCoverSheet(true);
+    };
+    window.addEventListener("gio:cover-picker", open);
+    return () => window.removeEventListener("gio:cover-picker", open);
+  }, [databaseId]);
   const create = useCreatePage();
   const createAndOpen = useCreatePageAndOpen();
   const updateView = useUpdateView();
@@ -1093,11 +1112,50 @@ export function DatabaseView({ selection }: { selection: DatabaseSelection }) {
 
   return (
     <PageOriginContext.Provider value={originValue}>
+      {dbCover && dbQ.data ? (
+        <PageCoverBanner
+          pageId={databaseId}
+          workspaceId={dbQ.data.workspace_id}
+          cover={dbCover}
+          editable={canEditDb && !phone}
+          onChange={(c) => setCover(databaseId, c, dbCover)}
+          onRemove={() => setCover(databaseId, null, dbCover, "Cover removed.")}
+        />
+      ) : null}
+      {coverSheet && dbQ.data ? (
+        <BottomSheet title="Cover" onClose={() => setCoverSheet(false)}>
+          <div style={{ padding: "4px 12px 12px" }}>
+            <CoverPicker
+              workspaceId={dbQ.data.workspace_id}
+              pageId={databaseId}
+              cover={dbCover}
+              onPick={(c) => {
+                setCover(databaseId, c, dbCover);
+                setCoverSheet(false);
+              }}
+              onRemove={() => {
+                setCover(databaseId, null, dbCover, "Cover removed.");
+                setCoverSheet(false);
+              }}
+            />
+          </div>
+        </BottomSheet>
+      ) : null}
       <div
         ref={setRoot}
         className="mx-auto"
-        style={{ maxWidth: "var(--container-view)", padding: "34px 40px" }}
+        style={{ maxWidth: "var(--container-view)", padding: "34px 40px", position: "relative" }}
+        onMouseEnter={() => setHeadHover(true)}
+        onMouseLeave={() => setHeadHover(false)}
       >
+        {!dbCover && canEditDb && !phone ? (
+          <div style={{ position: "absolute", top: 4, left: 36 }}>
+            <AddCoverButton
+              visible={headHover}
+              onAdd={() => setCover(databaseId, randomGalleryCover(), null)}
+            />
+          </div>
+        ) : null}
         <MarqueeRect box={marqueeBox} />
         <DatabaseHeader
           database={database}

@@ -14,6 +14,8 @@ import type { PageListItem, PageFull, Block } from "@/lib/types";
 import { applyMove, descendantsOf, type MoveTarget } from "@/lib/page-tree";
 import { storedPropsFor } from "./stored-props";
 import { openPageSomewhere } from "@/lib/peek";
+import { readCover, type PageCover } from "@/lib/page-cover";
+import { copyCover } from "@/lib/images";
 
 
 type ViewRow = {
@@ -702,13 +704,28 @@ export function useDuplicatePage() {
      *  stays where it is. */
     mutationFn: async (input: string | { pageId: string; quiet?: boolean; silent?: boolean }) => {
       const pageId = typeof input === "string" ? input : input.pageId;
-      const { data: src, error: e1 } = await supabase
+      const { data: srcRow, error: e1 } = await supabase
         .from("pages")
-        .select("title, icon, props, blocks, access_type, parent_id, database_id, is_database")
+        .select(
+          "title, icon, props, blocks, access_type, parent_id, database_id, is_database, cover",
+        )
         .eq("id", pageId)
         .maybeSingle();
       if (e1) throw e1;
+      const src = srcRow as unknown as Pick<
+        PageFull,
+        | "title"
+        | "icon"
+        | "props"
+        | "blocks"
+        | "access_type"
+        | "parent_id"
+        | "database_id"
+        | "is_database"
+        | "cover"
+      > | null;
       if (!src) throw new Error("Original page not found");
+      const srcCover = readCover(src.cover);
 
       // A database is copied whole (properties, views, rows) in the
       // database: duplicate_database.
@@ -768,6 +785,16 @@ export function useDuplicatePage() {
         access_type: "restricted",
       });
       if (insertError) throw insertError;
+      // The cover follows (an uploaded image into the copy's own folder,
+      // which exists now). A cover that can't be copied is left behind.
+      if (srcCover) {
+        const cover = await copyCover(srcCover, id);
+        if (cover)
+          await supabase
+            .from("pages")
+            .update({ cover } as never)
+            .eq("id", id);
+      }
       const { data, error } = await supabase
         .from("pages")
         .select(
@@ -1181,9 +1208,61 @@ export function useSetPageIcon() {
   });
 }
 
-
-
-
+/** Set or remove a page's cover (page-cover.ts), at once and saved in the
+ *  background; a failure puts the old one back. `undoable` offers Undo
+ *  (used when a cover is removed). */
+export function useSetPageCover() {
+  const qc = useQueryClient();
+  const ws = useWorkspaceId();
+  const toast = useToast();
+  const m = useMutation({
+    mutationFn: async (v: {
+      pageId: string;
+      cover: PageCover | null;
+      previous?: PageCover | null;
+    }) => {
+      const { error } = await supabase
+        .from("pages")
+        .update({ cover: v.cover } as never)
+        .eq("id", v.pageId);
+      if (error) throw error;
+    },
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: qk.page(v.pageId) });
+      const pageSnap = qc.getQueryData<PageFull | null>(qk.page(v.pageId)) ?? null;
+      const nowIso = new Date().toISOString();
+      qc.setQueryData<PageFull | null>(qk.page(v.pageId), (prev) =>
+        prev ? { ...prev, cover: v.cover, edited_at: nowIso } : prev,
+      );
+      // A cover is an edit: the page's Edited stamp moves everywhere.
+      qc.setQueryData<PageListItem[]>(qk.pages(ws), (prev) =>
+        prev?.map((p) => (p.id === v.pageId ? { ...p, edited_at: nowIso } : p)),
+      );
+      return { pageSnap };
+    },
+    onError: (err, v, ctx) => {
+      if (ctx?.pageSnap !== undefined) qc.setQueryData(qk.page(v.pageId), ctx.pageSnap);
+      const e = err as { code?: string; message?: string };
+      toast.push(
+        e.code === "42501"
+          ? "You can view this page but not edit it, so its cover stays as it is."
+          : "Couldn’t change the cover. Check your connection and try again.",
+      );
+    },
+  });
+  const setCover = useCallback(
+    (pageId: string, cover: PageCover | null, previous: PageCover | null, message?: string) => {
+      m.mutate({ pageId, cover, previous });
+      if (message)
+        toast.push({
+          message,
+          action: { label: "Undo", onClick: () => m.mutate({ pageId, cover: previous }) },
+        });
+    },
+    [m, toast],
+  );
+  return { setCover, isPending: m.isPending };
+}
 
 /* ────────── Placement: pages inside pages ──────────
  *

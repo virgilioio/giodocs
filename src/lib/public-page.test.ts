@@ -50,3 +50,22 @@ describe("public pages", () => {
     expect(html).toContain("Databases aren’t shown on public pages yet.");
   });
 });
+
+describe("public page covers", () => {
+  it("draws a gallery colour, a signed upload or a link, and nothing unsafe", async () => {
+    const { publicCoverHtml } = await import("./public-page");
+    expect(publicCoverHtml({ kind: "gallery", value: "dawn" }, null)).toContain("linear-gradient");
+    expect(
+      publicCoverHtml({ kind: "upload", value: "w/p/a.png", position: 20 }, "https://signed/a.png"),
+    ).toContain("object-position:50% 20%");
+    expect(publicCoverHtml({ kind: "upload", value: "w/p/a.png" }, null)).toBe("");
+    expect(
+      publicCoverHtml({ kind: "link", value: 'https://x.y/a.jpg"><script>' }, null),
+    ).not.toContain("<script>");
+    const html = publicPageHtml(data(), "tok", new Map(), "", undefined, {
+      cover: { kind: "gallery", value: "lilac" },
+      url: null,
+    });
+    expect(html.indexOf('class="pub-cover"')).toBeLessThan(html.indexOf("<main>"));
+  });
+});

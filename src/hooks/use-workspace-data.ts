@@ -9,7 +9,7 @@ const PAGE_LIST_COLUMNS =
   "id, title, icon, props, verified_at, verified_by, edited_at, edited_by, created_at, created_by, access_type, archived_at, parent_id, database_id, is_database, position, task_config, page_layout, row_number";
 
 const PAGE_FULL_COLUMNS =
-  "id, workspace_id, title, icon, props, blocks, access_type, ws_role, verified_at, verified_by, edited_at, edited_by, created_by, created_at, deleted_at, archived_at, template_at, parent_id, database_id, is_database, position, task_config, row_number";
+  "id, workspace_id, title, icon, props, blocks, access_type, ws_role, verified_at, verified_by, edited_at, edited_by, created_by, created_at, deleted_at, archived_at, template_at, parent_id, database_id, is_database, position, task_config, row_number, cover";
 
 /** Supabase hands back at most 1000 rows per request, whatever `limit` asks
  *  for. Lists that can outgrow that are read a page at a time in a stable

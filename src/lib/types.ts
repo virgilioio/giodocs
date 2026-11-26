@@ -37,6 +37,8 @@ export type PageListItem = Pick<
 
 export type PageFull = Omit<PageRow, "search_tsv"> & {
   archived_at?: string | null;
+  /** The page's cover (src/lib/page-cover.ts); read it with readCover. */
+  cover?: unknown;
 };
 
 export type Block = {
