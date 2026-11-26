@@ -2,6 +2,7 @@ import { toPreviewHtml } from "./export";
 import type { Block } from "./types";
 import type { PublishedPage } from "./public-links";
 import { publicHref } from "./public-database";
+import { coverObjectPosition, galleryCover, type PageCover } from "./page-cover";
 
 export { publicHref };
 
@@ -52,6 +53,8 @@ export function publicPageHtml(
   emoji: ReadonlyMap<string, string>,
   fontCss: string,
   dbs?: PublicDatabases,
+  /** The page's cover; an uploaded image already signed (`url`). */
+  cover?: { cover: PageCover; url?: string | null } | null,
 ): string {
   const views: unknown[] = [];
   const isDb = data.page.is_database;
@@ -66,6 +69,8 @@ export function publicPageHtml(
   );
   // Links in the page open in a new tab; the pages inside it open here.
   html = html.replace("<head>", () => `<head>\n<base target="_blank"/>`);
+  const coverHtml = cover ? publicCoverHtml(cover.cover, cover.url ?? null) : "";
+  if (coverHtml) html = html.replace(/<body([^>]*)>/, (m) => `${m}\n${coverHtml}`);
   if (dbs) {
     // Each marker is a paragraph of its own; the database takes its place.
     html = html.replace(/<p>GIOPUBDB(\d+)X<\/p>/g, (_, n: string) =>
@@ -91,4 +96,15 @@ export function publicPageHtml(
     );
   }
   return html;
+}
+
+/** The cover at the top of a public page: a gallery colour, or an image
+ *  (an uploaded one by its signed link). Nothing when an upload couldn't be
+ *  signed. */
+export function publicCoverHtml(cover: PageCover, url: string | null): string {
+  if (cover.kind === "gallery")
+    return `<div class="pub-cover" style="background:${esc(galleryCover(cover.value).css)}"></div>`;
+  const src = cover.kind === "upload" ? url : cover.value;
+  if (!src || !/^https?:\/\//i.test(src)) return "";
+  return `<div class="pub-cover"><img src="${esc(src)}" alt="" style="object-position:${esc(coverObjectPosition(cover))}"/></div>`;
 }

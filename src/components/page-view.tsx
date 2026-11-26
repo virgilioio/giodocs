@@ -16,6 +16,7 @@ import { PlacedInRow } from "./placed-in-row";
 import {
   useRenamePage,
   useSetPageIcon,
+  useSetPageCover,
   useSetPageProperty,
   useBlocksSender,
   EditConflictError,
@@ -30,6 +31,10 @@ import { usePrefs } from "@/lib/preferences";
 import { usePageAppearance } from "@/lib/page-appearance";
 import { Popover } from "./popover";
 import { EmojiPicker } from "./emoji-picker";
+import { AddCoverButton, CoverPicker, PageCoverBanner } from "./page-cover";
+import { BottomSheet } from "./phone-shell";
+import { randomGalleryCover, readCover } from "@/lib/page-cover";
+import { useIsPhone } from "@/lib/use-media";
 import {
   OwnerPicker,
   SelectPicker,
@@ -1635,6 +1640,19 @@ export function PageEditor({ pageId }: { pageId: string }) {
   const queryClient = useQueryClient();
   const archive = useArchivePage();
   const setPageIcon = useSetPageIcon();
+  // The cover (page-cover.tsx): "Add cover" shows while the header is
+  // pointed at; phones change it from the Actions sheet (gio:cover-picker).
+  const { setCover } = useSetPageCover();
+  const [headHover, setHeadHover] = useState(false);
+  const [coverSheet, setCoverSheet] = useState(false);
+  const phone = useIsPhone();
+  useEffect(() => {
+    const open = (e: Event) => {
+      if ((e as CustomEvent<{ pageId?: string }>).detail?.pageId === pageId) setCoverSheet(true);
+    };
+    window.addEventListener("gio:cover-picker", open);
+    return () => window.removeEventListener("gio:cover-picker", open);
+  }, [pageId]);
 
   const { prefs } = usePrefs();
   const { app } = usePageAppearance(pageId);
@@ -2118,260 +2136,311 @@ export function PageEditor({ pageId }: { pageId: string }) {
   }
 
   const blocks = Array.isArray(page.blocks) ? (page.blocks as unknown[]) : [];
+  const cover = readCover(page.cover);
+  const coverEditable = !viewOnly && !app.locked;
+  const removeCover = () => setCover(page.id, null, cover, "Cover removed.");
 
   return (
-    <div
-      className="gio-page mx-auto"
-      data-font={app.font}
-      data-small={app.small ? "1" : "0"}
-      data-wide={app.wide ? "1" : "0"}
-      data-locked={app.locked ? "1" : "0"}
-      style={{ maxWidth: 780, padding: "42px 44px" }}
-    >
-      {/* 1+2. Title row: emoji + editable title, side-by-side, height 51. */}
-      <div
-        // minHeight, not height: a title that wraps to a second line grows
-        // the row instead of spilling over the permissions row below it.
-        // Top-aligned (offsets keep the single-line layout exactly as it
-        // was) so the icon sits beside the first line of a long title.
-        style={{ display: "flex", alignItems: "flex-start", minHeight: 51, gap: 13 }}
-      >
-        <Popover
-          width={328}
-          trigger={({ open, onClick, ref }) => (
-            <button
-              ref={ref}
-              type="button"
-              onClick={viewOnly ? undefined : onClick}
-              disabled={viewOnly}
-              aria-label="Change page icon"
-              aria-expanded={open}
-              className="grid select-none place-items-center rounded-md hover:bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-              style={{ width: 42, height: 42, fontSize: 34, lineHeight: 1, flex: "none", marginTop: 4.5 }}
-            >
-              <Ico icon={page.icon || "📄"} size={34} />
-            </button>
-          )}
-        >
-          {(close) => (
-            <EmojiPicker
-              onPick={(e) => {
-                if (e) setPageIcon.mutate({ pageId: page.id, icon: e });
-                close();
+    <>
+      {cover ? (
+        <PageCoverBanner
+          pageId={page.id}
+          workspaceId={page.workspace_id}
+          cover={cover}
+          editable={coverEditable && !phone}
+          onChange={(c) => setCover(page.id, c, cover)}
+          onRemove={removeCover}
+        />
+      ) : null}
+      {coverSheet ? (
+        <BottomSheet title="Cover" onClose={() => setCoverSheet(false)}>
+          <div style={{ padding: "4px 12px 12px" }}>
+            <CoverPicker
+              workspaceId={page.workspace_id}
+              pageId={page.id}
+              cover={cover}
+              onPick={(c) => {
+                setCover(page.id, c, cover);
+                setCoverSheet(false);
+              }}
+              onRemove={() => {
+                removeCover();
+                setCoverSheet(false);
               }}
             />
-          )}
-        </Popover>
+          </div>
+        </BottomSheet>
+      ) : null}
+      <div
+        className="gio-page mx-auto"
+        data-font={app.font}
+        data-small={app.small ? "1" : "0"}
+        data-wide={app.wide ? "1" : "0"}
+        data-locked={app.locked ? "1" : "0"}
+        data-cover={cover ? "true" : undefined}
+        style={{
+          maxWidth: 780,
+          padding: cover ? "0 44px 42px" : "42px 44px",
+          position: "relative",
+        }}
+        onMouseEnter={() => setHeadHover(true)}
+        onMouseLeave={() => setHeadHover(false)}
+      >
+        {/* Add cover: in the space above the title, on hover. */}
+        {!cover && coverEditable && !phone ? (
+          <div style={{ position: "absolute", top: 8, left: 38 }}>
+            <AddCoverButton
+              visible={headHover}
+              onAdd={() => setCover(page.id, randomGalleryCover(), null)}
+            />
+          </div>
+        ) : null}
+        {/* 1+2. Title row: emoji + editable title, side-by-side, height 51. */}
+        <div
+          // minHeight, not height: a title that wraps to a second line grows
+          // the row instead of spilling over the permissions row below it.
+          // Top-aligned (offsets keep the single-line layout exactly as it
+          // was) so the icon sits beside the first line of a long title.
+          className="gio-title-row"
+          style={{ display: "flex", alignItems: "flex-start", minHeight: 51, gap: 13 }}
+        >
+          <Popover
+            width={328}
+            trigger={({ open, onClick, ref }) => (
+              <button
+                ref={ref}
+                type="button"
+                onClick={viewOnly ? undefined : onClick}
+                disabled={viewOnly}
+                aria-label="Change page icon"
+                aria-expanded={open}
+                className="gio-page-icon grid select-none place-items-center rounded-md hover:bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                style={{ width: 42, height: 42, fontSize: 34, lineHeight: 1, flex: "none", marginTop: 4.5 }}
+              >
+                <Ico icon={page.icon || "📄"} size={34} />
+              </button>
+            )}
+          >
+            {(close) => (
+              <EmojiPicker
+                onPick={(e) => {
+                  if (e) setPageIcon.mutate({ pageId: page.id, icon: e });
+                  close();
+                }}
+              />
+            )}
+          </Popover>
 
-        <div className="min-w-0 flex-1" style={{ paddingTop: 3.5 }}>
-          <EditableTitle
-            value={titleValue}
-            onChange={onTitleChange}
-            onEnter={focusFirstBlock}
-            autoFocus={titleAutoFocus}
-            topMarginClass=""
-            readOnly={app.locked || viewOnly}
-          />
+          <div className="gio-page-titlecell min-w-0 flex-1" style={{ paddingTop: 3.5 }}>
+            <EditableTitle
+              value={titleValue}
+              onChange={onTitleChange}
+              onEnter={focusFirstBlock}
+              autoFocus={titleAutoFocus}
+              topMarginClass=""
+              readOnly={app.locked || viewOnly}
+            />
+          </div>
         </div>
-      </div>
 
-      {/* 3. Permissions chip · edited stamp. */}
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <PermissionsChip
+        {/* 3. Permissions chip · edited stamp. */}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <PermissionsChip
+            page={page}
+            workspaceName={workspaceName}
+            access={access}
+            members={members}
+          />
+          <span className="text-rule">·</span>
+          <span className="text-meta text-muted">
+            Edited {relTime(page.edited_at)} · {editorName}
+          </span>
+          {viewOnly ? (
+            <>
+              <span className="text-rule">·</span>
+              <span
+                className="rounded-md bg-sunken px-1.5 text-caption text-secondary"
+                title="You can view this page but not edit it. Someone who can edit it can share it with you."
+              >
+                View only
+              </span>
+            </>
+          ) : null}
+        </div>
+
+        {/* 4a. Archived banner — shows on the page's own route only. */}
+        {page.archived_at ? (
+          <div
+            className="mt-4 flex w-full items-center gap-2 rounded-lg border border-line bg-sunken px-3 py-2 text-row"
+            style={{ borderRadius: 10 }}
+          >
+            <Glyph
+              path="M4 7h16M6 7v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7M9 11h6M4 4h16v3H4z"
+              className="h-4 w-4 text-muted"
+            />
+            <span className="text-body">
+              This page is archived — it appears in search but in no views.
+            </span>
+            <button
+              type="button"
+              onClick={() =>
+                archive.mutate({ pageId: page.id, archived: false })
+              }
+              className="ml-auto rounded-md border border-line bg-surface px-3 text-meta text-body hover:bg-rail"
+              style={{ height: 28 }}
+            >
+              Unarchive
+            </button>
+          </div>
+        ) : null}
+
+        {/* 4b. Template banner. */}
+        {page.template_at ? <TemplateBanner pageId={page.id} title={page.title ?? ""} /> : null}
+
+        {/* 4. Properties strip — the Verified control lives inside it now.
+         * The strip owns its own top hairline; margin-top absorbs the old
+         * banner's job (18px instead of 22px). */}
+        <PropertyStrip
+          page={page}
+          allPropDefs={propDefs}
+          members={members}
+          meId={meId}
+          pages={(shell.pages.data ?? []) as PageListItem[]}
+          canEditLayout={canEditPage && !app.locked}
+          onSetPage={(pageId, key, value) => setProp.mutate({ pageId, key, value })}
+          staleDays={staleDays}
+          onVerify={onVerify}
+          justVerified={justVerified}
+          onSet={(key, value) => {
+            if (viewOnly) {
+              toast.push("You can view this page but not edit it.");
+              return;
+            }
+            if (key === "icon") {
+              if (typeof value === "string" && value)
+                setPageIcon.mutate({ pageId: page.id, icon: value });
+              return;
+            }
+            setProp.mutate({ pageId: page.id, key, value });
+          }}
+        />
+
+        {/* 6. Body divider — a matching bracket to the strip's top rule:
+         * 22px from the strip's last row, hairline var(--color-line), then
+         * 8px padding before the body. */}
+        <div
+          id="page-body"
+          style={{
+            position: "relative",
+            marginTop: 22,
+            borderTop: "1px solid var(--color-line)",
+            paddingTop: 8,
+          }}
+        >
+
+          <CommentMarkers pageId={page.id} />
+          {showTemplatePicker ? (
+            // Floats under the first line of a blank page: it goes the moment
+            // you type, and nothing moves when it does.
+            <div style={{ position: "absolute", top: 50, left: 0, width: 420, zIndex: 2 }}>
+              <NewPageStarter
+                databaseId={page.database_id ?? null}
+                canBeDatabase={!page.database_id && !page.is_database}
+                onEmpty={() => {
+                  setWroteSomething(true);
+                  focusFirstBlock();
+                }}
+                onTemplate={pickTemplate}
+                onStarter={async (id) => {
+                  const s = STARTERS.find((x) => x.id === id);
+                  await fillBlankPage(starterBlocks(id), { title: s?.name, icon: s?.icon });
+                }}
+                onImport={async (file) => {
+                  const r = importFile(file.name, await file.text());
+                  if (!r.ok) throw new Error(r.error);
+                  await fillBlankPage(r.blocks, { title: r.title });
+                  if (r.kind === "csv") {
+                    toast.push("Imported as a table. Its ⋯ menu can turn it into a database.");
+                  }
+                }}
+                onDatabase={async (layout) => {
+                  const problem = await prepareRestore();
+                  if (problem) throw new Error(problem);
+                  let view: { id: string };
+                  try {
+                    view = await startDatabase.mutateAsync({ pageId: page.id, layout, icon: page.icon ?? null });
+                  } catch {
+                    throw new Error("Couldn't make this page a database. Try again.");
+                  }
+                  void navigateTo({ to: "/p/$pageId", params: { pageId: page.id }, search: { v: view.id } });
+                }}
+              />
+            </div>
+          ) : null}
+          <GridToDatabaseProvider>
+          <EditableBody
+            key={editorKey}
+            pageId={page.id}
+            initialBlocks={blocks}
+            onChange={onBlocksChange}
+            onBlur={onBodyBlur}
+            locked={app.locked || viewOnly}
+            editedRel={page.edited_at ? relTime(page.edited_at) : null}
+            editorFirstName={editorName}
+          />
+          </GridToDatabaseProvider>
+          {conflict ? (
+            // After the last block, sticky to the bottom of the window: on a
+            // long page it floats at the bottom edge where you can reach it;
+            // on a short one it sits under the last line. Nothing above moves.
+            <div
+              ref={conflictRef}
+              role="alert"
+              className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-amberRing bg-amberTint px-3 py-2 text-row text-amberInk shadow-toast animate-cardIn"
+              style={{ position: "sticky", bottom: 16, zIndex: 30 }}
+            >
+              <span className="min-w-0 flex-1">
+                Someone else changed this page while you were editing. Your latest edits aren't saved yet.
+              </span>
+              <button
+                type="button"
+                onClick={loadTheirs}
+                className="rounded-md border border-line bg-surface px-3 text-meta text-body hover:bg-rail"
+                style={{ height: 28 }}
+              >
+                Load their version
+              </button>
+              <button
+                type="button"
+                onClick={keepMine}
+                className="rounded-md bg-btn px-3 text-meta text-btnFg"
+                style={{ height: 28 }}
+              >
+                Keep mine
+              </button>
+            </div>
+          ) : null}
+        </div>
+        <LinkedFrom pageId={page.id} />
+        <CommentsHost pageId={page.id} blockOrder={blockOrder} />
+        <PageHistoryHost
+          page={page}
+          members={members}
+          meId={meId}
+          canEdit={canEditPage}
+          prepare={prepareRestore}
+          adopt={adoptRestored}
+        />
+        <PermissionsPopoverHost
           page={page}
           workspaceName={workspaceName}
-          access={access}
           members={members}
+          isOwner={members.some(
+            (m) => m.user_id === meId && m.role === "owner",
+          )}
         />
-        <span className="text-rule">·</span>
-        <span className="text-meta text-muted">
-          Edited {relTime(page.edited_at)} · {editorName}
-        </span>
-        {viewOnly ? (
-          <>
-            <span className="text-rule">·</span>
-            <span
-              className="rounded-md bg-sunken px-1.5 text-caption text-secondary"
-              title="You can view this page but not edit it. Someone who can edit it can share it with you."
-            >
-              View only
-            </span>
-          </>
-        ) : null}
       </div>
-
-      {/* 4a. Archived banner — shows on the page's own route only. */}
-      {page.archived_at ? (
-        <div
-          className="mt-4 flex w-full items-center gap-2 rounded-lg border border-line bg-sunken px-3 py-2 text-row"
-          style={{ borderRadius: 10 }}
-        >
-          <Glyph
-            path="M4 7h16M6 7v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7M9 11h6M4 4h16v3H4z"
-            className="h-4 w-4 text-muted"
-          />
-          <span className="text-body">
-            This page is archived — it appears in search but in no views.
-          </span>
-          <button
-            type="button"
-            onClick={() =>
-              archive.mutate({ pageId: page.id, archived: false })
-            }
-            className="ml-auto rounded-md border border-line bg-surface px-3 text-meta text-body hover:bg-rail"
-            style={{ height: 28 }}
-          >
-            Unarchive
-          </button>
-        </div>
-      ) : null}
-
-      {/* 4b. Template banner. */}
-      {page.template_at ? <TemplateBanner pageId={page.id} title={page.title ?? ""} /> : null}
-
-      {/* 4. Properties strip — the Verified control lives inside it now.
-       * The strip owns its own top hairline; margin-top absorbs the old
-       * banner's job (18px instead of 22px). */}
-      <PropertyStrip
-        page={page}
-        allPropDefs={propDefs}
-        members={members}
-        meId={meId}
-        pages={(shell.pages.data ?? []) as PageListItem[]}
-        canEditLayout={canEditPage && !app.locked}
-        onSetPage={(pageId, key, value) => setProp.mutate({ pageId, key, value })}
-        staleDays={staleDays}
-        onVerify={onVerify}
-        justVerified={justVerified}
-        onSet={(key, value) => {
-          if (viewOnly) {
-            toast.push("You can view this page but not edit it.");
-            return;
-          }
-          if (key === "icon") {
-            if (typeof value === "string" && value)
-              setPageIcon.mutate({ pageId: page.id, icon: value });
-            return;
-          }
-          setProp.mutate({ pageId: page.id, key, value });
-        }}
-      />
-
-      {/* 6. Body divider — a matching bracket to the strip's top rule:
-       * 22px from the strip's last row, hairline var(--color-line), then
-       * 8px padding before the body. */}
-      <div
-        id="page-body"
-        style={{
-          position: "relative",
-          marginTop: 22,
-          borderTop: "1px solid var(--color-line)",
-          paddingTop: 8,
-        }}
-      >
-
-        <CommentMarkers pageId={page.id} />
-        {showTemplatePicker ? (
-          // Floats under the first line of a blank page: it goes the moment
-          // you type, and nothing moves when it does.
-          <div style={{ position: "absolute", top: 50, left: 0, width: 420, zIndex: 2 }}>
-            <NewPageStarter
-              databaseId={page.database_id ?? null}
-              canBeDatabase={!page.database_id && !page.is_database}
-              onEmpty={() => {
-                setWroteSomething(true);
-                focusFirstBlock();
-              }}
-              onTemplate={pickTemplate}
-              onStarter={async (id) => {
-                const s = STARTERS.find((x) => x.id === id);
-                await fillBlankPage(starterBlocks(id), { title: s?.name, icon: s?.icon });
-              }}
-              onImport={async (file) => {
-                const r = importFile(file.name, await file.text());
-                if (!r.ok) throw new Error(r.error);
-                await fillBlankPage(r.blocks, { title: r.title });
-                if (r.kind === "csv") {
-                  toast.push("Imported as a table. Its ⋯ menu can turn it into a database.");
-                }
-              }}
-              onDatabase={async (layout) => {
-                const problem = await prepareRestore();
-                if (problem) throw new Error(problem);
-                let view: { id: string };
-                try {
-                  view = await startDatabase.mutateAsync({ pageId: page.id, layout, icon: page.icon ?? null });
-                } catch {
-                  throw new Error("Couldn't make this page a database. Try again.");
-                }
-                void navigateTo({ to: "/p/$pageId", params: { pageId: page.id }, search: { v: view.id } });
-              }}
-            />
-          </div>
-        ) : null}
-        <GridToDatabaseProvider>
-        <EditableBody
-          key={editorKey}
-          pageId={page.id}
-          initialBlocks={blocks}
-          onChange={onBlocksChange}
-          onBlur={onBodyBlur}
-          locked={app.locked || viewOnly}
-          editedRel={page.edited_at ? relTime(page.edited_at) : null}
-          editorFirstName={editorName}
-        />
-        </GridToDatabaseProvider>
-        {conflict ? (
-          // After the last block, sticky to the bottom of the window: on a
-          // long page it floats at the bottom edge where you can reach it;
-          // on a short one it sits under the last line. Nothing above moves.
-          <div
-            ref={conflictRef}
-            role="alert"
-            className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-amberRing bg-amberTint px-3 py-2 text-row text-amberInk shadow-toast animate-cardIn"
-            style={{ position: "sticky", bottom: 16, zIndex: 30 }}
-          >
-            <span className="min-w-0 flex-1">
-              Someone else changed this page while you were editing. Your latest edits aren't saved yet.
-            </span>
-            <button
-              type="button"
-              onClick={loadTheirs}
-              className="rounded-md border border-line bg-surface px-3 text-meta text-body hover:bg-rail"
-              style={{ height: 28 }}
-            >
-              Load their version
-            </button>
-            <button
-              type="button"
-              onClick={keepMine}
-              className="rounded-md bg-btn px-3 text-meta text-btnFg"
-              style={{ height: 28 }}
-            >
-              Keep mine
-            </button>
-          </div>
-        ) : null}
-      </div>
-      <LinkedFrom pageId={page.id} />
-      <CommentsHost pageId={page.id} blockOrder={blockOrder} />
-      <PageHistoryHost
-        page={page}
-        members={members}
-        meId={meId}
-        canEdit={canEditPage}
-        prepare={prepareRestore}
-        adopt={adoptRestored}
-      />
-      <PermissionsPopoverHost
-        page={page}
-        workspaceName={workspaceName}
-        members={members}
-        isOwner={members.some(
-          (m) => m.user_id === meId && m.role === "owner",
-        )}
-      />
-    </div>
+    </>
   );
 }
 

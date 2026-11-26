@@ -37,6 +37,8 @@ export type PublishedPage = {
     edited_by?: string | null;
     verified_at?: string | null;
     verified_by?: string | null;
+    /** Its cover (src/lib/page-cover.ts). */
+    cover?: unknown;
   };
   /** From the published page down to this one. */
   path: Array<{ id: string; title: string | null; icon: string | null }>;

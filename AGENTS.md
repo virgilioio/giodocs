@@ -821,6 +821,30 @@ searched; one list of pages; no comments and no filters yet.
   words highlighted, src/lib/search-text.ts) and where it lives; opening a
   content match opens the page at that block.
 
+## Decisions (Allan, 2026-11-25: page covers)
+Notion's cover across the top of a page. Allan took the recommended
+answers: Gallery, Upload and Link (no Unsplash yet); page history leaves
+covers alone; exports stay without them; phones show them and change them
+from the Actions sheet.
+- pages.cover is null or { kind, value, position }: gallery (one of Gio's
+  colours or gradients by name, COVER_GALLERY in src/lib/page-cover.ts,
+  built from the design tokens), upload (a storage path in the page's own
+  folder of page-images, so exactly the people who can open the page see
+  it) or link (an http(s) address); position 0-100 is how far down an image
+  shows. page_cover_ok checks the shape (pages_cover_shape); readCover is
+  the browser's half. Changing it needs edit rights (guard_page_edit) and
+  moves the Edited stamp (pages_touch_cover); page history doesn't keep it.
+- On screen (page-cover.tsx): "Add cover" above the title on hover puts on
+  a gallery colour; on the cover, Change cover (Gallery · Upload · Link,
+  CoverPicker), Reposition (drag, Save position / Cancel, Esc) and Remove
+  with Undo (useSetPageCover). With a cover the icon sits half over its
+  edge and the title starts under it. Pages, database pages and the page
+  dialog show it; phones show it and change it from the Actions sheet
+  (gio:cover-picker). View-only readers see no controls.
+- Starting from a template and duplicating copy the cover, an uploaded
+  image into the new page's own folder (copyCover). Public pages show it
+  (get_published_page's page.cover; an upload is signed for the visitor).
+
 ## Working agreement
 - Build ONLY what the task message asks. Never scaffold ahead.
 - Finish every task by listing exactly which files changed, then stop.

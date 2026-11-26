@@ -17,6 +17,8 @@ import {
 } from "@/hooks/use-workspace-data";
 import { usePrefs } from "@/lib/preferences";
 import { formatTimestamp } from "@/lib/format";
+import { useAuth } from "@/lib/auth-context";
+import { readCover } from "@/lib/page-cover";
 import { useToast } from "@/lib/toast";
 import { isTypingTarget } from "@/lib/is-typing";
 import { pageUrl } from "@/lib/slug";
@@ -316,6 +318,18 @@ export function PageTopbarActions({
   }>;
   const workspace = shell.workspace.data;
   const workspaceName = workspace?.name ?? "";
+  // Who may change the cover: the page view's own rule (canEditPage there).
+  const { user } = useAuth();
+  const meId = user?.id ?? "";
+  const canEditCover =
+    !!page &&
+    !app.locked &&
+    ((page.access_type === "workspace" &&
+      (page.ws_role !== "view" ||
+        (members as Array<{ user_id: string; role?: string }>).some(
+          (m) => m.user_id === meId && m.role === "owner",
+        ))) ||
+      (accessQ.data ?? []).some((a) => a.user_id === meId && a.capability === "write"));
   const memberCount = members.length;
   const editedName = useMemo(() => {
     if (!listRow) return null;
@@ -561,6 +575,14 @@ export function PageTopbarActions({
             }
           : undefined,
         onMoveTo: phone ? () => setMoveOpen(true) : undefined,
+        onCover:
+          phone && canEditCover
+            ? () =>
+                window.dispatchEvent(
+                  new CustomEvent("gio:cover-picker", { detail: { pageId: page.id } }),
+                )
+            : undefined,
+        coverLabel: readCover(page.cover) ? "Change cover" : "Add cover",
         onCopyLink: () => { void doCopyLink(); },
         onExport: () => setExportOpen(true),
         onTaskDatabase: () => setTasksOpen(true),

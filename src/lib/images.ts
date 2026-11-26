@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { rememberSignedUrl } from "./image-url-cache";
 import { filesStoragePath, extOfName } from "./file-ops";
+import { coverForCopy, type PageCover } from "./page-cover";
 import {
   IMAGE_BUCKET,
   IMAGE_MAX_EDGE,
@@ -20,6 +21,19 @@ import {
 } from "./image-ops";
 
 const HOUR = 3600;
+
+/** A template's or original's cover for a new page: an uploaded image is
+ *  copied into the new page's folder (the database only takes a cover from
+ *  the page's own folder); if the copy fails the page starts without one. */
+export async function copyCover(
+  cover: PageCover | null,
+  pageId: string,
+): Promise<PageCover | null> {
+  const { cover: next, copy } = coverForCopy(cover, pageId);
+  if (!copy) return next;
+  const { error } = await supabase.storage.from(IMAGE_BUCKET).copy(copy.from, copy.to);
+  return error ? null : next;
+}
 
 export async function signPath(path: string): Promise<string> {
   const { data, error } = await supabase.storage

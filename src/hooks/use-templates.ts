@@ -11,6 +11,8 @@ import {
 } from "@/lib/template-copy";
 import { collectImagePaths } from "@/lib/image-ops";
 import { IMAGE_BUCKET } from "@/lib/image-ops";
+import { readCover } from "@/lib/page-cover";
+import { copyCover } from "@/lib/images";
 import { useNavigate } from "@tanstack/react-router";
 import { useCreatePage } from "./use-page-mutations";
 import { storedPropsFor } from "./stored-props";
@@ -27,17 +29,18 @@ type TemplateContent = {
   blocks: unknown;
   parent_id: string | null;
   database_id: string | null;
+  cover?: unknown;
 };
 
 async function fetchTemplateContent(templateId: string): Promise<TemplateContent> {
   const { data, error } = await supabase
     .from("pages")
-    .select("title, icon, props, blocks, parent_id, database_id")
+    .select("title, icon, props, blocks, parent_id, database_id, cover")
     .eq("id", templateId)
     .maybeSingle();
   if (error) throw error;
   if (!data) throw new Error("That template is no longer there.");
-  return data as TemplateContent;
+  return data as unknown as TemplateContent;
 }
 
 export function useSetTemplate() {
@@ -114,15 +117,21 @@ export async function applyTemplate(
 ): Promise<AppliedPage> {
   const tpl = await fetchTemplateContent(templateId);
   const blocks = await copyTemplateFiles(cloneBlocksFresh(tpl.blocks), pageId);
+  const cover = await copyCover(readCover(tpl.cover), pageId);
   const sameDatabase = !!tpl.database_id && current.databaseId === tpl.database_id;
   const tplProps = sameDatabase ? await storedPropsFor(tpl.props, tpl.database_id) : {};
   const patch = {
     blocks: blocks as never,
     icon: tpl.icon || "📄",
+    ...(cover ? { cover } : {}),
     title: current.title.trim() ? current.title : tpl.title,
     ...(sameDatabase ? { props: mergeTemplateProps(current.props, tplProps) as never } : {}),
   };
-  const { error } = await supabase.from("pages").update(patch).eq("id", pageId);
+  // `cover` joins the generated types when its migration is applied.
+  const { error } = await supabase
+    .from("pages")
+    .update(patch as never)
+    .eq("id", pageId);
   if (error) throw error;
   const { data, error: e2 } = await supabase
     .from("pages")

@@ -9,6 +9,7 @@ import { documentFontFaceCss } from "@/lib/font-faces";
 import { setMentionDirectory } from "@/lib/mention-directory";
 import { fetchPublishedPage, type PublishedPage } from "@/lib/public-links";
 import { publicHref, publicPageHtml } from "@/lib/public-page";
+import { readCover, type PageCover } from "@/lib/page-cover";
 import {
   databasePageHtml,
   inlineDatabaseHtml,
@@ -33,6 +34,10 @@ const FRAME_CSS = `
   .pub-children li { margin: 4px 0; }
   .pub-children a { color: inherit; text-decoration: none; border-bottom: 1px solid rgba(13,13,9,.2); }
   @media screen { body { max-width: 760px; margin: 0 auto; } body.pub-wide { max-width: 1180px; } }
+  /* The page's cover, across the whole frame (page-cover.ts). */
+  .pub-cover { position: relative; height: clamp(160px, 28vh, 280px); overflow: hidden; background: var(--color-sunken); margin: 0 0 26px; }
+  @media screen { .pub-cover { margin: -30px calc(50% - 50vw) 26px; width: 100vw; } html { overflow-x: hidden; } }
+  .pub-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   /* Databases (public-database.ts): the app's grid, read only. */
   .pub-db { margin: 14px 0; font-size: 14px; line-height: 1.45; }
   .pub-db-head { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 15px; margin: 0 0 6px; color: var(--color-strong); }
@@ -92,7 +97,12 @@ const FRAME_CSS = `
   .pub-fold summary { color: var(--color-muted); font-weight: 400; font-size: 13px; cursor: pointer; margin-bottom: 6px; }
 `;
 
-type Loaded = { data: PublishedPage; emoji: Map<string, string>; files: Map<string, string> };
+type Loaded = {
+  data: PublishedPage;
+  emoji: Map<string, string>;
+  files: Map<string, string>;
+  cover: { cover: PageCover; url: string | null } | null;
+};
 
 async function load(token: string, pageId: string | null): Promise<Loaded | null> {
   const data = await fetchPublishedPage(token, pageId);
@@ -133,7 +143,17 @@ async function load(token: string, pageId: string | null): Promise<Loaded | null
       .createSignedUrls(paths, 3600);
     for (const s of signed ?? []) if (s.path && s.signedUrl) files.set(s.path, s.signedUrl);
   }
-  return { data, emoji, files };
+  // The cover: an uploaded image is signed for the visitor like the
+  // page's other images.
+  const pageCover = readCover(data.page.cover);
+  let coverUrl: string | null = null;
+  if (pageCover?.kind === "upload") {
+    const { data: signed } = await supabase.storage
+      .from("page-images")
+      .createSignedUrl(pageCover.value, 3600);
+    coverUrl = signed?.signedUrl ?? null;
+  }
+  return { data, emoji, files, cover: pageCover ? { cover: pageCover, url: coverUrl } : null };
 }
 
 /** The page being read, as a row (its own values), when it is one. */
@@ -176,12 +196,19 @@ function render(
     extra,
     fileUrls: loaded.files,
   });
-  return publicPageHtml(data, token, loaded.emoji, documentFontFaceCss() + FRAME_CSS, {
-    inline: (view) => inlineDatabaseHtml(ctx, view),
-    page: () => databasePageHtml(ctx, data.page.id),
-    rowProps: () =>
-      extra ? rowPropertiesHtml(ctx, ctx.idx.byId.get(extra.id) ?? toListItem(extra)) : "",
-  });
+  return publicPageHtml(
+    data,
+    token,
+    loaded.emoji,
+    documentFontFaceCss() + FRAME_CSS,
+    {
+      inline: (view) => inlineDatabaseHtml(ctx, view),
+      page: () => databasePageHtml(ctx, data.page.id),
+      rowProps: () =>
+        extra ? rowPropertiesHtml(ctx, ctx.idx.byId.get(extra.id) ?? toListItem(extra)) : "",
+    },
+    loaded.cover,
+  );
 }
 
 export function PublicPage({
