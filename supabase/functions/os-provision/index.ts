@@ -11,15 +11,16 @@
 // not Gio Sales'). Requests older than 5 minutes are
 // refused, and each request_id applies only once (os_provision_log).
 // When the grant creates an invitation, the usual Gio Docs invite email goes out.
+// A resend keeps the same link and gives it 7 more days (2026-11-27).
+// Kind 'invite' (2026-11-27) is People & Access asking about one person's
+// invitation: { kind: 'invite', action: 'status' | 'link' | 'renew', email,
+// actor_email }. 'link' answers the invitation's link (url) to hand over
+// directly, 'renew' extends it 7 days; both only for an owner here.
 // Keep this file ASCII only: the deploy tool rewrites escape sequences.
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { renderMemberInviteEmail } from '../_shared/memberInviteEmail.ts'
+import { sendInviteEmail, inviteUrl } from '../_shared/inviteSend.ts'
 
-const APP_URL = (Deno.env.get('APP_URL') || 'https://docs.gogio.io').replace(/\/+$/, '')
-const EMAIL_FROM = Deno.env.get('EMAIL_FROM') || 'Gio Docs <noreply@docs.gogio.io>'
 const MAX_SKEW_SECONDS = 300
-const ROLE_LABEL: Record<string, string> = { owner: 'Owner', member: 'Member' }
-const AVATAR_PALETTE = ['#6F3FF5', '#12B886', '#E8590C', '#1C7ED6', '#D6336C', '#4C6EF5', '#F59F00', '#0CA678']
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const json = (body: unknown, status = 200) =>
@@ -39,43 +40,6 @@ function safeEqual(a: string, b: string) {
   return r === 0
 }
 
-function initialsOf(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (!parts.length) return 'G'
-  return parts.length === 1 ? parts[0].slice(0, 2).toUpperCase() : (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-}
-function colorOf(name: string) {
-  let h = 0
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
-  return AVATAR_PALETTE[h % AVATAR_PALETTE.length]
-}
-const fmtExpiry = (iso: string) =>
-  new Date(iso).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-
-async function sendEmail(to: string, subject: string, html: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  const key = Deno.env.get('RESEND_API_KEY')
-  if (!key) return { ok: false, error: 'Email is not configured (RESEND_API_KEY is missing).' }
-  let lastError = ''
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: EMAIL_FROM, to: [to], subject, html, text }),
-        signal: AbortSignal.timeout(15_000),
-      })
-      const body = await res.json().catch(() => ({}))
-      if (res.ok) return { ok: true }
-      lastError = body?.message || body?.error || `HTTP ${res.status}`
-      if (res.status >= 400 && res.status < 500 && res.status !== 429) break
-    } catch (e) {
-      lastError = String(e)
-    }
-    await new Promise((r) => setTimeout(r, 500 * 2 ** (attempt - 1)))
-  }
-  return { ok: false, error: lastError.slice(0, 500) }
-}
-
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
@@ -93,6 +57,22 @@ Deno.serve(async (req) => {
 
   let p: Record<string, unknown>
   try { p = JSON.parse(raw) } catch { return json({ error: 'Invalid JSON.' }, 400) }
+
+  // One person's invitation, asked by People & Access (2026-11-27).
+  if (p.kind === 'invite') {
+    const action = String(p.action ?? '')
+    const iEmail = String(p.email ?? '').trim().toLowerCase()
+    const iActor = String(p.actor_email ?? '').trim().toLowerCase()
+    if (!['status', 'link', 'renew'].includes(action)) return json({ error: 'Unknown invitation action.' }, 400)
+    if (!iEmail || !iActor) return json({ error: 'email and actor_email are required.' }, 400)
+    const idb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+    const { data, error } = await idb.rpc('os_invite_action', { p_email: iEmail, p_actor_email: iActor, p_action: action })
+    if (error) return json({ error: error.message, code: error.code }, 400)
+    const { token, ...r } = data as Record<string, unknown>
+    return json({ ok: r.outcome !== 'refused', ...r, url: typeof token === 'string' ? inviteUrl(token) : null })
+  }
   const requestId = String(p.request_id ?? '')
   const email = String(p.email ?? '').trim().toLowerCase()
   const actorEmail = String(p.actor_email ?? '').trim().toLowerCase()
@@ -118,30 +98,9 @@ Deno.serve(async (req) => {
   let email_error: string | null = null
 
   if (result.outcome === 'invited' && !result.repeat && result.invite_id && result.token) {
-    const [{ data: invite }, { data: ws }, { data: actor }] = await Promise.all([
-      db.from('workspace_invites').select('id, email, role, expires_at').eq('id', result.invite_id).single(),
-      db.from('workspaces').select('name').order('created_at').limit(1).single(),
-      db.from('profiles').select('full_name, email').ilike('email', actorEmail).maybeSingle(),
-    ])
-    if (invite) {
-      const inviterName = (actor?.full_name || '').trim() || actor?.email || 'Gio OS'
-      const rendered = renderMemberInviteEmail({
-        recipient_name: invite.email.split('@')[0],
-        workspace_name: ws?.name || 'your workspace',
-        inviter_name: inviterName,
-        inviter_initials: initialsOf(inviterName),
-        inviter_color: colorOf(inviterName),
-        role_label: ROLE_LABEL[invite.role] || invite.role,
-        invite_url: `${APP_URL}/invite/${result.token}`,
-        expiry_date: fmtExpiry(invite.expires_at),
-      })
-      const sent = await sendEmail(invite.email, rendered.subject, rendered.html, rendered.text)
-      email_status = sent.ok ? 'sent' : 'failed'
-      email_error = sent.ok ? null : sent.error
-      await db.from('workspace_invites').update(
-        sent.ok ? { email_status: 'sent', email_error: null } : { email_status: 'failed', email_error: sent.error },
-      ).eq('id', invite.id)
-    }
+    const sent = await sendInviteEmail(db, result.invite_id, result.token, actorEmail)
+    email_status = sent.status
+    email_error = sent.error
   }
 
   // The token is for the email only; it never goes back to the caller.

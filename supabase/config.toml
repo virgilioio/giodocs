@@ -6,3 +6,7 @@ verify_jwt = true
 [functions.os-provision]
 # Signed requests from Gio OS (People & Access): HMAC over timestamp.body with OS_PROVISION_SECRET.
 verify_jwt = false
+
+[functions.invite-renew]
+# Public: the invite page's "Email me a new link". It emails the invited address only.
+verify_jwt = false
