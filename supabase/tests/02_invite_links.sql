@@ -1,4 +1,4 @@
--- Rolled-back test for 20261127190000_invite_links (run after it in one
+-- Rolled-back test for 20261127232140_invite_links (run after it in one
 -- transaction). The last statement raises with the results, so nothing is kept.
 -- Uses a made-up address at example.com and the workspace's first owner.
 

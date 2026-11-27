@@ -658,6 +658,8 @@ draws it), `.gio-msep` (dividers inset 12px from the panel's edge),
   pulled back to now) and can't be renewed from its link; the page says
   "This invite was withdrawn". Giving access again clears it.
 - The invite email is sent from one helper, _shared/inviteSend.ts.
+- Applied 2026-11-27 as 20261127232140_invite_links (test 02_invite_links passed
+  live); os-provision v3 and invite-renew v1 deployed, byte-identical to the repo.
 
 ## Decisions (Allan, 2026-10-30: database tables, first batch)
 From the Notion comparison; Allan picked A1–A6, B1, B2 and C1.
