@@ -640,8 +640,24 @@ draws it), `.gio-msep` (dividers inset 12px from the panel's edge),
   Sign out); a failed membership lookup shows Try again. Never an empty
   canvas.
 - Gio OS resends an invitation with os-provision { resend: true } →
-  os_resend_invite: a fresh link (create_workspace_invite) for anyone not in
-  the workspace, 'unchanged' for members.
+  os_resend_invite, 'unchanged' for members. Since 2026-11-27 a resend keeps
+  the same link and gives it 7 more days (create_workspace_invite keeps the
+  token), so an email the person already has keeps working.
+
+## Decisions (Allan, 2026-11-27: invitations that keep working)
+- People & Access asks about one person's invitation through os-provision
+  { kind: 'invite', action: 'status' | 'link' | 'renew' } → os_invite_action
+  (owners only): its state (joined, pending, expired, withdrawn, none), its
+  link to hand over directly (7 more days when it had expired) or 7 more days.
+- An expired link asks for a new one on the invite page ("Email me a new
+  link", the public invite-renew function → invite_renew_request): a new link
+  with 7 days, emailed to the invited address only; the expired link stops
+  opening it, so an old forwarded email can't bring access back.
+- An invitation People & Access withdrew is marked withdrawn
+  (workspace_invites.revoked_at, set by the database whenever the expiry is
+  pulled back to now) and can't be renewed from its link; the page says
+  "This invite was withdrawn". Giving access again clears it.
+- The invite email is sent from one helper, _shared/inviteSend.ts.
 
 ## Decisions (Allan, 2026-10-30: database tables, first batch)
 From the Notion comparison; Allan picked A1–A6, B1, B2 and C1.
