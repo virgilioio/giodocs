@@ -3,7 +3,7 @@
  * No React, no supabase — just strings so the tests can pin them down.
  */
 
-export type InviteState = "valid" | "expired" | "accepted" | "not_found";
+export type InviteState = "valid" | "expired" | "accepted" | "not_found" | "revoked";
 
 export type InviteCopy = {
   heading: string;
@@ -23,9 +23,14 @@ export function copyForState(
     case "expired":
       return {
         heading: "This invite has expired.",
-        body: `Invites last 7 days. Ask ${
+        body: `Invites last 7 days. We can email you a new link, or ask ${
           ctx.inviterName?.trim() || "whoever invited you"
-        } to send a new one.`,
+        } to send one.`,
+      };
+    case "revoked":
+      return {
+        heading: "This invite was withdrawn.",
+        body: "Ask whoever invited you if you should have access.",
       };
     case "accepted":
       return {

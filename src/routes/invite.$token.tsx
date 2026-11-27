@@ -126,7 +126,11 @@ function InviteCard({
 }) {
   const state = preview.state;
 
-  if (state === "not_found" || state === "expired") {
+  if (state === "expired") {
+    return <ExpiredInvite preview={preview} token={token} />;
+  }
+
+  if (state === "not_found" || state === "revoked") {
     const c = copyForState(state, { inviterName: preview.inviter_name });
     return (
       <div className="text-center">
@@ -168,6 +172,74 @@ function InviteCard({
       onGoLogin={onGoLogin}
       token={token}
     />
+  );
+}
+
+/**
+ * An expired invite (2026-11-27): the person asks for a new link, which is
+ * emailed to the invited address only and works for 7 days.
+ */
+function ExpiredInvite({ preview, token }: { preview: Preview; token: string }) {
+  const [phase, setPhase] = useState<"idle" | "sending" | "sent" | "valid">("idle");
+  const [error, setError] = useState<string | null>(null);
+  const c = copyForState("expired", { inviterName: preview.inviter_name });
+
+  async function ask() {
+    setPhase("sending");
+    setError(null);
+    const { data } = await supabase.functions.invoke("invite-renew", { body: { token } });
+    const state = (data as { state?: string } | null)?.state;
+    if (state === "renewed") return setPhase("sent");
+    if (state === "valid") return setPhase("valid");
+    setPhase("idle");
+    setError("We couldn't send a new link. Try again in a minute.");
+  }
+
+  return (
+    <div className="text-center">
+      <img src="/gio-docs-logo.svg" alt="Gio Docs" className="h-[58px] w-auto block mx-auto" />
+      {phase === "sent" ? (
+        <>
+          <h1 className="mt-5 font-display text-title text-noir">Check your email.</h1>
+          <p className="mt-2 text-meta text-secondary">
+            We sent a new link to {preview.invited_email}. It works for 7 days.
+          </p>
+        </>
+      ) : (
+        <>
+          <h1 className="mt-5 font-display text-title text-noir">{c.heading}</h1>
+          <p className="mt-2 text-meta text-secondary">
+            {phase === "valid" ? "This link works again. Refresh the page to continue." : c.body}
+          </p>
+          <p role="alert" className="mt-2 min-h-[18px] text-meta text-danger">
+            {error ?? ""}
+          </p>
+          {phase !== "valid" && (
+            <button
+              type="button"
+              onClick={() => void ask()}
+              disabled={phase === "sending"}
+              className="mt-3 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-btn px-5 font-bold text-ui text-btnFg disabled:opacity-60"
+            >
+              {phase === "sending" && (
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  className="h-4 w-4 animate-spin"
+                  aria-hidden
+                >
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+              )}
+              Email me a new link
+            </button>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 

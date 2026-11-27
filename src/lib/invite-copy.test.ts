@@ -24,6 +24,16 @@ describe("copyForState", () => {
     expect(c.body).toContain("whoever invited you");
   });
 
+  it("expired: offers a new link by email", () => {
+    const c = copyForState("expired");
+    expect(c.body).toMatch(/email you a new link/);
+  });
+
+  it("revoked: says it was withdrawn", () => {
+    const c = copyForState("revoked");
+    expect(c.heading).toMatch(/withdrawn/);
+  });
+
   it("accepted: tells them to sign in", () => {
     const c = copyForState("accepted");
     expect(c.heading).toMatch(/already been used/);
